@@ -106,7 +106,13 @@ public enum SilkDeformationGpuFallback
     /// That keeps the ordering this renderer claims, deform then displace, exact
     /// and identical to the CPU deformation oracle.
     /// </remarks>
-    MaterialDisplacement = 9
+    MaterialDisplacement = 9,
+
+    /// <summary>
+    /// The geometry carries a second surface texture-coordinate set, and the
+    /// checked kernel writes only the six- and eight-float vertex layouts.
+    /// </summary>
+    SecondaryTexCoords = 10
 }
 
 /// <summary>
@@ -275,6 +281,10 @@ public sealed class SilkDeformationGpuPayload
         if (hasTangents)
         {
             return SilkDeformationGpuFallback.RequiresTangents;
+        }
+        if (vertexStrideFloats > 8)
+        {
+            return SilkDeformationGpuFallback.SecondaryTexCoords;
         }
         if (topologyKind != SilkTopologyKind.TriangleList)
         {

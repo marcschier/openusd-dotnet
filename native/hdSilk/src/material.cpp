@@ -2536,21 +2536,21 @@ bool _TryPublishCompositeEntries(
     return true;
 }
 
-/// Settles the one texture-coordinate stream this material publishes.
+/// Settles the texture-coordinate streams this material publishes.
 ///
-/// The renderer builds exactly one coordinate stream per material: it takes the
-/// material's UV transform from the wire's per-material affine, and its primvar
-/// from the first texture entry that names one, then samples every texture of the
-/// material through that pair. A material whose images ask for different
-/// transforms, or for different primvars, is therefore outside the projection.
+/// The renderer builds at most two coordinate streams per material and applies
+/// one UV transform to both: it takes the transform from the wire's
+/// per-material affine, the primary primvar from the first surface texture entry
+/// that names one, and the secondary primvar from the first surface entry naming
+/// a different one. Each texture then samples whichever of the two streams its
+/// own entry names. A material whose images ask for different transforms, or for
+/// a third primvar, is outside the projection.
 ///
-/// The first texture in the fixed input order states both. A texture that asks
-/// for a different transform or a different primvar is dropped with a diagnostic
-/// naming which of the two diverged, rather than sampled through coordinates it
-/// did not author. The primvar half matters as much as the transform half and was
-/// previously unreconciled: a base colour on `uvSet0` beside a normal map on
-/// `uvSet1` published both entries, and the consumer sampled both through
-/// `uvSet0` with nothing reported.
+/// The first texture in the fixed input order states the transform. A texture
+/// that asks for a different transform or a third primvar is dropped with a
+/// diagnostic naming which of the two diverged, rather than sampled through
+/// coordinates it did not author. So is a parameter whose entries disagree on
+/// the stream: the shader samples both halves of one input through one stream.
 ///
 /// Entries are dropped a whole parameter at a time. Since ABI v15 one surface
 /// input may carry two entries -- a primary and a composite operand -- and those
@@ -2560,8 +2560,8 @@ bool _TryPublishCompositeEntries(
 ///
 /// Returns whether anything was dropped, so the caller can re-settle the stream
 /// against the survivors.
-/// Whether one texture entry belongs to the material's single surface
-/// texture-coordinate stream.
+/// Whether one texture entry belongs to the material's surface
+/// texture-coordinate streams.
 ///
 /// Displacement does not. It is sampled per vertex, from its own authored
 /// coordinate set and through its own folded affine, so it neither constrains
@@ -2593,18 +2593,31 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
         record.uvTransform[index] = first->uvTransform[index];
     }
 
-    // The material primvar is the first non-empty one, which is exactly how the
-    // consumer derives its single stream. An entry that names no primvar asks
-    // for nothing and is sampled through that stream either way.
+    // The primary primvar is the first non-empty one and the secondary the first
+    // that differs from it, which is exactly how the consumer derives its two
+    // streams. An entry that names no primvar asks for nothing and is sampled
+    // through the primary stream.
     std::string primvar;
+    std::string secondary;
     for (const HdSilkMaterialTexture& texture : record.textures)
     {
-        if (_BelongsToSurfaceUvStream(texture) && !texture.uvPrimvar.empty())
+        if (!_BelongsToSurfaceUvStream(texture) || texture.uvPrimvar.empty())
+        {
+            continue;
+        }
+        if (primvar.empty())
         {
             primvar = texture.uvPrimvar;
+        }
+        else if (texture.uvPrimvar != primvar)
+        {
+            secondary = texture.uvPrimvar;
             break;
         }
     }
+    const auto streamOf = [&primvar](const HdSilkMaterialTexture& texture) -> const std::string& {
+        return texture.uvPrimvar.empty() ? primvar : texture.uvPrimvar;
+    };
 
     std::vector<uint32_t> divergent;
     for (const HdSilkMaterialTexture& texture : record.textures)
@@ -2615,11 +2628,20 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
         }
         const bool transformAgrees =
             _UvTransformsEqual(texture.uvTransform, record.uvTransform);
-        const bool primvarAgrees =
-            texture.uvPrimvar.empty() || texture.uvPrimvar == primvar;
+        const bool primvarAgrees = texture.uvPrimvar.empty() ||
+            texture.uvPrimvar == primvar || texture.uvPrimvar == secondary;
+        bool pairAgrees = true;
+        for (const HdSilkMaterialTexture& other : record.textures)
+        {
+            if (other.parameter == texture.parameter && streamOf(other) != streamOf(texture))
+            {
+                pairAgrees = false;
+                break;
+            }
+        }
         const bool fallbackAgrees = texture.uvFallback[0] == first->uvFallback[0] &&
             texture.uvFallback[1] == first->uvFallback[1];
-        if (transformAgrees && primvarAgrees && fallbackAgrees)
+        if (transformAgrees && primvarAgrees && pairAgrees && fallbackAgrees)
         {
             continue;
         }
@@ -2641,13 +2663,24 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
         {
             TF_WARN(
                 "hdSilk material '%s' texture for parameter %u reads primvar '%s' "
-                "while the material's coordinate stream is '%s'; hdSilk carries "
-                "one texture-coordinate stream per material, so this input is "
-                "left at its default.",
+                "while the material's coordinate streams are '%s' and '%s'; hdSilk "
+                "carries at most two texture-coordinate streams per material, so "
+                "this input is left at its default.",
                 record.path.c_str(),
                 texture.parameter,
                 texture.uvPrimvar.c_str(),
-                primvar.c_str());
+                primvar.c_str(),
+                secondary.c_str());
+            continue;
+        }
+        if (!pairAgrees)
+        {
+            TF_WARN(
+                "hdSilk material '%s' parameter %u combines images that read "
+                "different texture-coordinate streams; one input samples one "
+                "stream, so this input is left at its default.",
+                record.path.c_str(),
+                texture.parameter);
             continue;
         }
         TF_WARN(

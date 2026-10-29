@@ -7062,7 +7062,7 @@ bool VerifyMissingPrimvarFallback()
 
 /// Builds a MaterialX standard-surface network with a transformed base-colour
 /// image and an untransformed normal map, which is the ordinary authoring shape
-/// this renderer's single coordinate stream per material cannot serve.
+/// this renderer's single UV transform per material cannot serve.
 HdMaterialNetworkMap
 MakeDivergentUvChainNetwork()
 {
@@ -7139,9 +7139,8 @@ MakeDivergentUvChainNetwork()
 ///
 /// This is the primvar counterpart of MakeDivergentUvChainNetwork, and the
 /// no-transform part is deliberate: both entries carry the identity affine, so
-/// only the primvar can distinguish them. Reversing the order proves the
-/// material stream is the one the first texture in the fixed input order states
-/// rather than whichever primvar happens to sort first.
+/// only the primvar can distinguish them. Two primvars fit the renderer's two
+/// coordinate streams, so both entries survive with the primvar each names.
 HdMaterialNetworkMap
 MakeDivergentUvPrimvarNetwork(bool baseReadsFirstSet)
 {
@@ -7206,9 +7205,39 @@ MakeDivergentUvPrimvarNetwork(bool baseReadsFirstSet)
     return streamMap;
 }
 
+/// Adds a roughness image reading `roughnessPrimvar` to the two-primvar shape.
+/// A third distinct primvar exceeds the renderer's two coordinate streams.
+HdMaterialNetworkMap
+MakeThirdUvPrimvarNetwork(const char* roughnessPrimvar)
+{
+    HdMaterialNetworkMap map = MakeDivergentUvPrimvarNetwork(true);
+    HdMaterialNetwork& network = map.map[HdMaterialTerminalTokens->surface];
+
+    HdMaterialNode coordinate;
+    coordinate.path = SdfPath("/World/Streams/RoughnessPrimvar");
+    coordinate.identifier = TfToken("ND_geompropvalue_vector2");
+    coordinate.parameters[TfToken("geomprop")] = VtValue(std::string(roughnessPrimvar));
+
+    HdMaterialNode image;
+    image.path = SdfPath("/World/Streams/RoughnessImage");
+    image.identifier = TfToken("ND_image_float");
+    image.parameters[TfToken("file")] =
+        VtValue(SdfAssetPath("textures/materialx-roughness.png"));
+
+    network.nodes.insert(network.nodes.begin(), {coordinate, image});
+    network.relationships.push_back(
+        {coordinate.path, TfToken("out"), image.path, TfToken("texcoord")});
+    network.relationships.push_back(
+        {image.path,
+         TfToken("out"),
+         SdfPath("/World/Streams/Surface"),
+         TfToken("specular_roughness")});
+    network.primvars.push_back(TfToken(roughnessPrimvar));
+    return map;
+}
+
 /// Builds the same two-image shape with both images on one primvar, which must
-/// keep both entries. Without it the divergence case above would pass just as
-/// well against a projection that dropped every normal map.
+/// keep both entries on that primvar.
 HdMaterialNetworkMap
 MakeSharedUvPrimvarNetwork()
 {
@@ -9425,57 +9454,72 @@ bool VerifyMaterialXUvChainProjection()
         return false;
     }
 
-    // The primvar half of the same limitation. Both images carry the identity
-    // affine here, so the transform reconciliation cannot fire and only the
-    // primvar can separate them. Before the primvar was reconciled both entries
-    // were published and the consumer, which derives one stream from the first
-    // entry that names a primvar, sampled the normal map through the base
-    // colour's `uvSet0` with nothing reported.
+    // Two primvars fit the renderer's two coordinate streams. Both images carry
+    // the identity affine, so only the primvar separates them, and each entry
+    // must keep the primvar it names in either order.
     const SdfPath streamPath("/World/Streams");
-    HdSilkMaterialRecord divergentPrimvar =
-        HdSilkMaterial::Resolve(streamPath, MakeDivergentUvPrimvarNetwork(true));
-    if (divergentPrimvar.textures.size() != 1 ||
-        divergentPrimvar.textures[0].parameter !=
-            OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR ||
-        divergentPrimvar.textures[0].uvPrimvar != "uvSet0" ||
-        !UvTransformMatches(
-            divergentPrimvar.uvTransform, {1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F}))
+    for (bool baseReadsFirstSet : {true, false})
     {
-        std::cerr << "Divergent MaterialX UV primvars were not reconciled: textures="
-                  << divergentPrimvar.textures.size();
-        for (const HdSilkMaterialTexture& texture : divergentPrimvar.textures)
+        HdSilkMaterialRecord twoSets = HdSilkMaterial::Resolve(
+            streamPath, MakeDivergentUvPrimvarNetwork(baseReadsFirstSet));
+        const char* basePrimvar = baseReadsFirstSet ? "uvSet0" : "uvSet1";
+        const char* normalPrimvar = baseReadsFirstSet ? "uvSet1" : "uvSet0";
+        bool baseKept = false;
+        bool normalKept = false;
+        for (const HdSilkMaterialTexture& texture : twoSets.textures)
         {
-            std::cerr << " (parameter=" << texture.parameter << " primvar='"
-                      << texture.uvPrimvar << "')";
+            baseKept |= texture.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR &&
+                texture.uvPrimvar == basePrimvar;
+            normalKept |= texture.parameter == OPENUSD_SILK_MATERIAL_NORMAL &&
+                texture.uvPrimvar == normalPrimvar;
         }
-        std::cerr << "\n";
-        return false;
+        if (twoSets.textures.size() != 2 || !baseKept || !normalKept ||
+            !UvTransformMatches(
+                twoSets.uvTransform, {1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F}))
+        {
+            std::cerr << "Two MaterialX UV primvars did not both survive: textures="
+                      << twoSets.textures.size();
+            for (const HdSilkMaterialTexture& texture : twoSets.textures)
+            {
+                std::cerr << " (parameter=" << texture.parameter << " primvar='"
+                          << texture.uvPrimvar << "')";
+            }
+            std::cerr << "\n";
+            return false;
+        }
     }
 
-    // Reversed, the surviving stream must follow the first texture in the fixed
-    // input order rather than whichever primvar name sorts first: base colour
-    // now reads uvSet1 and it is the normal map that is dropped.
-    HdSilkMaterialRecord reversedPrimvar =
-        HdSilkMaterial::Resolve(streamPath, MakeDivergentUvPrimvarNetwork(false));
-    if (reversedPrimvar.textures.size() != 1 ||
-        reversedPrimvar.textures[0].parameter !=
-            OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR ||
-        reversedPrimvar.textures[0].uvPrimvar != "uvSet1")
+    // A third distinct primvar exceeds the two streams. Streams are claimed in
+    // the fixed input order, so roughness (uvSet2) takes the second stream
+    // before the normal map (uvSet1), which is dropped. The same roughness image
+    // on the first primvar keeps all three entries, so the drop cannot be
+    // explained by roughness images being unsupported.
+    HdSilkMaterialRecord thirdSet =
+        HdSilkMaterial::Resolve(streamPath, MakeThirdUvPrimvarNetwork("uvSet2"));
+    HdSilkMaterialRecord thirdShared =
+        HdSilkMaterial::Resolve(streamPath, MakeThirdUvPrimvarNetwork("uvSet0"));
+    const auto hasTexture = [](const HdSilkMaterialRecord& record,
+                                std::uint32_t parameter, const char* primvar)
     {
-        std::cerr << "The reconciled UV primvar did not follow the first texture: textures="
-                  << reversedPrimvar.textures.size();
-        for (const HdSilkMaterialTexture& texture : reversedPrimvar.textures)
-        {
-            std::cerr << " (parameter=" << texture.parameter << " primvar='"
-                      << texture.uvPrimvar << "')";
-        }
-        std::cerr << "\n";
+        return std::any_of(record.textures.begin(), record.textures.end(),
+            [&](const HdSilkMaterialTexture& texture)
+            { return texture.parameter == parameter && texture.uvPrimvar == primvar; });
+    };
+    if (thirdSet.textures.size() != 2 ||
+        !hasTexture(thirdSet, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, "uvSet0") ||
+        !hasTexture(thirdSet, OPENUSD_SILK_MATERIAL_ROUGHNESS, "uvSet2") ||
+        thirdShared.textures.size() != 3 ||
+        !hasTexture(thirdShared, OPENUSD_SILK_MATERIAL_ROUGHNESS, "uvSet0") ||
+        !hasTexture(thirdShared, OPENUSD_SILK_MATERIAL_NORMAL, "uvSet1"))
+    {
+        std::cerr << "A third UV primvar was not dropped: textures="
+                  << thirdSet.textures.size() << " control=" << thirdShared.textures.size()
+                  << "\n";
         return false;
     }
 
     // Non-vacuity: the same two-image shape on one primvar must keep both
-    // entries, so the two cases above cannot be satisfied by a projection that
-    // simply drops every normal map.
+    // entries on that one primvar.
     HdSilkMaterialRecord sharedPrimvar =
         HdSilkMaterial::Resolve(streamPath, MakeSharedUvPrimvarNetwork());
     if (sharedPrimvar.textures.size() != 2)

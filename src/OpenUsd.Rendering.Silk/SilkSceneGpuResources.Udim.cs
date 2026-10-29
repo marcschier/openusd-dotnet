@@ -45,7 +45,11 @@ public sealed partial class SilkSceneGpuResources
             {
                 return tiles;
             }
-            string primvar = resource.Geometry.Key.UvPrimvar;
+            SilkMeshGpuGeometryKey geometryKey = resource.Geometry.Key;
+            string primvar = geometryKey.SecondaryUvPrimvar.Length > 0 &&
+                string.Equals(texture.UvPrimvar, geometryKey.SecondaryUvPrimvar, StringComparison.Ordinal)
+                    ? geometryKey.SecondaryUvPrimvar
+                    : geometryKey.UvPrimvar;
             SilkVertexAttributeData? coordinates = string.IsNullOrEmpty(primvar) ? null : mesh.FindTexCoord(primvar);
             for (int first = 0; first < mesh.Indices.Length; first += primitiveSize)
             {

@@ -595,10 +595,11 @@ analytic native fixtures rather than this unsuitable Storm reference.
   shader path**: an OpenPBR material needing a lobe the projection omits renders without it and says so.
 - The MaterialX `place2d` / `UsdTransform2d` UV transform fold is gated by Vulkan and D3D12 pixel self-consistency and
   divergence, not by Storm parity. Each texture can select a named UV primvar, including `stN` from a positive
-  `ND_texcoord_vector2` index; all textures on one material must still resolve to the same primvar and UV transform.
-  Divergent per-image transforms, divergent per-image primvars (a base colour on `uvSet0` beside a normal map on
-  `uvSet1`), non-constant transform inputs, transforms behind unsupported intermediate nodes, and chains that never
-  reach a coordinate node are rejected with diagnostics rather than rendered. The expanded surface-model projection
+  `ND_texcoord_vector2` index. The textures on one material can resolve to at most two primvars (a base colour on
+  `uvSet0` beside a normal map on `uvSet1` renders both) and must share one UV transform. Divergent per-image
+  transforms, a third primvar, a composite whose operands read different primvars, non-constant transform inputs,
+  transforms behind unsupported intermediate nodes, and chains that never reach a coordinate node are rejected with
+  diagnostics rather than rendered. The expanded surface-model projection
   does not change that.
 - Constant arithmetic over one image folds into that texture's scale and bias and is gated the same way. Two images
   joined by one constant `multiply`, `add`, `subtract` or `mix` are supported as a per-pixel composite and gated by

@@ -11,7 +11,8 @@ internal sealed record SilkMeshGeometry(
     string UvPrimvar,
     bool HasTangents,
     bool Displaced = false,
-    float MaximumDisplacement = 0)
+    float MaximumDisplacement = 0,
+    string SecondaryUvPrimvar = "")
 {
     internal uint IndexCount => checked((uint)Indices.Length);
 }
@@ -25,7 +26,9 @@ internal static class SilkMeshGeometryBuilder
         string uvPrimvar = "",
         bool requireTangents = false,
         ReadOnlySpan<float> displacementAmounts = default,
-        bool requireTextureCoordinates = false)
+        bool requireTextureCoordinates = false,
+        string secondaryUvPrimvar = "",
+        bool tangentsFromSecondary = false)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         ReadOnlySpan<float> points = mesh.Points.Span;
@@ -112,17 +115,29 @@ internal static class SilkMeshGeometryBuilder
             : mesh.FindTexCoord(uvPrimvar);
         bool hasUv = uvAttribute is not null || requireTextureCoordinates;
         bool hasTangents = hasUv && requireTangents;
+        // A second surface coordinate set is emitted only beside a first one. A mesh
+        // that lacks it reads zeros, exactly as a missing first set does.
+        bool hasSecondary = hasUv && !string.IsNullOrEmpty(secondaryUvPrimvar) &&
+            !string.Equals(secondaryUvPrimvar, uvPrimvar, StringComparison.Ordinal);
+        SilkVertexAttributeData? secondaryAttribute = hasSecondary
+            ? mesh.FindTexCoord(secondaryUvPrimvar)
+            : null;
+        // Tangents follow the coordinate set the normal map samples, or the
+        // tangent frame would rotate the mapped normal by the angle between sets.
+        SilkVertexAttributeData? tangentAttribute = hasSecondary && tangentsFromSecondary
+            ? secondaryAttribute
+            : uvAttribute;
         double[] tangents = hasTangents ? new double[checked(pointCount * 3)] : [];
         double[] bitangents = hasTangents ? new double[checked(pointCount * 3)] : [];
 
-        if (hasTangents && uvAttribute is not null && mesh.TopologyKind == SilkTopologyKind.TriangleList)
+        if (hasTangents && tangentAttribute is not null && mesh.TopologyKind == SilkTopologyKind.TriangleList)
         {
             for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
             {
                 int a = checked((int)indices[triangle]);
                 int b = checked((int)indices[triangle + 1]);
                 int c = checked((int)indices[triangle + 2]);
-                AccumulateTangent(mesh, points, uvAttribute!, tangents, bitangents, a, b, c);
+                AccumulateTangent(mesh, points, tangentAttribute, tangents, bitangents, a, b, c);
             }
         }
 
@@ -130,7 +145,7 @@ internal static class SilkMeshGeometryBuilder
         // vertices; otherwise they are area-weighted from topology as before.
         // Both paths still normalise and reject a degenerate normal, so an
         // authored zero or non-finite value cannot reach the GPU.
-        int strideFloats = hasTangents ? 12 : hasUv ? 8 : 6;
+        int strideFloats = (hasTangents ? 12 : hasUv ? 8 : 6) + (hasSecondary ? 2 : 0);
         float[] vertices = new float[checked(pointCount * strideFloats)];
         float maximumDisplacement = 0;
         for (int point = 0; point < pointCount; point++)
@@ -215,13 +230,25 @@ internal static class SilkMeshGeometryBuilder
                     ((normalZ * tx - normalX * tz) * by) + ((normalX * ty - normalY * tx) * bz);
                 vertices[destination + 11] = handedness < 0 ? -1 : 1;
             }
+            if (hasSecondary)
+            {
+                int secondary = destination + strideFloats - 2;
+                vertices[secondary] = secondaryAttribute?.GetComponent(point, 0) ?? 0;
+                vertices[secondary + 1] = secondaryAttribute is { ComponentCount: > 1 }
+                    ? secondaryAttribute.GetComponent(point, 1)
+                    : 0;
+            }
         }
 
-        SilkVertexLayoutDescriptor layout = hasTangents
-            ? SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent
-            : hasUv
+        SilkVertexLayoutDescriptor layout = (hasTangents, hasSecondary) switch
+        {
+            (true, true) => SilkVertexLayoutDescriptor.PositionNormalTexCoordTangentSecondary,
+            (true, false) => SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent,
+            (false, true) => SilkVertexLayoutDescriptor.PositionNormalTexCoordSecondary,
+            _ => hasUv
                 ? SilkVertexLayoutDescriptor.PositionNormalTexCoord
-                : SilkVertexLayoutDescriptor.PositionNormal;
+                : SilkVertexLayoutDescriptor.PositionNormal
+        };
         return new SilkMeshGeometry(
             vertices,
             indices,
@@ -229,7 +256,8 @@ internal static class SilkMeshGeometryBuilder
             hasUv ? uvPrimvar : "",
             hasTangents,
             !displacementAmounts.IsEmpty,
-            maximumDisplacement);
+            maximumDisplacement,
+            hasSecondary ? secondaryUvPrimvar : "");
     }
 
     private static void AccumulateTangent(

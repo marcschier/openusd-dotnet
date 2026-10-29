@@ -3380,9 +3380,9 @@ The documented MaterialX subset is intentionally a projection into that same dat
   the existing tangent-space normal-map shader path. `ND_geompropvalue_vector2`, `ND_texcoord_vector2`, and
   `UsdPrimvarReader_float2` are the coordinate nodes that terminate a texture-coordinate chain and select the UV
   primvar, defaulting to `st` when the graph has no coordinate connection at all. `ND_texcoord_vector2` maps index
-  `0` to `st` and each positive index `N` to `stN`. hdSilk carries one named coordinate stream per material, so all
-  texture bindings on that material must resolve to the same primvar. A connected, negative, or non-integer index is
-  rejected because the material wire cannot represent a dynamic or invalid index.
+  `0` to `st` and each positive index `N` to `stN`. hdSilk carries at most two named coordinate streams per material,
+  so the texture bindings on that material can resolve to at most two distinct primvars. A connected, negative, or
+  non-integer index is rejected because the material wire cannot represent a dynamic or invalid index.
 - Constant `ND_multiply_*`, `ND_add_*`, `ND_subtract_*`, `ND_clamp_*`, `ND_mix_*`, and `ND_constant_*` chains are folded
   on the CPU for supported scalar/vector inputs, using the MaterialX nodedef defaults: `mix` defaults to `0`, which
   selects `bg`. An input the author replaced with a connection is never folded from the value Hydra leaves behind that
@@ -3527,8 +3527,8 @@ Everything outside that is refused with a diagnostic:
   single-texture input. The first composited parameter in the fixed input order wins, which makes the choice
   deterministic rather than dependent on table order.
 - A connected `mix` factor is a third sampled input the renderer has no slot for.
-- Both operands must read the material's single texture-coordinate stream, which the primvar and transform
-  reconciliation above already guarantees; a pair that disagrees is dropped as a whole parameter.
+- Both operands must read the same texture-coordinate stream, because one input samples one stream. The primvar
+  reconciliation below drops a pair that disagrees as a whole parameter.
 - Three or more images in one input exceed the single composite slot and are reported by the fold that walks them.
 
 ### Texture-coordinate chains
@@ -3563,17 +3563,29 @@ a partial answer:
 The refusal is reported once, against the real cause. When the coordinate chain is what failed, hdSilk does not also
 report the image node as an unsupported input, because the image is understood and naming it would misdirect the reader.
 
-Because the renderer builds exactly one texture-coordinate stream per material, hdSilk reconciles **both** halves of
-that stream -- the UV transform and the UV primvar -- across every texture the material publishes. The stream is the
-one the first texture in the fixed input order resolves: `uv_transform` carries its affine, and the consumer derives
-the primvar from the first entry that names one. A later texture asking for a different transform, or for a different
-primvar, is rejected with a `TF_WARN` naming the material, the parameter, and which of the two diverged, instead of
-being sampled through coordinates it never authored.
+The renderer builds at most two texture-coordinate streams per material and applies one UV transform to both. hdSilk
+therefore reconciles the transform and the primvars across every surface texture the material publishes. The first
+texture in the fixed input order states the transform, which `uv_transform` carries. The consumer derives the
+*primary* primvar from the first entry that names one and the *secondary* primvar from the first entry naming a
+different one; each texture then samples whichever of the two streams its entry names. A base colour on `uvSet0`
+beside a normal map on `uvSet1` is therefore supported, and neither texture is dropped.
 
-Both halves are ordinary authoring shapes, not contrived ones: a transformed base colour beside an untransformed
-normal map diverges on the transform, and a base colour on `uvSet0` beside a normal map on `uvSet1` diverges on the
-primvar. Either combination therefore remains outside the support claim, and one of the two textures is left at its
-default rather than silently sampled through the other's coordinates.
+Three shapes remain outside the projection and are rejected with a `TF_WARN` naming the material, the parameter, and
+the cause, instead of being sampled through coordinates they never authored:
+
+- A texture asking for a different transform. A transformed base colour beside an untransformed normal map is the
+  ordinary case, and the later texture is left at its default.
+- A texture asking for a third primvar. Streams are claimed in the fixed input order, so the texture that comes later
+  in that order is the one left at its default, not the one whose primvar name sorts later.
+- A composite whose two operands read different streams. One input samples one stream, so the whole parameter is
+  dropped.
+
+The second stream travels in the vertex payload rather than in the material wire, so it does not change the page
+ABI. A mesh with a secondary set uses a 40-byte vertex (56 bytes with tangents), with the secondary coordinates in the
+last two floats. Tangents follow the stream the normal map samples, or the detail normal's stream when there is no
+normal map. GPU deformation handles at most eight floats per vertex, so a mesh with a secondary set is deformed on the
+CPU. A missing secondary primvar reads as zero coordinates and reports `TextureCoordinatesUnavailable` naming the
+requested primvar, exactly as a missing primary primvar does.
 
 Unsupported MaterialX terminals and unsupported upstream nodes are not approximated. hdSilk publishes an unsupported
 material record or leaves the individual input at its documented default and emits a `TF_WARN` naming the material,
@@ -5048,9 +5060,9 @@ evaluates exactly; the prim is drawn with the default surface, the surface is st
 and the geometry still moves. The retained-scene consumer therefore resolves the displacement material
 without the shadeability filter it applies to the surface material.
 
-**The height field has its own coordinate set.** hdSilk carries one texture-coordinate stream per
-material for the *surface* textures, and reconciles them before publishing, because they are sampled
-together by one fragment shader. Displacement is not part of that reconciliation: it is sampled per
+**The height field has its own coordinate set.** hdSilk carries at most two texture-coordinate
+streams per material for the *surface* textures, and reconciles them before publishing, because they
+are sampled together by one fragment shader. Displacement is not part of that reconciliation: it is sampled per
 vertex, on the CPU, from whatever primvar it authors, so a material shading through `st` and displacing
 through `st2` is exactly representable and publishes both -- neither is dropped, and neither is
 rewritten into the other. The displacement keeps its own folded affine as well: it adopts one freely

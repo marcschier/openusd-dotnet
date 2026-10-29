@@ -15,6 +15,7 @@ struct pixelInput_0
     float4 tint_0 [[user(COLOR)]];
     float3 worldNormal_0 [[user(TEXCOORD_3)]];
     float2 texCoord_0 [[user(TEXCOORD)]];
+    float2 texCoord1_0 [[user(TEXCOORD_5)]];
 };
 
 struct SurfaceParameters_natural_0

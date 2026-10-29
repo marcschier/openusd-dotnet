@@ -1964,12 +1964,12 @@ off-diagonal terms, and a fallback to the default `st` would sample a primvar no
 requires four rejections: a `place2d` whose `offset` is connected, a `place2d` sitting behind a per-pixel
 `ND_multiply_vector2`, a `UsdTransform2d` with no upstream reader, and -- for the one-stream-per-material
 limit -- a transformed base colour beside an untransformed normal map, where exactly one texture and one
-transform survive. It then pins the primvar half of that same limit, which the transform cases cannot reach because
-every entry there already agrees: a base colour on `uvSet0` beside a normal map on `uvSet1`, both carrying the
-identity affine, must keep exactly the base colour, and the reversed authoring must keep the base colour on `uvSet1`
-so the surviving stream is proven to follow the first texture in the fixed input order rather than whichever primvar
-name sorts first. The same two-image shape on one shared primvar must keep **both** entries, which is what stops the
-two divergence cases from being satisfied by a projection that simply drops every normal map. Finally it serializes
+transform survive. It then pins the primvar half of the two-stream limit. A base colour on `uvSet0` beside a normal
+map on `uvSet1` must keep **both** textures on their own primvars, in either authoring order. Adding a roughness image
+on `uvSet2` must keep the base colour and the roughness and drop the normal map, because streams are claimed in the
+fixed input order and roughness precedes the normal; the same roughness on `uvSet0` must keep all three. The shared
+primvar case also keeps both entries, which stops the transform case from being satisfied by a projection that simply
+drops every normal map. Finally it serializes
 the folded record through `HdSilkSceneState::BuildPage` and reads
 the ABI 14 `uv_transform` back out of the page bytes, because the renderer only ever sees the page.
 
@@ -2013,6 +2013,16 @@ to `stN`, and connected, negative, or non-integer indices to be rejected. The
 texture bound to `st1` samples that stream rather than `st`.
 `MissingNamedTextureCoordinatesUseZeroAndReportTheRequestedPrimvar` proves that
 an absent `st1` does not fall back to `st` and reports the requested primvar.
+
+`SilkMaterialStreamingTests.MapsOnASecondPrimvarSampleTheSecondCoordinateSet` gates the secondary stream on D3D12
+WARP and Vulkan SwiftShader. A material whose base colour reads `st` and whose roughness and metallic maps read `st1`
+must render the same pixels as the single-set material when the two sets are equal. Zeroing only `st1` must change
+the image, and the updated renderer must match a fresh renderer given the edited page, which proves the geometry key
+rebuilds on a secondary-set edit. `AMissingSecondSetReportsTheRequestedPrimvar` requires an absent `st1` to report
+`TextureCoordinatesUnavailable` naming `st1`. `SilkMeshRendererTests` pins the 40- and 56-byte layouts and the
+tangent source, `SilkMaterialCommandTests.SurfaceTexturesOnASecondPrimvarSelectTheSecondSet` pins the per-texture
+stream mask, and `SilkDeformationGpuPolicyTests.AGeometryWithASecondTextureCoordinateSetFallsBack` pins the CPU
+deformation fallback.
 
 `VerifyMaterialXConstantFoldProjection` pins the constant folds to the MaterialX nodedefs. It requires
 `ND_constant_color3` to fold from `value`, requires an unauthored `mix` factor to default to `0` and therefore select
@@ -4369,9 +4379,9 @@ of input on purpose: the ones the hdSilk projection carries, and lobes such as
 does not, moved off their nodedef defaults so the ingestion path must report each
 by name. `MaterialXSurfaceModelFixtureTests` holds the fixtures to those two
 tables, asserts the exact nodedef identifiers, and asserts each mesh carries
-exactly one `texCoord2f` primvar, because hdSilk binds one texture-coordinate
-stream per material and a second UV set in a fixture would read as a support
-claim the wire does not make. The projection itself is proved natively by
+exactly one `texCoord2f` primvar, because the surface-model fixtures exercise
+lobe projection, not coordinate streams, and a second UV set there would
+read as a claim those fixtures do not test. The projection itself is proved natively by
 `VerifySurfaceModelProjection` in `native/hdSilk/tests/hdsilk_probe.cpp`, and the
 resulting page is proved against the managed renderer by
 `ProjectedOpenPbrScalarsReachEverySurfaceUniform`,

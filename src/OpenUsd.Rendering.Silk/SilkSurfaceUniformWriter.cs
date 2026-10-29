@@ -28,7 +28,7 @@ internal static class SilkSurfaceUniformWriter
     /// (textureMask, udimMask, volumeVoxelDepth, OmniPBR custom-curve enabled),
     /// the
     /// two folded MaterialX UV transform rows (m00, m01, tx, 0) and
-    /// (m10, m11, ty, 0), the two-image composite controls
+    /// (m10, m11, ty, secondaryUvMask), the two-image composite controls
     /// (targetTextureMaskBit, operator, factor, 0), and the dome link controls
     /// (domeLinkMask, 0, 0, 0), followed by uint4 direct and shadow link masks
     /// and two independent detail-normal UV affine rows. Their unused w components
@@ -198,7 +198,9 @@ internal static class SilkSurfaceUniformWriter
             uv is null ? 0 : Finite(uv[2], "UV transform m10"),
             uv is null ? 1 : Finite(uv[3], "UV transform m11"),
             uv is null ? 0 : Finite(uv[5], "UV transform ty"),
-            0);
+            // Texture-mask bits of the slots that sample the second coordinate set.
+            // Every bit is below 2^24, so the float carries the mask exactly.
+            volumeDensity || shaded is null ? 0 : (float)(uint)shaded.GetSecondaryUvTextureMask());
 
         // The material's single two-image composite. The target is written as the
         // same texture-mask bit the slot already uses, so the shader compares one

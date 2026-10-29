@@ -1697,6 +1697,83 @@ public sealed class SilkMaterialStreamingTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task MapsOnASecondPrimvarSampleTheSecondCoordinateSet(SilkGraphicsBackend backend)
+    {
+        // The base colour reads st and the roughness and metallic maps read st1.
+        // With equal sets the image must match the single-set material; zeroing
+        // st1 alone must then change it, and the edit must rebuild the geometry
+        // so a fresh renderer given the edited page agrees with the updated one.
+        float[] ramp = [0, 0, 1, 0, 1, 1, 0, 1];
+        float[] zero = new float[8];
+        static OpenUsdSilkPage page(ulong revision, string secondary, float[] st, float[]? st1)
+        {
+            byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
+                1, "/Mesh0", [-0.9f, -0.7f, -0.5f, 0.3f, -0.7f, -0.5f, 0.3f, 0.7f, -0.5f, -0.9f, 0.7f, -0.5f],
+                [0, 1, 2, 0, 2, 3], 0, 0, null, 1, null, null, null,
+                st1 is null
+                    ? [("st", (uint)SilkAttributeSemantic.TexCoord, 2, st)]
+                    : [("st", (uint)SilkAttributeSemantic.TexCoord, 2, st),
+                        ("st1", (uint)SilkAttributeSemantic.TexCoord, 2, st1)]);
+            byte[][] commands =
+            [
+                SilkMeshRendererConformance.CreateFrameCommand(32, 32, SilkMeshRendererConformance.Identity()),
+                Material('A', false, multipleMaps: true, secondaryUvPrimvar: secondary),
+                VolumeCommandAuthoring.WithMaterialBinding(mesh, "/A"),
+            ];
+            return new(SilkCommandParser.PageAbiVersion, revision, [.. commands.SelectMany(static item => item)], 3);
+        }
+
+        using var single = new Fixture(backend, streaming: true, mixedColors: true);
+        using var actual = new Fixture(backend, streaming: true, mixedColors: true);
+        using var edited = new Fixture(backend, streaming: true, mixedColors: true);
+        using OpenUsdSilkPage singlePage = page(2, "", ramp, null);
+        using OpenUsdSilkPage equalPage = page(2, "st1", ramp, ramp);
+        using OpenUsdSilkPage zeroPage = page(3, "st1", ramp, zero);
+        _ = single.Render(singlePage);
+        _ = actual.Render(equalPage);
+        await Assert.That(actual.Renderer.Scene.Materials["/A"].GetSecondaryUvPrimvar()).IsEqualTo("st1");
+        await Assert.That(actual.ColorBytes().SequenceEqual(single.ColorBytes())).IsTrue();
+        await Assert.That(actual.ColorBytes().SequenceEqual(actual.InitialColor)).IsFalse();
+
+        _ = actual.Render(zeroPage);
+        _ = edited.Render(zeroPage);
+        await Assert.That(actual.ColorBytes().SequenceEqual(single.ColorBytes())).IsFalse()
+            .Because("Zeroing st1 must change the maps that read it.");
+        await Assert.That(actual.ColorBytes().SequenceEqual(edited.ColorBytes())).IsTrue();
+        await Assert.That(actual.DepthValues().SequenceEqual(edited.DepthValues())).IsTrue();
+        await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries
+            .Any(static entry => entry.Code == SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task AMissingSecondSetReportsTheRequestedPrimvar(SilkGraphicsBackend backend)
+    {
+        using var fixture = new Fixture(backend, streaming: true, mixedColors: true);
+        byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
+            1, "/Mesh0", [-0.9f, -0.7f, -0.5f, 0.3f, -0.7f, -0.5f, 0.3f, 0.7f, -0.5f, -0.9f, 0.7f, -0.5f],
+            [0, 1, 2, 0, 2, 3], 0, 0, null, 1, null, null, null,
+            [("st", (uint)SilkAttributeSemantic.TexCoord, 2, [0, 0, 1, 0, 1, 1, 0, 1])]);
+        byte[][] commands =
+        [
+            SilkMeshRendererConformance.CreateFrameCommand(32, 32, SilkMeshRendererConformance.Identity()),
+            Material('A', false, multipleMaps: true, secondaryUvPrimvar: "st1"),
+            VolumeCommandAuthoring.WithMaterialBinding(mesh, "/A"),
+        ];
+        using var missing = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, [.. commands.SelectMany(static item => item)], 3);
+        _ = fixture.Render(missing);
+        bool reportsMissingSet = fixture.Renderer.GpuResources.Diagnostics.Entries
+            .Where(static entry => entry.Code == SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable)
+            .Any(static entry => entry.Message.Contains("no 'st1' texture coordinates", StringComparison.Ordinal));
+        await Assert.That(reportsMissingSet).IsTrue();
+        await Assert.That(fixture.ColorBytes().SequenceEqual(fixture.InitialColor)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task NormalMappedInstancesShareOneGpuGeometryAndKeepBothPlacements(SilkGraphicsBackend backend)
     {
         using var fixture = new Fixture(backend, streaming: true);
@@ -2166,7 +2243,7 @@ public sealed class SilkMaterialStreamingTests
         string pathSuffix = "", string? assetPath = null, bool vectorNormals = false,
         bool promotedNormals = false, SilkTextureWrap wrap = SilkTextureWrap.Repeat, bool normalScalarMaps = false,
         bool flipNormalGreen = false, bool emissiveOnly = false, uint colorComponents = 3,
-        string uvPrimvar = "st")
+        string uvPrimvar = "st", string secondaryUvPrimvar = "")
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
@@ -2221,7 +2298,8 @@ public sealed class SilkMaterialStreamingTests
             writer.Write((uint)wrap);
             writer.Write((uint)SilkColorSpace.Raw);
             writer.Write((uint)asset.Length);
-            byte[] uvPrimvarBytes = Encoding.UTF8.GetBytes(uvPrimvar);
+            byte[] uvPrimvarBytes = Encoding.UTF8.GetBytes(
+                map > 0 && secondaryUvPrimvar.Length > 0 ? secondaryUvPrimvar : uvPrimvar);
             writer.Write((uint)uvPrimvarBytes.Length);
             writer.Write(scalar ? 1u : colorComponents);
             bool promotedNormal = promotedNormals && map is 1 or 2;

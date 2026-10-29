@@ -97,6 +97,100 @@ public sealed class SilkMeshRendererTests
     }
 
     [Test]
+    [Arguments(false, false, 40)]
+    [Arguments(true, false, 56)]
+    [Arguments(true, true, 56)]
+    public async Task ASecondTextureCoordinateSetFollowsThePrimaryPayload(
+        bool normalMap, bool tangentsFromSecondary, int stride)
+    {
+        var mesh = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            [0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, [0, 0, 1, 0, 0, 1, 0, 0, 1], "",
+            [
+                new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                    [0, 0, 1, 0, 0, 1]),
+                new("st1", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                    [0.5f, 0.25f, 0.5f, 1.25f, -0.5f, 0.25f]),
+            ]);
+
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
+            mesh, "st", normalMap, secondaryUvPrimvar: "st1",
+            tangentsFromSecondary: tangentsFromSecondary);
+
+        int floats = stride / sizeof(float);
+        await Assert.That(geometry.VertexLayout.Stride).IsEqualTo((uint)stride);
+        geometry.VertexLayout.Validate();
+        await Assert.That(geometry.VertexLayout.HasTangent).IsEqualTo(normalMap);
+        await Assert.That(geometry.SecondaryUvPrimvar).IsEqualTo("st1");
+        await Assert.That(geometry.Vertices.Length).IsEqualTo(3 * floats);
+        float[] secondary = [0.5f, 0.25f, 0.5f, 1.25f, -0.5f, 0.25f];
+        float[] primary = [0, 0, 1, 0, 0, 1];
+        for (int point = 0; point < 3; point++)
+        {
+            int vertex = point * floats;
+            await Assert.That(geometry.Vertices[vertex + 6]).IsEqualTo(primary[point * 2]);
+            await Assert.That(geometry.Vertices[vertex + 7]).IsEqualTo(primary[(point * 2) + 1]);
+            await Assert.That(geometry.Vertices[vertex + floats - 2]).IsEqualTo(secondary[point * 2]);
+            await Assert.That(geometry.Vertices[vertex + floats - 1])
+                .IsEqualTo(secondary[(point * 2) + 1]);
+        }
+        if (normalMap)
+        {
+            // The primary set runs U along +X; the second set runs U along -Y,
+            // so the tangent shows which set the frame was derived from.
+            float tangentX = geometry.Vertices[8];
+            float tangentY = geometry.Vertices[9];
+            await Assert.That(tangentX).IsEqualTo(tangentsFromSecondary ? 0f : 1f).Within(1e-6f);
+            await Assert.That(tangentY).IsEqualTo(tangentsFromSecondary ? -1f : 0f).Within(1e-6f);
+        }
+    }
+
+    [Test]
+    [Arguments("")]
+    [Arguments("st")]
+    public async Task ASecondSetNamingNothingNewKeepsTheSingleSetPayload(string secondaryUvPrimvar)
+    {
+        var mesh = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            [0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, [0, 0, 1, 0, 0, 1, 0, 0, 1], "",
+            [new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                [0, 0, 1, 0, 0, 1])]);
+
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
+            mesh, "st", secondaryUvPrimvar: secondaryUvPrimvar);
+        SilkMeshGeometry untextured = SilkMeshGeometryBuilder.Build(
+            mesh, secondaryUvPrimvar: "st1");
+
+        await Assert.That(geometry.VertexLayout.Stride).IsEqualTo(32u);
+        await Assert.That(geometry.SecondaryUvPrimvar).IsEqualTo("");
+        await Assert.That(untextured.VertexLayout.Stride).IsEqualTo(24u);
+        await Assert.That(untextured.SecondaryUvPrimvar).IsEqualTo("");
+    }
+
+    [Test]
+    public async Task AMissingSecondSetReadsZeroCoordinates()
+    {
+        var mesh = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            [0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, [0, 0, 1, 0, 0, 1, 0, 0, 1], "",
+            [new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                [0, 0, 1, 0, 0, 1])]);
+
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
+            mesh, "st", secondaryUvPrimvar: "st1");
+
+        await Assert.That(geometry.VertexLayout.Stride).IsEqualTo(40u);
+        for (int point = 0; point < 3; point++)
+        {
+            await Assert.That(geometry.Vertices[(point * 10) + 8]).IsEqualTo(0f);
+            await Assert.That(geometry.Vertices[(point * 10) + 9]).IsEqualTo(0f);
+        }
+    }
+
+    [Test]
     public async Task GeometryCacheRetainsImmutableNumericOwnersWithoutCopyingTheirPayloads()
     {
         float[] points = new float[300000];

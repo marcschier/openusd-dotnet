@@ -2320,6 +2320,23 @@
       }
     },
     {
+      "name": "texCoord1",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 5,
+        "systemValue": false
+      },
+      "location": 8,
+      "type": {
+        "kind": "vector",
+        "elementCount": 2,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
       "name": "isFrontFace",
       "semantic": {
         "name": "SV_ISFRONTFACE",

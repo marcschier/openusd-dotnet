@@ -1051,7 +1051,13 @@ public enum SilkVertexSemantic
     TexCoord,
 
     /// <summary>Object-space tangent and bitangent sign.</summary>
-    Tangent
+    Tangent,
+
+    /// <summary>
+    /// Second surface texture coordinate. Layouts without a second coordinate set alias it to the primary
+    /// coordinate so every UV pipeline sees the same vertex input interface.
+    /// </summary>
+    SecondaryTexCoord
 }
 
 /// <summary>Vertex element formats.</summary>
@@ -1093,7 +1099,8 @@ public readonly record struct SilkVertexLayoutDescriptor(
         [
             new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
             new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
-            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2)
+            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.SecondaryTexCoord, 3, 24, SilkVertexFormat.Float2)
         ]);
 
     /// <summary>Gets the checked POSITION/NORMAL/TEXCOORD/TANGENT layout.</summary>
@@ -1103,8 +1110,34 @@ public readonly record struct SilkVertexLayoutDescriptor(
             new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
             new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
             new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2),
-            new(SilkVertexSemantic.Tangent, 3, 32, SilkVertexFormat.Float4)
+            new(SilkVertexSemantic.SecondaryTexCoord, 3, 24, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.Tangent, 4, 32, SilkVertexFormat.Float4)
         ]);
+
+    /// <summary>Gets the checked layout with two distinct surface coordinate sets.</summary>
+    internal static SilkVertexLayoutDescriptor PositionNormalTexCoordSecondary => new(
+        40,
+        [
+            new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.SecondaryTexCoord, 3, 32, SilkVertexFormat.Float2)
+        ]);
+
+    /// <summary>Gets the checked tangent layout with two distinct surface coordinate sets.</summary>
+    internal static SilkVertexLayoutDescriptor PositionNormalTexCoordTangentSecondary => new(
+        56,
+        [
+            new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.SecondaryTexCoord, 3, 48, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.Tangent, 4, 32, SilkVertexFormat.Float4)
+        ]);
+
+    /// <summary>Gets whether this layout carries a tangent attribute.</summary>
+    internal bool HasTangent =>
+        Matches(PositionNormalTexCoordTangent) || Matches(PositionNormalTexCoordTangentSecondary);
 
     /// <summary>Validates the checked mesh vertex layout.</summary>
     public void Validate()
@@ -1112,10 +1145,13 @@ public readonly record struct SilkVertexLayoutDescriptor(
         ArgumentNullException.ThrowIfNull(Attributes);
         if (!Matches(PositionNormal) &&
             !Matches(PositionNormalTexCoord) &&
-            !Matches(PositionNormalTexCoordTangent))
+            !Matches(PositionNormalTexCoordTangent) &&
+            !Matches(PositionNormalTexCoordSecondary) &&
+            !Matches(PositionNormalTexCoordTangentSecondary))
         {
             throw new ArgumentException(
-                "The checked mesh shader requires a known position/normal layout, optionally with UV and tangent.",
+                "The checked mesh shader requires a known position/normal layout, optionally with UV, " +
+                "a second UV set, and tangent.",
                 nameof(Attributes));
         }
     }

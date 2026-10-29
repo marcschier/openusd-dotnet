@@ -8062,9 +8062,18 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         bool requireTextureCoordinates = material?.GetTextureFeatures() is { } features &&
             features != SilkShaderFeatures.None;
         bool hasTangents = (uvAttribute is not null || requireTextureCoordinates) && normalMap;
+        bool hasUv = uvAttribute is not null || requireTextureCoordinates;
+        string secondaryUvPrimvar = hasUv ? material?.GetSecondaryUvPrimvar() ?? string.Empty : string.Empty;
+        bool tangentsFromSecondary = hasTangents && secondaryUvPrimvar.Length > 0 &&
+            material!.TangentsFromSecondaryUv();
         SilkDisplacementPlan plan = PlanDisplacement(mesh, displacementMaterial);
         string materialPath = displacementMaterial?.Path ?? material?.Path ?? string.Empty;
         ulong uvFingerprint = SilkMeshGpuGeometryKey.HashAttribute(uvAttribute);
+        var secondary = new SilkSecondaryUv(
+            secondaryUvPrimvar,
+            SilkMeshGpuGeometryKey.HashAttribute(
+                secondaryUvPrimvar.Length == 0 ? null : mesh.FindTexCoord(secondaryUvPrimvar)),
+            tangentsFromSecondary);
         var key = SilkMeshGpuGeometryKey.Create(
             mesh,
             uvPrimvar,
@@ -8072,7 +8081,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             plan.Identity,
             materialPath,
             uvFingerprint,
-            requireTextureCoordinates);
+            requireTextureCoordinates,
+            secondary);
 
         SilkMeshGpuGeometryResource resource = ResolveGeometryResource(
             scene,
@@ -8081,7 +8091,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             plan,
             key,
             uvPrimvar,
-            normalMap);
+            normalMap,
+            secondary);
         // The verdict is recorded from the retained resource rather than from the
         // resolution, so every instance of one prototype records its own -- and a
         // GPU-eligible prim whose displacement was refused records the refusal it
@@ -8107,7 +8118,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkDisplacementPlan plan,
         SilkMeshGpuGeometryKey key,
         string uvPrimvar,
-        bool normalMap)
+        bool normalMap,
+        SilkSecondaryUv secondary)
     {
         bool deformationEligible = !_deformationDisabled &&
             !plan.MovesGeometry &&
@@ -8134,7 +8146,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 uvPrimvar,
                 normalMap,
                 amounts,
-                key.RequireTextureCoordinates);
+                key.RequireTextureCoordinates,
+                secondary.Primvar,
+                secondary.TangentsFromSecondary);
             // A CPU build declares no payload, so its recoverable-failure guard
             // can never fire and the result is always present.
             _ = TryCreateGeometry(
@@ -8155,7 +8169,12 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         // they are the pose-independent inputs the payload is built from and the
         // authoritative bytes a recovered geometry uploads.
         SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
-            mesh, uvPrimvar, normalMap, requireTextureCoordinates: key.RequireTextureCoordinates);
+            mesh,
+            uvPrimvar,
+            normalMap,
+            requireTextureCoordinates: key.RequireTextureCoordinates,
+            secondaryUvPrimvar: secondary.Primvar,
+            tangentsFromSecondary: secondary.TangentsFromSecondary);
         uint strideFloats = StrideFloats(geometry, mesh);
         SilkDeformationGpuFallback fallback = SilkDeformationGpuPayload.TryBuild(
             mesh.Deformation,
@@ -8175,7 +8194,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 key.MaterialPath,
                 key.UvFingerprint,
                 key.DisplacementIdentity,
-                key.RequireTextureCoordinates);
+                key.RequireTextureCoordinates,
+                secondary);
             if (TryReuseGeometry(gpuKey, mesh, deformationPayload, out var reused))
             {
                 _geometryCacheHits++;
@@ -10376,7 +10396,7 @@ internal sealed partial class SilkMeshGpuGeometryResource : IDisposable
 
     internal bool HasSameMaterialGeometry(SilkMeshData mesh) =>
         (string.IsNullOrEmpty(_uvPrimvar) || Key.UvFingerprint == 0 || mesh.FindTexCoord(_uvPrimvar) is not null) &&
-        _hasTangents == VertexLayout.Matches(SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent) &&
+        _hasTangents == VertexLayout.HasTangent &&
         HasSameUvData(mesh);
 
     /// <summary>
@@ -10396,7 +10416,9 @@ internal sealed partial class SilkMeshGpuGeometryResource : IDisposable
         DisplacementUvFingerprint == SilkMeshGpuGeometryKey.HashAttribute(
             string.IsNullOrEmpty(DisplacementUvPrimvar)
                 ? null
-                : mesh.FindTexCoord(DisplacementUvPrimvar));
+                : mesh.FindTexCoord(DisplacementUvPrimvar)) &&
+        Key.SecondaryUv.Fingerprint == SilkMeshGpuGeometryKey.HashAttribute(
+            Key.SecondaryUvPrimvar.Length == 0 ? null : mesh.FindTexCoord(Key.SecondaryUvPrimvar));
 
     /// <summary>
     /// Returns the instance buffer one batch slot uses, which an instanced draw
@@ -11179,8 +11201,15 @@ internal readonly record struct SilkMeshGpuGeometryKey(
     // reuse vertices carrying the previous coordinates -- and, once displacement
     // sampled through them, the previous heights.
     ulong UvFingerprint = 0,
-    bool RequireTextureCoordinates = false)
+    bool RequireTextureCoordinates = false,
+    // The second surface coordinate set the material samples, its data
+    // fingerprint, and whether the tangent frame was derived from it. Each
+    // changes the emitted vertices, so each must separate retained geometry.
+    SilkSecondaryUv SecondaryUv = default)
 {
+    /// <summary>Gets the second surface coordinate primvar, or an empty string.</summary>
+    internal string SecondaryUvPrimvar => SecondaryUv.Primvar ?? string.Empty;
+
     internal static SilkMeshGpuGeometryKey Create(
         SilkMeshData mesh,
         string uvPrimvar,
@@ -11188,7 +11217,8 @@ internal readonly record struct SilkMeshGpuGeometryKey(
         ulong displacementIdentity = 0,
         string materialPath = "",
         ulong uvFingerprint = 0,
-        bool requireTextureCoordinates = false) =>
+        bool requireTextureCoordinates = false,
+        SilkSecondaryUv secondaryUv = default) =>
         new(
             mesh.Path,
             mesh.TopologyKind,
@@ -11202,7 +11232,8 @@ internal readonly record struct SilkMeshGpuGeometryKey(
             displacementIdentity,
             materialPath,
             uvFingerprint,
-            requireTextureCoordinates);
+            requireTextureCoordinates,
+            secondaryUv);
 
     /// <summary>
     /// Fingerprints one bound vertex attribute, or zero when the mesh carries
@@ -11241,7 +11272,8 @@ internal readonly record struct SilkMeshGpuGeometryKey(
         string materialPath = "",
         ulong uvFingerprint = 0,
         ulong displacementIdentity = 0,
-        bool requireTextureCoordinates = false) =>
+        bool requireTextureCoordinates = false,
+        SilkSecondaryUv secondaryUv = default) =>
         new(
             mesh.Path,
             mesh.TopologyKind,
@@ -11260,7 +11292,8 @@ internal readonly record struct SilkMeshGpuGeometryKey(
             displacementIdentity,
             materialPath,
             uvFingerprint,
-            requireTextureCoordinates);
+            requireTextureCoordinates,
+            secondaryUv);
 
     /// <summary>Gets whether the deformation kernel produces this geometry.</summary>
     internal bool IsGpuDeformed => DeformationBindIdentity != 0;
@@ -11281,6 +11314,14 @@ internal readonly record struct SilkMeshGpuGeometryKey(
         return hash;
     }
 }
+
+/// <summary>
+/// The second surface texture-coordinate set one retained geometry carries.
+/// </summary>
+internal readonly record struct SilkSecondaryUv(
+    string Primvar,
+    ulong Fingerprint,
+    bool TangentsFromSecondary);
 
 /// <summary>Cumulative retained-scene GPU upload diagnostics.</summary>
 public readonly record struct SilkSceneGpuStatistics(

@@ -36,6 +36,9 @@ struct VertexInput
     float3 normal : NORMAL;
 #if HAS_UV
     float2 texCoord : TEXCOORD0;
+    // The material's second surface coordinate set. Vertex layouts without one
+    // alias it to texCoord, so every UV pipeline declares the same input.
+    float2 texCoord1 : TEXCOORD1;
 #endif
 #if MAP_NORMAL
     float4 tangent : TANGENT;
@@ -70,6 +73,10 @@ struct VertexOutput
     // rather than by its inverse transpose: a tangent is a direction along the
     // surface, not a normal to it. w carries the authored bitangent sign.
     float4 worldTangent : TEXCOORD4;
+#endif
+#if HAS_UV
+    // Declared last so the interpolants above keep their locations.
+    float2 texCoord1 : TEXCOORD5;
 #endif
 };
 
@@ -503,6 +510,7 @@ VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_Instance
         (cross(basisX, basisY) * input.normal.z);
 #if HAS_UV
     output.texCoord = input.texCoord;
+    output.texCoord1 = input.texCoord1;
 #endif
 #if MAP_NORMAL
     output.tangent = input.tangent;
@@ -534,8 +542,10 @@ struct SurfaceParameters
     // (textureMask, udimMask, volumeVoxelDepth, OmniPBR custom-curve enabled).
     float4 textureControls;
     // The one constant texture-coordinate transform this material samples every
-    // texture through, as (m00, m01, tx, 0) and (m10, m11, ty, 0). Identity
-    // unless a constant MaterialX place2d or UsdTransform2d chain was folded.
+    // texture through, as (m00, m01, tx, 0) and (m10, m11, ty, secondaryMask).
+    // Identity unless a constant MaterialX place2d or UsdTransform2d chain was
+    // folded. secondaryMask holds the textureControls.x bits of the textures that
+    // sample the second coordinate set (texCoord1) instead of the first.
     float4 uvTransformRow0;
     float4 uvTransformRow1;
     // The two-image composite, as (targetTextureMaskBit, operator, factor, udim).
@@ -677,6 +687,12 @@ float2 TransformTextureCoordinate(SurfaceParameters surface, float2 textureCoord
     return float2(
         dot(surface.uvTransformRow0.xy, textureCoordinate) + surface.uvTransformRow0.z,
         dot(surface.uvTransformRow1.xy, textureCoordinate) + surface.uvTransformRow1.z);
+}
+
+[ForceInline]
+float2 SelectTexCoord(uint bit, uint secondaryMask, float2 primary, float2 secondary)
+{
+    return (secondaryMask & bit) != 0 ? secondary : primary;
 }
 
 #if MAP_NORMAL
@@ -1247,13 +1263,18 @@ float4 FRAGMENT_ENTRY_POINT(
     // Applied once, before any sample: the material publishes exactly one folded
     // MaterialX place2d transform, and every texture it binds reads through it.
     float2 materialTexCoord = TransformTextureCoordinate(surface, input.texCoord);
+    // Textures whose bit is in secondaryMask read the second coordinate set
+    // through the same transform; the material still publishes one transform.
+    uint secondaryMask = (uint)round(surface.uvTransformRow1.w);
+    float2 secondaryTexCoord = TransformTextureCoordinate(surface, input.texCoord1);
 #endif
 
 #if MAP_MATERIAL
     if ((textureMask & 2u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(2u, secondaryMask, materialTexCoord, secondaryTexCoord);
         float4 diffuseSample = SampleMaterialTexture(
-            baseColorTexture, baseColorSampler, materialTexCoord, (udimMask & 2u) != 0);
+            baseColorTexture, baseColorSampler, slotTexCoord, (udimMask & 2u) != 0);
         // Equal widths explicitly identify the split-RGB fallback. Indexed tables
         // are admitted only with a different width; dimensions are exact integers.
         if (surface.compositeControls.x == 0.0 && surface.compositeControls.w == 2.0)
@@ -1267,19 +1288,22 @@ float4 FRAGMENT_ENTRY_POINT(
             }
             else
             {
-                diffuseSample.b = diffuseValuesTexture.Sample(baseColorSampler, materialTexCoord).r;
+                diffuseSample.b = diffuseValuesTexture.Sample(baseColorSampler, slotTexCoord).r;
             }
         }
         diffuseColor = ApplyMaterialComposite(
             surface,
             2.0,
             diffuseSample,
-            materialTexCoord).rgb;
+            slotTexCoord).rgb;
     }
 #endif
 #if MAP_NORMAL
     float4 baseNormalSample = SampleMaterialTexture(
-        normalTexture, normalSampler, materialTexCoord, (udimMask & 4u) != 0);
+        normalTexture,
+        normalSampler,
+        SelectTexCoord(4u, secondaryMask, materialTexCoord, secondaryTexCoord),
+        (udimMask & 4u) != 0);
     if (surface.detailUvTransformRow0.w != 0.0)
     {
         baseNormalSample.rgb = DecodeIndexedRgb(baseNormalSample, normalValuesTexture);
@@ -1290,9 +1314,10 @@ float4 FRAGMENT_ENTRY_POINT(
         sampledNormal, surface.uvTransformRow0.xy, surface.uvTransformRow1.xy);
     if ((textureMask & 4096u) != 0)
     {
+        float2 detailSource = (secondaryMask & 4096u) != 0 ? input.texCoord1 : input.texCoord;
         float2 detailUv = float2(
-            dot(surface.detailUvTransformRow0.xy, input.texCoord) + surface.detailUvTransformRow0.z,
-            dot(surface.detailUvTransformRow1.xy, input.texCoord) + surface.detailUvTransformRow1.z);
+            dot(surface.detailUvTransformRow0.xy, detailSource) + surface.detailUvTransformRow0.z,
+            dot(surface.detailUvTransformRow1.xy, detailSource) + surface.detailUvTransformRow1.z);
         float4 detailSample = SampleMaterialTexture(
             detailNormalTexture, detailNormalSampler, detailUv, (udimMask & 4096u) != 0);
         if (surface.detailUvTransformRow1.w != 0.0)
@@ -1338,6 +1363,7 @@ float4 FRAGMENT_ENTRY_POINT(
     // default silently halved roughness and zeroed metallic.
     if ((textureMask & 8u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(8u, secondaryMask, materialTexCoord, secondaryTexCoord);
         roughness = clamp(
             ApplyMaterialComposite(
                 surface,
@@ -1345,9 +1371,9 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     roughnessMetallicTexture,
                     roughnessMetallicSampler,
-                    materialTexCoord,
+                    slotTexCoord,
             (udimMask & 8u) != 0),
-                materialTexCoord).r,
+                slotTexCoord).r,
             0.01,
             1.0);
     }
@@ -1357,6 +1383,7 @@ float4 FRAGMENT_ENTRY_POINT(
     // asset and two channels, which resolves to two swizzled uploads.
     if ((textureMask & 32u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(32u, secondaryMask, materialTexCoord, secondaryTexCoord);
         metallic = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1364,14 +1391,15 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     metallicTexture,
                     metallicSampler,
-                    materialTexCoord,
+                    slotTexCoord,
                     (udimMask & 32u) != 0),
-                materialTexCoord).r);
+                slotTexCoord).r);
     }
     if ((textureMask & 16u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(16u, secondaryMask, materialTexCoord, secondaryTexCoord);
         float4 emissionSample = SampleMaterialTexture(
-            emissiveTexture, emissiveSampler, materialTexCoord, (udimMask & 16u) != 0);
+            emissiveTexture, emissiveSampler, slotTexCoord, (udimMask & 16u) != 0);
         if (surface.uvTransformRow0.w != 0.0)
         {
             uint sourceWidth, sourceHeight, valueWidth, valueHeight;
@@ -1383,17 +1411,18 @@ float4 FRAGMENT_ENTRY_POINT(
             }
             else
             {
-                emissionSample.b = emissiveValuesTexture.Sample(emissiveSampler, materialTexCoord).r;
+                emissionSample.b = emissiveValuesTexture.Sample(emissiveSampler, slotTexCoord).r;
             }
         }
         emissiveColor = ApplyMaterialComposite(
             surface,
             16.0,
             emissionSample,
-            materialTexCoord).rgb;
+            slotTexCoord).rgb;
     }
     if ((textureMask & 64u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(64u, secondaryMask, materialTexCoord, secondaryTexCoord);
         opacity = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1401,12 +1430,13 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     opacityTexture,
                     opacitySampler,
-                    materialTexCoord,
+                    slotTexCoord,
                     (udimMask & 64u) != 0),
-                materialTexCoord).r);
+                slotTexCoord).r);
     }
     if ((textureMask & 128u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(128u, secondaryMask, materialTexCoord, secondaryTexCoord);
         occlusion = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1414,12 +1444,13 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     occlusionTexture,
                     occlusionSampler,
-                    materialTexCoord,
+                    slotTexCoord,
                     (udimMask & 128u) != 0),
-                materialTexCoord).r);
+                slotTexCoord).r);
     }
     if ((textureMask & 256u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(256u, secondaryMask, materialTexCoord, secondaryTexCoord);
         specularColor = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1427,12 +1458,13 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     specularColorTexture,
                     specularColorSampler,
-                    materialTexCoord,
+                    slotTexCoord,
                     (udimMask & 256u) != 0),
-                materialTexCoord).rgb);
+                slotTexCoord).rgb);
     }
     if ((textureMask & 512u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(512u, secondaryMask, materialTexCoord, secondaryTexCoord);
         clearcoatAmount = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1440,12 +1472,13 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     clearcoatTexture,
                     clearcoatSampler,
-                    materialTexCoord,
+                    slotTexCoord,
                     (udimMask & 512u) != 0),
-                materialTexCoord).r);
+                slotTexCoord).r);
     }
     if ((textureMask & 1024u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(1024u, secondaryMask, materialTexCoord, secondaryTexCoord);
         clearcoatRoughness = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1453,21 +1486,22 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     clearcoatRoughnessTexture,
                     clearcoatRoughnessSampler,
-                    materialTexCoord,
+                    slotTexCoord,
                     (udimMask & 1024u) != 0),
-                materialTexCoord).r);
+                slotTexCoord).r);
     }
     if ((textureMask & 2048u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(2048u, secondaryMask, materialTexCoord, secondaryTexCoord);
         ior = ApplyMaterialComposite(
                 surface,
                 2048.0,
                 SampleMaterialTexture(
                     iorTexture,
                     iorSampler,
-                    materialTexCoord,
+                    slotTexCoord,
                     (udimMask & 2048u) != 0),
-                materialTexCoord).r;
+                slotTexCoord).r;
     }
 #endif
 

@@ -268,7 +268,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         normalPointer,
                         texCoordPointer,
                         tangentPointer),
-                    0,
+                    attribute.Semantic == SilkVertexSemantic.SecondaryTexCoord ? 1u : 0u,
                     GetFormat(attribute.Format),
                     0,
                     attribute.Offset,
@@ -367,7 +367,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         {
             SilkVertexSemantic.Position => position,
             SilkVertexSemantic.Normal => normal,
-            SilkVertexSemantic.TexCoord => texCoord,
+            SilkVertexSemantic.TexCoord or SilkVertexSemantic.SecondaryTexCoord => texCoord,
             SilkVertexSemantic.Tangent => tangent,
             _ => throw new ArgumentOutOfRangeException(nameof(semantic))
         };

@@ -265,6 +265,59 @@ public sealed class SilkMaterialCommandTests
             SilkColorSpace.Raw, 3, [1, 1, 1, 1], [0, 0, 0, 0], [0.5f, 0.5f, 1, 1], "detail.png", "st");
 
     [Test]
+    [Arguments("normal", "st1", true)]
+    [Arguments("detail-beside-primary-normal", "st1", false)]
+    [Arguments("detail-only", "st1", true)]
+    [Arguments("shared", "", false)]
+    public async Task SurfaceTexturesOnASecondPrimvarSelectTheSecondSet(
+        string shape, string expectedSecondary, bool expectedTangentsFromSecondary)
+    {
+        static TextureSpec texture(SilkMaterialParameter parameter, int components, string primvar) =>
+            new(parameter, SilkTextureWrap.Repeat, SilkTextureWrap.Repeat, SilkColorSpace.Raw, components,
+                [1, 1, 1, 1], [0, 0, 0, 0], [0.5f, 0.5f, 1, 1], $"{parameter}.png", primvar);
+        TextureSpec diffuse = texture(SilkMaterialParameter.DiffuseColor, 3, "st");
+        TextureSpec[] textures = shape switch
+        {
+            "normal" =>
+            [
+                diffuse,
+                texture(SilkMaterialParameter.Normal, 3, "st1"),
+                texture(SilkMaterialParameter.Roughness, 1, "st1"),
+            ],
+            "detail-beside-primary-normal" =>
+            [
+                diffuse,
+                texture(SilkMaterialParameter.Normal, 3, "st"),
+                DetailTexture() with { UvPrimvar = "st1" },
+            ],
+            "detail-only" => [diffuse, DetailTexture() with { UvPrimvar = "st1" }],
+            _ => [diffuse, texture(SilkMaterialParameter.Normal, 3, "st")],
+        };
+        SilkShaderFeatures expectedMask = shape switch
+        {
+            "normal" => SilkShaderFeatures.NormalMap | SilkShaderFeatures.RoughnessMetallicMap,
+            "shared" => SilkShaderFeatures.None,
+            _ => SilkShaderFeatures.DetailNormalMap,
+        };
+        (SilkMaterialParameter, float[])[] rows = shape.StartsWith("detail", StringComparison.Ordinal)
+            ? [(SilkMaterialParameter.DetailUvRow0, [1, 0, 0]), (SilkMaterialParameter.DetailUvRow1, [0, 1, 0])]
+            : [];
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            "/Sets", SilkSurfaceKind.PreviewSurface, rows, textures));
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+
+        await Assert.That(material.GetPrimaryUvPrimvar()).IsEqualTo("st");
+        await Assert.That(material.GetSecondaryUvPrimvar()).IsEqualTo(expectedSecondary);
+        await Assert.That(material.GetSecondaryUvTextureMask()).IsEqualTo(expectedMask);
+        await Assert.That(material.TangentsFromSecondaryUv()).IsEqualTo(expectedTangentsFromSecondary);
+        // The mask rides in the w lane of the second UV transform row, which the
+        // shader reads to pick a coordinate set per sampled slot.
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(172)))
+            .IsEqualTo((float)(uint)expectedMask);
+    }
+
+    [Test]
     [Arguments(0f)]
     [Arguments(0.5f)]
     [Arguments(1f)]

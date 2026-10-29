@@ -255,7 +255,7 @@
     },
     {
       "path": "eng/shaders/sources/mesh.slang",
-      "sha256": "b59892d641bda45ca6035f7487224e2ffb3aa6eb6fa8b1121bdf9292dd2d9c45"
+      "sha256": "4feccce2a217b41a0a2888f6ae4b149238e5cc25c83e0bf37bb186fe5bbee5b0"
     },
     {
       "path": "eng/shaders/sources/normal.fragment.slang",
@@ -419,7 +419,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkGraphicsPipeline.cs",
-      "sha256": "6ead4060a7caf0d3ed3ad8886c0b85bc1a6e3964cbfc57a511fbd21de547aa1c"
+      "sha256": "75fd9597e65ecbd5575a474fe63c100dfe228656c2953a2a1d57efdeffbff0ca"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.IndexedNormals.cs",
@@ -824,23 +824,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.vertex.uv.dxil",
-          "sha256": "b01169d985e4d466071f6c18728a755bd20f805b4cde33bd46a142350e8d02bd",
-          "size": 7460
+          "sha256": "0509b6422ee795d808dc1dd99fb4d2f312925678235611eaf1b7c128be955e39",
+          "size": 7748
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.vertex.uv.spv",
-          "sha256": "31212af3bda89b1c55235268010ad023313499aaeb043d9baac4a86ea9a19e6d",
-          "size": 3584
+          "sha256": "7caff4d42c1082aa3f93e9f4b263ff8367b526f50334b780c08f4c5a9f319a52",
+          "size": 3756
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.vertex.uv.metal",
-          "sha256": "11d22e0d6dab874118c3e7bca0afb9a0599c91a053c141697d248c2088be521e",
-          "size": 7493
+          "sha256": "9a67818f718c9c5231894359c9374262dd77f798b4e4f3a15a7436d138955348",
+          "size": 7700
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.vertex.uv.reflection.json",
-          "sha256": "d8686d72aadf644e4c0cef43fa75803491a4f9aef981ed0fb642bc2576869786",
-          "size": 10370
+          "sha256": "cfc8224be241cecec36fc094c703472e868530da77774089f13ff69802735135",
+          "size": 11052
         }
       }
     },
@@ -1017,23 +1017,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.dxil",
-          "sha256": "bb9def0386f5775c5524674f030f0520c1674dd35ebc9b9392f0e416823e6f4c",
-          "size": 8216
+          "sha256": "8da1ed3b0935b269f4fbdf08238e4e9e522dedc459ecb3789da3429acc7cc1f8",
+          "size": 8532
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.spv",
-          "sha256": "dd731bc04fa45fab27b08bee7571709f44258f78b87343d32654a992b8397a46",
-          "size": 4136
+          "sha256": "0a48cee35acbf69738236cde87a4073f47fec7f0e900a62b83e9ab41a6406fc7",
+          "size": 4316
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.metal",
-          "sha256": "40a776172930ef8d1c09bd7680506eb95415a0c96d9c1696df8ab3f0c473a777",
-          "size": 8013
+          "sha256": "70ce81d39e5cb39d619b9670a75a8683747afa922d7baaf494cf7e649c110faf",
+          "size": 8220
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.vertex.uv+normal.reflection.json",
-          "sha256": "333606e47e0a0a2c274e371859d5c39d5043e6bdfe0c2f560a1ea5eb59fd7bf8",
-          "size": 11397
+          "sha256": "354a36c1709b5b2562d005f81f7827b7991e13e87278890b4a145bb939868cbb",
+          "size": 12079
         }
       }
     },
@@ -1588,8 +1588,8 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv.dxil",
-          "sha256": "d62afc8ab4e678a82578d751e718be4c1dd39dd7e24d97a7ff3a2f6a07a22017",
-          "size": 22872
+          "sha256": "2abf16443ba629b8aa59671207a85632a47d891cf6f18e5aea4076b091aa9ba3",
+          "size": 22972
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv.spv",
@@ -1598,13 +1598,13 @@
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv.metal",
-          "sha256": "e8effe81657f3e2bf93feb8c222739a5a620039bf941711cd3182458abf8e495",
-          "size": 65637
+          "sha256": "14e2dff5302d2bda7d24a1b67f49676d1d58965b508d4c8bcdae99c01b594351",
+          "size": 65682
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv.reflection.json",
-          "sha256": "ddc4e15d728366c604363cd45ec5d7ac882f7f2ed0e8a7f0dfc69e03258349ef",
-          "size": 29766
+          "sha256": "070c11899f2f380396595426966a853b910b4e861d0fb422122e65d5bd54ae71",
+          "size": 30107
         }
       }
     },
@@ -2190,23 +2190,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.dxil",
-          "sha256": "0adfd26451749b09a9671aa28ac77cda9cd190028c73fb452f6304aec1ee8fbf",
-          "size": 63020
+          "sha256": "1107d0b32e46234213addf2a2e3320f5e340970c82adf8b1a69914c7a19a367b",
+          "size": 63380
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.spv",
-          "sha256": "82ea3fe32792ef244d63c028a31932d03564c3f6f0f429ade6a4a714da79fbea",
-          "size": 192280
+          "sha256": "2f994bfa96b135237787a6e94668d157f851946f65923905285829a66bdb3a86",
+          "size": 193404
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.metal",
-          "sha256": "86c9529c96db30a8c6d5358a5e423b9aba1014d38393631ebc619609fccf6c90",
-          "size": 253678
+          "sha256": "804da4fad572e73c3acad73da2829e21fe088b6064505bf91e1a052873088a8f",
+          "size": 255502
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.reflection.json",
-          "sha256": "d4ce10f3278ea5a020c5c98445e4ba9dc65f3b836df544baebcd67e2820b97b1",
-          "size": 49571
+          "sha256": "e8383e4f2d1fc63bd4cf6da1cdd7bcde4ebf413e66efb6fe25dabe4c7f6d2b92",
+          "size": 49912
         }
       }
     },
@@ -2558,23 +2558,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.dxil",
-          "sha256": "75e00c525156c1b84c43afbbf6a2b9ef76761d5d391bc88d018f7b495a342e0c",
-          "size": 30244
+          "sha256": "b76a7227ac864124908e1000fb804741c46db5b21c515724e0e76bfa1d58be54",
+          "size": 30508
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.spv",
-          "sha256": "a0306ceba0b8d8b5a2cff7683b2282489d3cf65b11393cf1ec71042a693f3d59",
-          "size": 68636
+          "sha256": "3a8e433f49afa3c8b724df4d589e217da41962abd72e14363d76cc9968cb6358",
+          "size": 69088
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.metal",
-          "sha256": "564f54a0467b789fb0d9f1d9d90c7cd00d76b765826a52550f41db9b2f96e4aa",
-          "size": 90191
+          "sha256": "ae405ceac6c7f0f362582d3605d7e0f1f8263a81dc2eba0f42faada6fd81b913",
+          "size": 90853
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+normal.reflection.json",
-          "sha256": "d76e2bf9dc6875d82c4461ca481ee7b52f123b2a1eccd60148a3b323352d0c8a",
-          "size": 35663
+          "sha256": "ddece433411e23973c2eeae3f780e1df8973d277e7beb120f8e489ab33396c99",
+          "size": 36004
         }
       }
     },
@@ -3241,23 +3241,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.dxil",
-          "sha256": "9c936eb1bd53ac64c32ea855663d0194b6281d9ec69f9ebac708f1da850e1ee0",
-          "size": 69808
+          "sha256": "ad5d3ca077923619d04fd66a705b3147859dc16467f4ee1e61975a690344a765",
+          "size": 70192
         },
         "spv": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.spv",
-          "sha256": "4fe013ab6d81816282c30f68515556666a9820c68d54107aa343967c6f3402b1",
-          "size": 213088
+          "sha256": "c9da361cfbd6989afb4a09ed94f2ecda89345d88ee02aadb0bdcb078ea74ba67",
+          "size": 214380
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.metal",
-          "sha256": "6c831fb47f8a7ee8480d8b1717dbd94046970d0a4c672064fb8324bdc1a814f0",
-          "size": 278456
+          "sha256": "5afcbd524c34f47d090e063c9a1545f3b928059a741831c1f06ac5099295e6f2",
+          "size": 281717
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.reflection.json",
-          "sha256": "c481628210fb6d695def8ec06c8e225e1c5403aa98f00c8883b15c5b86d6d385",
-          "size": 55468
+          "sha256": "25b15fc62c0657f563a66498e154daf02a25b5fc73fbfa7deebc664b24b846bc",
+          "size": 55809
         }
       }
     },

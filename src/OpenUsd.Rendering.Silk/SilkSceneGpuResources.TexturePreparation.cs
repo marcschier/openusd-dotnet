@@ -258,6 +258,13 @@ public sealed partial class SilkSceneGpuResources
                 "material textures sample renderer-default (0, 0) coordinates. " +
                 "Custom primvar-reader fallback values are not represented by this projection.");
         }
+        if (key.SecondaryUvPrimvar.Length > 0 && mesh.Mesh.FindTexCoord(key.SecondaryUvPrimvar) is null)
+        {
+            AddDiagnostic(SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable, mesh.Mesh.Path,
+                RenderDiagnosticSeverity.Warning,
+                $"Mesh '{mesh.Mesh.Path}' has no '{key.SecondaryUvPrimvar}' texture coordinates; " +
+                "material textures bound to that set sample renderer-default (0, 0) coordinates.");
+        }
     }
 
     internal void ReleaseStreamedTextureWorkingSet(SilkMaterialData? previous = null, SilkMaterialData? next = null)

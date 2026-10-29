@@ -518,6 +518,7 @@ OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.AllocationFailed = 8 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.ByteBudget = 6 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.MaterialDisplacement = 9 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.SecondaryTexCoords = 10 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.NoBindNormals = 2 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.NoComputeCapability = 7 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.NoPublishedRig = 1 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
@@ -2229,6 +2230,7 @@ OpenUsd.Rendering.Silk.SilkVertexLayoutDescriptor.Validate() -> void
 OpenUsd.Rendering.Silk.SilkVertexSemantic
 OpenUsd.Rendering.Silk.SilkVertexSemantic.Normal = 1 -> OpenUsd.Rendering.Silk.SilkVertexSemantic
 OpenUsd.Rendering.Silk.SilkVertexSemantic.Position = 0 -> OpenUsd.Rendering.Silk.SilkVertexSemantic
+OpenUsd.Rendering.Silk.SilkVertexSemantic.SecondaryTexCoord = 4 -> OpenUsd.Rendering.Silk.SilkVertexSemantic
 OpenUsd.Rendering.Silk.SilkVertexSemantic.Tangent = 3 -> OpenUsd.Rendering.Silk.SilkVertexSemantic
 OpenUsd.Rendering.Silk.SilkVertexSemantic.TexCoord = 2 -> OpenUsd.Rendering.Silk.SilkVertexSemantic
 OpenUsd.Rendering.Silk.SilkViewport
