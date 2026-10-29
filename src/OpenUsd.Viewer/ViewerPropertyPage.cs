@@ -32,6 +32,7 @@ internal enum ViewerPropertyGroup
     Instancer,
     PointsAndCurves,
     Volume,
+    Shape,
     Other
 }
 
@@ -47,7 +48,13 @@ internal enum ViewerGeometrySchema
     Volume,
     OpenVdbAsset,
     Field3DAsset,
-    FieldAsset
+    FieldAsset,
+    Sphere,
+    Cube,
+    Cylinder,
+    Cone,
+    Capsule,
+    Plane
 }
 
 internal sealed class ViewerPropertyPage
@@ -215,6 +222,10 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Volume;
         }
+        if (IsShapeProperty(name, geometry))
+        {
+            return ViewerPropertyGroup.Shape;
+        }
         if (isLight && (lightSchemaProperties?.Contains(name, StringComparer.Ordinal) == true ||
             name is
             "inputs:intensity" or "inputs:exposure" or "inputs:diffuse" or
@@ -306,6 +317,19 @@ internal sealed class ViewerPropertyPage
             ViewerGeometrySchema.FieldAsset => IsFieldAssetBaseProperty(name),
             _ => false
         };
+
+    private static bool IsShapeProperty(string name, ViewerGeometrySchema geometry) =>
+        geometry switch
+        {
+            ViewerGeometrySchema.Sphere => IsShapeBaseProperty(name) || name == "radius",
+            ViewerGeometrySchema.Cube => IsShapeBaseProperty(name) || name == "size",
+            ViewerGeometrySchema.Cylinder or ViewerGeometrySchema.Cone or ViewerGeometrySchema.Capsule =>
+                IsShapeBaseProperty(name) || name is "height" or "radius" or "axis",
+            ViewerGeometrySchema.Plane => IsShapeBaseProperty(name) || name is "width" or "length" or "axis",
+            _ => false
+        };
+
+    private static bool IsShapeBaseProperty(string name) => name is "extent" or "doubleSided" or "orientation";
 
     private static bool IsFieldAssetBaseProperty(string name) =>
         name is "filePath" or "fieldName" or "fieldIndex" or "fieldDataType" or "vectorDataRoleHint";

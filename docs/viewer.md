@@ -389,6 +389,10 @@ each schema defines: `ids` for points, `curveVertexCounts` for every curve type,
 `fieldDataType` and `vectorDataRoleHint`, plus `fieldClass` for `OpenVDBAsset` and `fieldPurpose` for
 `Field3DAsset`. Other prims keep these names under **Other properties**, as does a bare `field:`
 relationship.
+**Intrinsic shapes** groups the dimensions of a built-in shape: `radius` for `Sphere`, `size` for
+`Cube`, `radius`, `height` and `axis` for `Cylinder`, `Cone` and `Capsule`, and `width`, `length`
+and `axis` for `Plane`. The group also holds `extent`, `doubleSided` and `orientation` for those
+shapes. A mesh or any other prim keeps these names under **Other properties**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

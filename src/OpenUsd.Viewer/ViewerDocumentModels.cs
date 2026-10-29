@@ -983,6 +983,12 @@ internal static partial class ViewerStageSnapshotBuilder
         UsdVolOpenVDBAsset.TryWrap(prim, out _) ? ViewerGeometrySchema.OpenVdbAsset :
         UsdVolField3DAsset.TryWrap(prim, out _) ? ViewerGeometrySchema.Field3DAsset :
         UsdVolFieldAsset.TryWrap(prim, out _) ? ViewerGeometrySchema.FieldAsset :
+        UsdGeomSphere.TryWrap(prim, out _) ? ViewerGeometrySchema.Sphere :
+        UsdGeomCube.TryWrap(prim, out _) ? ViewerGeometrySchema.Cube :
+        UsdGeomCylinder.TryWrap(prim, out _) ? ViewerGeometrySchema.Cylinder :
+        UsdGeomCone.TryWrap(prim, out _) ? ViewerGeometrySchema.Cone :
+        UsdGeomCapsule.TryWrap(prim, out _) ? ViewerGeometrySchema.Capsule :
+        UsdGeomPlane.TryWrap(prim, out _) ? ViewerGeometrySchema.Plane :
         ViewerGeometrySchema.None;
 
     private static ViewerVariantSetSnapshot[] BuildVariantSets(UsdPrim prim)

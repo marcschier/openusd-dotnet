@@ -1224,6 +1224,7 @@
               <ComboBoxItem Content="Instancing (PointInstancer)" />
               <ComboBoxItem Content="Points and curves" />
               <ComboBoxItem Content="Volume and fields" />
+              <ComboBoxItem Content="Intrinsic shapes" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox

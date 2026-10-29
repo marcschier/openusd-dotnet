@@ -114,6 +114,11 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 token fieldName = "density"
                 custom float filePathExtra = 1
             }
+            def Sphere "Ball"
+            {
+                double radius = 2
+                custom double radiusExtra = 1
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -454,6 +459,15 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 .Select(static button => AutomationProperties.GetAutomationId(button)!).ToArray();
             await Assert.That(fieldProperties).Contains("edit.property:/Density.fieldName");
             await Assert.That(fieldProperties).DoesNotContain("edit.property:/Density.filePathExtra");
+            propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Shape;
+            await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Ball" });
+            await WaitAsync(() => shaderQuery.IsEnabled && PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Ball.radius"), timeout);
+            await Assert.That(PropertyButtons(main).Select(
+                    static button => AutomationProperties.GetAutomationId(button)))
+                .DoesNotContain("edit.property:/Ball.radiusExtra");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });

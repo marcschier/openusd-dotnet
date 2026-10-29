@@ -318,6 +318,42 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task ShapeGroupFollowsTheIntrinsicSchemaOfThePrim()
+    {
+        string[] names =
+        [
+            "radius", "size", "height", "axis", "width", "length", "extent", "doubleSided", "orientation",
+            "Radius", "radiusExtra", "primvars:displayColor", "visibility"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "double", true, false, 0, "<none>", "1"))
+            .ToArray();
+
+        await Assert.That(groupNames(ViewerGeometrySchema.Sphere)).IsEqualTo("radius,extent,doubleSided,orientation");
+        await Assert.That(groupNames(ViewerGeometrySchema.Cube)).IsEqualTo("size,extent,doubleSided,orientation");
+        foreach (ViewerGeometrySchema axial in new[]
+        {
+            ViewerGeometrySchema.Cylinder, ViewerGeometrySchema.Cone, ViewerGeometrySchema.Capsule
+        })
+        {
+            await Assert.That(groupNames(axial))
+                .IsEqualTo("radius,height,axis,extent,doubleSided,orientation");
+        }
+        await Assert.That(groupNames(ViewerGeometrySchema.Plane))
+            .IsEqualTo("axis,width,length,extent,doubleSided,orientation");
+        await Assert.That(groupNames(ViewerGeometrySchema.Mesh)).IsEmpty();
+        await Assert.That(groupNames(ViewerGeometrySchema.None)).IsEmpty();
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, [], null, 0, group: ViewerPropertyGroup.Other, geometry: ViewerGeometrySchema.Sphere);
+        await Assert.That(string.Join(",", other.Attributes.Select(static item => item.Name)))
+            .IsEqualTo("size,height,axis,width,length,Radius,radiusExtra");
+
+        string groupNames(ViewerGeometrySchema geometry) => string.Join(",", ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.Shape, geometry: geometry)
+            .Attributes.Select(static item => item.Name));
+    }
+
+    [Test]
     public async Task SkinningGroupUsesTheSkelNamespaceAndLeavesSkinningPrimvarsUnderPrimvars()
     {
         string[] names =
