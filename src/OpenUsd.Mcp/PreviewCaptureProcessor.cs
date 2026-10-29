@@ -33,6 +33,11 @@ internal interface IPreviewDiagnosticSource
     RenderDiagnosticsState Diagnostics { get; }
 }
 
+internal interface IPreviewBackendSource
+{
+    RenderBackendIdentity? Backend { get; }
+}
+
 public sealed partial class PreviewCaptureProcessor :
     IPreviewCaptureProcessor,
     IResettablePreviewCaptureProcessor,

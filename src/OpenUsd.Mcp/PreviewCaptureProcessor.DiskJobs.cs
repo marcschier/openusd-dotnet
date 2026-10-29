@@ -154,7 +154,8 @@ public sealed partial class PreviewCaptureProcessor : IRenderDiskCaptureProcesso
             return new RenderJobImage(image.Width, image.Height, image.Pixels, Rgba8RowOrder.TopDown)
             {
                 Diagnostics = source is IPreviewDiagnosticSource diagnostics
-                    ? diagnostics.Diagnostics : RenderDiagnosticsState.Empty
+                    ? diagnostics.Diagnostics : RenderDiagnosticsState.Empty,
+                Backend = (source as IPreviewBackendSource)?.Backend
             };
         }
     }

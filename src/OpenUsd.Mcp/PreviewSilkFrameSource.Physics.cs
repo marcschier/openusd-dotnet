@@ -103,7 +103,8 @@ internal sealed partial class PreviewSilkFrameSource : IPhysicsRenderRecordingSo
             ImageRgba8 rgba = Capture(view, state.Viewport.Width, state.Viewport.Height);
             image = new RenderJobImage(rgba.Width, rgba.Height, rgba.Pixels, Rgba8RowOrder.TopDown)
             {
-                Diagnostics = Diagnostics
+                Diagnostics = Diagnostics,
+                Backend = Backend
             };
         }
         return new PhysicsRenderCaptureResult(image, _recordingTransforms.SourceRevision,

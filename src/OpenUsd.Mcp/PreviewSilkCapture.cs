@@ -147,7 +147,7 @@ public sealed class PreviewSilkFrameSourceFactory(
 
 internal sealed partial class PreviewSilkFrameSource
     : IPreviewFrameSource, IPreviewDiagnosticSource, IPreviewDepthFrameSource, IPreviewHdrFrameSource,
-        IPreviewProductFrameSource
+        IPreviewProductFrameSource, IPreviewBackendSource
 {
     private readonly Func<CaptureView, int, int, CapturedFrame> _capture;
     private readonly Func<CaptureView, int, int, long, CancellationToken, RenderJobImage>? _captureDepth;
@@ -185,6 +185,8 @@ internal sealed partial class PreviewSilkFrameSource
             device,
             source)
     {
+        RenderBackendIdentity backend = BackendIdentity(device.Backend);
+        Backend = backend;
         _recordingSource = source;
         _recordingCapturer = capturer;
         _recordingSession = session;
@@ -203,7 +205,8 @@ internal sealed partial class PreviewSilkFrameSource
             return new RenderJobImage(result.Width, result.Height, result.Rgba, Rgba8RowOrder.TopDown)
             {
                 DeviceDepth = new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values),
-                Diagnostics = result.Diagnostics
+                Diagnostics = result.Diagnostics,
+                Backend = backend
             };
         };
         _captureHdr = (view, width, height, maximumBytes, includeDepth, cancellationToken) =>
@@ -228,7 +231,8 @@ internal sealed partial class PreviewSilkFrameSource
                 HdrColor = new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float),
                 DeviceDepth = result.Depth is { } values
                     ? new RenderJobDeviceDepth(values.Width, values.Height, values.Values) : null,
-                Diagnostics = result.Diagnostics
+                Diagnostics = result.Diagnostics,
+                Backend = backend
             };
         };
         SilkSceneIngestionOptions? productOptions = null;
@@ -276,7 +280,7 @@ internal sealed partial class PreviewSilkFrameSource
                     },
                     state.Time.TimeCode, state.Camera, cancellationToken);
             RequireProductRevision(source, plan);
-            return ProductImage(result, plan);
+            return ProductImage(result, plan, backend);
         };
     }
 
@@ -303,6 +307,8 @@ internal sealed partial class PreviewSilkFrameSource
         _device = device ?? throw new ArgumentNullException(nameof(device));
         _source = source ?? throw new ArgumentNullException(nameof(source));
     }
+
+    public RenderBackendIdentity? Backend { get; }
 
     public RenderDiagnosticsState Diagnostics { get; private set; } =
         RenderDiagnosticsState.Empty;
@@ -363,6 +369,14 @@ internal sealed partial class PreviewSilkFrameSource
         return image;
     }
 
+    internal static RenderBackendIdentity BackendIdentity(SilkGraphicsBackend backend) => backend switch
+    {
+        SilkGraphicsBackend.D3D12 => new(RenderBackendKind.D3D12, "hdSilk / Direct3D 12"),
+        SilkGraphicsBackend.Vulkan => new(RenderBackendKind.Vulkan, "hdSilk / Vulkan"),
+        SilkGraphicsBackend.Metal => new(RenderBackendKind.Metal, "hdSilk / Metal"),
+        _ => throw new NotSupportedException($"Unsupported Silk graphics backend '{backend}'.")
+    };
+
     private static void RequireProductRevision(UsdStageRenderSource source, RenderProductJobPlan plan)
     {
         if (plan.SourceStageRevision is not { } expected)
@@ -397,7 +411,8 @@ internal sealed partial class PreviewSilkFrameSource
         }
     }
 
-    private static RenderJobImage ProductImage(SilkFrameCaptureResult result, RenderProductJobPlan plan)
+    private static RenderJobImage ProductImage(
+        SilkFrameCaptureResult result, RenderProductJobPlan plan, RenderBackendIdentity backend)
     {
         // A primId-, instanceId-, elementId- or normal-only product uses the color-and-depth path,
         // whose depth plane is not an admitted output.
@@ -430,7 +445,8 @@ internal sealed partial class PreviewSilkFrameSource
                 ? new RenderJobNormal(normal.Width, normal.Height, normal.Values) : null,
             ElementId = result.ElementId is { } elementId
                 ? new RenderJobElementId(elementId.Width, elementId.Height, elementId.Values) : null,
-            Diagnostics = result.Diagnostics
+            Diagnostics = result.Diagnostics,
+            Backend = backend
         };
     }
 

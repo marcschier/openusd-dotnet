@@ -3,6 +3,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using OpenUsd.Rendering;
+using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Mcp.Tests;
 
@@ -963,10 +964,61 @@ public sealed class OpenUsdMcpServiceTests
             Path.Combine(files.OutputRoot, session.SessionId, "renders")).Length).IsEqualTo(8);
     }
 
+    [Test]
+    public async Task SequenceManifestRecordsTheBackendOfEveryFrame()
+    {
+        using var files = new WorkspaceTestFiles();
+        await using var workspace = files.CreateWorkspace(new RecordingWorkspaceBackend());
+        using var artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+            FileStorageRoot: Path.Combine(files.OutputRoot, "artifacts")));
+        var frameSource = new SequenceFrameFactory
+        {
+            Backend = PreviewSilkFrameSource.BackendIdentity(SilkGraphicsBackend.Vulkan)
+        };
+        using var processor = new PreviewCaptureProcessor(frameSource, artifacts);
+        await using var worker = new CaptureWorker(processor);
+        using ServiceProvider provider = new ServiceCollection().AddSingleton(worker)
+            .AddSingleton<IArtifactResourceStore>(artifacts).BuildServiceProvider();
+        using var service = new OpenUsdMcpService(workspace, provider, CreateOptions(files));
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto result = await service.RenderSequenceAsync(new RenderSequenceRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            Width = 2,
+            Height = 1,
+            FrameCount = 2
+        }, default);
+
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, result.OutputDirectory, "manifest.json")));
+        foreach (JsonElement frame in manifest.RootElement.GetProperty("frames").EnumerateArray())
+        {
+            JsonElement backend = frame.GetProperty("backend");
+            await Assert.That(backend.GetProperty("kind").GetString()).IsEqualTo("Vulkan");
+            await Assert.That(backend.GetProperty("name").GetString()).IsEqualTo("hdSilk / Vulkan");
+        }
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, RenderBackendKind.D3D12, "hdSilk / Direct3D 12")]
+    [Arguments(SilkGraphicsBackend.Vulkan, RenderBackendKind.Vulkan, "hdSilk / Vulkan")]
+    [Arguments(SilkGraphicsBackend.Metal, RenderBackendKind.Metal, "hdSilk / Metal")]
+    public async Task SilkBackendIdentityMatchesTheViewerNames(
+        SilkGraphicsBackend backend, RenderBackendKind kind, string name)
+    {
+        RenderBackendIdentity identity = PreviewSilkFrameSource.BackendIdentity(backend);
+        await Assert.That(identity.Kind).IsEqualTo(kind);
+        await Assert.That(identity.Name).IsEqualTo(name);
+    }
+
     private sealed class SequenceFrameFactory
         : IPreviewFrameSourceFactory, IPreviewFrameSource, IPreviewDepthFrameSource, IPreviewHdrFrameSource,
-            IPreviewDiagnosticSource
+            IPreviewDiagnosticSource, IPreviewBackendSource
     {
+        public RenderBackendIdentity? Backend { get; init; }
         internal List<double> Times { get; } = [];
         internal List<int> Threads { get; } = [];
         internal Action<int>? OnCapture { get; init; }
