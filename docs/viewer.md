@@ -1706,7 +1706,8 @@ Captured RGBA data and encoded output are each limited to 64 MiB, with at most 8
 for export. Encoding runs off the UI thread into a new sibling temporary file. Only a completed,
 flushed image replaces the chosen destination; cancellation or encoding failure preserves any old
 file and removes temporary output. This is atomic publication, not a filesystem compare-and-swap
-lease against independent writers.
+lease against independent writers. Each capture also gets a `<capture>.usdstate.json` state receipt;
+[Comparing saved captures](#comparing-saved-captures) describes its content and how Compare uses it.
 
 Unsupported presentation paths, including the alternative
 Avalonia-hosted OpenGL Storm path without readback, disable Capture Frame rather than advertising
@@ -2071,10 +2072,34 @@ valid. Save records the displayed pair, not a later version of the files. Keep b
 their original paths; the comparison references them rather than copying them into a bundle.
 Network/device paths are not admitted by saved comparisons.
 
-Saved comparisons are historical image evidence only. They do not certify an effective render
-request, source/review revision, authored camera, current scene, or trust/authenticity of the
-manifest. Cross-document browsing with effective-state comparisons, scene annotations and
-units-aware measurements remain separate roadmap work. The manifest is limited to 32 KiB,
+Pixels alone cannot tell a reviewer whether two captures differ because the scene changed or because
+the time, camera or render settings did. **File > Capture Frame** therefore writes a state receipt,
+`<capture>.usdstate.json`, beside each image. The receipt records the stage identifier, time code,
+camera, display purposes, visibility and draw mode, render settings including the optional OCIO
+display transform, the active render backend, the image size and the SHA-256 checksum of the RGBA
+pixels decoded back from the written file. The Viewer writes the image, removes any earlier receipt
+for that path, decodes the written image and only then publishes the receipt through a
+same-directory temporary file. A failed or cancelled save leaves either no receipt or one that
+matches the pixels on disk; it never leaves an older receipt beside a newer image.
+
+Compare and **Open comparison** read both receipts from the capture paths after the pair loads.
+Matching receipts report that the recorded stage, time, camera, display, render settings and backend
+match. Differing receipts name the differing fields in a fixed order: stage, time, camera, display,
+render settings, backend and size. A missing receipt, a receipt whose checksum or size no longer
+matches the decoded capture, or an invalid receipt is reported for A before B, and Compare then
+compares pixels only. Captures from other tools or earlier Viewer versions still compare without a
+receipt. A receipt is limited to 16 KiB and 4096 characters per field. Unknown, duplicate or missing
+fields, a version other than 1, a non-finite time code, dimensions outside 1 to 8192 or a malformed
+checksum make it invalid. Saved comparisons keep the version 2 format and do not copy receipts into
+the manifest.
+
+A receipt records what the Viewer requested; it does not authenticate it. Anyone who can write the
+capture directory can write a matching receipt, and the receipt does not identify the source or
+review revision or prove that the current scene still matches. Saved comparisons are likewise
+historical image evidence. They do not certify the authored camera, the current scene, or the
+trust or authenticity of the manifest. Cross-document browsing and scene annotations remain
+separate roadmap work.
+The manifest is limited to 32 KiB,
 4096 characters per path, 2048 UTF-16 code units of valid Unicode notes and three display modes.
 NUL and unpaired surrogate code units are rejected. Version 2 saves notes; version 1 remains
 readable with empty notes. The 32 KiB file limit still applies after JSON escaping.

@@ -3636,15 +3636,17 @@ public sealed partial class MainWindow : Window, IDisposable
                 return;
             }
 
+            StageRenderState state = coordinator.CurrentState;
+            RenderBackendIdentity? backend = coordinator.ActiveBackend;
             ViewerFrameCaptureResult capture = await coordinator.CaptureFrameAsync(
                 viewport.Width,
                 viewport.Height,
                 _viewerLifetime.Token);
-            await ViewerFrameFileWriter.WriteAsync(path, capture, _viewerLifetime.Token);
+            await ViewerCaptureStateReceiptFile.SaveCaptureAsync(path, capture, state, backend, _viewerLifetime.Token);
             if (!_shutdownStarted && ReferenceEquals(coordinator, _coordinator))
             {
                 ViewerStatus.Text =
-                    $"Captured {capture.Width}×{capture.Height} frame to {Path.GetFileName(path)}.";
+                    $"Captured {capture.Width}×{capture.Height} frame and state receipt to {Path.GetFileName(path)}.";
             }
         }
         catch (OperationCanceledException) when (_viewerLifetime.IsCancellationRequested)

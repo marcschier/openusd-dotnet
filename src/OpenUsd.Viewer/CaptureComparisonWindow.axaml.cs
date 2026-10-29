@@ -309,6 +309,11 @@ internal sealed partial class CaptureComparisonWindow : Window
                     await _loadPair(beforePath, afterPath, cancellation.Token), ComparisonMode.SelectedIndex);
             ViewerCapturePair pair = presentation.Images;
             cancellation.Token.ThrowIfCancellationRequested();
+            ViewerCaptureStateReceiptResult beforeState = await ViewerCaptureStateReceiptFile.ReadAsync(
+                presentation.BeforePath, pair.Before, cancellation.Token);
+            ViewerCaptureStateReceiptResult afterState = await ViewerCaptureStateReceiptFile.ReadAsync(
+                presentation.AfterPath, pair.After, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
             if (!presentationFile && _pendingReview is { } draft &&
                 draft.Before == CaptureReviewIdentity.From(presentation.BeforePath, pair.Before) &&
                 draft.After == CaptureReviewIdentity.From(presentation.AfterPath, pair.After))
@@ -332,7 +337,7 @@ internal sealed partial class CaptureComparisonWindow : Window
             _pendingReview = null;
             SetStatus(
                 $"A: {pair.Before.Width} x {pair.Before.Height}; B: {pair.After.Width} x {pair.After.Height}. " +
-                "Historical pixels only; no current scene/camera identity is asserted. " +
+                ViewerCaptureStateReceiptResult.DescribePair(beforeState, afterState) + " " +
                 "Render/OCIO settings are unchanged.");
             ApplyComparisonMode();
         }
