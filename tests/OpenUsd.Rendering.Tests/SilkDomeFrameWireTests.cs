@@ -542,14 +542,14 @@ public sealed class SilkDomeFrameWireTests
 
     private static float ReadWideDomeComponent(byte[] page, int dome, int component)
     {
-        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 27u);
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 28u);
         _ = commands.MoveNext();
         return commands.Current.AsFrame().GetDomeAmbientColor(dome, component);
     }
 
     private static SilkFrameState ReadWideDomeFrame(byte[] page)
     {
-        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 27u);
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 28u);
         if (!commands.MoveNext())
         {
             throw new InvalidDataException("The wide dome frame is missing.");

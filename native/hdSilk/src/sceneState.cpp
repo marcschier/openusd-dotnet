@@ -489,6 +489,24 @@ void AppendLight(
     AppendF32(payload, record->radius);
 }
 
+/// Appends one ABI v28 shaping entry. A published light always carries a cone
+/// within [0, 180] and a non-negative focus, so the consumer never has to
+/// reinterpret an out-of-range authored value. An unpublished slot is zero.
+void AppendLightShaping(
+    HdSilkCommandPayload& payload,
+    const HdSilkLightRecord* record)
+{
+    const bool shaped = record != nullptr &&
+        (record->type == OPENUSD_SILK_LIGHT_RECT || record->type == OPENUSD_SILK_LIGHT_DISK);
+    AppendF32(
+        payload,
+        record == nullptr ? 0.0f :
+        shaped ? std::clamp(record->shapingConeAngle, 0.0f, 180.0f) : 180.0f);
+    AppendF32(payload, shaped ? std::max(record->shapingFocus, 0.0f) : 0.0f);
+    AppendU32(payload, 0);
+    AppendU32(payload, 0);
+}
+
 /// Rebuilds the point-origin table of a mesh the points draw mode has just
 /// indexed every emitted vertex of.
 ///
@@ -693,6 +711,8 @@ void ValidateDirectLight(const HdSilkLightRecord& light)
     validate(light.radius, "radius");
     validate(light.shapeX, "shape_x");
     validate(light.shapeY, "shape_y");
+    validate(light.shapingConeAngle, "shaping:cone:angle");
+    validate(light.shapingFocus, "shaping:focus");
     for (float component : light.color)
     {
         validate(component, "color");
@@ -865,7 +885,8 @@ void AppendFrame(
         (static_cast<size_t>(OPENUSD_SILK_MAX_FRAME_LIGHTS) * 176) +
         16 +
         16 +
-        (static_cast<size_t>(OPENUSD_SILK_MAX_DOME_LIGHTS) * 32));
+        (static_cast<size_t>(OPENUSD_SILK_MAX_DOME_LIGHTS) * 32) +
+        (static_cast<size_t>(OPENUSD_SILK_MAX_FRAME_LIGHTS) * 16));
     AppendI32(payload, frame.width);
     AppendI32(payload, frame.height);
     for (double value : frame.viewMatrix)
@@ -914,6 +935,10 @@ void AppendFrame(
         AppendU32(payload, 0);
         AppendU32(payload, 0);
         AppendU32(payload, 0);
+    }
+    for (size_t i = 0; i < OPENUSD_SILK_MAX_FRAME_LIGHTS; ++i)
+    {
+        AppendLightShaping(payload, i < directLights.size() ? &directLights[i] : nullptr);
     }
     payload.Complete();
 }

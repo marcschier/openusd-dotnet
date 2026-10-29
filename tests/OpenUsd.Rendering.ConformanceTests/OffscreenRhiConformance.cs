@@ -1482,7 +1482,7 @@ internal static class OffscreenRhiConformance
     /// render correctly; SwiftShader on Linux returned zeros, so the triangle
     /// came back unlit and only the Linux leg of CI failed.
     /// </remarks>
-    private const int FrameConstantsByteSize = 15296;
+    private const int FrameConstantsByteSize = 17344;
 
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {

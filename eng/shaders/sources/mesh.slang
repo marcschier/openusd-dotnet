@@ -139,11 +139,16 @@ struct FrameParameters
     // lives in, or -1 for a dome that has no prefiltered response and
     // contributes through domeAmbient alone.
     float4 domeEnvironment[8];
+    // Per direct light: the UsdLux ShapingAPI cone of a rect or disk light.
+    //   x: cos of the cone angle; y: the focus exponent; z: non-zero when the
+    //   cone is narrower than 180 degrees and therefore attenuates. Every other
+    //   light, and every frame without the shaping table, writes zero.
+    float4 lightShaping[MaximumDirectLights];
 };
 
 [[vk::binding(8, 0)]]
 // A raw buffer avoids structured-element stride limits: D3D12 caps an element
-// at 2048 bytes, while the bounded frame occupies 15296 bytes.
+// at 2048 bytes, while the bounded frame occupies 17344 bytes.
 ByteAddressBuffer frameParameters : register(t8);
 
 #if FRAGMENT_STAGE && OPENUSD_TARGET_METAL
@@ -243,6 +248,16 @@ float4 ReadFrameLight(uint field, uint index)
 float4 ReadFrameShadowSlot(uint index)
 {
     return frameParameters.Load<float4>(FrameShadowSlotsOffset + index * 16u);
+}
+
+// After the shadow slots: environment and dome controls (32 bytes), then the
+// eight dome ambient and eight dome environment vectors (256 bytes).
+static const uint FrameLightShapingOffset = FrameShadowSlotsOffset + FrameLightArrayBytes + 32u + 256u;
+
+[ForceInline]
+float4 ReadFrameLightShaping(uint index)
+{
+    return frameParameters.Load<float4>(FrameLightShapingOffset + index * 16u);
 }
 #endif
 
@@ -1635,6 +1650,12 @@ float4 FRAGMENT_ENTRY_POINT(
         float3 lightEyeBase = lightIndex == 0u && !hasSceneLighting
             ? eye
             : sceneEye;
+        // UsdLux ShapingAPI, as Storm applies it to rect and disk lights: a
+        // spotlight cone around the light's -Z emission axis with a pow(cos,
+        // focus) falloff. The headlight is never shaped.
+        float4 lightShaping = lightIndex == 0u && !hasSceneLighting
+            ? float4(0.0, 0.0, 0.0, 0.0)
+            : ReadFrameLightShaping(lightIndex);
         // Raster shadows. A light with no shadow map names slot -1 and is fully
         // visible, which is exactly the pre-shadow result. Resolved once per
         // light rather than per area-light sample because only a light whose
@@ -1701,9 +1722,20 @@ float4 FRAGMENT_ENTRY_POINT(
                 float distanceSquared = max(dot(toLight, toLight), SurfaceEpsilon);
                 sampleDirection = toLight * rsqrt(distanceSquared);
                 sampleIntensity /= distanceSquared;
+                // lightDirection is the light's +Z, the surface-to-light
+                // direction of an emitter facing -Z, so a lit sample sees it
+                // with a positive cosine.
+                float emitterCosine = dot(lightDirection, sampleDirection);
                 if (lightType == 4.0)
                 {
-                    emissionScale = saturate(dot(lightDirection, -sampleDirection));
+                    emissionScale = saturate(emitterCosine);
+                }
+                if (lightShaping.z > 0.5)
+                {
+                    float spot = emitterCosine < lightShaping.x
+                        ? 0.0
+                        : (lightShaping.y > 0.0 ? pow(max(emitterCosine, 0.0), lightShaping.y) : 1.0);
+                    emissionScale *= spot;
                 }
             }
             float3 half = normalize(sampleDirection + lightEyeBase);

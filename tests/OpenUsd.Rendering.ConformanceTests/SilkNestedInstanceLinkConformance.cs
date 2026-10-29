@@ -74,7 +74,7 @@ internal static class SilkNestedInstanceLinkConformance
             SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(27, 1,
+        using var first = new OpenUsdSilkPage(28, 1,
             [.. Frame(), .. Quad(1, NestedPrototype, Positions[0]),
                 .. InstanceReference(NestedPrototype, 1, Positions[1])], 3);
         renderer.ApplyPage(first);
@@ -83,7 +83,7 @@ internal static class SilkNestedInstanceLinkConformance
         await Assert.That(CoveredColumns(before)[Centres[0]]).IsTrue();
         await Assert.That(CoveredColumns(before)[Centres[2]]).IsFalse();
         ulong reserved = budget.Usage.ReservedBytes;
-        using var grown = new OpenUsdSilkPage(27, 2,
+        using var grown = new OpenUsdSilkPage(28, 2,
             [.. InstanceReference(NestedPrototype, 2, Positions[2]),
                 .. InstanceReference(NestedPrototype, 3, Positions[3])], 2);
         const ulong growthBytes = 12ul * SilkSceneUniformWriter.ByteSize;

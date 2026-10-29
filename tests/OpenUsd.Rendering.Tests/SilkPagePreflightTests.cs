@@ -1063,7 +1063,7 @@ public sealed class SilkPagePreflightTests
 
     private static WideState CaptureWideState(SilkSceneState scene)
     {
-        var bytes = new byte[15296];
+        var bytes = new byte[17344];
         SilkShadowFrameBinding binding = scene.Shadows.HasShadows
             ? SilkShadowFrameBinding.Create(scene.Shadows.Descriptors,
                 SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!)

@@ -696,7 +696,11 @@ try
         'DiskLightEdgeOnMatchesUnlitSceneOnVulkan',
         'DiskLightFaceOnDivergesFromEdgeOnLightOnVulkan',
         'CylinderLightZeroLengthMatchesSphereLightOnVulkan',
-        'CylinderLightFullLengthDivergesFromSphereLightOnVulkan')
+        'CylinderLightFullLengthDivergesFromSphereLightOnVulkan',
+        'ShapedRectLightWithFullConeMatchesUnshapedRectOnVulkan',
+        'ShapedRectLightNarrowConeDivergesFromFullConeOnVulkan',
+        'ShapedDiskLightFocusDivergesFromUnfocusedDiskOnVulkan',
+        'ShapedRectLightBackSideMatchesUnlitSceneOnVulkan')
     if ($Rid -eq 'win-x64')
     {
         & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `

@@ -145,7 +145,7 @@ public sealed class FrameConstantsSizeContractTests
     {
         int shaderSize = ReadShaderFrameParametersByteSize(FindRepositoryRoot());
         int writerSize = OpenUsd.Rendering.Silk.SilkFrameUniformWriter.ByteSize;
-        await Assert.That(shaderSize).IsEqualTo(15296);
-        await Assert.That(writerSize).IsEqualTo(15296);
+        await Assert.That(shaderSize).IsEqualTo(17344);
+        await Assert.That(writerSize).IsEqualTo(17344);
     }
 }

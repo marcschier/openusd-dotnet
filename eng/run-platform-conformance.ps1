@@ -17,6 +17,10 @@ $vulkanMethods = [ordered]@{
     RectLightFullAreaDivergesFromSphereLightOnVulkan = 'StormSilkParityCaptureDriverTests'
     RectLightZeroAreaMatchesSphereLightOnVulkan = 'StormSilkParityCaptureDriverTests'
     DiskLightEdgeOnMatchesUnlitSceneOnVulkan = 'StormSilkParityCaptureDriverTests'
+    ShapedRectLightWithFullConeMatchesUnshapedRectOnVulkan = 'StormSilkParityCaptureDriverTests'
+    ShapedRectLightNarrowConeDivergesFromFullConeOnVulkan = 'StormSilkParityCaptureDriverTests'
+    ShapedDiskLightFocusDivergesFromUnfocusedDiskOnVulkan = 'StormSilkParityCaptureDriverTests'
+    ShapedRectLightBackSideMatchesUnlitSceneOnVulkan = 'StormSilkParityCaptureDriverTests'
     ThirtyTwoDeepGridStillIntegratesExactly = 'VolumeDepthSamplingConformanceTests'
     VulkanCompositesStraightAlphaOverDestination = 'VulkanDeviceTests'
 }

@@ -1644,7 +1644,9 @@ internal readonly record struct SilkFrameLight(
     float Exposure,
     float Diffuse,
     float Specular,
-    float Radius)
+    float Radius,
+    float ShapingConeAngle = 180,
+    float ShapingFocus = 0)
 {
     internal static SilkFrameLight CopyFrom(SilkFrameCommand command, int light) =>
         new(
@@ -1661,7 +1663,9 @@ internal readonly record struct SilkFrameLight(
             command.GetLightExposure(light),
             command.GetLightDiffuse(light),
             command.GetLightSpecular(light),
-            command.GetLightRadius(light));
+            command.GetLightRadius(light),
+            command.GetLightShapingConeAngle(light),
+            command.GetLightShapingFocus(light));
 
     private static Matrix4x4 ReadTransform(SilkFrameCommand command, int light) =>
         new(
@@ -1711,7 +1715,8 @@ internal static class SilkFrameUniformWriter
     private const int DomeControlOffset = EnvironmentControlOffset + 16;
     private const int DomeAmbientOffset = DomeControlOffset + 16;
     private const int DomeEnvironmentOffset = DomeAmbientOffset + (SilkFrameState.MaximumDomes * 16);
-    internal const int ByteSize = DomeEnvironmentOffset + (SilkFrameState.MaximumDomes * 16);
+    private const int LightShapingOffset = DomeEnvironmentOffset + (SilkFrameState.MaximumDomes * 16);
+    internal const int ByteSize = LightShapingOffset + LightArraySize;
 
     internal static void Write(
         SilkFrameState frame,
@@ -2008,8 +2013,10 @@ internal static class SilkFrameUniformWriter
         int controlOffset = LightControlOffset + (index * 16);
         int tangentOffset = LightTangentOffset + (index * 16);
         int bitangentOffset = LightBitangentOffset + (index * 16);
+        int shapingOffset = LightShapingOffset + (index * 16);
         if (light.Type == 0)
         {
+            WriteVector4(destination, shapingOffset, 0, 0, 0, 0);
             WriteVector4(destination, positionOffset, 0, 0, 0, 0);
             WriteVector4(destination, directionOffset, 0, 0, 1, 0);
             WriteVector4(destination, colorOffset, 0, 0, 0, 0);
@@ -2045,6 +2052,29 @@ internal static class SilkFrameUniformWriter
             0);
         WriteVector4(destination, tangentOffset, tangent.X, tangent.Y, tangent.Z, light.ShapeX);
         WriteVector4(destination, bitangentOffset, bitangent.X, bitangent.Y, bitangent.Z, light.ShapeY);
+        WriteShaping(destination, shapingOffset, light);
+    }
+
+    /// <summary>
+    /// Writes one light's ShapingAPI cone as (cos cutoff, focus, shaped, 0), or zero when unshaped.
+    /// </summary>
+    /// <remarks>
+    /// Storm applies the cone only when the angle is below 180 degrees, so a
+    /// 180-degree cone and a frame without the shaping table both write an
+    /// unshaped slot. The cosine is computed here once rather than per fragment.
+    /// </remarks>
+    private static void WriteShaping(Span<byte> destination, int offset, SilkFrameLight light)
+    {
+        float cone = Math.Clamp(light.ShapingConeAngle, 0, 180);
+        float focus = MathF.Max(light.ShapingFocus, 0);
+        bool shaped = (light.Type == 3 || light.Type == 4) && cone < 180;
+        WriteVector4(
+            destination,
+            offset,
+            shaped ? MathF.Cos(cone * (MathF.PI / 180)) : 0,
+            shaped ? focus : 0,
+            shaped ? 1 : 0,
+            0);
     }
 
     private static Vector3 Normalize(Vector3 value, Vector3 fallback)

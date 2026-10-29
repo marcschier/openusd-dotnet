@@ -1591,7 +1591,7 @@ case verifies replay does not hold the native-session lock. Vulkan uses SwiftSha
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 27 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 28 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 `hdsilk_publication_allocation` compiles the retained publisher into a dedicated executable
@@ -1691,7 +1691,15 @@ not a device-register or process-memory estimate. The old full-frame array copie
 15180 bytes and fail; the direct reads require 844 bytes. Python tests cover the exact boundary,
 one-vector overflow, storage-buffer exclusion, independent functions and malformed streams.
 Native 97/128-light controls and paired D3D12/Vulkan light/shadow pixel cases remain unchanged;
-the native fixture now expects the current exact page ABI 27 rather than stale ABI 25.
+the native fixture now expects the current exact page ABI 28 rather than stale ABI 25.
+
+Four Vulkan self-consistency pairs in `StormSilkParityCaptureDriverTests` gate rect and disk
+`UsdLuxShapingAPI`. A 180-degree cone with focus matches the unshaped rect; a 15-degree cone and a
+focused disk diverge from their unshaped counterparts; a rect facing away behind its 90-degree cone
+matches an unlit scene. `DiskLightFaceOnDivergesFromEdgeOnLightOnVulkan` now points the disk at
+the meshes, because the corrected disk emits only from its front face. `SilkLightShapingWireTests`
+covers the page ABI 28 shaping table: round trip, defaults without the table, range and reserved-word
+refusal, unpublished slots and the 17344-byte GPU encoding.
 
 The default D3D12 cases continue to require WARP. Set
 `OPENUSD_DIRECT_LIGHT_HARDWARE_REQUIRED=1` to additionally run

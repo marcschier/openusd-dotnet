@@ -250,7 +250,7 @@ internal sealed class SilkDisplacementTests
     private static void ApplyBudgetedPage(
         SilkSceneState scene, SilkSceneGpuResources resources, ulong revision, params byte[][] commands)
     {
-        using var page = new OpenUsdSilkPage(27, revision, commands.SelectMany(command => command).ToArray(),
+        using var page = new OpenUsdSilkPage(28, revision, commands.SelectMany(command => command).ToArray(),
             checked((uint)commands.Length));
         using SilkSceneState.PreparedPage cpu = scene.PreparePage(page);
         using SilkSceneGpuResources.PreparedMeshUpdate? gpu = resources.Prepare(
@@ -1883,7 +1883,7 @@ internal sealed class SilkDisplacementTests
         int liveBuffers = device.LiveBufferCount;
         ulong geometryRevision = scene.GeometryRevision;
         byte[] changed = CreateMaterialUpsert(textureAsset: "replacement-height.png");
-        using var page = new OpenUsdSilkPage(27, 2, changed, 1);
+        using var page = new OpenUsdSilkPage(28, 2, changed, 1);
         device.FailAllocationAfter = 3;
         await Assert.That(() => renderer.ApplyPage(page)).Throws<InvalidOperationException>();
         await Assert.That(scene.Materials[MaterialPath]).IsSameReferenceAs(originalMaterial);

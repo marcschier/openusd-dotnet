@@ -903,7 +903,7 @@ public sealed class SilkTransactionalApplyTests
 
     private static byte[] WideTransactionGpu(SilkSceneState scene)
     {
-        var bytes = new byte[15296];
+        var bytes = new byte[17344];
         SilkShadowFrameBinding shadows = SilkShadowFrameBinding.Create(
             scene.Shadows.Descriptors, SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!);
         SilkFrameUniformWriter.Write(

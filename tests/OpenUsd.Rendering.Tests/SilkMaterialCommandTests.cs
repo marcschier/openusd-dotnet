@@ -549,7 +549,7 @@ public sealed class SilkMaterialCommandTests
                 [1f, 1f, 1f, 1f], [0f, 0f, 0f, 0f], [1f, 0f, 1f, 1f], "texture.png", "st")]);
         await Assert.That(() => CopyMaterial(page)).Throws<InvalidDataException>();
         await Assert.That(() => SilkCommandParser.ValidatePageAbi(24)).Throws<InvalidDataException>();
-        SilkCommandParser.ValidatePageAbi(27);
+        SilkCommandParser.ValidatePageAbi(28);
     }
 
     [Test]
@@ -605,7 +605,7 @@ public sealed class SilkMaterialCommandTests
         new SilkGpuTextureBudget(1024).ConfigureDevice(device);
         using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil,
             (_, _) => throw new InvalidOperationException("No image is used."));
-        using var first = new OpenUsdSilkPage(27, 1,
+        using var first = new OpenUsdSilkPage(28, 1,
             [.. material(0.25f), .. CreateMeshUpsert("/Mesh", "/Material")], 2);
         renderer.ApplyPage(first);
         TextureGraphicsBuffer[] frames =
@@ -624,7 +624,7 @@ public sealed class SilkMaterialCommandTests
         original.ReadbackForTesting(before);
         ulong revision = renderer.Scene.Revision;
         int live = device.Buffers.Count(buffer => !buffer.Released);
-        using var update = new OpenUsdSilkPage(27, 2, material(0.75f), 1);
+        using var update = new OpenUsdSilkPage(28, 2, material(0.75f), 1);
         device.RefuseBufferSize = original.Size;
         await Assert.That(() => renderer.ApplyPage(update)).Throws<InvalidOperationException>();
         device.RefuseBufferSize = null;
@@ -1634,13 +1634,13 @@ public sealed class SilkMaterialCommandTests
             using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil, (asset, _) =>
                 new SilkDecodedImage(1, 1, File.ReadAllText(asset) == "before"
                     ? [255, 0, 0, 255] : [0, 0, 255, 255]));
-            using var first = new OpenUsdSilkPage(27, 1,
+            using var first = new OpenUsdSilkPage(28, 1,
                 [.. material, .. CreateMeshUpsert("/Mesh", "/Material")], 2);
             renderer.ApplyPage(first);
             Texture previous = device.TextureOwners.Single(texture => texture.Format == SilkTextureFormat.Rgba8Unorm);
             ulong reserved = budget.Usage.ReservedBytes;
             await File.WriteAllTextAsync(path, "after-longer");
-            using var quiet = new OpenUsdSilkPage(27, 2, [], 0);
+            using var quiet = new OpenUsdSilkPage(28, 2, [], 0);
             using (IDisposable pressure = budget.Reserve(
                 new SilkTextureDescriptor(checked((uint)((budget.MaximumBytes - reserved) / 4)),
                     1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1))
@@ -1686,7 +1686,7 @@ public sealed class SilkMaterialCommandTests
             decodes++;
             throw new InvalidOperationException("Disabled material textures must not be decoded.");
         });
-        using var page = new OpenUsdSilkPage(27, 1,
+        using var page = new OpenUsdSilkPage(28, 1,
             [.. material, .. CreateMeshUpsert("/First", "/Material")], 2);
         renderer.ApplyPage(page, useSceneMaterials: false);
         await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(1);
@@ -1735,7 +1735,7 @@ public sealed class SilkMaterialCommandTests
                 image.OwnReservation(reservation);
                 return image;
             });
-        using var first = new OpenUsdSilkPage(27, 1,
+        using var first = new OpenUsdSilkPage(28, 1,
             [.. material("before.png"), .. CreateMeshUpsert("/First", "/Material"),
                 .. CreateMeshUpsert("/Removed", "/Material", 8)], 3);
         renderer.ApplyPage(first);
@@ -1753,7 +1753,7 @@ public sealed class SilkMaterialCommandTests
         ulong charged = budget.Usage.ReservedBytes;
         int priorDecodes = decodes;
         string nextAsset = luminanceOnly ? "before.png" : "after.png";
-        using var replacement = new OpenUsdSilkPage(27, 2,
+        using var replacement = new OpenUsdSilkPage(28, 2,
             [.. material(nextAsset, luminanceOnly), .. CreateMeshRemove("/Removed"),
                 .. CreateMeshUpsert("/Added", "/Material", 9)], 3);
         int originalOwners = device.TextureOwners.Count(texture => !texture.Released);

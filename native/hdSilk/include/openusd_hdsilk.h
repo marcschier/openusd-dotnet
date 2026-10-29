@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 27u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 28u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 6u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 
@@ -439,10 +439,23 @@ extern "C" {
 /// output entries must not introduce a camera headlight into an authored scene.
 /// The no-light scene keeps the deterministic headlight default.
 ///
-/// The four supported FRAME sizes are 272, 536, 23096 (lighting) and 23368
-/// (lighting plus domes) bytes, including the command header. The direct count
-/// is at 536, lighting_flags at 540, the 176-byte entries at 552, ambient at
-/// 23080, dome count at 23096 and the 32-byte dome entries at 23112.
+/// The five supported FRAME sizes are 272, 536, 23096 (lighting), 23368
+/// (lighting plus domes) and 25416 (lighting, domes and shaping) bytes,
+/// including the command header. The direct count is at 536, lighting_flags at
+/// 540, the 176-byte entries at 552, ambient at 23080, dome count at 23096, the
+/// 32-byte dome entries at 23112 and the 16-byte shaping entries at 23368.
+/// hdSilk writes the 25416-byte form.
+///
+/// ABI v28 appends one shaping entry per direct-light slot, in the same order
+/// as the direct-light table:
+///   float  cone_angle (degrees, 0..180; 180 is unshaped)
+///   float  focus (cosine exponent, >= 0)
+///   uint32 reserved[2] (0)
+/// Only rect and disk lights carry a shaped cone, matching Storm's area-light
+/// approximation: UsdLux ShapingAPI cone angle (default 90, so these lights
+/// are lit on their -Z side only) and focus. Every other published type writes
+/// 180 and 0. A slot past the direct-light count is all zero. Cone softness and
+/// IES profiles are not published.
 ///
 /// ABI v21 appends the bounded dome table after ambient_intensity. It exists so
 /// that a dome light can be addressed by a per-prim UsdLux collection, which the

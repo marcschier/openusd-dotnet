@@ -609,7 +609,8 @@ analytic native fixtures rather than this unsuitable Storm reference.
   identically to `SilkTextureWrap.Clamp` and a sample outside the unit range returns the edge texel rather than black
   or a MaterialX node's `default` colour. The `default` colour is transported only in its other role, as the
   unreadable-file fallback. A second UV set named by a `ND_texcoord_vector2` `index` is not supported.
-- Sphere-light glossy shaping and area-light texture inputs are not gated. Dome textures have no gated
+- Rect and disk lights apply ShapingAPI cone and focus, gated by Vulkan self-consistency pairs. Sphere-light
+  shaping, cone softness, IES profiles and area-light texture inputs are not implemented. Dome textures have no gated
   Storm parity scene either, because the offscreen harness renders none; hdSilk's textured-dome
   image-based lighting is gated analytically and by its own D3D12 WARP and Vulkan SwiftShader pixel
   gates instead.
@@ -756,6 +757,7 @@ analytic native fixtures rather than this unsuitable Storm reference.
 | Display output | Reinhard presentation, identity parity | MCP/Viewer preserve highlights |
 | Storm shadow parity | Measured, ungated | Offscreen Storm shadows are not a reference |
 | Rect/disk/cylinder area lights | Implemented and self-consistency-gated | Storm renders authored references black |
+| Rect/disk `UsdLuxShapingAPI` | Cone and focus, self-consistency-gated | No cone softness, IES or sphere shaping |
 | Light linking | Implemented, analytically gated | Per-draw light mask on D3D12 WARP and Vulkan SwiftShader |
 | Nested-instance linking | Implemented, analytically gated | Composed `parent * count + inner` masks |
 | Dome linking | Implemented, analytically gated | Per-draw dome mask, bounded at 8; unlinked pixels byte-identical |

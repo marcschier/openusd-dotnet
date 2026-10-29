@@ -26,7 +26,7 @@ namespace
 {
 using namespace hdsilk_direct_lights_test;
 
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 27u);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 28u);
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6u);
 static_assert(OPENUSD_SILK_SCENE_INGESTION_VERSION == 1u);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128u);
@@ -88,8 +88,9 @@ void RequireUnusedDirectSlots(
                 slot.shapeX == 0.0f && slot.shapeY == 0.0f &&
                 slot.color == std::array<float, 3>{0.0f, 0.0f, 0.0f} &&
                 slot.intensity == 0.0f && slot.exposure == 0.0f &&
-                slot.diffuse == 0.0f && slot.specular == 0.0f && slot.radius == 0.0f,
-            label + ": expected zero scalar fields");
+                slot.diffuse == 0.0f && slot.specular == 0.0f && slot.radius == 0.0f &&
+                slot.shapingConeAngle == 0.0f && slot.shapingFocus == 0.0f,
+            label + ": expected zero scalar and shaping fields");
         Require(slot.transform == IdentityTransform,
             label + ": expected all sixteen identity-transform elements");
     }
@@ -111,8 +112,9 @@ void RequireMarkerDirectLights(
             label + ": wrong sorted identity, shape, color or intensity");
         Require(slot.transform == IdentityTransform &&
                 slot.exposure == 1.0f && slot.diffuse == 0.25f &&
-                slot.specular == 0.75f && slot.radius == 0.375f,
-            label + ": wrong transform or trailing controls");
+                slot.specular == 0.75f && slot.radius == 0.375f &&
+                slot.shapingConeAngle == 180.0f && slot.shapingFocus == 0.0f,
+            label + ": wrong transform, trailing controls or unshaped cone");
     }
 }
 
@@ -337,8 +339,8 @@ void VerifyNativeFrameAbiAndCounts()
         const std::vector<uint8_t> bytes = state.BuildPage(&revision, &commandCount);
         const Frame frame = ReadFrame(bytes.data(), bytes.size(), commandCount);
         const std::string label = "native FRAME count " + std::to_string(count);
-        Require(revision == 1u && commandCount == 1u && bytes.size() == 23368 &&
-                frame.type == 1u && frame.byteSize == 23368u,
+        Require(revision == 1u && commandCount == 1u && bytes.size() == 25416 &&
+                frame.type == 1u && frame.byteSize == 25416u,
             label + ": expected one complete native FRAME, not an old short form");
         Require(frame.width == 640 && frame.height == 360 &&
                 frame.viewMatrix == std::array<double, 16>{
@@ -361,6 +363,66 @@ void VerifyNativeFrameAbiAndCounts()
         RequireUnusedDirectSlots(frame, count, label);
         RequireAmbientAndDomeSlots(frame, true, label);
     }
+}
+
+void VerifyShapingClampsAuthoredRange()
+{
+    struct ClampCase
+    {
+        float cone;
+        float focus;
+        float expectedCone;
+        float expectedFocus;
+    };
+    const ClampCase cases[] = {
+        {-30.0f, -2.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 0.0f, 0.0f},
+        {90.0f, 0.5f, 90.0f, 0.5f},
+        {180.0f, 8.0f, 180.0f, 8.0f},
+        {270.0f, 1.0f, 180.0f, 1.0f}};
+    for (const ClampCase& row : cases)
+    {
+        for (uint32_t type : {uint32_t{OPENUSD_SILK_LIGHT_RECT}, uint32_t{OPENUSD_SILK_LIGHT_DISK}})
+        {
+            HdSilkSceneState state;
+            HdSilkLightRecord light;
+            light.path = "/Lights/Shaped";
+            light.type = type;
+            light.shapeX = 1.0f;
+            light.shapeY = 1.0f;
+            light.shapingConeAngle = row.cone;
+            light.shapingFocus = row.focus;
+            state.ReplaceLight(light);
+            uint32_t commandCount = 0;
+            const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+            const Frame frame = ReadFrame(bytes.data(), bytes.size(), commandCount);
+            const DirectSlot& slot = frame.directLights[0];
+            Require(frame.directLightCount == 1u &&
+                    slot.shapingConeAngle == row.expectedCone &&
+                    slot.shapingFocus == row.expectedFocus,
+                "shaping cone " + std::to_string(row.cone) + " focus " +
+                    std::to_string(row.focus) + ": not clamped to [0, 180] and >= 0");
+            RequireUnusedDirectSlots(frame, 1, "shaping clamp");
+        }
+    }
+
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/NonFinite";
+    light.type = OPENUSD_SILK_LIGHT_DISK;
+    light.shapingConeAngle = std::numeric_limits<float>::quiet_NaN();
+    state.ReplaceLight(light);
+    bool refused = false;
+    try
+    {
+        uint32_t commandCount = 0;
+        (void)state.BuildPage(nullptr, &commandCount);
+    }
+    catch (const std::runtime_error& error)
+    {
+        refused = std::string(error.what()).find("shaping:cone:angle") != std::string::npos;
+    }
+    Require(refused, "a non-finite shaping cone must refuse the page and name the field");
 }
 
 void VerifyDirectShapeAndControlWire()
@@ -411,6 +473,8 @@ void VerifyDirectShapeAndControlWire()
             light.diffuse = 0.25f;
             light.specular = 0.75f;
             light.radius = 0.375f;
+            light.shapingConeAngle = 45.0f;
+            light.shapingFocus = 3.0f;
             std::copy(orientedTransform.begin(), orientedTransform.end(), light.transform);
             state.ReplaceLight(light);
 
@@ -429,6 +493,11 @@ void VerifyDirectShapeAndControlWire()
                     slot.intensity == 2.0f && slot.exposure == 1.0f &&
                     slot.diffuse == 0.25f && slot.specular == 0.75f && slot.radius == 0.375f,
                 label + ": RGB, intensity or trailing controls were changed or pre-exposed");
+            const bool shaped = shape.type == OPENUSD_SILK_LIGHT_RECT ||
+                shape.type == OPENUSD_SILK_LIGHT_DISK;
+            Require(slot.shapingConeAngle == (shaped ? 45.0f : 180.0f) &&
+                    slot.shapingFocus == (shaped ? 3.0f : 0.0f),
+                label + ": only rect and disk lights may carry a ShapingAPI cone");
             Require(slot.transform == std::array<double, 16>{
                     0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0,
                     0.0, 0.0, 1.0, 0.0, 3.0, 4.0, 5.0, 1.0},
@@ -3768,6 +3837,7 @@ int main(int argc, char* argv[])
         {"masks", "VerifyLightMaskFirstBoundaries", VerifyLightMaskFirstBoundaries},
         {"wire", "VerifyNativeFrameAbiAndCounts", VerifyNativeFrameAbiAndCounts},
         {"wire", "VerifyDirectShapeAndControlWire", VerifyDirectShapeAndControlWire},
+        {"wire", "VerifyShapingClampsAuthoredRange", VerifyShapingClampsAuthoredRange},
         {"selection", "VerifyDirectEligibilityPartitions", VerifyDirectEligibilityPartitions},
         {"selection", "VerifyNonFiniteDirectLightsRefuseAndRetry", VerifyNonFiniteDirectLightsRefuseAndRetry},
         {"selection", "VerifyAuthoredFlagsAndEffectiveCapacity", VerifyAuthoredFlagsAndEffectiveCapacity},

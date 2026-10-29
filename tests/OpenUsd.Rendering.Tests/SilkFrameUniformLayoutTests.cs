@@ -47,7 +47,7 @@ public sealed class SilkFrameUniformLayoutTests
         fallback.AddAmbient(1, new Vector3(0.25f, 0.5f, 1f));
         fallback.AddAmbient(3, new Vector3(0.5f, 1f, 2f));
         fallback.AddUnattributed(new Vector3(0.5f, 0.25f, 0.125f));
-        byte[] actual = Enumerable.Repeat((byte)0xA5, 15296).ToArray();
+        byte[] actual = Enumerable.Repeat((byte)0xA5, 17344).ToArray();
 
         SilkFrameUniformWriter.Write(
             frame, actual, flipClipSpaceY, RenderOutputTransform.Reinhard, 1.5f,
@@ -57,7 +57,7 @@ public sealed class SilkFrameUniformLayoutTests
         // Every byte is independently accounted for. In particular the first
         // two controls are uints, not floats, and the matrices below are literal
         // inverses/transposes of the simple cameras in FrameBytes.
-        var expected = new byte[15296];
+        var expected = new byte[17344];
         PutFloats(expected, 0,
             0.5f, 0, 0, 0,
             0, flipClipSpaceY ? -0.25f : 0.25f, 0, 0,
@@ -119,7 +119,7 @@ public sealed class SilkFrameUniformLayoutTests
     {
         var frame = new SilkFrameState();
         frame.Update(new SilkFrameCommand(FrameBytes(128, 8)));
-        byte[] actual = Enumerable.Repeat((byte)0xCD, 15296).ToArray();
+        byte[] actual = Enumerable.Repeat((byte)0xCD, 17344).ToArray();
         SilkFrameUniformWriter.Write(
             frame, actual, false, RenderOutputTransform.Identity, 0);
         ulong before = frame.Revision;
@@ -130,7 +130,7 @@ public sealed class SilkFrameUniformLayoutTests
         SilkFrameUniformWriter.Write(
             frame, actual, false, RenderOutputTransform.Identity, 0);
 
-        var expectedLights = new byte[15296];
+        var expectedLights = new byte[17344];
         for (int light = 0; light < 128; light++)
         {
             PutExpectedLight(expectedLights, light, light < lightCount);
@@ -167,11 +167,11 @@ public sealed class SilkFrameUniformLayoutTests
         SilkShadowDescriptor[] descriptors = ShadowDescriptors();
         SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(descriptors)!;
         SilkShadowFrameBinding binding = SilkShadowFrameBinding.Create(descriptors, layout);
-        byte[] actual = Enumerable.Repeat((byte)0xA7, 15296).ToArray();
+        byte[] actual = Enumerable.Repeat((byte)0xA7, 17344).ToArray();
         SilkFrameUniformWriter.Write(
             frame, actual, false, RenderOutputTransform.Identity, 0, shadows: binding);
 
-        var expected = new byte[15296];
+        var expected = new byte[17344];
         PutExpectedShadows(expected, bound: true);
         await AssertBytes(actual[12576..15008], expected[12576..15008], "all bound shadow blocks");
         await Assert.That(binding.Count).IsEqualTo(4);
@@ -202,14 +202,14 @@ public sealed class SilkFrameUniformLayoutTests
 
     [Test]
     [Arguments(0)]
-    [Arguments(15295)]
-    [Arguments(15296)]
-    [Arguments(15297)]
+    [Arguments(17343)]
+    [Arguments(17344)]
+    [Arguments(17345)]
     public async Task FrameWriterRejectsNonExactDestinationLength(int length)
     {
         var frame = new SilkFrameState();
         byte[] destination = Enumerable.Repeat((byte)0xB6, length).ToArray();
-        if (length == 15296)
+        if (length == 17344)
         {
             SilkFrameUniformWriter.Write(
                 frame, destination, false, RenderOutputTransform.Identity, 0);
@@ -227,7 +227,7 @@ public sealed class SilkFrameUniformLayoutTests
                 .IsTrue().Because("length validation must precede the first write");
         }
         int frameSize = SilkFrameUniformWriter.ByteSize;
-        await Assert.That(frameSize).IsEqualTo(15296);
+        await Assert.That(frameSize).IsEqualTo(17344);
         await Assert.That(frame.Revision).IsEqualTo(0UL);
     }
 
@@ -242,7 +242,7 @@ public sealed class SilkFrameUniformLayoutTests
         BinaryPrimitives.WriteUInt32LittleEndian(wire.AsSpan(4), (uint)lightingLength);
         wire.AsSpan(23080, 16).Clear();
         _ = scene.Apply(wire, 1, 10);
-        var bytes = new byte[15296];
+        var bytes = new byte[17344];
         SilkFrameUniformWriter.Write(
             scene.Frame, bytes, false, RenderOutputTransform.Identity, 0);
         await Assert.That(ReadVector(bytes, 208)).IsEqualTo(Vector4.Zero);
@@ -424,7 +424,7 @@ public sealed class SilkFrameUniformLayoutTests
         // Matrix4x4.Invert may produce either sign of IEEE zero on different
         // SIMD paths. Compare that numeric zero at computed camera coordinates;
         // every reserved word, array value and other byte remains exact.
-        if (actual.Length == 15296 && expected.Length == 15296)
+        if (actual.Length == 17344 && expected.Length == 17344)
         {
             actual = (byte[])actual.Clone();
             foreach (int matrix in new[] { 0, 12512 })

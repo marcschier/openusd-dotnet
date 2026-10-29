@@ -102,6 +102,7 @@ public readonly ref struct SilkFrameCommand
     private const int ExtendedSize = 536;
     private const int LightingSize = AmbientOffset + 16;
     private const int DomeSize = DomeTableOffset + ((int)MaximumDomes * DomeEntrySize);
+    private const int ShapingSize = ShapingTableOffset + ((int)MaximumLights * ShapingEntrySize);
     private const int ClipPlaneOffset = MinimumSize + 8;
     private const int LightCountOffset = ExtendedSize;
     private const int LightTableOffset = ExtendedSize + 16;
@@ -110,6 +111,8 @@ public readonly ref struct SilkFrameCommand
     private const int DomeCountOffset = LightingSize;
     private const int DomeTableOffset = LightingSize + 16;
     private const int DomeEntrySize = 32;
+    private const int ShapingTableOffset = DomeSize;
+    private const int ShapingEntrySize = 16;
     private readonly ReadOnlySpan<byte> _bytes;
 
     /// <summary>Gets the fixed number of direct lights a frame table can carry.</summary>
@@ -124,10 +127,11 @@ public readonly ref struct SilkFrameCommand
         if (bytes.Length != MinimumSize &&
             bytes.Length != ExtendedSize &&
             bytes.Length != LightingSize &&
-            bytes.Length != DomeSize)
+            bytes.Length != DomeSize &&
+            bytes.Length != ShapingSize)
         {
             throw new InvalidDataException(
-                "The frame command must be exactly 272, 536, 23096, or 23368 bytes.");
+                "The frame command must be exactly 272, 536, 23096, 23368, or 25416 bytes.");
         }
         if (bytes.Length >= ExtendedSize &&
             BinaryPrimitives.ReadUInt32LittleEndian(bytes[MinimumSize..(MinimumSize + 4)]) > 8)
@@ -153,7 +157,7 @@ public readonly ref struct SilkFrameCommand
         {
             ValidateLightTable(bytes);
         }
-        if (bytes.Length == DomeSize)
+        if (bytes.Length >= DomeSize)
         {
             uint domeCount = BinaryPrimitives.ReadUInt32LittleEndian(
                 bytes[DomeCountOffset..(DomeCountOffset + 4)]);
@@ -162,6 +166,10 @@ public readonly ref struct SilkFrameCommand
                 throw new InvalidDataException("The frame command dome count is invalid.");
             }
             ValidateDomeTable(bytes, domeCount);
+        }
+        if (bytes.Length == ShapingSize)
+        {
+            ValidateShapingTable(bytes);
         }
         _bytes = bytes;
     }
@@ -197,6 +205,50 @@ public readonly ref struct SilkFrameCommand
         if (!float.IsFinite(BinaryPrimitives.ReadSingleLittleEndian(entry[offset..])))
         {
             throw new InvalidDataException("A frame light scalar is not finite.");
+        }
+    }
+
+    /// <summary>
+    /// Checks the ABI v28 ShapingAPI table before any accessor reads a cone.
+    /// </summary>
+    /// <remarks>
+    /// A published slot carries a finite cone angle in [0, 180] degrees and a
+    /// finite, non-negative focus exponent; the producer clamps authored values
+    /// into that range, so anything outside it is corruption rather than intent.
+    /// Slots past the light count must be zero, as in every other fixed table.
+    /// </remarks>
+    private static void ValidateShapingTable(ReadOnlySpan<byte> bytes)
+    {
+        uint lightCount = BinaryPrimitives.ReadUInt32LittleEndian(
+            bytes[LightCountOffset..(LightCountOffset + 4)]);
+        for (int light = 0; light < MaximumLights; light++)
+        {
+            ReadOnlySpan<byte> entry = bytes.Slice(
+                ShapingTableOffset + (light * ShapingEntrySize), ShapingEntrySize);
+            float cone = BinaryPrimitives.ReadSingleLittleEndian(entry[0..4]);
+            float focus = BinaryPrimitives.ReadSingleLittleEndian(entry[4..8]);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(entry[8..12]) != 0 ||
+                BinaryPrimitives.ReadUInt32LittleEndian(entry[12..16]) != 0)
+            {
+                throw new InvalidDataException(
+                    "A frame light shaping entry reserved field is not zero.");
+            }
+            if (light >= lightCount)
+            {
+                if (BinaryPrimitives.ReadUInt32LittleEndian(entry[0..4]) != 0 ||
+                    BinaryPrimitives.ReadUInt32LittleEndian(entry[4..8]) != 0)
+                {
+                    throw new InvalidDataException(
+                        "A frame light shaping entry past the published count is not zeroed.");
+                }
+                continue;
+            }
+            if (!float.IsFinite(cone) || cone < 0 || cone > 180 ||
+                !float.IsFinite(focus) || focus < 0)
+            {
+                throw new InvalidDataException(
+                    "A frame light shaping cone or focus is outside its finite range.");
+            }
         }
     }
 
@@ -340,6 +392,33 @@ public readonly ref struct SilkFrameCommand
     internal float GetLightSpecular(int light) => ReadLightSingle(light, 168);
 
     internal float GetLightRadius(int light) => ReadLightSingle(light, 172);
+
+    /// <summary>
+    /// Gets the ShapingAPI cone angle, in degrees, of one direct light.
+    /// </summary>
+    /// <remarks>
+    /// 180 for a frame that predates the ABI v28 shaping table, which leaves the
+    /// light unshaped exactly as earlier consumers drew it.
+    /// </remarks>
+    internal float GetLightShapingConeAngle(int light)
+    {
+        ValidateLight(light);
+        return _bytes.Length >= ShapingSize
+            ? BinaryPrimitives.ReadSingleLittleEndian(
+                _bytes.Slice(ShapingTableOffset + (light * ShapingEntrySize), 4))
+            : 180;
+    }
+
+    /// <summary>Gets the ShapingAPI focus exponent of one direct light.</summary>
+    /// <remarks>Zero, meaning no falloff, for a frame without the shaping table.</remarks>
+    internal float GetLightShapingFocus(int light)
+    {
+        ValidateLight(light);
+        return _bytes.Length >= ShapingSize
+            ? BinaryPrimitives.ReadSingleLittleEndian(
+                _bytes.Slice(ShapingTableOffset + (light * ShapingEntrySize) + 4, 4))
+            : 0;
+    }
 
     internal float GetAmbientColor(int component)
     {

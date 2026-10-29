@@ -65,12 +65,12 @@ public sealed class SilkEnvironmentRetentionTests
             gpu?.Commit();
             cpu.Commit();
         }
-        using var first = new OpenUsdSilkPage(27, 1, Upsert(DomePath, TexturePath), 1);
+        using var first = new OpenUsdSilkPage(28, 1, Upsert(DomePath, TexturePath), 1);
         apply(first);
         SilkEnvironmentFrameBinding binding = resources.EnvironmentBinding;
         ulong reserved = budget.Usage.ReservedBytes;
         int originalAttempts = attempts;
-        using var update = new OpenUsdSilkPage(27, 2, Upsert(DomePath, SecondTexturePath), 1);
+        using var update = new OpenUsdSilkPage(28, 2, Upsert(DomePath, SecondTexturePath), 1);
         refuse = true;
         await Assert.That(() => apply(update)).Throws<OutOfMemoryException>();
         await Assert.That(attempts).IsEqualTo(originalAttempts + 1);
@@ -211,7 +211,7 @@ public sealed class SilkEnvironmentRetentionTests
                 return image;
             });
         var scene = new SilkSceneState();
-        using var page = new OpenUsdSilkPage(27, 1,
+        using var page = new OpenUsdSilkPage(28, 1,
             [.. Upsert(DomePath, TexturePath), .. Upsert(SecondDomePath, SecondTexturePath)], 2);
         void apply()
         {
@@ -289,7 +289,7 @@ public sealed class SilkEnvironmentRetentionTests
             cpu.Commit();
             resources.CompleteApply(scene, cpu.Delta, gpu?.TexturesPrepared == true);
         }
-        using var first = new OpenUsdSilkPage(27, 1, Upsert(DomePath, TexturePath), 1);
+        using var first = new OpenUsdSilkPage(28, 1, Upsert(DomePath, TexturePath), 1);
         apply(first);
         using var originalCommands = new EnvironmentCommandList();
         resources.BindEnvironment(originalCommands);
@@ -302,8 +302,8 @@ public sealed class SilkEnvironmentRetentionTests
         ulong revision = scene.EnvironmentRevision;
         bool retireOnly = refusal == "retirement-mesh";
         using var update = retireOnly
-            ? new OpenUsdSilkPage(27, 2, [.. Remove(DomePath), .. LinkedMesh()], 2)
-            : new OpenUsdSilkPage(27, 2,
+            ? new OpenUsdSilkPage(28, 2, [.. Remove(DomePath), .. LinkedMesh()], 2)
+            : new OpenUsdSilkPage(28, 2,
                 [.. Remove(DomePath), .. Upsert(SecondDomePath, SecondTexturePath), .. LinkedMesh()], 3);
         IDisposable? pressure = refusal == "texture"
             ? budget.Reserve(new SilkTextureDescriptor(
@@ -2909,7 +2909,7 @@ public sealed class SilkEnvironmentRetentionTests
         SilkSceneGpuStatistics geometry = resources.Statistics;
         ulong geometryRevision = scene.GeometryRevision;
         ulong resourceRevision = resources.Revision;
-        await Assert.That(frameBuffer.Size).IsEqualTo((nuint)15296);
+        await Assert.That(frameBuffer.Size).IsEqualTo((nuint)17344);
         await Assert.That(geometry.GeometryBuilds).IsEqualTo(1UL);
         await Assert.That(geometry.VertexUploads).IsEqualTo(1UL);
         await Assert.That(geometry.IndexUploads).IsEqualTo(1UL);
@@ -3014,7 +3014,7 @@ public sealed class SilkEnvironmentRetentionTests
             await Assert.That(RetentionReadback(next).SequenceEqual(edit.Expected))
                 .IsTrue().Because($"the {edit.Name} transition must change exactly its frame bytes");
             await Assert.That(resources.Statistics.BufferWriteBytes - beforeWrite.BufferWriteBytes)
-                .IsEqualTo(edit.Changed ? 15296UL : 0UL);
+                .IsEqualTo(edit.Changed ? 17344UL : 0UL);
             await Assert.That(resources.Statistics.BufferAllocationBytes)
                 .IsEqualTo(beforeWrite.BufferAllocationBytes);
             await Assert.That(scene.Frame.Revision)

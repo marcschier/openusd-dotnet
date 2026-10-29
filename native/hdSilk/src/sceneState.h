@@ -411,6 +411,11 @@ struct HdSilkLightRecord
     float diffuse = 1.0f;
     float specular = 1.0f;
     float radius = 0.5f;
+    // UsdLux ShapingAPI as Storm applies it: only rect and disk lights read it,
+    // the cone is in degrees about the light's -Z axis, and focus is the cosine
+    // exponent. 180 degrees means unshaped, which every other light type keeps.
+    float shapingConeAngle = 180.0f;
+    float shapingFocus = 0.0f;
     bool visible = true;
     bool ambientOnly = false;
     // The resolved dome texture:file, empty for every light that is not a

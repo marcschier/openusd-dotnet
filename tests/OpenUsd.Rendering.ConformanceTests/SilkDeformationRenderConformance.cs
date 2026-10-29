@@ -60,7 +60,7 @@ public static class SilkDeformationRenderConformance
         ulong revision = renderer.GpuResources.Revision;
         ulong reserved = budget.Usage.ReservedBytes;
         byte[] changed = CreateQuad("/Quad", BindPoints(), BindNormals(), TranslationRig(1.1f));
-        using var page = new OpenUsdSilkPage(27, 2, changed, 1);
+        using var page = new OpenUsdSilkPage(28, 2, changed, 1);
         Exception? refusal = null;
         bool candidateVisible;
         using (SilkSceneState.PreparedPage cpu = renderer.Scene.PreparePage(page))
@@ -777,7 +777,7 @@ public static class SilkDeformationRenderConformance
             command.CopyTo(page, offset);
             offset += command.Length;
         }
-        using var owned = new OpenUsdSilkPage(27, revision, page, checked((uint)all.Length));
+        using var owned = new OpenUsdSilkPage(28, revision, page, checked((uint)all.Length));
         renderer.ApplyPage(owned);
     }
 

@@ -2733,6 +2733,42 @@ def Xform "World"
     }
 
     [Test]
+    public async Task ShapedRectLightWithFullConeMatchesUnshapedRectOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-shaping-full-cone",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.ShapingWideConeEquivalent),
+            expectDivergence: false);
+    }
+
+    [Test]
+    public async Task ShapedRectLightNarrowConeDivergesFromFullConeOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-shaping-narrow-cone",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.ShapingNarrowConeDivergence),
+            expectDivergence: true);
+    }
+
+    [Test]
+    public async Task ShapedDiskLightFocusDivergesFromUnfocusedDiskOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-shaping-focus",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.ShapingFocusDivergence),
+            expectDivergence: true);
+    }
+
+    [Test]
+    public async Task ShapedRectLightBackSideMatchesUnlitSceneOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-shaping-rect-back-side",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.ShapingRectBackSideEquivalent),
+            expectDivergence: false);
+    }
+
+    [Test]
     public async Task FifthDirectLightContributesOnVulkan()
     {
         ParityImage image = CaptureSyntheticFifthDirectLight();
@@ -3198,6 +3234,10 @@ def Xform "World"
         DiskDivergence,
         CylinderEquivalent,
         CylinderDivergence,
+        ShapingWideConeEquivalent,
+        ShapingNarrowConeDivergence,
+        ShapingFocusDivergence,
+        ShapingRectBackSideEquivalent,
     }
 
     private static string FormatSelfConsistencyMetrics(
@@ -5483,7 +5523,12 @@ def Xform "World"
 
     private static byte[] CreateAreaLightFrameCommand(AreaLightGate gate)
     {
-        const int lightingSize = 23096;
+        // Shaping gates use the page ABI 28 table after the dome block; the
+        // original gates keep the 23096-byte tier, whose rect lights stay
+        // two-sided because a frame without the table carries no cone.
+        const int shapingTableOffset = 23368;
+        bool shaped = gate >= AreaLightGate.ShapingWideConeEquivalent;
+        int lightingSize = shaped ? shapingTableOffset + (128 * 16) : 23096;
         const int lightCountOffset = 536;
         const int lightTableOffset = 552;
         const int lightEntrySize = 176;
@@ -5498,6 +5543,17 @@ def Xform "World"
         AreaLightSpec right = CreateRightAreaLight(gate);
         WriteAreaLight(bytes, lightTableOffset, left);
         WriteAreaLight(bytes, lightTableOffset + lightEntrySize, right);
+        if (shaped)
+        {
+            AreaLightSpec[] lights = [left, right];
+            for (int light = 0; light < lights.Length; light++)
+            {
+                int entry = shapingTableOffset + (light * 16);
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry), lights[light].ShapingCone);
+                BinaryPrimitives.WriteSingleLittleEndian(
+                    bytes.AsSpan(entry + 4), lights[light].ShapingFocus);
+            }
+        }
         return bytes;
     }
 
@@ -5528,6 +5584,12 @@ def Xform "World"
                 new(2, 0, 0, 0, 0, new Vector3(0, 1, 0), -0.5f, 0),
             AreaLightGate.DiskDivergence =>
                 new(4, 0, 0, 0, 0.12f, new Vector3(0, 1, 0), -0.5f, 0),
+            AreaLightGate.ShapingWideConeEquivalent or AreaLightGate.ShapingNarrowConeDivergence =>
+                new(3, 0.85f, 0.65f, 0, 0.12f, new Vector3(0, 0, 1), -0.5f, 0, 180, 0),
+            AreaLightGate.ShapingFocusDivergence =>
+                new(4, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), -0.5f, 0, 90, 0),
+            AreaLightGate.ShapingRectBackSideEquivalent =>
+                new(2, 0, 0, 0, 0, new Vector3(0, 0, 1), -0.5f, 0),
             _ => new(2, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), -0.5f, 0),
         };
 
@@ -5541,7 +5603,15 @@ def Xform "World"
             AreaLightGate.DiskEquivalent =>
                 new(4, 0, 0, 0, 0.12f, new Vector3(0, 1, 0), 0.5f, 0),
             AreaLightGate.DiskDivergence =>
-                new(4, 0, 0, 0, 0.12f, new Vector3(0, 0, -1), 0.5f, 0),
+                new(4, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0),
+            AreaLightGate.ShapingWideConeEquivalent =>
+                new(3, 0.85f, 0.65f, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0, 180, 6),
+            AreaLightGate.ShapingNarrowConeDivergence =>
+                new(3, 0.85f, 0.65f, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0, 15, 0),
+            AreaLightGate.ShapingFocusDivergence =>
+                new(4, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0, 90, 12),
+            AreaLightGate.ShapingRectBackSideEquivalent =>
+                new(3, 0.85f, 0.65f, 0, 0.12f, new Vector3(0, 0, -1), 0.5f, 0, 90, 0),
             AreaLightGate.CylinderEquivalent =>
                 new(5, 0, 0, 0.16f, 0.12f, new Vector3(1, 0, 0), 0.5f, 0),
             AreaLightGate.CylinderDivergence =>
@@ -5595,7 +5665,9 @@ def Xform "World"
         float Intensity,
         Vector3 Direction,
         float X,
-        float Y);
+        float Y,
+        float ShapingCone = 180,
+        float ShapingFocus = 0);
 
     private static byte[] CreateAttribute(
         SilkAttributeSemantic semantic,

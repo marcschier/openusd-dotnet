@@ -1311,7 +1311,7 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v8 and
-hdSilk session ABI v6; the hdSilk page ABI is v27. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v6; the hdSilk page ABI is v28. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
@@ -3644,7 +3644,12 @@ is measured rather than hidden by the matte transport isolation.
 
 The hdSilk subset is intentionally narrow: `UsdLuxDistantLight` and `UsdLuxSphereLight` travel as
 direct lights with colour, intensity, exposure, diffuse/specular multipliers, radius, and world
-transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Shadow-enable is preserved as a
+transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Rect and disk lights also apply
+`UsdLuxShapingAPI` the way Storm's area-light approximation does: when `shaping:cone:angle` is below
+180 degrees, a surface outside the cone receives nothing, and inside it the contribution is scaled by
+the emitter-axis cosine raised to `shaping:focus`. Because Storm's default cone is 90 degrees, an
+unshaped rect or disk light emits only from its front face. Cone softness, IES profiles and sphere-light
+shaping are not applied. Shadow-enable is preserved as a
 diagnostic bit only, and `UsdLuxLightAPI` light linking is applied per draw (see "hdSilk UsdLux light
 and shadow linking"). The measured `light-distant-shadow` parity scene confirms Storm's offscreen
 harness is byte-identical when the authored distant-light shadow is disabled
@@ -4581,8 +4586,9 @@ Count equality alone cannot establish that those retained identities are still v
 An authored-direct-light flag preserves authored darkness even with zero effective entries; a scene with
 no authored lighting keeps its deterministic camera headlight.
 
-The full native frame is 23368 bytes (23096 without the dome extension); direct entries remain 176 bytes.
-The GPU frame is 15296 bytes at existing binding 8, addressed as a raw buffer because D3D12 restricts
+The full native frame is 25416 bytes. It is 23368 bytes without the page ABI 28 shaping table and 23096
+bytes without the dome extension; direct entries remain 176 bytes. The GPU frame is 17344 bytes at
+existing binding 8, addressed as a raw buffer because D3D12 restricts
 a structured-buffer **element** to 2048 bytes. Checked D3D12, Vulkan and Metal shader sources share
 this layout; no additional slot or per-element P/Invoke is introduced. Light and shadow masks, batch keys,
 surface cache keys, instance inheritance and shadow slots preserve all 128 indices. The separate eight-dome

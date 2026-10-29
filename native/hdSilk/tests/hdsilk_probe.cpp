@@ -91,7 +91,7 @@ struct ParsedAttribute
     std::vector<float> values;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 27);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 28);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128);
 
 using ParsedLightMask = std::array<uint32_t, 4>;
@@ -761,7 +761,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             constexpr size_t projectionOffset = viewOffset + (16 * sizeof(double));
             uint32_t lightingReserved0 = 1;
             uint32_t lightingReserved1 = 1;
-            if (byteSize != 23368u ||
+            if (byteSize != 25416u ||
                 !ReadValue(
                     data,
                     size,
