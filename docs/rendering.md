@@ -5120,8 +5120,9 @@ computes and what a clamp cannot reproduce. The authored `scale` and `bias` are 
 filtered value, because that is where UsdUVTexture puts them -- the reader samples, then scales and
 biases. A fully bordered sample therefore resolves to the authored bias rather than to zero, and a
 blend that straddles an edge carries the bias exactly once instead of once per texel. The fragment
-stage still resolves both border modes to clamp-to-edge, because the wire carries no border colour and
-no backend is handed one; the vertex stage owns its own addressing and has no such constraint. The two
+sampler uses the same transparent-black border. The wire carries no custom border colour, so MaterialX
+`constant` cannot use its authored `default` as the out-of-range value; `default` remains the fallback
+for an unreadable image. The two
 modes are distinct on the wire: `OPENUSD_SILK_WRAP_USE_METADATA` is published for an authored
 `useMetadata` and for an unauthored `wrap` -- which is the same thing, since `useMetadata` is the
 schema default -- while `OPENUSD_SILK_WRAP_BLACK` is published for an authored `black` and for a token

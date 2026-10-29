@@ -497,9 +497,10 @@ Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
   `texture-wrap-use-metadata-self-consistency` compare `repeat` against the candidate wrap mode with UVs
   confined to `[0,1]`, where every wrap mode is mathematically equivalent. Each measured
   `maxChannelDelta=2` / `meanChannelDelta=0.082`. The companion outside-`[0,1]` UV divergence cases require
-  the sampler address mode to differ: clamp and `useMetadata`/black each measured `maxChannelDelta=203` /
-  `meanChannelDelta=14.950` -- identical, because both resolve to clamp-to-edge -- and mirror measured
-  `maxChannelDelta=127` / `meanChannelDelta=7.135`.
+  the sampler address mode to differ. In the pre-`7856e0d` capture, clamp and `useMetadata`/black each
+  measured `maxChannelDelta=203` / `meanChannelDelta=14.950` because both resolved to clamp-to-edge;
+  mirror measured `maxChannelDelta=127` / `meanChannelDelta=7.135`. The current border behavior is
+  covered separately by the D3D12 and Vulkan address-mode pixel gates below.
 - `texture-colorspace-auto-self-consistency` compares diffuse `sourceColorSpace=sRGB` with `auto`, which
   resolves to the same sRGB decode for diffuse textures. It measured `maxChannelDelta=2` /
   `meanChannelDelta=0.082`. The raw/linear companion compares the same texture as `sRGB` versus `raw`;
@@ -560,9 +561,8 @@ analytic native fixtures rather than this unsuitable Storm reference.
 - Varying, uniform, and face-varying texture-coordinate primvar interpolation modes are gated.
 - Other primvar names beyond constant `displayColor`, normals, and `st` texture coordinates are not gated.
 - Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
-  space are gated. `useMetadata` and `black` are distinct wire values: the fragment stage resolves both
-  to clamp-to-edge, because the wire carries no border colour and no backend is given one, while the
-  vertex-stage displacement sampler implements both exactly as a transparent-black border and resolves
+  space are gated. `useMetadata` and `black` remain distinct wire values. The fragment sampler maps both
+  to a transparent-black border; vertex displacement samples the same border and resolves
   `useMetadata` from the image's own per-axis wrap metadata.
 - Specular, opacity, and occlusion texture slots have no parity scene.
 - `displacement` moves geometry in hdSilk, resolved from the authored `displacement` material terminal

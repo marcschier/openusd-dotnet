@@ -233,9 +233,10 @@ internal readonly record struct SilkDisplacementPlan(
 /// <c>useMetadata</c> are a transparent-black border: a texel outside the image
 /// contributes zero <em>sampled</em> value, including its share of a bilinear
 /// blend near an edge, which is what a border-addressed sampler computes. The
-/// fragment stage resolves both to clamp-to-edge because no backend is handed a
-/// border colour; the vertex stage owns its own addressing and has no such
-/// constraint.
+/// fragment sampler uses the same border behavior. The wire carries no custom
+/// border colour, so MaterialX <c>constant</c> uses transparent black rather
+/// than its authored <c>default</c>; that input remains the unreadable-file
+/// fallback.
 /// </para>
 /// <para>
 /// The authored <c>scale</c> and <c>bias</c> are applied to the <em>filtered</em>

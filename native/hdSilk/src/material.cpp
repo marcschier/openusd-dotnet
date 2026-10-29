@@ -560,17 +560,17 @@ bool _TryReadStringParameter(
 /// The MaterialX default is `periodic`, not the `black` that UsdUVTexture's
 /// unauthored `wrap` resolves to, so an image node with no authored address
 /// mode tiles. Reading the UsdUVTexture token names here instead published
-/// `black` for every MaterialX image, which clamped a tiled texture to its edge
-/// row of texels.
+/// `black` for every MaterialX image, which selected a transparent-black border
+/// and stopped the tiled texture from repeating.
 ///
 /// `constant` is carried as OPENUSD_SILK_WRAP_BLACK, and that is an
 /// approximation rather than an exact transport. MaterialX returns the node's
-/// `default` value outside the unit range; the wire carries no border colour and
-/// the current renderer resolves the black mode to clamp-to-edge, so an authored
-/// `constant` renders the edge texel instead. It is still the right value to
-/// publish: it is the only mode that records "the author did not ask for
-/// periodic or mirrored addressing", which is what a consumer implementing
-/// border sampling would need. Anything else is reported so the caller can
+/// `default` value outside the unit range, but the wire carries no custom border
+/// colour, so the managed fragment sampler uses transparent black instead.
+/// `default` remains the fallback for an unreadable image. BLACK is still the
+/// right mode to publish: it records that the author did not ask for periodic or
+/// mirrored addressing. Preserving the authored border colour requires a new
+/// wire field and an ABI bump. Anything else is reported so the caller can
 /// refuse the entry rather than tile a texture the graph asked to clamp.
 bool _TryReadMaterialXAddressMode(
     const std::map<TfToken, VtValue>& parameters,

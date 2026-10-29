@@ -1274,18 +1274,15 @@ extern "C" {
 
 /// Texture wrap modes.
 ///
-/// OPENUSD_SILK_WRAP_BLACK is the value published for UsdUVTexture's
-/// "black"/unauthored wrap and for MaterialX "constant" addressing. Its name
-/// describes what those schemas ask for, not what this renderer currently does:
-/// no supported backend is given a border colour, and every consumer in this
-/// repository resolves BLACK to clamp-to-edge, so it renders identically to
-/// OPENUSD_SILK_WRAP_CLAMP. A sample outside the unit range therefore returns
-/// the edge texel rather than black or the MaterialX node's `default` value.
-/// The wire carries no border colour at all, so a consumer that wants true
-/// border sampling needs a new field and an ABI bump rather than a different
-/// reading of this one. The two values stay distinct because they record
-/// different authored intent, which a consumer that does implement border
-/// sampling must be able to tell apart.
+/// OPENUSD_SILK_WRAP_BLACK is published for UsdUVTexture's authored "black",
+/// unrecognized wrap tokens, and MaterialX "constant" addressing. The managed
+/// fragment sampler maps BLACK and useMetadata to a transparent-black border.
+/// The vertex-stage displacement sampler applies the same border behavior. The
+/// wire carries no custom border colour, so MaterialX "constant" uses transparent
+/// black rather than the node's `default`; `default` remains the fallback for an
+/// unreadable image. Preserving an arbitrary border colour requires a new field
+/// and an ABI bump. The two wrap values remain distinct because they record
+/// different authored intent.
 #define OPENUSD_SILK_WRAP_BLACK 0u
 #define OPENUSD_SILK_WRAP_CLAMP 1u
 #define OPENUSD_SILK_WRAP_REPEAT 2u

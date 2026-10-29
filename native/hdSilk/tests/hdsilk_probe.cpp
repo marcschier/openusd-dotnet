@@ -9123,7 +9123,8 @@ bool VerifyMaterialXImageSamplingProjection()
 
     // MaterialX defaults both address modes to periodic. Reading UsdUVTexture's
     // wrapS/wrapT here found nothing and published black, which the renderer
-    // resolves to clamp-to-edge, so a tiled MaterialX texture stopped tiling.
+    // resolves to a transparent-black border, so a tiled MaterialX texture
+    // stopped tiling.
     std::map<TfToken, VtValue> unauthored;
     HdSilkMaterialRecord tiled = HdSilkMaterial::Resolve(
         materialPath,

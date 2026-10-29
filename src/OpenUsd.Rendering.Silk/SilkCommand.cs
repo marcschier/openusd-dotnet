@@ -1858,13 +1858,11 @@ public enum SilkTextureWrap : uint
     /// </summary>
     /// <remarks>
     /// The name records the authored intent, not what every stage does with it.
-    /// The wire carries no border colour, no supported backend is given one, and
-    /// <c>SilkSceneGpuResources</c> resolves this mode to
-    /// <see cref="SilkSamplerAddressMode.ClampToEdge"/> for the fragment stage,
-    /// so a fragment sample outside the unit range returns the edge texel. The
-    /// vertex-stage displacement sampler owns its own addressing and implements
-    /// this mode exactly, as a transparent-black border that contributes zero
-    /// height to a bilinear blend.
+    /// The fragment sampler maps this mode and <see cref="UseMetadata"/> to a
+    /// transparent-black border. The vertex-stage displacement sampler applies
+    /// the same border behavior. The wire carries no custom border colour, so
+    /// MaterialX <c>constant</c> uses transparent black; its <c>default</c>
+    /// remains the fallback for an unreadable image.
     /// </remarks>
     Black = 0,
 
