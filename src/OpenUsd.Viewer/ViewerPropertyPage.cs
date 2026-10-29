@@ -40,6 +40,7 @@ internal enum ViewerPropertyGroup
     LevelOfDetail,
     Motion,
     CoordinateSystems,
+    ColorSpace,
     Other
 }
 
@@ -213,7 +214,7 @@ internal sealed class ViewerPropertyPage
             "horizontalApertureOffset" or "verticalApertureOffset" or "focalLength" or
             "clippingRange" or "clippingPlanes" or "fStop" or "focusDistance" or "exposure" or
             "exposure:iso" or "exposure:time" or "exposure:fStop" or "exposure:responsivity" or
-            "shutter:open" or "shutter:close" or "stereoRole")
+            "shutter:open" or "shutter:close" or "stereoRole" || isCamera && HasNamespace(name, "backPlate:"))
         {
             return ViewerPropertyGroup.Camera;
         }
@@ -303,7 +304,11 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Model;
         }
-        return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
+        if (HasNamespace(name, "colorSpace:") || HasNamespace(name, "colorSpaceDefinition:"))
+        {
+            return ViewerPropertyGroup.ColorSpace;
+        }
+        return IsPhysicsName(name) ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
 
     private static ViewerPropertyGroup RelationshipGroup(string name, ViewerGeometrySchema geometry)
@@ -348,7 +353,7 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.CoordinateSystems;
         }
-        return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
+        return IsPhysicsName(name) ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
 
     private static bool IsMeshProperty(string name, ViewerGeometrySchema geometry) =>
@@ -450,4 +455,20 @@ internal sealed class ViewerPropertyPage
     // A namespace prefix only groups a property that has a nonempty name after it.
     private static bool HasNamespace(string name, string prefix) =>
         name.Length > prefix.Length && name.StartsWith(prefix, StringComparison.Ordinal);
+
+    // PhysicsDriveAPI and PhysicsLimitAPI are multiple-apply: drive:<dof>:physics:<name>.
+    private static bool IsPhysicsName(string name)
+    {
+        if (HasNamespace(name, "physics:"))
+        {
+            return true;
+        }
+        if (!name.StartsWith("drive:", StringComparison.Ordinal) &&
+            !name.StartsWith("limit:", StringComparison.Ordinal))
+        {
+            return false;
+        }
+        string[] parts = name.Split(':');
+        return parts.Length == 4 && parts[1].Length > 0 && parts[2] == "physics" && parts[3].Length > 0;
+    }
 }

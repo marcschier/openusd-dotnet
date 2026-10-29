@@ -632,6 +632,38 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task PhysicsDrivesAndLimitsColorSpacesAndCameraBackPlatesJoinTheirGroups()
+    {
+        string[] names =
+        [
+            "drive:rotX:physics:stiffness", "limit:transX:physics:low", "drive:physics:stiffness",
+            "drive:rotX:physx:stiffness", "drives:rotX:physics:stiffness", "colorSpace:name",
+            "colorSpaceDefinition:acescg:redChroma", "colorSpace:", "backPlate:main:image",
+            "backPlate:main:luma:gain"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "float", true, false, 0, "<none>", "raw"))
+            .ToArray();
+
+        static string joined(ViewerPropertyPage page) =>
+            string.Join(",", page.Attributes.Select(static item => item.Name));
+
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.Physics)))
+            .IsEqualTo("drive:rotX:physics:stiffness,limit:transX:physics:low");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.ColorSpace)))
+            .IsEqualTo("colorSpace:name,colorSpaceDefinition:acescg:redChroma");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.Camera, isCamera: true)))
+            .IsEqualTo("backPlate:main:image,backPlate:main:luma:gain");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.Other)))
+            .IsEqualTo("drive:physics:stiffness,drive:rotX:physx:stiffness,drives:rotX:physics:stiffness," +
+                "colorSpace:,backPlate:main:image,backPlate:main:luma:gain");
+    }
+
+    [Test]
     public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
     {
         string[] names =

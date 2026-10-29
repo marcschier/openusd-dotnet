@@ -1232,6 +1232,7 @@
               <ComboBoxItem Content="Level of detail (lod:)" />
               <ComboBoxItem Content="Motion (motion:)" />
               <ComboBoxItem Content="Coordinate systems (coordSys:)" />
+              <ComboBoxItem Content="Color space" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox

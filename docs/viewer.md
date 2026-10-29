@@ -330,8 +330,9 @@ selected property through the shared document history; filtering does not grant 
 
 The property-group selector intersects that state filter and search before paging. Transform groups
 contain the existing `xformOp:*` attributes and `xformOpOrder`, without reordering or decomposing the
-operation stack. Camera optics, shutter, and stereo properties are grouped only when the detached
-snapshot identifies a validated camera schema. **Common light controls** exposes the eight
+operation stack. Camera optics, shutter, and stereo properties, and the BackPlateAPI
+`backPlate:<name>:*` attributes, are grouped only when the detached snapshot identifies a
+validated camera schema. **Common light controls** exposes the eight
 supported light inputs (`inputs:intensity`, `inputs:exposure`, `inputs:diffuse`, `inputs:specular`,
 `inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`, and `inputs:color`)
 only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. The same group includes
@@ -356,7 +357,9 @@ outputs, these two groups follow the namespace and do not check that `PrimvarsAP
 or a prefix that differs in case, stays under **Other properties**.
 **Visibility and purpose** groups the exact `visibility` and `purpose` attributes and the exact
 `proxyPrim` relationship; it does not check that the prim is imageable. **Physics** groups
-attributes and relationships in the `physics:` namespace, such as `physics:mass`. PhysX
+attributes and relationships in the `physics:` namespace, such as `physics:mass`, and the
+PhysicsDriveAPI and PhysicsLimitAPI attributes `drive:<dof>:physics:*` and
+`limit:<dof>:physics:*`, such as `drive:angular:physics:stiffness`. PhysX
 namespaces such as `physxRigidBody:` stay under **Other properties**, as do a bare `physics:`
 name and names that differ in case.
 **Mesh geometry** applies when the selected prim is a `UsdGeomMesh`, `UsdGeomTetMesh`,
@@ -436,6 +439,9 @@ groups the UsdShade CoordSysAPI `coordSys:<name>:binding` relationships, one per
 coordinate system. Both groups are name-based. A bare `motion:` or `coordSys:` and lookalikes such
 as `motions:blurScale` stay under **Other properties**, as does the point-based `velocities`
 attribute on prims outside the geometry groups.
+**Color space** groups the UsdColorSpaceAPI `colorSpace:name` attribute and the
+UsdColorSpaceDefinitionAPI `colorSpaceDefinition:<name>:*` attributes. Grouping is name-based
+and does not resolve the inherited color space or change rendering.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

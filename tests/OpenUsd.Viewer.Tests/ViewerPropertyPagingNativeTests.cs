@@ -162,14 +162,23 @@ public sealed partial class ViewerPropertyPagingNativeTests
             }
             def Xform "Tagged" (
                 prepend apiSchemas = ["SemanticsLabelsAPI:class", "LODRootAPI", "AccessibilityAPI:default",
-                    "MotionAPI", "CoordSysAPI:worldSpace"]
+                    "MotionAPI", "CoordSysAPI:worldSpace", "ColorSpaceAPI"]
             )
             {
+                uniform token colorSpace:name = "lin_rec709_scene"
                 token[] semantics:labels:class = ["chair"]
                 int lod:default:index = 1
                 string accessibility:default:label = "Chair"
                 float motion:blurScale = 0.5
                 rel coordSys:worldSpace:binding = </Orphan>
+            }
+            def PhysicsRevoluteJoint "Hinge" (prepend apiSchemas = ["PhysicsDriveAPI:angular"])
+            {
+                float drive:angular:physics:stiffness = 10
+            }
+            def Camera "Plated" (prepend apiSchemas = ["BackPlateAPI:main"])
+            {
+                float backPlate:main:luma:gain = 2
             }
             def Shader "Surface"
             {
@@ -559,21 +568,24 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That(PropertyButtons(main).Select(
                     static button => AutomationProperties.GetAutomationId(button)))
                 .DoesNotContain("edit.property:/Notes.uix:size");
-            foreach ((ViewerPropertyGroup group, string expected, string excluded) in new[]
+            foreach ((ViewerPropertyGroup group, string primPath, string expected, string excluded) in new[]
             {
-                (ViewerPropertyGroup.Semantics, "semantics:labels:class", "lod:default:index"),
-                (ViewerPropertyGroup.LevelOfDetail, "lod:default:index", "semantics:labels:class"),
-                (ViewerPropertyGroup.UserInterface, "accessibility:default:label", "lod:default:index"),
-                (ViewerPropertyGroup.Motion, "motion:blurScale", "lod:default:index"),
-                (ViewerPropertyGroup.CoordinateSystems, "coordSys:worldSpace:binding", "motion:blurScale")
+                (ViewerPropertyGroup.Semantics, "/Tagged", "semantics:labels:class", "lod:default:index"),
+                (ViewerPropertyGroup.LevelOfDetail, "/Tagged", "lod:default:index", "semantics:labels:class"),
+                (ViewerPropertyGroup.UserInterface, "/Tagged", "accessibility:default:label", "lod:default:index"),
+                (ViewerPropertyGroup.Motion, "/Tagged", "motion:blurScale", "lod:default:index"),
+                (ViewerPropertyGroup.CoordinateSystems, "/Tagged", "coordSys:worldSpace:binding", "motion:blurScale"),
+                (ViewerPropertyGroup.ColorSpace, "/Tagged", "colorSpace:name", "motion:blurScale"),
+                (ViewerPropertyGroup.Physics, "/Hinge", "drive:angular:physics:stiffness", "physics:body0"),
+                (ViewerPropertyGroup.Camera, "/Plated", "backPlate:main:luma:gain", "visibility")
             })
             {
                 propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
                 await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
                 tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
-                    static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Tagged" });
+                    item => item.Tag is ViewerHierarchyTreeNode node && node.Entry.Path == primPath);
                 propertyGroup.SelectedIndex = (int)group;
-                string expectedId = "edit.property:/Tagged." + expected;
+                string expectedId = $"edit.property:{primPath}.{expected}";
                 await WaitAsync(() => PropertyButtons(main).Any(button =>
                     AutomationProperties.GetAutomationId(button) == expectedId) ||
                     (group == ViewerPropertyGroup.CoordinateSystems &&
@@ -582,7 +594,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
                         text.Text.Contains("/Orphan", StringComparison.Ordinal))), timeout);
                 await Assert.That(PropertyButtons(main).Select(
                         static button => AutomationProperties.GetAutomationId(button)))
-                    .DoesNotContain("edit.property:/Tagged." + excluded);
+                    .DoesNotContain($"edit.property:{primPath}.{excluded}");
             }
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
             await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
