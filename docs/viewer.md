@@ -1229,7 +1229,9 @@ Closing the property window cancels a pending choice without applying its eventu
 Property context, typed input and status share a keyboard-focusable scrolling body, so long
 authored values cannot push Set, Clear, Block, Refresh or Close outside the minimum-size window.
 Focusing the value input scrolls it into view; Page Down/Page Up on the body reaches the full
-context and status. Escape retains the existing cancel-and-drain behavior.
+context and status. Escape retains the existing cancel-and-drain behavior. Enter in the value box
+or any component box runs **Set**, including its validation, so a keyboard user does not have to
+tab to the button. Enter does not run **Set** for Boolean values, which the check box selects.
 
 The window distinguishes the read-only composed display snapshot from the exact target-layer
 opinion. **Set**, **Clear** and **Block** affect only the selected default or individual current-time

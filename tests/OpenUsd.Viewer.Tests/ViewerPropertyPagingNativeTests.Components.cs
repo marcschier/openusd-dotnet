@@ -3,6 +3,7 @@
 using System.Globalization;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using OpenUsd.Editing;
@@ -11,6 +12,9 @@ namespace OpenUsd.Viewer.Tests;
 
 public sealed partial class ViewerPropertyPagingNativeTests
 {
+    private static void PressEnter(TextBox input) =>
+        input.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+
     private static async Task ExerciseComponentPropertiesAsync(
         MainWindow main, ViewerStageSession session, TreeView tree, TextBox query, ComboBox group,
         CancellationToken timeout)
@@ -81,7 +85,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
             await Assert.That((await readReviewComponentAsync()).Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
             boxes[0].Text = "1";
             await Assert.That(Required<Button>(edit, "SetPropertyButton").IsEnabled).IsFalse();
-            Click(edit, "SetPropertyButton");
+            PressEnter(boxes[0]);
             await Assert.That(Required<TextBlock>(edit, "PropertyEditStatus").Text)
                 .Contains("Enter exactly 1 components.");
             await Assert.That((await readReviewComponentAsync()).Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
@@ -126,7 +130,7 @@ public sealed partial class ViewerPropertyPagingNativeTests
             {
                 boxes[index].Text = components[index].ToString("R", CultureInfo.InvariantCulture);
             }
-            Click(edit, "SetPropertyButton");
+            PressEnter(boxes[^1]);
             await waitForComponentOperationAsync();
             await assertComponentsAsync(await readReviewComponentAsync(UsdLayerEditField.TimeSample));
             await Assert.That((await readReviewComponentAsync()).Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);

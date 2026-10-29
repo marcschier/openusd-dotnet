@@ -4,6 +4,7 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using OpenUsd.Editing;
 
@@ -46,8 +47,9 @@ public sealed partial class ViewerCameraPropertyNativeTests
                 await WaitForEditorAsync(() => Required<Button>(window, "SetPropertyButton").IsEnabled);
                 await Assert.That(Required<ComboBox>(window, "PropertySelector").SelectedItem?.ToString())
                     .IsEqualTo($"{name} ({typeName})");
-                Required<TextBox>(window, "PropertyValue").Text = value.ToString("R", CultureInfo.InvariantCulture);
-                Required<Button>(window, "SetPropertyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                TextBox input = Required<TextBox>(window, "PropertyValue");
+                input.Text = value.ToString("R", CultureInfo.InvariantCulture);
+                input.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
                 await WaitForEditorAsync(() =>
                     Required<TextBlock>(window, "PropertyEditStatus").Text == "Review edit applied." &&
                     Required<Button>(window, "ClearPropertyButton").IsEnabled);

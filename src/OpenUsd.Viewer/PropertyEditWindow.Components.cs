@@ -54,6 +54,7 @@ internal sealed partial class PropertyEditWindow
                 input.GotFocus += (_, _) => input.BringIntoView();
                 AutomationProperties.SetName(input, $"Review component {label}");
                 AutomationProperties.SetAutomationId(input, $"edit.propertyComponent:{label}");
+                input.KeyDown += SetOnEnter;
                 input.PropertyChanged += (_, change) =>
                 {
                     if (change.Property == TextBox.TextProperty)

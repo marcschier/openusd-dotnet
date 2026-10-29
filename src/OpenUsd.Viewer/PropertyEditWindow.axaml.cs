@@ -87,6 +87,7 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         SetPropertyButton.Click += (_, _) => Start(() => ApplyAsync(UsdLayerEditOperation.Set));
         ClearPropertyButton.Click += (_, _) => Start(() => ApplyAsync(UsdLayerEditOperation.Clear));
         BlockPropertyButton.Click += (_, _) => Start(() => ApplyAsync(UsdLayerEditOperation.Block));
+        PropertyValue.KeyDown += SetOnEnter;
         PropertyBooleanValue.IsCheckedChanged += (_, _) => UpdateAvailability();
         ChoosePropertyAssetButton.Click += (_, _) => Start(ChooseAssetAsync);
         ClosePropertyButton.Click += (_, _) => Close();
@@ -334,6 +335,16 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         PropertyBooleanValue.IsChecked = capture.TypeName == "bool" &&
             opinion.Value.Kind == UsdLayerEditValueKind.Boolean ? opinion.Value.AsBoolean() : null;
         ShowComponentCapture(capture.TypeName, opinion.Value);
+    }
+
+    private void SetOnEnter(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || e.KeyModifiers != KeyModifiers.None)
+        {
+            return;
+        }
+        e.Handled = true;
+        Start(() => ApplyAsync(UsdLayerEditOperation.Set));
     }
 
     private void UpdateAvailability()
