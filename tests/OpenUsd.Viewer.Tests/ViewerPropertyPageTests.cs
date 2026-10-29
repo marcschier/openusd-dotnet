@@ -464,6 +464,48 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task MeshGroupHoldsTheSchemaAttributesOfTetMeshNurbsPatchAndGeomSubsetPrims()
+    {
+        string[] names =
+        [
+            "points", "extent", "tetVertexIndices", "surfaceFaceVertexIndices", "uVertexCount", "vVertexCount",
+            "uOrder", "vOrder", "uKnots", "vKnots", "uForm", "vForm", "uRange", "vRange", "pointWeights",
+            "trimCurve:counts", "trimCurve:orders", "trimCurve:vertexCounts", "trimCurve:knots",
+            "trimCurve:ranges", "trimCurve:points", "elementType", "indices", "familyName", "faceVertexCounts",
+            "Indices", "trimCurve:extra", "visibility"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "int[]", true, false, 0, "<none>", "[]"))
+            .ToArray();
+        ViewerRelationshipSnapshot[] relationships = [new("indices", "/World/A")];
+
+        await Assert.That(groupNames(ViewerGeometrySchema.TetMesh))
+            .IsEqualTo("points,extent,tetVertexIndices,surfaceFaceVertexIndices");
+        await Assert.That(groupNames(ViewerGeometrySchema.NurbsPatch)).IsEqualTo(
+            "points,extent,uVertexCount,vVertexCount,uOrder,vOrder,uKnots,vKnots,uForm,vForm,uRange,vRange," +
+            "pointWeights,trimCurve:counts,trimCurve:orders,trimCurve:vertexCounts,trimCurve:knots," +
+            "trimCurve:ranges,trimCurve:points");
+        await Assert.That(groupNames(ViewerGeometrySchema.GeomSubset)).IsEqualTo("elementType,indices,familyName");
+        await Assert.That(groupNames(ViewerGeometrySchema.None)).IsEmpty();
+        ViewerPropertyPage subset = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Mesh,
+            geometry: ViewerGeometrySchema.GeomSubset);
+        await Assert.That(subset.Relationships).IsEmpty();
+        ViewerPropertyPage other = ViewerPropertyPage.Create(
+            attributes, relationships, null, 0, group: ViewerPropertyGroup.Other,
+            geometry: ViewerGeometrySchema.GeomSubset);
+        await Assert.That(other.Attributes.Select(static item => item.Name)).Contains("Indices");
+        await Assert.That(other.Attributes.Select(static item => item.Name)).DoesNotContain("familyName");
+        await Assert.That(other.Relationships.Single()).IsSameReferenceAs(relationships[0]);
+
+        string groupNames(ViewerGeometrySchema geometry) => string.Join(
+            ",",
+            ViewerPropertyPage.Create(
+                    attributes, relationships, null, 0, group: ViewerPropertyGroup.Mesh, geometry: geometry)
+                .Attributes.Select(static item => item.Name));
+    }
+
+    [Test]
     public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
     {
         string[] names =

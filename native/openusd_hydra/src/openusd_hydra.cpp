@@ -38,6 +38,7 @@
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/primRange.h"
 #include "pxr/usd/usd/stage.h"
+#include "pxr/usd/usdGeom/subset.h"
 #include "pxr/usd/usdLux/lightAPI.h"
 #include "pxr/usdImaging/usdImagingGL/engine.h"
 #include "pxr/usdImaging/usdImagingGL/renderParams.h"
@@ -1501,6 +1502,22 @@ openusd_status openusd_storm_set_selection(
     {
         return WithStageAccess(renderer->stage_core, error, [&](openusd_stage_access*)
         {
+            // UsdImaging highlights a GeomSubset through its parent. A subset defined at the
+            // root would make that parent the pseudo-root, which has no rprim, and the engine
+            // would then fail every later frame. Such a subset has nothing to highlight.
+            const auto drawsNothing = [&](const SdfPath& path)
+            {
+                return renderer->stage &&
+                    path.GetParentPath() == SdfPath::AbsoluteRootPath() &&
+                    renderer->stage->GetPrimAtPath(path).IsA<UsdGeomSubset>();
+            };
+            paths.erase(std::remove_if(paths.begin(), paths.end(), drawsNothing), paths.end());
+            instances.erase(
+                std::remove_if(instances.begin(), instances.end(), [&](const auto& instance)
+                {
+                    return drawsNothing(instance.first);
+                }),
+                instances.end());
             TfErrorMark mark;
             if (paths.empty())
             {

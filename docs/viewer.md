@@ -359,12 +359,18 @@ or a prefix that differs in case, stays under **Other properties**.
 attributes and relationships in the `physics:` namespace, such as `physics:mass`. PhysX
 namespaces such as `physxRigidBody:` stay under **Other properties**, as do a bare `physics:`
 name and names that differ in case.
-**Mesh geometry** applies only when the selected prim is a `UsdGeomMesh`. It groups the exact
-mesh topology and subdivision attributes, such as `faceVertexCounts`, `faceVertexIndices`, and
-`creaseSharpnesses`, plus the inherited `points`, `velocities`, `accelerations`, `normals`,
-`extent`, `doubleSided`, and `orientation` attributes. A custom `points` attribute on an `Xform`
-stays under **Other properties**, as do lookalikes such as `pointsExtra`. Mesh primvars, including
-`primvars:normals`, stay under **Primvars**.
+**Mesh geometry** applies when the selected prim is a `UsdGeomMesh`, `UsdGeomTetMesh`,
+`UsdGeomNurbsPatch`, or `UsdGeomSubset`. For a mesh it groups the exact topology and subdivision
+attributes, such as `faceVertexCounts`, `faceVertexIndices`, and `creaseSharpnesses`, plus the
+inherited `points`, `velocities`, `accelerations`, `normals`, `extent`, `doubleSided`, and
+`orientation` attributes. A tetrahedral mesh adds `tetVertexIndices` and
+`surfaceFaceVertexIndices` to the inherited set. A NURBS patch adds its `u` and `v` vertex counts,
+orders, knots, forms, and ranges, `pointWeights`, and the `trimCurve:` attributes. A subset holds
+`elementType`, `indices`, and `familyName`. A custom `points` attribute on an `Xform` stays under
+**Other properties**, as do lookalikes such as `pointsExtra`. Mesh primvars, including
+`primvars:normals`, stay under **Primvars**. Storm highlights a selected subset through its parent
+mesh. A subset defined directly under the stage root has no parent to highlight, so selecting it
+shows its properties and draws no highlight.
 **Skinning and skeletons** groups attributes and relationships in the `skel:` namespace, such as
 `skel:skinningMethod` and the `skel:skeleton` relationship. Like the other namespace groups, it does
 not check that `SkelBindingAPI` is applied. Skinning primvars such as `primvars:skel:jointIndices`

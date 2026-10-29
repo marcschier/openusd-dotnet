@@ -62,7 +62,10 @@ internal enum ViewerGeometrySchema
     RenderSettings,
     RenderProduct,
     RenderVar,
-    RenderPass
+    RenderPass,
+    TetMesh,
+    NurbsPatch,
+    GeomSubset
 }
 
 internal sealed class ViewerPropertyPage
@@ -208,11 +211,7 @@ internal sealed class ViewerPropertyPage
         {
             return ViewerPropertyGroup.Camera;
         }
-        if (geometry == ViewerGeometrySchema.Mesh && name is "points" or "velocities" or "accelerations" or
-            "normals" or "extent" or "doubleSided" or "orientation" or "faceVertexCounts" or "faceVertexIndices" or
-            "subdivisionScheme" or "interpolateBoundary" or "faceVaryingLinearInterpolation" or
-            "triangleSubdivisionRule" or "holeIndices" or "cornerIndices" or "cornerSharpnesses" or
-            "creaseIndices" or "creaseLengths" or "creaseSharpnesses")
+        if (IsMeshProperty(name, geometry))
         {
             return ViewerPropertyGroup.Mesh;
         }
@@ -317,6 +316,23 @@ internal sealed class ViewerPropertyPage
         }
         return HasNamespace(name, "physics:") ? ViewerPropertyGroup.Physics : ViewerPropertyGroup.Other;
     }
+
+    private static bool IsMeshProperty(string name, ViewerGeometrySchema geometry) =>
+        geometry switch
+        {
+            ViewerGeometrySchema.Mesh => IsPointBasedProperty(name) || name is "faceVertexCounts" or
+                "faceVertexIndices" or "subdivisionScheme" or "interpolateBoundary" or
+                "faceVaryingLinearInterpolation" or "triangleSubdivisionRule" or "holeIndices" or "cornerIndices" or
+                "cornerSharpnesses" or "creaseIndices" or "creaseLengths" or "creaseSharpnesses",
+            ViewerGeometrySchema.TetMesh => IsPointBasedProperty(name) ||
+                name is "tetVertexIndices" or "surfaceFaceVertexIndices",
+            ViewerGeometrySchema.NurbsPatch => IsPointBasedProperty(name) || name is "uVertexCount" or
+                "vVertexCount" or "uOrder" or "vOrder" or "uKnots" or "vKnots" or "uForm" or "vForm" or "uRange" or
+                "vRange" or "pointWeights" or "trimCurve:counts" or "trimCurve:orders" or "trimCurve:vertexCounts" or
+                "trimCurve:knots" or "trimCurve:ranges" or "trimCurve:points",
+            ViewerGeometrySchema.GeomSubset => name is "elementType" or "indices" or "familyName",
+            _ => false
+        };
 
     private static bool IsPointsOrCurvesProperty(string name, ViewerGeometrySchema geometry) =>
         geometry switch

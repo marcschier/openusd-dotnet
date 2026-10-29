@@ -978,6 +978,9 @@ internal static partial class ViewerStageSnapshotBuilder
 
     private static ViewerGeometrySchema GeometrySchemaOf(UsdPrim prim) =>
         UsdGeomMesh.TryWrap(prim, out _) ? ViewerGeometrySchema.Mesh :
+        UsdGeomTetMesh.TryWrap(prim, out _) ? ViewerGeometrySchema.TetMesh :
+        UsdGeomNurbsPatch.TryWrap(prim, out _) ? ViewerGeometrySchema.NurbsPatch :
+        UsdGeomSubset.TryWrap(prim, out _) ? ViewerGeometrySchema.GeomSubset :
         UsdGeomPointInstancer.TryWrap(prim, out _) ? ViewerGeometrySchema.PointInstancer :
         UsdGeomPoints.TryWrap(prim, out _) ? ViewerGeometrySchema.Points :
         UsdGeomBasisCurves.TryWrap(prim, out _) ? ViewerGeometrySchema.BasisCurves :

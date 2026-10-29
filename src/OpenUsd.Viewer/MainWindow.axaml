@@ -1218,7 +1218,7 @@
               <ComboBoxItem Content="Collections (collection:)" />
               <ComboBoxItem Content="Visibility and purpose (Imageable)" />
               <ComboBoxItem Content="Physics (physics:)" />
-              <ComboBoxItem Content="Mesh geometry (Mesh)" />
+              <ComboBoxItem Content="Mesh geometry (Mesh, TetMesh, NurbsPatch, GeomSubset)" />
               <ComboBoxItem Content="Skinning and skeletons" />
               <ComboBoxItem Content="Model and draw mode (model:)" />
               <ComboBoxItem Content="Instancing (PointInstancer)" />

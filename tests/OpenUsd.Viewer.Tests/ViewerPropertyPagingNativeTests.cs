@@ -87,6 +87,13 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 int[] primvars:skel:jointIndices = [0, 0, 0]
                 rel skel:skeleton = </Other>
                 uniform token model:drawMode = "bounds"
+
+                def GeomSubset "Tris"
+                {
+                    uniform token elementType = "face"
+                    int[] indices = [0]
+                    custom int[] indicesExtra = [0]
+                }
             }
             def PointInstancer "Scatter"
             {
@@ -136,6 +143,10 @@ public sealed partial class ViewerPropertyPagingNativeTests
             {
                 uniform string sourceName = "color"
                 custom string sourceNameExtra = "alpha"
+            }
+            def GeomSubset "Orphan"
+            {
+                int[] indices = [0]
             }
             def Shader "Surface"
             {
@@ -505,6 +516,22 @@ public sealed partial class ViewerPropertyPagingNativeTests
                     static button => AutomationProperties.GetAutomationId(button)))
                 .DoesNotContain("edit.property:/Beauty.sourceNameExtra");
             propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;
+            await WaitAsync(() => meshState.Text == "No properties match the current filter.", timeout);
+            TreeViewItem grid = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Grid" });
+            grid.IsExpanded = true;
+            await WaitAsync(() => grid.Items.OfType<TreeViewItem>().Any(), timeout);
+            tree.SelectedItem = grid.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Grid/Tris" });
+            await WaitAsync(() => shaderQuery.IsEnabled && PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Grid/Tris.indices"), timeout);
+            await Assert.That(PropertyButtons(main).Select(
+                    static button => AutomationProperties.GetAutomationId(button)))
+                .DoesNotContain("edit.property:/Grid/Tris.indicesExtra");
+            tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
+                static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Orphan" });
+            await WaitAsync(() => shaderQuery.IsEnabled && PropertyButtons(main).Any(static button =>
+                AutomationProperties.GetAutomationId(button) == "edit.property:/Orphan.indices"), timeout);
             tree.SelectedItem = tree.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Other" });
             await WaitAsync(() => shaderQuery.IsEnabled &&
