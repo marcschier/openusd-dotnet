@@ -515,6 +515,11 @@ public sealed class RenderProductJobPlanTests
     [Arguments(true)]
     public async Task CameraExposureThatOverflowsBinary16PublishesNothing(bool exr)
     {
+        if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
         string root = Directory.CreateTempSubdirectory("product-exposure-overflow-").FullName;
         try
         {
