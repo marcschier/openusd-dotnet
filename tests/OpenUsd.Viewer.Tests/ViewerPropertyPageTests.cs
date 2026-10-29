@@ -693,6 +693,34 @@ public sealed class ViewerPropertyPageTests
     }
 
     [Test]
+    public async Task SpatialAudioPropertiesJoinAudioOnlyOnSpatialAudioPrims()
+    {
+        string[] names =
+        [
+            "filePath", "auralMode", "playbackMode", "startTime", "endTime", "mediaOffset", "gain", "Gain",
+            "visibility"
+        ];
+        ViewerAttributeSnapshot[] attributes = names
+            .Select(static name => new ViewerAttributeSnapshot(name, "double", true, false, 0, "<none>", "1"))
+            .ToArray();
+
+        static string joined(ViewerPropertyPage page) =>
+            string.Join(",", page.Attributes.Select(static item => item.Name));
+
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.Audio,
+                geometry: ViewerGeometrySchema.SpatialAudio)))
+            .IsEqualTo(string.Join(",", names.Take(7)));
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.Other,
+                geometry: ViewerGeometrySchema.SpatialAudio)))
+            .IsEqualTo("Gain");
+        await Assert.That(joined(ViewerPropertyPage.Create(
+                attributes, [], null, 0, group: ViewerPropertyGroup.Audio, geometry: ViewerGeometrySchema.None)))
+            .IsEqualTo(string.Empty);
+    }
+
+    [Test]
     public async Task ModelGroupUsesTheModelNamespaceAndLeavesModelPrimvarsUnderPrimvars()
     {
         string[] names =

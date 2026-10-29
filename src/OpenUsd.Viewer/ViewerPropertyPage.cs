@@ -41,6 +41,7 @@ internal enum ViewerPropertyGroup
     Motion,
     CoordinateSystems,
     ColorSpace,
+    Audio,
     Other
 }
 
@@ -74,7 +75,8 @@ internal enum ViewerGeometrySchema
     NurbsPatch,
     GeomSubset,
     ParticleField,
-    LodHeuristic
+    LodHeuristic,
+    SpatialAudio
 }
 
 internal sealed class ViewerPropertyPage
@@ -245,6 +247,11 @@ internal sealed class ViewerPropertyPage
         if (IsSkeletalProperty(name, geometry))
         {
             return ViewerPropertyGroup.Skinning;
+        }
+        if (geometry == ViewerGeometrySchema.SpatialAudio && name is "filePath" or "auralMode" or "playbackMode" or
+            "startTime" or "endTime" or "mediaOffset" or "gain")
+        {
+            return ViewerPropertyGroup.Audio;
         }
         if (IsRenderProperty(name, geometry))
         {

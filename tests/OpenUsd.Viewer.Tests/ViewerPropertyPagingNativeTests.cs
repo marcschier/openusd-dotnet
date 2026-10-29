@@ -190,6 +190,11 @@ public sealed partial class ViewerPropertyPagingNativeTests
             {
                 uniform float[] thresholds = [10]
             }
+            def SpatialAudio "Chime"
+            {
+                uniform token auralMode = "nonSpatial"
+                double gain = 0.5
+            }
             def Shader "Surface"
             {
                 uniform token info:id = "UsdPreviewSurface"
@@ -589,7 +594,8 @@ public sealed partial class ViewerPropertyPagingNativeTests
                 (ViewerPropertyGroup.Physics, "/Hinge", "drive:angular:physics:stiffness", "physics:body0"),
                 (ViewerPropertyGroup.Camera, "/Plated", "backPlate:main:luma:gain", "visibility"),
                 (ViewerPropertyGroup.Volume, "/Splat", "radiance:sphericalHarmonicsDegree", "thresholds"),
-                (ViewerPropertyGroup.LevelOfDetail, "/Distance", "thresholds", "opacities")
+                (ViewerPropertyGroup.LevelOfDetail, "/Distance", "thresholds", "opacities"),
+                (ViewerPropertyGroup.Audio, "/Chime", "gain", "visibility")
             })
             {
                 propertyGroup.SelectedIndex = (int)ViewerPropertyGroup.Mesh;

@@ -447,6 +447,9 @@ attribute on prims outside the geometry groups.
 **Color space** groups the UsdColorSpaceAPI `colorSpace:name` attribute and the
 UsdColorSpaceDefinitionAPI `colorSpaceDefinition:<name>:*` attributes. Grouping is name-based
 and does not resolve the inherited color space or change rendering.
+**Audio** groups the UsdMedia SpatialAudio attributes `filePath`, `auralMode`, `playbackMode`,
+`startTime`, `endTime`, `mediaOffset`, and `gain`, only on SpatialAudio prims. The Viewer does not
+play audio, and the same names on other prims stay under **Other properties**.
 **Other properties** retains everything outside those groups; **All property groups** restores
 the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
 Group changes reset the page and details without a native read, authoring an opinion, or changing

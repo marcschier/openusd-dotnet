@@ -1233,6 +1233,7 @@
               <ComboBoxItem Content="Motion (motion:)" />
               <ComboBoxItem Content="Coordinate systems (coordSys:)" />
               <ComboBoxItem Content="Color space" />
+              <ComboBoxItem Content="Audio" />
               <ComboBoxItem Content="Other properties" />
             </ComboBox>
             <ComboBox

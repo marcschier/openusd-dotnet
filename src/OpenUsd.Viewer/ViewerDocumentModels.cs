@@ -1007,6 +1007,7 @@ internal static partial class ViewerStageSnapshotBuilder
         {
             "ParticleField" or "ParticleField3DGaussianSplat" => ViewerGeometrySchema.ParticleField,
             "LODDistanceHeuristic" or "LODScreenSizeHeuristic" => ViewerGeometrySchema.LodHeuristic,
+            "SpatialAudio" => ViewerGeometrySchema.SpatialAudio,
             _ => ViewerGeometrySchema.None
         };
 
