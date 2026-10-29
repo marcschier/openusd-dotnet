@@ -105,6 +105,49 @@ public sealed class SilkHdrColorCaptureTests
         SilkFrameCaptureResult retry = SilkFrameCapture.CaptureRetainedWithHdrColor(
             renderer, device, 2, 2, RenderSettings.Default);
         await Assert.That(retry.HdrColor!.Rgba16Float.Length).IsEqualTo(32);
+
+        // After a completed capture only renderer-retained resources stay live, so a
+        // second late cancellation must return to exactly that count.
+        int retained = device.LiveTextures;
+        int created = device.CreatedTextures;
+        using var second = new CancellationTokenSource();
+        device.AfterHdrReadback = second.Cancel;
+        await Assert.That(() => SilkFrameCapture.CaptureRetainedWithHdrColor(
+            renderer, device, 2, 2, RenderSettings.Default, cancellationToken: second.Token))
+            .Throws<OperationCanceledException>();
+        await Assert.That(device.CreatedTextures).IsGreaterThan(created);
+        await Assert.That(device.LiveTextures).IsEqualTo(retained)
+            .Because("a late cancellation must release every target it allocated");
+    }
+
+    [Test]
+    public async Task CancellationAfterDepthReadbackReleasesTargetsAndAllowsRetry()
+    {
+        using var device = new SilkHdrColorReadbackDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        SilkFrameCaptureResult warm = SilkFrameCapture.CaptureRetainedWithDepth(
+            renderer, device, 2, 2, RenderSettings.Default);
+        await Assert.That(warm.Depth!.Values.Length).IsEqualTo(4);
+        int retained = device.LiveTextures;
+        int created = device.CreatedTextures;
+        using var cancellation = new CancellationTokenSource();
+        device.AfterDepthReadback = cancellation.Cancel;
+
+        await Assert.That(() => SilkFrameCapture.CaptureRetainedWithDepth(
+            renderer, device, 2, 2, RenderSettings.Default, cancellationToken: cancellation.Token))
+            .Throws<OperationCanceledException>();
+        await Assert.That(device.DepthReadbacks).IsEqualTo(2);
+        await Assert.That(device.CreatedTextures).IsGreaterThan(created);
+        await Assert.That(device.LiveTextures).IsEqualTo(retained)
+            .Because("a late cancellation must release every target it allocated");
+
+        device.AfterDepthReadback = null;
+        SilkFrameCaptureResult retry = SilkFrameCapture.CaptureRetainedWithDepth(
+            renderer, device, 2, 2, RenderSettings.Default);
+        await Assert.That(retry.Depth!.Values.Length).IsEqualTo(4);
+        await Assert.That(device.LiveTextures).IsEqualTo(retained);
+        renderer.Dispose();
+        await Assert.That(device.LiveTextures).IsEqualTo(0);
     }
 
     [Test]
