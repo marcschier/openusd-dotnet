@@ -133,22 +133,39 @@ public static class SilkDeformationComputeConformance
         {
             texCoords[index] = 0.125f * (index + 1);
         }
-        SilkDeformationGpuFallback fallback = SilkDeformationGpuPayload.TryBuild(
+        // The payload policy sends any layout wider than eight floats to the
+        // CPU, because the deformed buffer is not seeded with the floats past
+        // the coordinate pair. The kernel still has to bound its writes by the
+        // runtime stride, so the dispatch reuses the eight-float payload with
+        // only its stride field widened.
+        SilkDeformationGpuFallback wide = SilkDeformationGpuPayload.TryBuild(
             rig,
             strideFloats,
+            rig.BindPointCount,
+            hasTangents: false,
+            SilkTopologyKind.TriangleList,
+            out _,
+            texCoords);
+        await Assert.That(wide).IsEqualTo(SilkDeformationGpuFallback.SecondaryTexCoords);
+        SilkDeformationGpuFallback fallback = SilkDeformationGpuPayload.TryBuild(
+            rig,
+            8,
             rig.BindPointCount,
             hasTangents: false,
             SilkTopologyKind.TriangleList,
             out SilkDeformationGpuPayload? payload,
             texCoords);
         await Assert.That(fallback).IsEqualTo(SilkDeformationGpuFallback.None);
+        byte[] widened = (byte[])payload!.Parameters.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(widened.AsSpan(8), strideFloats);
 
         float[] seeded = Dispatch(
             device,
             shaderFormat,
-            payload!,
+            payload,
             strideFloats,
-            fill: true);
+            fill: true,
+            parameterBytes: widened);
         float[] unseeded = SilkCheckedFillSeed.Expected(
             checked((int)(payload!.PointCount * strideFloats)));
         for (int point = 0; point < rig.BindPointCount; point++)
@@ -303,8 +320,10 @@ public static class SilkDeformationComputeConformance
         SilkDeformationGpuPayload payload,
         uint strideFloats,
         bool fill = false,
-        int repeat = 1)
+        int repeat = 1,
+        byte[]? parameterBytes = null)
     {
+        parameterBytes ??= payload.Parameters;
         SilkDeformComputeReflection reflection = SilkCheckedShaderAssets.DeformCompute;
         using ISilkComputeBindingLayout layout =
             device.CreateComputeBindingLayout(BuildLayout(reflection, strideFloats));
@@ -341,9 +360,9 @@ public static class SilkDeformationComputeConformance
             CreateFloatBuffer(device, payload.BlendDeltas);
         using ISilkGraphicsBuffer texCoords = CreateFloatBuffer(device, payload.TexCoords);
         using ISilkGraphicsBuffer parameters = device.CreateBuffer(
-            checked((nuint)payload.Parameters.Length),
+            checked((nuint)parameterBytes.Length),
             SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
-        parameters.Write(payload.Parameters);
+        parameters.Write(parameterBytes);
 
         using ISilkGraphicsCommandList commands = device.CreateCommandList();
         using SilkCheckedFillSeed? seed = fill
