@@ -7649,10 +7649,10 @@ public sealed partial class RuntimePackageTests
                         }
                     }
                     Console.WriteLine("PRIMVAR_READER_FALLBACK=true");
-                    byte[] specularCommand = new byte[78];
+                    byte[] specularCommand = new byte[106];
                     System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand,
                         (uint)SilkCommandType.MaterialUpsert);
-                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(4), 78);
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(4), 106);
                     ulong specularHash = 14695981039346656037ul;
                     foreach (byte part in "/S"u8)
                     {
@@ -7672,6 +7672,8 @@ public sealed partial class RuntimePackageTests
                     System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(42), 0.25f);
                     System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(54), 1);
                     System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(66), 1);
+                    System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(82), 1);
+                    System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(94), 1);
                     using (SilkCommandEnumerator commands = SilkCommandParser.Enumerate(
                         specularCommand, 1, SilkCommandParser.PageAbiVersion))
                     {
