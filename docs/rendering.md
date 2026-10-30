@@ -152,8 +152,9 @@ wire bytes. This avoids redundant allocation without changing identity or topolo
 Page ABI 27 also carries regular detail-normal maps independently of the primary
 normal and emission composite. `DetailUvRow0`/`DetailUvRow1` transform the existing
 coordinate stream for the detail sample; its tangent orientation is applied before
-per-fragment RNM. The checked surface block was 272 bytes at that ABI; page ABI 30 grows it to 304 bytes. Normal-only bindings reuse
-registers absent from those permutations, without adding a sampled-volume collision.
+per-fragment RNM. The checked surface block was 272 bytes at that ABI; page ABI 30 grows it to
+304 bytes. Normal-only bindings reuse registers absent from those permutations, without adding a
+sampled-volume collision.
 
 Version 1 is restricted to Low-complexity, SmoothShaded mesh Rprims without Skel/external
 computations or volumes. Its numeric buffer metric excludes source/SDK materialization,

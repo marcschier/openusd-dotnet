@@ -142,8 +142,9 @@ renders those lights unshaped. Deploy the native library, managed parser and
 checked shaders together; a page-27 library is refused.
 
 hdSilk page ABI 29 adds texture wrap value 5, MaterialX `constant` addressing. Page ABI 28 published `constant` as
-black; the version changes because a page-28 consumer does not know value 5. No table layout changes. The surface block uses the reserved lanes after the dome mask for the per-axis constant-border masks, and the
-checked mesh fragment permutations read them. Deploy the native library, managed parser and checked shaders together;
+black; the version changes because a page-28 consumer does not know value 5. No table layout changes. The surface
+block uses the reserved lanes after the dome mask for the per-axis constant-border masks, and the checked mesh
+fragment permutations read them. Deploy the native library, managed parser and checked shaders together;
 a page-28 library is refused.
 
 Direct Storm ABI 9 adds the owned bulk AOV contract in `openusd_storm_aov.h`:
