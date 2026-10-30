@@ -3606,6 +3606,40 @@ def Xform "World"
         await Assert.That(rotatedMaxDelta).IsLessThanOrEqualTo((byte)3);
         await Assert.That(rotatedMeanDelta).IsLessThanOrEqualTo(0.500);
 
+        ParityImage pivoted = CaptureSyntheticFoldedUvTransform(
+            device,
+            [0f, 1f, -1f, 0f, 0f, 1f],
+            [1f, 0f, 0f]);
+        (byte pivotedMaxDelta, double pivotedMeanDelta) =
+            CompareTranslatedHalves(pivoted);
+        string pivotedLine = FormatSelfConsistencyMetrics(
+            $"uv-transform-place2d-pivot-{backend}",
+            pivotedMaxDelta,
+            pivotedMeanDelta);
+        Console.WriteLine(pivotedLine);
+        WriteEvidence($"uv-transform-{backend}-place2d-pivot.txt", [pivotedLine]);
+        await Assert.That(CountNonBlackPixels(pivoted)).IsGreaterThan(100);
+        await Assert.That(pivotedMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(pivotedMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        // The native probe checks both place2d operation orders; this affine
+        // checks that scale and pivot terms reach the shader unchanged.
+        ParityImage scaledPivoted = CaptureSyntheticFoldedUvTransform(
+            device,
+            [0.5f, 0f, 0f, 0.5f, 0.625f, 0.625f],
+            TranslatedTexel);
+        (byte scaledMaxDelta, double scaledMeanDelta) =
+            CompareTranslatedHalves(scaledPivoted);
+        string scaledLine = FormatSelfConsistencyMetrics(
+            $"uv-transform-place2d-scale-pivot-{backend}",
+            scaledMaxDelta,
+            scaledMeanDelta);
+        Console.WriteLine(scaledLine);
+        WriteEvidence($"uv-transform-{backend}-place2d-scale-pivot.txt", [scaledLine]);
+        await Assert.That(CountNonBlackPixels(scaledPivoted)).IsGreaterThan(100);
+        await Assert.That(scaledMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(scaledMeanDelta).IsLessThanOrEqualTo(0.500);
+
         ParityImage untransformed = CaptureSyntheticFoldedUvTransform(
             device,
             [1f, 0f, 0f, 1f, 0f, 0f],

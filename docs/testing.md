@@ -1981,16 +1981,19 @@ the ABI 14 `uv_transform` back out of the page bytes, because the renderer only 
 `StormSilkParityCaptureDriverTests.MaterialXPlace2dUvTransformSelectsAnotherTexelOnVulkan` and its
 D3D12 WARP counterpart supply the pixel evidence. Both meshes carry the same authored texture
 coordinate, so only the published UV transform can change which texel of a 2x2 image the candidate
-samples. Each backend runs three captures: the folded `(1, 0, 0, 1, 0.5, 0.5)` translation and the
-`(0, -1, 1, 0, 1, 0)` quarter turn a `UsdTransform2d` produces both match a constant reference of the texel
-they select at `maxChannelDelta=2` / `meanChannelDelta=0.017`, and the identity transform fails the same
-comparison at `maxChannelDelta=244`. The rotation capture is what proves the off-diagonal matrix terms reach
-the shader; a translation-only capture leaves them at zero and cannot. The three are written to
-`uv-transform-<backend>-self-consistency.txt`, `uv-transform-<backend>-rotation.txt`, and
-`uv-transform-<backend>-divergence.txt`. A fourth capture publishes the quarter turn as the primary transform and the
-translation as the alternate, with the diffuse bit in the mask; it must match the translated texel at
-`maxChannelDelta=3` / `meanChannelDelta=0.5`, and the same transforms with mask zero must diverge from it by more
-than 32. That pair proves the mask, not the transform alone, selects the alternate rows. It is written to
+samples. Both backends run seven captures. The folded `(1, 0, 0, 1, 0.5, 0.5)` translation, the
+`(0, -1, 1, 0, 1, 0)` `UsdTransform2d` quarter turn, a MaterialX quarter turn about the tile-centre
+pivot, and a scale-plus-pivot affine must each match constant-material references for their selected
+texels. The identity transform fails the translation comparison. The `UsdTransform2d`
+rotation proves the off-diagonal matrix terms reach the shader; the pivoted MaterialX rotation proves
+that a positive `rotate` around `(0.5, 0.5)` selects the other texel. The scale-plus-pivot capture
+checks the affine containing both terms. The captures are written to
+`uv-transform-<backend>-self-consistency.txt`, `uv-transform-<backend>-rotation.txt`,
+`uv-transform-<backend>-place2d-pivot.txt`, `uv-transform-<backend>-place2d-scale-pivot.txt` and
+`uv-transform-<backend>-divergence.txt`. Another capture publishes the quarter turn as the primary
+transform and the translation as the alternate, with the diffuse bit in the mask; it must match the
+translated texel, and the same transforms with mask zero must diverge from it by more than 32. That
+pair proves the mask, not the transform alone, selects the alternate rows. It is written to
 `uv-transform-<backend>-alternate.txt`.
 
 `VerifyMaterialXImageArithmeticProjection` pins the fold of constant arithmetic over exactly one image
