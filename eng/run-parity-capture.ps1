@@ -646,7 +646,8 @@ try
         'MaterialXTexcoordIndexSelectsSecondUvSetOnD3D12',
         'MaterialXTwoImageCompositeShadesPerPixelOnD3D12',
         'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12',
-        'OpenPbrProjectionMatchesPreviewPixelReferenceOnD3D12')
+        'OpenPbrProjectionMatchesPreviewPixelReferenceOnD3D12',
+        'OpenPbrBaseColorMapMatchesPreviewTextureOnD3D12')
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
@@ -683,6 +684,7 @@ try
         'MaterialXTexcoordIndexSelectsSecondUvSetOnVulkan',
         'MaterialXTwoImageCompositeShadesPerPixelOnVulkan',
         'OpenPbrProjectionMatchesPreviewPixelReferenceOnVulkan',
+        'OpenPbrBaseColorMapMatchesPreviewTextureOnVulkan',
         'TextureWrapModesMatchRepeatWithinUnitUvRangeOnVulkan',
         'TextureWrapModesDivergeOutsideUnitUvRangeOnVulkan',
         'TextureAutoColorSpaceMatchesSrgbOnDiffuseTextureOnVulkan',

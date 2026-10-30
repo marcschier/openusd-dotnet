@@ -4429,6 +4429,17 @@ measure 1 / 0.015. Setting only OpenPBR `emission_luminance` to zero makes both
 tests fail at 173 / 24.998. Each baseline is written to
 `openpbr-preview-pixel-equivalence-<backend>.txt`.
 
+`StormSilkParityCaptureDriverTests.OpenPbrBaseColorMapMatchesPreviewTextureOnVulkan`
+and its D3D12 WARP counterpart compare the same asymmetric PNG sampled through
+the OpenPBR `ND_image_color3` and PreviewSurface `UsdUVTexture` paths at matching
+`st` coordinates. `materialx-openpbr-base-color-map-equivalence.usda` carries the
+paired materials. OpenPBR `base_weight = 0.8` is folded into its image scale; the
+PreviewSurface texture uses the same scale. Vulkan measures maximum/mean channel
+deltas of 1 / 0.019; D3D12 WARP measures 1 / 0.020. Changing only OpenPBR's
+`base_weight` to 1 produces 41 / 2.893 and 42 / 2.894, so both tests fail the
+maximum-channel threshold. Captures are recorded in
+`openpbr-base-color-map-equivalence-<backend>.txt`.
+
 `point-instancer-cluster` proves
 prototype expansion and per-instance transforms. `time-varying-transform-primvar`
 is registered and gated at timeCode 2; its wrong-time probe compares the time 2

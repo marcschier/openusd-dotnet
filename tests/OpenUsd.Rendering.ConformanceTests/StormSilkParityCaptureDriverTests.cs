@@ -1811,6 +1811,28 @@ def Xform "World"
     }
 
     [Test]
+    public async Task OpenPbrBaseColorMapMatchesPreviewTextureOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                VulkanSilkGraphicsDevice.Create,
+                "materialx/materialx-openpbr-base-color-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("OpenPBR base-color map Vulkan pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "vulkan", "openpbr-base-color-map-equivalence");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
     [SupportedOSPlatform("windows")]
     public async Task OpenPbrProjectionMatchesPreviewPixelReferenceOnD3D12()
     {
@@ -1834,6 +1856,36 @@ def Xform "World"
         }
 
         AssertOpenPbrPixelEquivalence(image, "d3d12");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task OpenPbrBaseColorMapMatchesPreviewTextureOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                static () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+                "materialx/materialx-openpbr-base-color-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is
+            DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
+        {
+            SkipOrFail("OpenPBR base-color map D3D12 pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "d3d12", "openpbr-base-color-map-equivalence");
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
         await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
         await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
@@ -5195,9 +5247,10 @@ def Xform "World"
     }
 
     private static ParityImage CaptureOpenPbrPixelEquivalence(
-        Func<ISilkGraphicsDevice> createDevice)
+        Func<ISilkGraphicsDevice> createDevice,
+        string fixture = "materialx/materialx-openpbr-pixel-equivalence.usda")
     {
-        string stagePath = ResolveTestAsset("materialx/materialx-openpbr-pixel-equivalence.usda");
+        string stagePath = ResolveTestAsset(fixture);
         string pluginPath = ResolvePluginPath();
         PrependHdSilkNativeSearchPath();
         using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
@@ -5254,15 +5307,18 @@ def Xform "World"
         }
     }
 
-    private static void AssertOpenPbrPixelEquivalence(ParityImage image, string backend)
+    private static void AssertOpenPbrPixelEquivalence(
+        ParityImage image,
+        string backend,
+        string evidencePrefix = "openpbr-preview-pixel-equivalence")
     {
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
         string line = FormatSelfConsistencyMetrics(
-            $"openpbr-preview-pixel-equivalence-{backend}",
+            $"{evidencePrefix}-{backend}",
             maxChannelDelta,
             meanChannelDelta);
         Console.WriteLine(line);
-        WriteEvidence($"openpbr-preview-pixel-equivalence-{backend}.txt", [line]);
+        WriteEvidence($"{evidencePrefix}-{backend}.txt", [line]);
         if (CountNonBlackPixels(image) <= 100)
         {
             throw new InvalidOperationException("The OpenPBR pixel reference rendered no visible material pixels.");
