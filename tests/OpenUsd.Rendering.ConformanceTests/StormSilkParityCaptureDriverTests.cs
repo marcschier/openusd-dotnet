@@ -1855,6 +1855,28 @@ def Xform "World"
     }
 
     [Test]
+    public async Task OpenPbrNormalMapMatchesPreviewTextureOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                VulkanSilkGraphicsDevice.Create,
+                "materialx/materialx-openpbr-normal-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("OpenPBR normal map Vulkan pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "vulkan", "openpbr-normal-map-equivalence");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
     [SupportedOSPlatform("windows")]
     public async Task OpenPbrProjectionMatchesPreviewPixelReferenceOnD3D12()
     {
@@ -1938,6 +1960,36 @@ def Xform "World"
         }
 
         AssertOpenPbrPixelEquivalence(image, "d3d12", "openpbr-roughness-map-equivalence");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task OpenPbrNormalMapMatchesPreviewTextureOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                static () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+                "materialx/materialx-openpbr-normal-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is
+            DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
+        {
+            SkipOrFail("OpenPBR normal map D3D12 pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "d3d12", "openpbr-normal-map-equivalence");
         (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
         await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
         await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);

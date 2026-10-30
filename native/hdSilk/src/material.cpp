@@ -1915,6 +1915,25 @@ void _ComposeTextureAffine(
     }
 }
 
+/// Re-expresses a UsdPreviewSurface normal texture's affine in encoded space.
+///
+/// UsdPreviewSurface reads `normal` as a tangent-space direction, so a
+/// conforming normal map authors scale (2, 2, 2, 1) and bias (-1, -1, -1, 0) to
+/// decode its [0, 1] texels. Every normal slot in the renderer stores encoded
+/// texels instead: the mip chain averages them as encoded directions and the
+/// shader decodes them once. Publishing the authored affine unchanged decoded the
+/// texel twice and tilted every mapped normal. Halving the decode turns the
+/// canonical authoring into the identity, and any other affine keeps its exact
+/// meaning. Alpha is not part of the direction and keeps its authored mapping.
+void _EncodeDecodedNormalAffine(HdSilkMaterialTexture& entry)
+{
+    for (size_t index = 0; index < 3; ++index)
+    {
+        entry.scale[index] *= 0.5f;
+        entry.bias[index] = (entry.bias[index] * 0.5f) + 0.5f;
+    }
+}
+
 /// Whether the composed affine keeps a unit-range texel inside the unit range.
 ///
 /// The consumer applies scale and bias per texel in linear space and stores the
@@ -3563,6 +3582,10 @@ HdSilkMaterial::Resolve(
             if (_TryCreateTextureEntry(
                     network, record.path, *texture, outputName, input, entry, &diagnosed))
             {
+                if (input.parameter == OPENUSD_SILK_MATERIAL_NORMAL)
+                {
+                    _EncodeDecodedNormalAffine(entry);
+                }
                 record.textures.push_back(std::move(entry));
             }
             continue;

@@ -1788,6 +1788,10 @@ public enum SilkMaterialParameter : uint
     Ior = 10,
 
     /// <summary>normal, three components.</summary>
+    /// <remarks>
+    /// A normal texture's scale and bias produce encoded [0, 1] texels that the shader decodes once as
+    /// <c>2x - 1</c>; hdSilk folds an authored UsdPreviewSurface decode into that encoded space.
+    /// </remarks>
     Normal = 11,
 
     /// <summary>displacement, one component.</summary>

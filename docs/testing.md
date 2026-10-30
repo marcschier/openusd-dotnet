@@ -4454,6 +4454,21 @@ maximum-channel threshold. Decoding the PreviewSurface map as sRGB instead of
 raw produces 24 / 3.115 and also fails. Captures are recorded in
 `openpbr-roughness-map-equivalence-<backend>.txt`.
 
+`StormSilkParityCaptureDriverTests.OpenPbrNormalMapMatchesPreviewTextureOnVulkan`
+and its D3D12 WARP counterpart drive the shading normal from the same PNG. OpenPBR
+reads it through `ND_image_vector3` and `ND_normalmap` into `geometry_normal`;
+PreviewSurface reads `outputs:rgb` of a raw `UsdUVTexture` into `normal` with the
+canonical decode, scale `(2, 2, 2, 1)` and bias `(-1, -1, -1, 0)`.
+`materialx-openpbr-normal-map-equivalence.usda` makes both materials dielectric
+with roughness 0.5. Vulkan measures 13 / 0.064 and D3D12 WARP 13 / 0.065.
+Disconnecting only the OpenPBR `geometry_normal` produces 196 / 41.083 and
+196 / 41.081, so both tests fail. Without hdSilk's encoded-space fold for
+PreviewSurface normals, the PreviewSurface half is decoded twice and the
+fixture fails at 164 / 5.22. `hdsilk_probe` checks the fold directly: the
+canonical affine publishes as the identity, a flipped affine keeps its meaning,
+alpha and colour inputs are untouched, and disabling the fold fails the probe.
+Captures are recorded in `openpbr-normal-map-equivalence-<backend>.txt`.
+
 `point-instancer-cluster` proves
 prototype expansion and per-instance transforms. `time-varying-transform-primvar`
 is registered and gated at timeCode 2; its wrong-time probe compares the time 2

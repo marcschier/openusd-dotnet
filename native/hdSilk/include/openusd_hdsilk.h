@@ -1268,6 +1268,8 @@ extern "C" {
 #define OPENUSD_SILK_MATERIAL_OPACITY 8u
 #define OPENUSD_SILK_MATERIAL_OPACITY_THRESHOLD 9u
 #define OPENUSD_SILK_MATERIAL_IOR 10u
+/// A NORMAL texture's scale and bias map texels to encoded [0,1] directions, which the
+/// consumer decodes once as 2x-1. The producer folds an authored UsdPreviewSurface decode into that space.
 #define OPENUSD_SILK_MATERIAL_NORMAL 11u
 #define OPENUSD_SILK_MATERIAL_DISPLACEMENT 12u
 #define OPENUSD_SILK_MATERIAL_OCCLUSION 13u

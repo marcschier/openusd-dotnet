@@ -801,16 +801,20 @@ public sealed class SilkWarehouseMdlWrapperTests
                 bool inputs:flip_tangent_v = false
                 token outputs:out
                 """, "mdl:surface", "out")));
-            string reference = TexturedPreview(image, "1, 1, 1, 1").Replace(
+            string reference = TexturedPreview(image, "2, 2, 2, 1").Replace(
                 "inputs:diffuseColor.connect", "inputs:normal.connect", StringComparison.Ordinal)
                 .Replace("float inputs:roughness", "color3f inputs:diffuseColor = (0.12, 0.34, 0.56)\n" +
                     "float inputs:roughness", StringComparison.Ordinal);
-            await File.WriteAllTextAsync(control, Scene(reference));
+            // UsdPreviewSurface normal maps author their decode to [-1, 1]; hdSilk folds it into the
+            // encoded space the MDL projection publishes directly.
+            await File.WriteAllTextAsync(control, Scene(reference.Replace("float4 inputs:scale = (2, 2, 2, 1)",
+                "float4 inputs:scale = (2, 2, 2, 1)\nfloat4 inputs:bias = (-1, -1, -1, 0)",
+                StringComparison.Ordinal)));
             string scale = string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                $"float4 inputs:scale = ({-strength:R}, {strength:R}, 1, 1)");
+                $"float4 inputs:scale = ({-2f * strength:R}, {2f * strength:R}, 2, 1)");
             string bias = string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                $"float4 inputs:bias = ({0.5f + 0.5f * strength:R}, {0.5f - 0.5f * strength:R}, 0, 0)");
-            reference = reference.Replace("float4 inputs:scale = (1, 1, 1, 1)", scale + "\n" + bias,
+                $"float4 inputs:bias = ({strength:R}, {-strength:R}, -1, 0)");
+            reference = reference.Replace("float4 inputs:scale = (2, 2, 2, 1)", scale + "\n" + bias,
                 StringComparison.Ordinal);
             await File.WriteAllTextAsync(expected, Scene(reference));
             SilkMaterialTexture normal = ReadMaterial(plugins, projected).Textures.Single();

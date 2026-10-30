@@ -7906,6 +7906,69 @@ bool TextureAffineMatches(
     return true;
 }
 
+/// Proves that a UsdPreviewSurface normal texture is decoded once.
+///
+/// The normal slot stores encoded [0, 1] texels and the shader decodes them, so
+/// the canonical authored decode, scale (2, 2, 2, 1) and bias (-1, -1, -1, 0),
+/// must publish as the identity. Any other affine keeps its meaning in encoded
+/// space, alpha keeps its authored mapping, and a colour input is untouched.
+bool VerifyPreviewNormalAffineEncoding()
+{
+    const auto resolve = [](const TfToken& input,
+                            const GfVec4f& scale,
+                            const GfVec4f& bias)
+    {
+        HdMaterialNode texture;
+        texture.path = SdfPath("/World/PreviewNormal/Texture");
+        texture.identifier = TfToken("UsdUVTexture");
+        texture.parameters[TfToken("file")] =
+            VtValue(SdfAssetPath("textures/preview-normal.png"));
+        texture.parameters[TfToken("sourceColorSpace")] = VtValue(TfToken("raw"));
+        texture.parameters[TfToken("scale")] = VtValue(scale);
+        texture.parameters[TfToken("bias")] = VtValue(bias);
+
+        HdMaterialNode surface;
+        surface.path = SdfPath("/World/PreviewNormal/Surface");
+        surface.identifier = TfToken("UsdPreviewSurface");
+
+        HdMaterialNetwork network;
+        network.nodes = {texture, surface};
+        network.relationships.push_back(
+            {texture.path, TfToken("rgb"), surface.path, input});
+
+        HdMaterialNetworkMap map;
+        map.map[HdMaterialTerminalTokens->surface] = network;
+        return HdSilkMaterial::Resolve(SdfPath("/World/PreviewNormal"), map);
+    };
+
+    const HdSilkMaterialRecord canonical = resolve(
+        TfToken("normal"),
+        GfVec4f(2.0F, 2.0F, 2.0F, 1.0F),
+        GfVec4f(-1.0F, -1.0F, -1.0F, 0.0F));
+    const HdSilkMaterialRecord flipped = resolve(
+        TfToken("normal"),
+        GfVec4f(2.0F, -2.0F, 2.0F, 0.5F),
+        GfVec4f(-1.0F, 1.0F, -1.0F, 0.25F));
+    const HdSilkMaterialRecord colour = resolve(
+        TfToken("diffuseColor"),
+        GfVec4f(2.0F, 2.0F, 2.0F, 1.0F),
+        GfVec4f(-1.0F, -1.0F, -1.0F, 0.0F));
+    if (canonical.textures.size() != 1 || flipped.textures.size() != 1 ||
+        colour.textures.size() != 1 ||
+        canonical.textures[0].parameter != OPENUSD_SILK_MATERIAL_NORMAL ||
+        !TextureAffineMatches(
+            canonical.textures[0], {1.0F, 1.0F, 1.0F, 1.0F}, {0.0F, 0.0F, 0.0F, 0.0F}) ||
+        !TextureAffineMatches(
+            flipped.textures[0], {1.0F, -1.0F, 1.0F, 0.5F}, {0.0F, 1.0F, 0.0F, 0.25F}) ||
+        !TextureAffineMatches(
+            colour.textures[0], {2.0F, 2.0F, 2.0F, 1.0F}, {-1.0F, -1.0F, -1.0F, 0.0F}))
+    {
+        std::cerr << "A UsdPreviewSurface normal affine was not re-expressed in encoded space.\n";
+        return false;
+    }
+    return true;
+}
+
 /// Proves the bounded fold of constant arithmetic over exactly one image into
 /// the texture entry's own scale and bias, and every graph shape it refuses.
 bool VerifyMaterialXImageArithmeticProjection()
@@ -11976,6 +12039,11 @@ int main(int argc, char** argv)
     if (!VerifyMaterialXUvChainProjection())
     {
         std::cerr << "hdSilk MaterialX UV chain projection check failed.\n";
+        return 4;
+    }
+    if (!VerifyPreviewNormalAffineEncoding())
+    {
+        std::cerr << "hdSilk UsdPreviewSurface normal affine check failed.\n";
         return 4;
     }
     if (!VerifyMaterialXImageArithmeticProjection())

@@ -3159,6 +3159,15 @@ the progressive path described below; base-level readback and the existing singl
 volume-texture path are unchanged on every backend. `<UDIM>` atlases remain single-level in this slice:
 their sparse per-tile gutter/fallback layout cannot be naively downsampled, so atlas textures continue
 to allocate exactly one mip level regardless of tile resolution.
+Normal-map slots store encoded texels. After the entry's scale and bias, each RGB component lies in
+[0, 1], and the mip generator and the shader each decode it once as `2x - 1`. UsdPreviewSurface reads
+`normal` as an already decoded tangent-space direction, so a conforming normal map authors
+`scale = (2, 2, 2, 1)` and `bias = (-1, -1, -1, 0)` on its `UsdUVTexture`. Publishing that affine
+unchanged would decode each texel twice and tilt every mapped normal. hdSilk therefore re-expresses a
+PreviewSurface normal affine in encoded space: it halves each RGB scale, replaces each RGB bias with
+`(bias + 1) / 2`, and leaves alpha as authored. The canonical authoring becomes the identity and stays on
+the 8-bit upload path; any other affine keeps its meaning. MaterialX `ND_normalmap` and MDL normal
+projections already publish encoded texels, so the fold does not apply to them.
 Anisotropic sampling is capability-negotiated rather than assumed. `SilkGraphicsCapabilities` carries a
 backend-neutral `MaxSamplerAnisotropy` (defaulting to `1` so pre-existing callers keep their prior
 isotropic-only behaviour), and `SilkSamplerDescriptor` carries a validated trailing `MaxAnisotropy`
