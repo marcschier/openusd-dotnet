@@ -176,4 +176,65 @@ public sealed class ViewerReviewPersistenceTests
         }
         await files.AssertOriginalsUnchangedAsync();
     }
+
+    [Test]
+    public async Task AFileAppearingAfterCaptureCanBeRemovedAndFreshCaptureRetryReopensTheExactOpinion()
+    {
+        using ViewerPortableReviewFixture files = await ViewerPortableReviewFixture.CreateAsync();
+        var address = new UsdLayerEditAddress("/Body.review:value", UsdLayerEditField.Default);
+        const string foreignContents = "foreign file";
+
+        await using (UsdStageScheduler scheduler = UsdStageScheduler.OpenForReview(files.SourcePath))
+        {
+            UsdReviewSourceBinding binding = await scheduler.InvokeAsync(
+                static stage => stage.CaptureReviewSourceBinding());
+            await using var editor = new ViewerAuthoredEditController(scheduler, sourceBinding: binding);
+            await editor.ApplyAsync(await editor.CaptureAsync([address]),
+                [UsdLayerEdit.Set(address, UsdLayerEditValue.FromDouble(47), "double")], "Value");
+            await Assert.That(File.Exists(files.DestinationPath)).IsFalse();
+            ViewerReviewSaveCapture staleCapture = await editor.PrepareReviewSaveAsync(files.DestinationPath);
+            await File.WriteAllTextAsync(files.DestinationPath, foreignContents);
+
+            await Assert.That(async () => await editor.PublishReviewSaveAsync(staleCapture)).Throws<IOException>();
+
+            await Assert.That(await File.ReadAllTextAsync(files.DestinationPath)).IsEqualTo(foreignContents);
+            await Assert.That(editor.SavedReviewPath).IsNull();
+            await Assert.That((await editor.ReadDocumentAsync()).HasChanges).IsTrue();
+            await files.AssertOriginalsUnchangedAsync();
+
+            File.Delete(files.DestinationPath);
+            await Assert.That(File.Exists(files.DestinationPath)).IsFalse();
+
+            ViewerReviewSaveCapture retryCapture = await editor.PrepareReviewSaveAsync(files.DestinationPath);
+            ViewerReviewSaveResult saved = await editor.PublishReviewSaveAsync(retryCapture);
+
+            await Assert.That(saved.Acknowledged).IsTrue();
+            await Assert.That(saved.Destination.FullPath).IsEqualTo(files.DestinationPath);
+            await Assert.That(editor.SavedReviewPath).IsEqualTo(files.DestinationPath);
+            await Assert.That((await editor.ReadDocumentAsync()).HasChanges).IsFalse();
+            await files.AssertOriginalsUnchangedAsync();
+        }
+
+        await using ViewerReviewDocumentFile file =
+            await ViewerReviewDocumentFile.InspectAsync(files.DestinationPath, CancellationToken.None);
+        await Assert.That(Path.GetFullPath(file.Info.SourceRootPath)).IsEqualTo(files.SourcePath);
+        UsdReviewDocument document = await file.ReadAsync(files.SourcePath, CancellationToken.None);
+        await using ViewerPreparedDocument prepared = await ViewerPreparedDocument.OpenReviewAsync(
+            document, files.SourcePath, file.Identity, recovery: false, CancellationToken.None);
+        await prepared.RevalidateSourceAsync(CancellationToken.None);
+        await using var reopened = new ViewerAuthoredEditController(prepared.Scheduler, prepared.SourceBinding);
+        reopened.InitializeImportedReview(prepared);
+
+        await Assert.That(reopened.SavedReviewPath).IsEqualTo(files.DestinationPath);
+        await Assert.That((await reopened.ReadDocumentAsync()).HasChanges).IsFalse();
+        ViewerAuthoredEditCapture reopenedCapture = await reopened.CaptureAsync([address]);
+        UsdLayerAuthoredOpinion opinion = reopenedCapture.Snapshot.Opinions[0];
+        await Assert.That(opinion.Address).IsEqualTo(address);
+        await Assert.That(opinion.PropertyKind).IsEqualTo(UsdLayerPropertyKind.Attribute);
+        await Assert.That(opinion.Value.Kind).IsEqualTo(UsdLayerEditValueKind.Double);
+        await Assert.That(opinion.Value.AsDouble()).IsEqualTo(47d);
+        await Assert.That(await prepared.Scheduler.InvokeAsync(
+            static stage => stage.GetPrim("/Body").GetDouble("review:value"))).IsEqualTo(47d);
+        await files.AssertOriginalsUnchangedAsync();
+    }
 }
