@@ -4440,6 +4440,20 @@ deltas of 1 / 0.019; D3D12 WARP measures 1 / 0.020. Changing only OpenPBR's
 maximum-channel threshold. Captures are recorded in
 `openpbr-base-color-map-equivalence-<backend>.txt`.
 
+`StormSilkParityCaptureDriverTests.OpenPbrRoughnessMapMatchesPreviewTextureOnVulkan`
+and its D3D12 WARP counterpart drive roughness from the same PNG. OpenPBR reads it
+through `ND_image_float` into `specular_roughness`; PreviewSurface reads the
+`outputs:r` channel of a raw `UsdUVTexture` into `roughness`.
+`materialx-openpbr-roughness-map-equivalence.usda` makes both materials fully
+metallic so roughness dominates the shading. That metallic shading differs
+between the two halves by itself: with the same constant roughness on both
+sides, D3D12 WARP measures 8 / 0.779. With the maps, both backends measure
+11 / 0.812. Replacing only the OpenPBR map with roughness 1 produces 30 / 2.771
+on Vulkan and 30 / 2.770 on D3D12 WARP, so both tests fail the
+maximum-channel threshold. Decoding the PreviewSurface map as sRGB instead of
+raw produces 24 / 3.115 and also fails. Captures are recorded in
+`openpbr-roughness-map-equivalence-<backend>.txt`.
+
 `point-instancer-cluster` proves
 prototype expansion and per-instance transforms. `time-varying-transform-primvar`
 is registered and gated at timeCode 2; its wrong-time probe compares the time 2
