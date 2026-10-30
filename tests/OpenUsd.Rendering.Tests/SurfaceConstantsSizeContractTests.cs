@@ -92,7 +92,8 @@ public sealed class SurfaceConstantsSizeContractTests
                 || written * sizeof(float) + wideMaskBytes + detailUvBytes + alternateUvBytes != shaderSize)
             {
                 mismatches.Add(
-                    $"{relative} writes {written} prefix floats plus two UInt128 masks, two detail UV rows and two alternate UV rows, " +
+                    $"{relative} writes {written} prefix floats plus two UInt128 masks, " +
+                    "two detail UV rows and two alternate UV rows, " +
                     $"the shader block holds {shaderSize} bytes");
             }
             Match detail = Regex.Match(body,
