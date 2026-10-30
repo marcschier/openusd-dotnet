@@ -178,6 +178,53 @@ public sealed class ViewerReviewPersistenceTests
     }
 
     [Test]
+    public async Task TimeSampleOpinionSurvivesPublishAndVerifiedReopen()
+    {
+        using ViewerPortableReviewFixture files = await ViewerPortableReviewFixture.CreateAsync();
+        UsdLayerEditAddress defaultAddress = new("/Body.review:value", UsdLayerEditField.Default);
+        UsdLayerEditAddress sampleAddress = new("/Body.review:value", UsdLayerEditField.TimeSample, 2);
+
+        await using (UsdStageScheduler scheduler = UsdStageScheduler.OpenForReview(files.SourcePath))
+        {
+            UsdReviewSourceBinding binding = await scheduler.InvokeAsync(
+                static stage => stage.CaptureReviewSourceBinding());
+            await using var editor = new ViewerAuthoredEditController(scheduler, sourceBinding: binding);
+            ViewerAuthoredEditCapture capture = await editor.CaptureAsync([defaultAddress, sampleAddress]);
+
+            ViewerAuthoredEditResult applied = await editor.ApplyAsync(capture,
+            [
+                UsdLayerEdit.Set(defaultAddress, UsdLayerEditValue.FromDouble(47), "double", creationCustom: true),
+                UsdLayerEdit.Set(sampleAddress, UsdLayerEditValue.FromDouble(12), "double", creationCustom: true)
+            ], "Set default and sampled values");
+
+            await Assert.That(applied.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            ViewerReviewSaveResult saved = await editor.PublishReviewSaveAsync(
+                await editor.PrepareReviewSaveAsync(files.DestinationPath));
+            await Assert.That(saved.Acknowledged).IsTrue();
+            await Assert.That((await editor.ReadDocumentAsync()).HasChanges).IsFalse();
+        }
+
+        await using ViewerReviewDocumentFile file =
+            await ViewerReviewDocumentFile.InspectAsync(files.DestinationPath, CancellationToken.None);
+        UsdReviewDocument document = await file.ReadAsync(files.SourcePath, CancellationToken.None);
+        await using ViewerPreparedDocument prepared = await ViewerPreparedDocument.OpenReviewAsync(
+            document, files.SourcePath, file.Identity, recovery: false, CancellationToken.None);
+        await using var reopened = new ViewerAuthoredEditController(prepared.Scheduler, prepared.SourceBinding);
+        reopened.InitializeImportedReview(prepared);
+
+        ViewerAuthoredEditCapture reopenedCapture =
+            await reopened.CaptureAsync([defaultAddress, sampleAddress]);
+        await Assert.That(reopenedCapture.Snapshot.Opinions[0].Value.AsDouble()).IsEqualTo(47d);
+        await Assert.That(reopenedCapture.Snapshot.Opinions[1].Address).IsEqualTo(sampleAddress);
+        await Assert.That(reopenedCapture.Snapshot.Opinions[1].Value.AsDouble()).IsEqualTo(12d);
+        await Assert.That(await prepared.Scheduler.InvokeAsync(
+            static stage => stage.GetPrim("/Body").GetDouble("review:value"))).IsEqualTo(47d);
+        await Assert.That(await prepared.Scheduler.InvokeAsync(
+            static stage => stage.GetPrim("/Body").GetDouble("review:value", 2))).IsEqualTo(12d);
+        await files.AssertOriginalsUnchangedAsync();
+    }
+
+    [Test]
     public async Task AFileAppearingAfterCaptureCanBeRemovedAndFreshCaptureRetryReopensTheExactOpinion()
     {
         using ViewerPortableReviewFixture files = await ViewerPortableReviewFixture.CreateAsync();
