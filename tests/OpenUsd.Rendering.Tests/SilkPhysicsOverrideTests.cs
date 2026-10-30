@@ -160,18 +160,11 @@ public sealed class SilkPhysicsOverrideTests
         _ = bindings.TryBindSubtree(id, "/Body", default, PhysicsRenderOrientation.Identity);
         var overrides = new SilkPhysicsTransformOverrides(3);
         PhysicsRenderOverrideView view = CreateView(id, 1, 2, 3);
-        for (int index = 0; index < 32; index++)
+        long allocated = MeasureWarmAllocations(() =>
         {
             overrides.Stage(bindings, view);
             _ = overrides.RefreshStaged(scene);
-        }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int index = 0; index < 1000; index++)
-        {
-            overrides.Stage(bindings, view);
-            _ = overrides.RefreshStaged(scene);
-        }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         await Assert.That(allocated).IsEqualTo(0L);
         await Assert.That(overrides.Count).IsEqualTo(2);
         await Assert.That(overrides.ResolvedOverrideCount).IsEqualTo(1);
@@ -236,19 +229,52 @@ public sealed class SilkPhysicsOverrideTests
         _ = bindings.TryBind(id, "/Triangle");
         var overrides = new SilkPhysicsTransformOverrides(1);
         PhysicsRenderOverrideView view = CreateView(id, 5, 6, 7);
-        for (int index = 0; index < 20; index++)
+        long allocated = MeasureWarmAllocations(() =>
         {
             overrides.Stage(bindings, view);
             _ = overrides.RefreshStaged(scene);
-        }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int index = 0; index < 1000; index++)
-        {
-            overrides.Stage(bindings, view);
-            _ = overrides.RefreshStaged(scene);
-        }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        });
         await Assert.That(allocated).IsEqualTo(0L);
+    }
+
+    /// <summary>
+    /// Measures 1,000 calls of a hot path after it stops allocating.
+    /// </summary>
+    /// <remarks>
+    /// A fixed warm-up count cannot absorb tier-1 promotion, which compiles asynchronously after
+    /// about thirty calls and can land inside the measured loop on a contended runner.
+    /// <c>WarmSubtreeResolutionAllocatesNoManagedStorage</c> reported 3,048 bytes on hosted
+    /// Windows that way. Waiting for four consecutive quiet blocks, and measuring a second time
+    /// when the first measurement allocates, keeps the assertion at exactly zero: a path that
+    /// really allocates allocates in both measurements.
+    /// </remarks>
+    private static long MeasureWarmAllocations(Action action)
+    {
+        long allocated = 0;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            int quietBlocks = 0;
+            for (int block = 0; block < 50 && quietBlocks < 4; block++)
+            {
+                long blockBefore = GC.GetAllocatedBytesForCurrentThread();
+                for (int index = 0; index < 200; index++)
+                {
+                    action();
+                }
+                quietBlocks = GC.GetAllocatedBytesForCurrentThread() == blockBefore ? quietBlocks + 1 : 0;
+            }
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int index = 0; index < 1000; index++)
+            {
+                action();
+            }
+            allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            if (allocated == 0)
+            {
+                return 0;
+            }
+        }
+        return allocated;
     }
 
     [Test]
