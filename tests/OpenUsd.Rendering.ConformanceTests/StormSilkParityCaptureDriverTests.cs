@@ -1791,6 +1791,55 @@ def Xform "World"
     }
 
     [Test]
+    public async Task OpenPbrProjectionMatchesPreviewPixelReferenceOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(VulkanSilkGraphicsDevice.Create);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("OpenPBR Vulkan pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "vulkan");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task OpenPbrProjectionMatchesPreviewPixelReferenceOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                static () => D3D12SilkGraphicsDevice.Create(useWarp: true));
+        }
+        catch (Exception exception) when (exception is
+            DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
+        {
+            SkipOrFail("OpenPBR D3D12 pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "d3d12");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
     public async Task MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnVulkan()
     {
         ParityImage image;
@@ -5143,6 +5192,81 @@ def Xform "World"
         byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
         color.ReadbackForTesting(pixels);
         return new ParityImage(Width, Height, pixels);
+    }
+
+    private static ParityImage CaptureOpenPbrPixelEquivalence(
+        Func<ISilkGraphicsDevice> createDevice)
+    {
+        string stagePath = ResolveTestAsset("materialx/materialx-openpbr-pixel-equivalence.usda");
+        string pluginPath = ResolvePluginPath();
+        PrependHdSilkNativeSearchPath();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+        using OpenUsdSilkPage page = session.Sync(
+            Width,
+            Height,
+            TimeCode,
+            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+        EnsureOpenPbrAndPreviewMaterialsPublished(page);
+
+        using ISilkGraphicsDevice device = createDevice();
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)Width),
+                checked((uint)Height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(checked((uint)Width), checked((uint)Height)));
+        using var renderer = new SilkMeshRenderer(device);
+        var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
+        for (int attempt = 0; attempt < 60; attempt++)
+        {
+            _ = renderer.ApplyAndRender(page, color, depth, options);
+            Thread.Sleep(10);
+        }
+
+        byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+        color.ReadbackForTesting(pixels);
+        return new ParityImage(Width, Height, pixels);
+    }
+
+    private static void EnsureOpenPbrAndPreviewMaterialsPublished(OpenUsdSilkPage page)
+    {
+        bool projected = false;
+        bool preview = false;
+        using SilkCommandEnumerator commands = page.GetEnumerator();
+        while (commands.MoveNext())
+        {
+            if (commands.Current.Type != SilkCommandType.MaterialUpsert)
+            {
+                continue;
+            }
+
+            SilkSurfaceKind kind = commands.Current.AsMaterialUpsert().SurfaceKind;
+            projected |= kind == SilkSurfaceKind.MaterialXProjected;
+            preview |= kind == SilkSurfaceKind.PreviewSurface;
+        }
+
+        if (!projected || !preview)
+        {
+            throw new InvalidOperationException(
+                $"The pixel fixture did not publish both material paths (projected={projected}, preview={preview}).");
+        }
+    }
+
+    private static void AssertOpenPbrPixelEquivalence(ParityImage image, string backend)
+    {
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        string line = FormatSelfConsistencyMetrics(
+            $"openpbr-preview-pixel-equivalence-{backend}",
+            maxChannelDelta,
+            meanChannelDelta);
+        Console.WriteLine(line);
+        WriteEvidence($"openpbr-preview-pixel-equivalence-{backend}.txt", [line]);
+        if (CountNonBlackPixels(image) <= 100)
+        {
+            throw new InvalidOperationException("The OpenPBR pixel reference rendered no visible material pixels.");
+        }
     }
 
     private static void EnsureGeneratedMaterialPublished(OpenUsdSilkPage page)

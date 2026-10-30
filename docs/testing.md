@@ -4415,6 +4415,20 @@ resulting page is proved against the managed renderer by
 `SilkMaterialCommandTests`; the last of those asserts the expanded projection can
 only select shader permutations already compiled for both the D3D12 (DXIL) and
 Vulkan (SPIR-V) paths, so the expansion needs no new checked shader artifact.
+
+`StormSilkParityCaptureDriverTests.OpenPbrProjectionMatchesPreviewPixelReferenceOnVulkan`
+and its D3D12 WARP counterpart compare the rendered OpenPBR half against an
+independently authored `UsdPreviewSurface` half in
+`materialx-openpbr-pixel-equivalence.usda`. The fixture applies `base_weight` to
+`base_color`, `emission_luminance` to `emission_color`, and maps metalness,
+roughness, IOR, coat, coat roughness and opacity to their corresponding
+PreviewSurface inputs. Both projected and PreviewSurface materials must reach
+the page, the image must contain more than 100 nonblack pixels, and maximum and
+mean channel deltas must stay within 16 and 8. D3D12 WARP and Vulkan SwiftShader
+measure 1 / 0.015. Setting only OpenPBR `emission_luminance` to zero makes both
+tests fail at 173 / 24.998. Each baseline is written to
+`openpbr-preview-pixel-equivalence-<backend>.txt`.
+
 `point-instancer-cluster` proves
 prototype expansion and per-instance transforms. `time-varying-transform-primvar`
 is registered and gated at timeCode 2; its wrong-time probe compares the time 2
