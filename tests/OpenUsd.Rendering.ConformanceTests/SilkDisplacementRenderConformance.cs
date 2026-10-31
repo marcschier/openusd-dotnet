@@ -825,6 +825,9 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(fixedUp.AsSpan().SequenceEqual(broken))
             .IsFalse()
             .Because("a repaired height field must reach the next frame");
+        await Assert.That(brokenOutline.Status).IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+        await Assert.That(brokenOutline.ResolvedMeshCount).IsEqualTo(1);
+        await Assert.That(brokenOutline.SelectedDraws).IsGreaterThan(0ul);
         await Assert.That(repairedOutline.Status).IsEqualTo(SilkSelectionOutlineStatus.Rendered);
         await Assert.That(repairedOutline.ResolvedMeshCount).IsEqualTo(1);
         await Assert.That(repairedOutline.SelectedDraws).IsGreaterThan(brokenOutline.SelectedDraws);
@@ -834,6 +837,7 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(fixedUp.AsSpan().SequenceEqual(selectedControl))
             .IsTrue()
             .Because("the repaired selection must outline the analytically displaced surface");
+        await Assert.That(brokenShadowRenders).IsGreaterThan(0ul);
         await Assert.That(repairedShadowRenders).IsEqualTo(brokenShadowRenders + 1)
             .Because("repairing the caster must rebuild the retained shadow map");
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(repairedShadowRenders)
