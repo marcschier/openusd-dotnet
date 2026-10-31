@@ -104,6 +104,9 @@ public sealed class ViewerPortableDocumentNativeTests
             UsdReviewSourceBinding binding = await session.Scheduler.InvokeAsync(
                 static stage => stage.CaptureReviewSourceBinding(), timeout);
             await Assert.That(Path.GetFullPath(binding.SourceRootPath)).IsEqualTo(files.SourcePath);
+            await Assert.That(Required<MenuItem>(main, "AdoptReviewMenuItem").Header)
+                .IsEqualTo("Adopt Session into _Review...");
+            await Assert.That(Required<MenuItem>(main, "AdoptReviewMenuItem").IsEnabled).IsFalse();
             TreeView hierarchy = Required<TreeView>(main, "StageHierarchy");
             hierarchy.SelectedItem = hierarchy.Items.OfType<TreeViewItem>().Single(
                 static item => item.Tag is ViewerHierarchyTreeNode { Entry.Path: "/Body" });

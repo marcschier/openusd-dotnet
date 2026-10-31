@@ -79,6 +79,7 @@ internal static class ViewerCommandIds
 {
     internal const string FileOpenStage = "file.openStage";
     internal const string FileOpenReview = "file.openReview";
+    internal const string FileAdoptReview = "file.adoptReview";
     internal const string FileOpenSample = "file.openSample";
     internal const string FileRecentStages = "file.recentStages";
     internal const string FileReloadStage = "file.reloadStage";
@@ -281,6 +282,9 @@ internal static class ViewerCommandCatalog
             "_Open Stage...", "Open stage", Gesture: "Ctrl+O"),
         new(ViewerCommandIds.FileOpenReview, ViewerCommandGroup.File,
             "Open _Review Document...", "Open a source-linked review document"),
+        new(ViewerCommandIds.FileAdoptReview, ViewerCommandGroup.File,
+            "Adopt Session into _Review...",
+            "Move compatible session opinions into a source-linked review and reset history"),
         new(ViewerCommandIds.FileOpenSample, ViewerCommandGroup.File,
             "Open Review _Sample", "Open the bundled review sample"),
         new(ViewerCommandIds.FileRecentStages, ViewerCommandGroup.File,

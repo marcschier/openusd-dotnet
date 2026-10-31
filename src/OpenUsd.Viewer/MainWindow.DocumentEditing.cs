@@ -34,16 +34,21 @@ public sealed partial class MainWindow
         ExportReviewDeltaMenuItem.Click += async (_, _) => await ExportReviewDeltaAsync();
         SaveReviewMenuItem.Click += async (_, _) => await SaveReviewAsync(saveAs: false);
         SaveReviewAsMenuItem.Click += async (_, _) => await SaveReviewAsync(saveAs: true);
+        SaveSourceMenuItem.Click += async (_, _) => await SaveSourceLayerAsync();
         OpenReviewMenuItem.Click += async (_, _) => await ChooseReviewDocumentAsync();
+        AdoptReviewMenuItem.Click += async (_, _) => await AdoptReviewAsync();
         RevertReviewMenuItem.Click += async (_, _) => await RevertReviewAsync();
         ToolTip.SetTip(ExportReviewDeltaMenuItem,
             "Exports a bounded review-only USDA delta to an unused path. This is not a portable review document.");
         ToolTip.SetTip(SaveReviewMenuItem, DocumentChangesWindow.SaveRestriction);
         ToolTip.SetTip(SaveReviewAsMenuItem, DocumentChangesWindow.SaveRestriction);
         ToolTip.SetTip(SaveSourceMenuItem,
-            "Source layers are capture-only in the bounded native editing API. Source saving is disabled.");
+            "Publish only the verified, changed root layer after explicit source-edit confirmation.");
         ToolTip.SetTip(RevertReviewMenuItem,
             "No portable saved review baseline is available. Undo individual review edits instead.");
+        ToolTip.SetTip(AdoptReviewMenuItem,
+            "Verify the current text-USD source, move compatible session opinions into a new review layer, " +
+            "and start fresh Undo/Redo history. Source files are not written.");
         UpdateDocumentCommands();
     }
 
@@ -76,6 +81,8 @@ public sealed partial class MainWindow
             !editor.IsSuspended && !_shutdownStarted;
         OpenReviewMenuItem.IsEnabled = OperatingSystem.IsWindows() &&
             !_documentBusy && !_documentEditBusy && !_shutdownStarted;
+        AdoptReviewMenuItem.IsEnabled = OperatingSystem.IsWindows() && ready &&
+            editor is { CanAdoptReview: true };
         EditUndoMenuItem.IsEnabled = ready && editor is { CanUndo: true };
         EditRedoMenuItem.IsEnabled = ready && editor is { CanRedo: true };
         if (editor is not null)
@@ -86,6 +93,17 @@ public sealed partial class MainWindow
         ExportReviewDeltaMenuItem.IsEnabled = ready && _documentObservation?.State.Review is not null;
         SaveReviewMenuItem.IsEnabled = ready && editor is { CanSaveReview: true };
         SaveReviewAsMenuItem.IsEnabled = SaveReviewMenuItem.IsEnabled;
+        ViewerDocumentSaveDecision sourceSave = ViewerDocumentSavePolicy.Plan(
+            _documentObservation?.State is { } sourceState && editor is { CanSaveSource: true }
+                ? sourceState with { SourceEditOptIn = true }
+                : null,
+            ViewerDocumentSaveAction.SaveSource);
+        SaveSourceMenuItem.IsEnabled = OperatingSystem.IsWindows() && ready && sourceSave.IsAllowed;
+        ToolTip.SetTip(SaveSourceMenuItem, editor is { CanSaveSource: true }
+            ? sourceSave.IsAllowed
+                ? "Publish the changed verified root layer. Confirmation enables source saving for this document."
+                : sourceSave.Message
+            : "Source publication requires a verified source origin.");
         RevertReviewMenuItem.IsEnabled = ready && editor is { CanSaveReview: true, SavedReviewPath: not null } &&
             _documentObservation?.State is { Source.HasChanges: false, HasOtherLayerChanges: false };
         ToolTip.SetTip(RevertReviewMenuItem,

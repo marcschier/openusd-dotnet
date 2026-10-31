@@ -362,9 +362,11 @@ jobs:
             -PhysicsRuntimeRoot (Join-Path $env:GITHUB_WORKSPACE 'native\install\shim\win-x64-physx') `
             -OutputRoot (Join-Path $env:GITHUB_WORKSPACE 'artifacts\viewer-workflows\windows-wgl') `
             -MesaWgl
-      - name: Execute D3D12 transparent opacity conformance
+      - name: Execute Windows opacity and shadow conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
+        env:
+          OPENUSD_REQUIRE_SWIFTSHADER: '1'
         run: |
           $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
           dotnet build $project -c Release -f net10.0
@@ -375,6 +377,14 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/D3D12DeviceTests/WarpCompositesStraightAlphaOverDestination')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -MinimumExpectedTests 8 `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/SilkShadowAdmissionTests/*')
       - name: Execute GPU deformation, displacement, and environment conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -1312,7 +1322,7 @@ jobs:
           artifacts/avalonia-vulkan-smoke/linux-x64
           '${{ steps.linux-vulkan-runtime.outputs.loader }}'
           '${{ steps.linux-vulkan-runtime.outputs.icd }}'
-      - name: Execute Linux Vulkan transparent opacity conformance
+      - name: Execute Linux Vulkan opacity and shadow conformance
         if: >-
           steps.native-ready.outputs.ready == 'true' &&
           (steps.linux-vulkan.outputs.ready == 'true')
@@ -1327,9 +1337,10 @@ jobs:
             -Project $project `
             -Framework net10.0 `
             -Configuration Release `
+            -MinimumExpectedTests 2 `
             -TestArguments @(
               '--treenode-filter',
-              '/*/*/VulkanDeviceTests/VulkanCompositesStraightAlphaOverDestination')
+              '/*/*/VulkanDeviceTests/(VulkanCompositesStraightAlphaOverDestination|VulkanConstantOpacityThresholdChangesShadowCoverage)')
       - name: Execute Linux deformation, displacement, and environment conformance
         if: >-
           steps.native-ready.outputs.ready == 'true' &&

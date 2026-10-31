@@ -4942,6 +4942,14 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_review_source_acknowledge_publication")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageReviewSourceAcknowledgePublication(
+            nint stage,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_layer_review_capture",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
@@ -4993,6 +5001,16 @@ public static unsafe partial class OpenUsdNativeRuntime
             byte* binding,
             nuint bindingSize,
             out int outcome,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_review_adopt")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageReviewAdopt(
+            nint stage,
             out nint owner,
             ref NativeEditBufferView view,
             ref NativeErrorBuffer error);

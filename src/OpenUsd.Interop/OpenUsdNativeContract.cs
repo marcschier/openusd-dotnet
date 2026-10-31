@@ -7,7 +7,7 @@ namespace OpenUsd.Interop;
 /// </summary>
 public static class OpenUsdNativeContract
 {
-    private const ulong CoreCapabilities = 0x7FFFF7FFF;
+    private const ulong CoreCapabilities = 0x1FFFFF7FFF;
     private const ulong SchemaFacadeCapabilities = 1UL << 15;
 
     /// <summary>Gets the platform-neutral native import name.</summary>
@@ -27,4 +27,10 @@ public static class OpenUsdNativeContract
 
     /// <summary>Identifies the composed UsdGeom stage linear units (metersPerUnit and upAxis) API.</summary>
     public const ulong StageLinearUnitsCapability = 1UL << 34;
+
+    /// <summary>Identifies explicit adoption of an unbound dirty stage into a portable review.</summary>
+    public const ulong ReviewStageAdoptionCapability = 1UL << 35;
+
+    /// <summary>Identifies guarded acknowledgement of an explicitly published review source layer.</summary>
+    public const ulong ReviewSourcePublicationCapability = 1UL << 36;
 }

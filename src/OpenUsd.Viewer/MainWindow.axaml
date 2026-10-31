@@ -41,6 +41,8 @@
                   InputGesture="Ctrl+O" />
               <MenuItem x:Name="OpenSampleMenuItem" Header="Open Review _Sample" />
               <MenuItem x:Name="OpenReviewMenuItem" Header="Open _Review Document..." />
+              <MenuItem x:Name="AdoptReviewMenuItem" Header="Adopt Session into _Review..."
+                        IsEnabled="False" />
               <MenuItem x:Name="SaveReviewMenuItem" Header="_Save Review Document"
                         InputGesture="Ctrl+S" IsEnabled="False" />
               <MenuItem x:Name="SaveReviewAsMenuItem" Header="Save Review _As..."

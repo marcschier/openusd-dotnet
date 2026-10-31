@@ -1702,6 +1702,52 @@ public sealed class SilkMaterialStreamingTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task NonzeroMissingTextureFallbackMatchesReferenceAndRetryRestoresDecodedMap(
+        SilkGraphicsBackend backend)
+    {
+        float[] fallback = [0, 0, 128f / 255f, 1];
+        using var actual = new Fixture(backend, streaming: true, imageSize: 1, failFirstDecodePath: "A");
+        using var expected = new Fixture(backend, streaming: true, imageSize: 1);
+        using OpenUsdSilkPage page = Page(2, 1, assetPath: "A", fallback: fallback);
+        using OpenUsdSilkPage fallbackPage = Page(2, 1, assetPath: "C", fallback: fallback);
+        using OpenUsdSilkPage decodedPage = Page(3, 1, assetPath: "A", fallback: fallback);
+
+        _ = actual.Render(page);
+        await Assert.That(actual.Decoded.Count(static path => path == "A")).IsEqualTo(1);
+        await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries.Select(static entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.TextureAssetNotFound);
+        await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries.Select(static entry => entry.Code))
+            .Contains(SilkRenderDiagnosticCodes.TextureFallbackUsed);
+
+        _ = expected.Render(fallbackPage);
+        byte[] fallbackReference = expected.ColorBytes();
+        float[] depthReference = expected.DepthValues();
+        await Assert.That(actual.ColorBytes().SequenceEqual(fallbackReference)).IsTrue();
+        await Assert.That(actual.DepthValues().SequenceEqual(depthReference)).IsTrue();
+
+        _ = expected.Render(decodedPage);
+        byte[] decodedReference = expected.ColorBytes();
+        await Assert.That(decodedReference.SequenceEqual(fallbackReference)).IsFalse();
+        await Assert.That(expected.DepthValues().SequenceEqual(depthReference)).IsTrue();
+
+        actual.Renderer.GpuResources.RetryFailedTextures(actual.Renderer.Scene);
+        _ = actual.Renderer.Render(actual.Color, actual.Depth);
+
+        await Assert.That(actual.Decoded.Count(static path => path == "A")).IsEqualTo(2);
+        await Assert.That(actual.ColorBytes().SequenceEqual(decodedReference)).IsTrue();
+        await Assert.That(actual.DepthValues().SequenceEqual(depthReference)).IsTrue();
+        await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries.Any(static entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed ||
+            entry.Code == SilkRenderDiagnosticCodes.TextureAssetNotFound)).IsFalse();
+        actual.ReleaseResources();
+        expected.ReleaseResources();
+        await actual.AssertReleased();
+        await expected.AssertReleased();
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task MapsOnASecondPrimvarSampleTheSecondCoordinateSet(SilkGraphicsBackend backend)
     {
         // The base colour reads st and the roughness and metallic maps read st1.
@@ -2046,6 +2092,8 @@ public sealed class SilkMaterialStreamingTests
         private readonly bool _floatNormals;
         private readonly bool _floatDiffuse;
         private readonly byte[][]? _normalTexels;
+        private readonly string? _failFirstDecodePath;
+        private bool _failedConfiguredTexture;
 
         internal Fixture(
             SilkGraphicsBackend backend, bool streaming, bool volumeSupport = false,
@@ -2053,7 +2101,7 @@ public sealed class SilkMaterialStreamingTests
             IReadOnlyList<SilkUdimTile>? udimTiles = null, bool constantTiles = false,
             ulong residencyBytes = 512, bool mixedColors = false, bool floatNormals = false,
                 byte[][]? normalTexels = null,
-            int? imageHeight = null, bool floatDiffuse = false)
+            int? imageHeight = null, bool floatDiffuse = false, string? failFirstDecodePath = null)
         {
             _imageSize = imageSize;
             _imageHeight = imageHeight ?? imageSize;
@@ -2062,6 +2110,7 @@ public sealed class SilkMaterialStreamingTests
             _floatNormals = floatNormals;
             _floatDiffuse = floatDiffuse;
             _normalTexels = normalTexels;
+            _failFirstDecodePath = failFirstDecodePath;
             Cpu = new(Math.Max(4_194_304ul, checked((ulong)imageSize * (ulong)_imageHeight * 32)));
             Textures = new(Cpu.MaximumBytes);
             Staging = new(stagingBytes);
@@ -2081,9 +2130,17 @@ public sealed class SilkMaterialStreamingTests
                     IDisposable reservation = budget.Reserve(
                         checked((ulong)_imageSize * (ulong)_imageHeight *
                             ((_floatNormals && path == "B") || (_floatDiffuse && path == "A") ? 16ul : 4ul)));
-                    SilkDecodedImage image = Decode(path, linear);
-                    image.OwnReservation(reservation);
-                    return image;
+                    try
+                    {
+                        SilkDecodedImage image = Decode(path, linear);
+                        image.OwnReservation(reservation);
+                        return image;
+                    }
+                    catch
+                    {
+                        reservation.Dispose();
+                        throw;
+                    }
                 }, displayLattices: new SilkDisplayTransformLatticeCache(Cpu, lattice, identityProvider: lattice));
             Color = Device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(32, 32));
             Depth = Device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(32, 32));
@@ -2120,6 +2177,11 @@ public sealed class SilkMaterialStreamingTests
         private SilkDecodedImage Decode(string path, bool _)
         {
             Decoded.Add(path);
+            if (!_failedConfiguredTexture && path == _failFirstDecodePath)
+            {
+                _failedConfiguredTexture = true;
+                throw new FileNotFoundException("Texture is absent.", path);
+            }
             if (_normalTexels is not null && path is "B" or "C")
             {
                 return new((uint)_imageSize, (uint)_imageSize, (byte[])_normalTexels[path == "B" ? 0 : 1].Clone());
@@ -2211,7 +2273,8 @@ public sealed class SilkMaterialStreamingTests
         bool normalMap = false, bool omitUvs = false, bool zeroUvs = false, float uvScale = 1,
         bool sharedAssets = false, bool secondExtended = false, bool repeatFirstAsset = false,
         bool thirdExtended = false, float offsetY = 0, float offsetZ = 0, bool visibleMiddle = false,
-        float? uvScaleY = null, string materialUvPrimvar = "st", string meshUvPrimvar = "st")
+        float? uvScaleY = null, string materialUvPrimvar = "st", string meshUvPrimvar = "st",
+        string? assetPath = null, float[]? fallback = null)
     {
         List<byte[]> commands = [SilkMeshRendererConformance.CreateFrameCommand(
             32, 32, SilkMeshRendererConformance.Identity())];
@@ -2223,7 +2286,9 @@ public sealed class SilkMaterialStreamingTests
                 commands.Add(Material(material, transparent, normalMap,
                     extended: (secondExtended && i == 1) || (thirdExtended && i == 2),
                     assetName: sharedAssets || (repeatFirstAsset && i == 2) ? 'A' : null,
-                    uvPrimvar: materialUvPrimvar));
+                    uvPrimvar: materialUvPrimvar,
+                    assetPath: assetPath,
+                    fallback: fallback));
             }
             float left = -0.9f + (i * 0.3f);
             float right = left + 1.2f;
@@ -2249,7 +2314,7 @@ public sealed class SilkMaterialStreamingTests
         bool promotedNormals = false, SilkTextureWrap wrap = SilkTextureWrap.Repeat, bool normalScalarMaps = false,
         bool flipNormalGreen = false, bool emissiveOnly = false, uint colorComponents = 3,
         string uvPrimvar = "st", string secondaryUvPrimvar = "",
-        uint alternateUvMask = 0, float alternateUvTranslate = 0)
+        uint alternateUvMask = 0, float alternateUvTranslate = 0, float[]? fallback = null)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
@@ -2312,9 +2377,11 @@ public sealed class SilkMaterialStreamingTests
             float gain = (extended && (!vectorNormals || map == 0)) || promotedNormal ? 2 : 1;
             float bias = promotedNormal ? -0.5f :
                 scalarParameter is null || !extended ? 0 : -0.75f;
+            float[] fallbackValues = fallback ?? [1, 1, 1, 1];
             foreach (float value in new float[] { gain, promotedNormal && flipNormalGreen ? -gain : gain,
                 promotedNormal ? 1 : gain, 1, bias, promotedNormal && flipNormalGreen ? 1.5f : bias,
-                promotedNormal ? 0 : bias, 0, 1, 1, 1, 1 })
+                promotedNormal ? 0 : bias, 0, fallbackValues[0], fallbackValues[1],
+                fallbackValues[2], fallbackValues[3] })
             {
                 writer.Write(value);
             }

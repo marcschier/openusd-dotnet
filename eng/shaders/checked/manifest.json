@@ -55,7 +55,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "0f6ebd345d5ab4403817bad44b2b8ee84f530031022b55312cac678f306a1a0e"
+      "sha256": "9582d4c14e6353b66b30f6cf13aa0edc48104ec3030372c6cf8af479d12b3e08"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -439,11 +439,11 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneState.cs",
-      "sha256": "17483c7745e7ec5122909ef547407f1769ad25fb20ef9aeb5291e68005ee2f79"
+      "sha256": "eb13d801c7cab6a132a4533fba35f628db93a84ef9b22f9189c5603b081d25d4"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSurfaceUniformWriter.cs",
-      "sha256": "797ba561b0d753aedb2f78e1b57fd2c00a20db7368769ec6f9da486bf4860b2a"
+      "sha256": "2c2e43c7c4b479d5493df2ff83e313bf66bd08dc479db720815a13b52b57cd2b"
     },
     {
       "path": "src/OpenUsd.Viewer.App/app.manifest",

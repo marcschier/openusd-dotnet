@@ -306,7 +306,9 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT |
     OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT |
     OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS |
-    OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS;
+    OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS |
+    OPENUSD_CAPABILITY_REVIEW_STAGE_ADOPTION |
+    OPENUSD_CAPABILITY_REVIEW_SOURCE_PUBLICATION;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));

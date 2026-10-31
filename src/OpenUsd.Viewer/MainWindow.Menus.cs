@@ -50,6 +50,7 @@ public sealed partial class MainWindow
         setAccessibleName(OpenStageButton, ViewerCommandIds.FileOpenStage);
         setAccessibleName(OpenStageMenuItem, ViewerCommandIds.FileOpenStage);
         setAccessibleName(OpenReviewMenuItem, ViewerCommandIds.FileOpenReview);
+        setAccessibleName(AdoptReviewMenuItem, ViewerCommandIds.FileAdoptReview);
         setAccessibleName(OpenSampleMenuItem, ViewerCommandIds.FileOpenSample);
         setAccessibleName(ReloadStageButton, ViewerCommandIds.FileReloadStage);
         setAccessibleName(ReloadStageMenuItem, ViewerCommandIds.FileReloadStage);

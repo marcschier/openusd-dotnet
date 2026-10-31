@@ -606,6 +606,13 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
+    public async Task VulkanConstantOpacityThresholdChangesShadowCoverage()
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(SilkGraphicsBackend.Vulkan);
+        await SilkShadowConformance.ConstantOpacityThresholdChangesCasterCoverage(device);
+    }
+
+    [Test]
     public async Task SwiftShaderLightsAQuadByTheDirectionAndOrientationOfATexturedDome()
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())

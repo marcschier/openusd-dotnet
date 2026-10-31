@@ -4039,11 +4039,15 @@ two collections separately, so an unlit or off-screen blocker still casts. Recei
 restricted either, because a prim excluded from a light's caster set is
 still lit by that light and still occluded by its other casters. A descriptor whose caster set is
 narrowed carries `OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED`, so a consumer that ignored the mask would
-know it is rendering a different image. A caster whose material is opacity-masked — an authored
-opacity texture, an `opacityThreshold` above zero, or a constant opacity below one — is dropped from
-every map and reported as `OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED` against its prim path: the
-depth-only program binds no material and cannot discard, so drawing it would cast the solid shadow of
-a cutout card rather than of its visible coverage. Such a prim is still lit and still receives.
+know it is rendering a different image. A `UsdPreviewSurface` caster with constant opacity and a
+positive `opacityThreshold` casts either a solid shadow or none. Below the threshold the colour pass
+discards the entire surface, so it is omitted from every map without an unsupported-caster diagnostic.
+At or above the threshold the colour pass makes it opaque, so the depth-only pass draws its geometric
+coverage. Omitted opacity defaults to one. An opacity texture, a blended constant opacity without a
+positive threshold, or a positive threshold on another material kind excludes the caster and reports
+`OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED` against its prim path. The depth-only program binds no
+material and cannot reproduce variable or blended coverage. Unsupported casters are still lit and
+still receive shadows.
 
 **How it is drawn.** `shadow.vertex`/`shadow.fragment` are their own checked program family, not a
 permutation of the mesh family: a shadow pass binds no material, no surface constants and no frame
@@ -4074,11 +4078,13 @@ composite material image.
 
 **What is retained.** The atlas is re-rendered exactly when one of its inputs changes: the published
 descriptor table, the caster geometry revision (which moves on upsert, removal, deformation, and
-restoration), the caster restriction, or the device generation. The device generation it keys on is the
-combined one every reset a backend reports advances, not the picking or selection-outline generation
-alone: a device lost on an ordinary colour or shadow submission drops every image the device held,
-including this atlas, without either subsystem generation moving. An unchanged scene reuses the
-retained maps and reproduces the frame byte for byte; a retired descriptor table releases the atlas.
+restoration), the material revision, the caster restriction, or the device generation. A material-only
+edit can change whether a caster is solid, invisible, or unsupported without changing its mesh. The
+device generation it keys on is the combined one every reset a backend reports advances, not the
+picking or selection-outline generation alone: a device lost on an ordinary colour or shadow
+submission drops every image the device held, including this atlas, without either subsystem generation
+moving. An unchanged scene reuses the retained maps and reproduces the frame byte for byte; a retired
+descriptor table releases the atlas.
 
 **What a refused allocation leaves behind.** Only a resolution change replaces the image itself, and
 that is the one path a refused allocation can interrupt. The retained atlas is unpublished and released
@@ -4107,8 +4113,12 @@ whole dark-row span rather than one sample, because a caster matrix that skips t
 convention relocates the shadow rather than removing it: the span is rows 36..50 on both backends with
 the convention applied, and 24..63 on Vulkan without it — a Y-symmetric scene cannot see the
 difference. A rotated, non-uniformly scaled receiver that is its own only caster must not darken a
-single pixel, and an opacity-masked caster must stop occluding and be named.
-`SilkShadowWireTests` pins the wire layout and its rejections, including the reserved header field,
+single pixel, and a blended caster must stop occluding and be named. `SilkShadowAdmissionTests` checks
+constant opacity below, at, and above its threshold, material-only transitions, retained-map reuse,
+diagnostics, and resource release on D3D12 WARP and Vulkan SwiftShader, with and without texture
+admission. `SilkShadowWireTests` pins the cutoff defaults, adjacent threshold values and invalid
+inputs as well as the wire layout and its rejections, including the reserved header field.
+`SilkTextureResidencyTests` keeps texture-driven opacity outside the supported caster set.
 `SilkShadowDiagnosticTests` pins the naming in both directions,
 `SilkShadowNormalSpaceSourceContractTests` pins the world space the shadow bias works in — a defect
 the constant depth bias hides from any gate a 64-pixel frame can resolve — and `hdsilk_probe` pins
@@ -4137,9 +4147,9 @@ need a cube or perspective light-space projection this producer has not derived;
 simultaneous shadow maps; cascaded or camera-fitted light-space partitions, since the single map is
 fitted to the whole caster bound rather than to the view frustum; shadows from line and point
 topologies, which rasterize at one pixel and would publish a single-texel artefact rather than an
-occluder; alpha-tested and translucent shadow casters, which are dropped and named rather than
-approximated with a solid shadow, because the depth-only program binds no material and cannot discard;
-and Metal, which is
+occluder; texture-driven alpha tests, blended translucent shadow casters, and positive thresholds on
+non-PreviewSurface materials, which are dropped and named rather than approximated with a solid shadow
+because the depth-only program binds no material and cannot reproduce their coverage; and Metal, which is
 source-complete but reports no raster-shadow capability and is therefore unclaimed and unrun — a Metal
 device allocates no map and diagnoses every shadow-enabled light. Storm's own offscreen shadow path
 remains unusable as a reference (see "hdSilk UsdLux lights"), so all of the above is gated

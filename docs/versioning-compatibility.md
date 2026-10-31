@@ -90,7 +90,7 @@ constants, package validation, and tests must be updated together.
 
 | Boundary | Current contract | Runtime check |
 | --- | ---: | --- |
-| Data shim `openusd_dotnet` | ABI 26, required capabilities `0x7FFFFFFFF` | Managed runtime validates both. |
+| Data shim `openusd_dotnet` | ABI 26, required capabilities `0x1FFFFFFFFF` | Managed runtime validates both. |
 | Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 9 | Managed child runtime requires the exact locked version. |
 | hdSilk session API | ABI 6 | Session/page exports are required and checked before creation. |
@@ -167,6 +167,23 @@ pick position is in scene units and no earlier export reported the stage's scale
 was authored. A runtime without the capability is rejected at startup. Every ABI 25 export and
 capability is preserved, and the hdSilk, Storm and physics contracts are unchanged.
 
+Data ABI 26 remains unchanged. Capability bit 35, `OPENUSD_CAPABILITY_REVIEW_STAGE_ADOPTION`
+(`0x800000000`), adds `openusd_stage_review_adopt` at Windows ordinal 403.
+`UsdReviewDocumentExtensions.AdoptIntoReview` verifies source and dependency bytes plus resolver
+and composition state, then moves compatible authored opinions from the session and existing owned
+review layer into a source-anchored review layer. It replaces the session data with a clean
+container; source files are never written. Conflicting or unsupported state is refused without
+changing the stage, and transaction failures roll back owned state. On success, the Viewer binds
+the stage to its verified source and starts a fresh Undo/Redo history baseline; prior history is
+discarded. Verified adoption is currently Windows-only.
+
+Data ABI 26 also requires capability bit 36, `OPENUSD_CAPABILITY_REVIEW_SOURCE_PUBLICATION`
+(`0x1000000000`), and `openusd_stage_review_source_acknowledge_publication` at Windows ordinal 404.
+The export acknowledges a caller-published root replacement; it writes no files and refreshes the
+verified source and dependency baseline only after admission. The Viewer supports explicit Windows
+text-USD publication after per-document opt-in and root ownership, revision and fingerprint checks.
+Generic or implicit source writes and publication of other layers remain unsupported.
+
 Data ABI 25 adds `OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS` (`0x200000000`) and the
 `openusd_stage_set_vec4f_array`/`openusd_stage_get_vec4f_array` exports, appended at Windows
 ordinals 400 and 401. Render product preparation needs them to read authored camera
@@ -221,8 +238,8 @@ Original source graphs/files/root metadata remain unchanged. The verified-open i
 currently requires Windows filesystem read stability and the bounded USDA/text-USD/concrete-asset
 profile; non-Windows verified opening, crate/custom/template/package/URI portability and
 inherit/specialize/relocate/value-clip composition explicitly refuse. Normal Open/render support
-for other formats is not reduced. Source/root saving and silent legacy-session rebinding are not
-provided. See [portable review documents](data-api.md#portable-review-documents).
+for other formats is not reduced. ABI 20 alone does not provide source/root saving or silent
+legacy-session rebinding. See [portable review documents](data-api.md#portable-review-documents).
 
 ABI 19 is additive over ABI 18. `OPENUSD_CAPABILITY_LAYER_AUTHORED_EDIT_TRANSACTIONS`
 (`0x8000000`) adds the version-1 UED1 authored-layer packet contract in `openusd_layer_edit.h`.
@@ -393,7 +410,7 @@ When diagnosing or reviewing a deployment, verify:
 2. the publish RID is one of the current runtime RIDs;
 3. all managed and runtime OpenUsd packages use the same version;
 4. Imaging's exact Core dependency resolved without override;
-5. data ABI 17 and capabilities `0x3FFFFFF` are reported;
+5. data ABI 26 and required capabilities `0x1FFFFFFFFF` are reported;
 6. any selected rendering path has its matching ABI and plugin assets;
 7. `usd/**` and `plugin/usd/**` retain their directory structure, and any third-party resolver tree
    keeps its own directory and `plugInfo.json` beside them;

@@ -1127,6 +1127,24 @@ public sealed class SilkTextureResidencyTests
     }
 
     [Test]
+    public async Task TextureDrivenOpacityRemainsAnUnsupportedShadowCaster()
+    {
+        const string materialPath = "/World/Materials/Cutout";
+        const string meshPath = "/World/Cutout";
+        var scene = new SilkSceneState();
+        byte[] material = CreateMaterialUpsert(
+            materialPath,
+            SilkSurfaceKind.PreviewSurface,
+            [ScalarTexture(SilkMaterialParameter.Opacity, "opacity.png", SilkTextureChannel.R)],
+            [(SilkMaterialParameter.OpacityThreshold, [0.25f])]);
+        byte[] mesh = CreateMeshUpsert(meshPath, materialPath, primId: 7);
+        _ = scene.Apply(Concat(material, mesh), 2, 1);
+
+        await Assert.That(SilkShadowMapCache.ClassifyOpacity(scene, scene.MeshesByPath[(meshPath, 0)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+    }
+
+    [Test]
     public async Task OpaqueMeshesPrecedeTransparentMeshesSortedFarToNear()
     {
         using var device = new RenderPipelineDevice();

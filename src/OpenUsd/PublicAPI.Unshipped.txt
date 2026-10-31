@@ -188,6 +188,7 @@ OpenUsd.Editing.UsdReviewSourceBinding.SourceRootPath.get -> string!
 static OpenUsd.Editing.UsdReviewDocument.Inspect(System.ReadOnlySpan<byte> bytes) -> OpenUsd.Editing.UsdReviewDocumentInfo!
 static OpenUsd.Editing.UsdReviewDocument.Read(System.ReadOnlySpan<byte> bytes, string! expectedSourcePath) -> OpenUsd.Editing.UsdReviewDocument!
 static OpenUsd.Editing.UsdReviewDocumentExtensions.AcknowledgeSaved(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdReviewDocument! captured) -> bool
+static OpenUsd.Editing.UsdReviewDocumentExtensions.AdoptIntoReview(this OpenUsd.UsdStage! stage) -> OpenUsd.Editing.UsdReviewSourceBinding!
 static OpenUsd.Editing.UsdReviewDocumentExtensions.CaptureReviewDocument(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdReviewSourceBinding! source, string! targetDocumentPath) -> OpenUsd.Editing.UsdReviewDocument!
 static OpenUsd.Editing.UsdReviewDocumentExtensions.CaptureReviewSourceBinding(this OpenUsd.UsdStage! stage) -> OpenUsd.Editing.UsdReviewSourceBinding!
 static OpenUsd.Editing.UsdReviewDocumentExtensions.ImportReviewDocument(this OpenUsd.UsdStage! stage, OpenUsd.Editing.UsdReviewDocument! document, OpenUsd.Editing.UsdReviewSourceBinding! source) -> OpenUsd.Editing.UsdReviewDocumentImportResult!

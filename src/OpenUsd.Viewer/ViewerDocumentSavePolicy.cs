@@ -71,6 +71,10 @@ internal static class ViewerDocumentSavePolicy
         {
             return Refuse(role, "Source-layer saving requires explicit source-edit opt-in.");
         }
+        if (role == ViewerDocumentLayerRole.Source && document.HasOtherLayerChanges)
+        {
+            return Refuse(role, "Resolve changes in other layers before publishing the source layer.");
+        }
         ViewerDocumentLayerState? target = role == ViewerDocumentLayerRole.Source
             ? document.Source : document.Review;
         if (target is null || target.Role != role || string.IsNullOrWhiteSpace(target.Identifier))
@@ -80,6 +84,10 @@ internal static class ViewerDocumentSavePolicy
         if (!target.IsWritable)
         {
             return Refuse(role, "The requested layer is read-only.");
+        }
+        if (role == ViewerDocumentLayerRole.Source && !target.HasChanges)
+        {
+            return Refuse(role, "The source layer has no unsaved changes.");
         }
         if (target.FilePath is { } path && !Path.IsPathFullyQualified(path))
         {

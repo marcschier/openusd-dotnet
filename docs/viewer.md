@@ -1439,7 +1439,21 @@ keeps the current document and history. Unrelated dirty source/session opinions 
 first rather than silently lost. This restriction is enforced again on the retained transition
 state after saved-candidate preparation, so newly unrelated opinions cannot be accepted by a later
 Discard decision. Transient simulation is reset rather than persisted.
-**Save Source Layer** remains visibly disabled: no generic source-saving protocol is implemented.
+**File > Save Source Layer...** publishes only the verified, writable root layer of a Windows
+text-USD document. The command stays disabled unless that source has unsaved changes, the current
+document still owns the verified root, and no other layer has changes. Each publication requires
+confirmation; the first confirmation also opts the document into source saving until it closes.
+Before replacing the file, the Viewer checks the captured layer identity and revision and verifies
+the source file's identity and contents. It exports to an owned staging file beside the source,
+then atomically replaces the root and saves it through OpenUSD. If that save fails, the Viewer
+restores the prior file and reloads it; if rollback fails, it retains the backup and reports its
+path. A reload failure is reported after the source bytes have been restored.
+Cancellation before publication and stale-revision refusal leave the source unchanged.
+After a successful save, the active review stays in memory but its saved baseline is invalidated and
+must be saved again. If the Viewer cannot refresh the native source binding after publication, it
+keeps the source save and disables review publication until the document is reopened. This does not
+enable generic or implicit source writes; dependencies, other layers, and unsupported source
+profiles are never published by this command.
 
 **File > Export Review Delta...** is a separate, working escape hatch for supported opinions.
 It exports the native bounded review-only USDA payload to a **new** `.usda` file, using a
@@ -1454,8 +1468,7 @@ It does not acknowledge a saved revision, clear dirty state, or enable Revert to
 
 Save routing always selects the review target for Save/Ctrl+S, regardless of the current edit
 target. An anonymous review or Save As requires a destination and asset-anchor validation.
-The source-save policy still requires explicit source-edit opt-in, but does not enable a live
-source-saving adapter. A simulation layer can never substitute for review. A named review
+A simulation layer can never substitute for review. A named review
 destination must not alias the source or a dependency, regardless of the raw stage edit target.
 The save/transition policy cannot discard separately dirty source or other-layer opinions after
 saving only review. The delta exporter remains a distinct create-only operation.
@@ -1492,8 +1505,9 @@ review destination is written. A reload keeps the retained session-only reason, 
 a document to verified review even when its source would otherwise qualify.
 Non-Windows verified opening, crate/custom/URI/package/template/
 UDIM/value-clip/inherit/specialize/relocate portability and unverified dirty legacy reconciliation
-remain unsupported. Source saving and broader platform/document-editing work remain completion
-gaps. Counted review-layer admission into render-specification queries is validated separately;
+remain unsupported. Generic and implicit source writes remain disabled; the guarded Windows root
+publication path is described above. Broader platform/document-editing work remains. Counted
+review-layer admission into render-specification queries is validated separately;
 the Viewer workflow does not claim that broader render-request domain.
 
 Safe late simulation-overlay normalization preserves the registered review-layer identity and
@@ -1534,7 +1548,7 @@ separately packaged physics backend is absent.
 `ViewerPortableDocumentNativeTests`, run alone with `OPENUSD_VIEWER_PORTABLE_SMOKE=1`, exercises
 the live textured-source Save/Ctrl+S/Save As, source-confirmed Open Review, Revert/Cancel,
 dirty-close Save and explicit validated recovery journey. Use a physical `OPENUSD_TEST_WORK_ROOT`
-and the matching ABI21 runtime. This does not claim non-Windows, mixed-DPI, solver execution or
+and the matching ABI26 runtime. This does not claim non-Windows, mixed-DPI, solver execution or
 unrestricted source saving.
 
 ### Gizmos and snapping
@@ -1694,8 +1708,9 @@ Reload and renderer selection remain in their menus instead of competing for vie
 The status strip shows current document/camera/renderer information and active document, validation,
 or capture work; it is not a render-job queue.
 
-- **File**: Open, Review Sample, Recent Stages, Reload, review-delta export, frame capture/comparison, Exit.
-- **Edit**: focused review-property editing and shared Undo/Redo. Portable save/revert actions stay disabled.
+- **File**: Open, Review Sample, Recent Stages, Reload, Save Review, Save As, guarded Save Source,
+  Revert, review-delta export, frame capture/comparison, Exit.
+- **Edit**: focused review-property editing and shared Undo/Redo.
 - **View**: Stage/Inspector/Timeline panel visibility, an Inspector Tabs submenu that shows or
   hides the Diagnostics, Hydra, and TfDebug developer tabs, snap-to-authored-frames, and
   **Reset Layout**, plus **Theme > Follow system / Light / Dark**, command search, Find Prim,

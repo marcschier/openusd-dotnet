@@ -503,6 +503,82 @@ internal static class SilkShadowConformance
         return false;
     }
 
+    internal static async Task ConstantOpacityThresholdChangesCasterCoverage(ISilkGraphicsDevice device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size,
+            Size,
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device);
+
+        SilkMeshRendererConformance.Apply(
+            renderer,
+            revision: 1,
+            CreateShadowLightFrame(),
+            CreateCasterMaterial(masked: false),
+            CreateReceiver(),
+            CreateCutoutCaster(x: 0),
+            CreateShadow());
+        _ = renderer.Render(color, depth);
+        byte[] opaque = ReadPixels(color);
+        await AssertShadowed(opaque, ShadowedX, "opaque reference caster");
+        ulong renders = renderer.ShadowMapRenderCount;
+        ulong geometry = renderer.Scene.GeometryRevision;
+        ulong links = renderer.Scene.LightLinks.Revision;
+        ulong shadows = renderer.Scene.Shadows.Revision;
+
+        (float? Opacity, float Threshold, bool Casts, bool Unsupported, string Label)[] cases =
+        [
+            (0.75f, 0.5f, true, false, "above threshold"),
+            (MathF.BitDecrement(0.5f), 0.5f, false, false, "below threshold"),
+            (0.5f, 0.5f, true, false, "at threshold"),
+            (null, 0.5f, true, false, "default opacity"),
+            (null, 1f, true, false, "default opacity at threshold"),
+            (null, MathF.BitIncrement(1f), false, false, "default opacity below threshold"),
+            (0.5f, 0f, false, true, "blended opacity"),
+            (0.5f, 0.5f, true, false, "cutoff restored"),
+        ];
+        ulong revision = 1;
+        foreach (var testCase in cases)
+        {
+            List<(SilkMaterialParameter Parameter, float Value)> scalars =
+                [(SilkMaterialParameter.OpacityThreshold, testCase.Threshold)];
+            if (testCase.Opacity is float opacity)
+            {
+                scalars.Add((SilkMaterialParameter.Opacity, opacity));
+            }
+            ulong previousMaterial = renderer.Scene.MaterialRevision;
+            SilkMeshRendererConformance.Apply(renderer, ++revision, CreateCasterMaterial([.. scalars]));
+            await Assert.That(renderer.Scene.MaterialRevision).IsGreaterThan(previousMaterial);
+            await Assert.That(renderer.Scene.GeometryRevision).IsEqualTo(geometry);
+            await Assert.That(renderer.Scene.LightLinks.Revision).IsEqualTo(links);
+            await Assert.That(renderer.Scene.Shadows.Revision).IsEqualTo(shadows);
+
+            _ = renderer.Render(color, depth);
+            byte[] pixels = ReadPixels(color);
+            await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
+            if (testCase.Casts)
+            {
+                await AssertShadowed(pixels, ShadowedX, testCase.Label);
+                await Assert.That(pixels.AsSpan().SequenceEqual(opaque))
+                    .IsTrue()
+                    .Because(testCase.Label);
+            }
+            else
+            {
+                await AssertLit(pixels, ShadowedX, testCase.Label);
+            }
+            await Assert.That(HasCasterDiagnostic(renderer)).IsEqualTo(testCase.Unsupported);
+        }
+
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
+    }
+
     private static int Offset(int x) => checked(((SampleY * (int)Size) + x) * 4);
 
     /// <summary>
@@ -696,13 +772,13 @@ internal static class SilkShadowConformance
     }
 
     /// <summary>
-    /// Requires an opacity-masked caster to be dropped from the shadow map and
-    /// named, rather than casting the solid shadow of its geometry.
+    /// Requires a blended caster to be dropped from the shadow map and named,
+    /// rather than casting the solid shadow of its geometry.
     /// </summary>
     /// <remarks>
-    /// The depth-only caster program binds no material and cannot discard, so an
-    /// alpha-tested cutout would shadow as an opaque quad. That is a
-    /// plausible-but-wrong image, so the caster is skipped and reported instead.
+    /// The depth-only caster program binds no material and cannot discard, so a
+    /// blended surface would shadow as an opaque quad, so the caster is skipped
+    /// and reported instead.
     /// </remarks>
     internal static async Task AnOpacityMaskedCasterIsSkippedAndNamed(
         ISilkGraphicsDevice device)
@@ -728,7 +804,7 @@ internal static class SilkShadowConformance
         _ = renderer.Render(color, depth);
         await AssertShadowed(ReadPixels(color), ShadowedX, "opaque caster");
 
-        // Rebinding the same caster to an alpha-tested material must remove its
+        // Rebinding the same caster to a blended material must remove its
         // shadow and name it, rather than keep casting a solid one.
         SilkMeshRendererConformance.Apply(
             renderer,
@@ -867,15 +943,18 @@ internal static class SilkShadowConformance
     }
 
     /// <summary>
-    /// Builds the caster's UsdPreviewSurface material, either opaque or
-    /// alpha-tested by a non-zero opacity threshold.
+    /// Builds the caster's UsdPreviewSurface material, either opaque or blended.
     /// </summary>
     /// <remarks>
     /// Both forms carry the same number of scalars, so the two pages differ only
     /// in which input is authored: a transition between them is a material edit
     /// and nothing else.
     /// </remarks>
-    private static byte[] CreateCasterMaterial(bool masked)
+    private static byte[] CreateCasterMaterial(bool masked) =>
+        CreateCasterMaterial(
+            [(masked ? SilkMaterialParameter.Opacity : SilkMaterialParameter.Roughness, 0.5f)]);
+
+    private static byte[] CreateCasterMaterial((SilkMaterialParameter Parameter, float Value)[] scalars)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(CutoutMaterial);
         List<byte> payload =
@@ -883,33 +962,27 @@ internal static class SilkShadowConformance
             .. BitConverter.GetBytes(ComputeStableHash(CutoutMaterial)),
             .. BitConverter.GetBytes((uint)pathBytes.Length),
             .. BitConverter.GetBytes((uint)SilkSurfaceKind.PreviewSurface),
-            .. BitConverter.GetBytes(1u),
+            .. BitConverter.GetBytes((uint)scalars.Length),
             .. BitConverter.GetBytes(0u),
             .. pathBytes,
-            .. BitConverter.GetBytes((uint)(masked
-                ? SilkMaterialParameter.OpacityThreshold
-                : SilkMaterialParameter.Roughness)),
-            .. BitConverter.GetBytes(1u),
-            .. BitConverter.GetBytes(0.5f),
-
-            // The generated MaterialX SPIR-V and MSL payloads are both empty, and
-            // the folded texture-coordinate transform is the identity affine.
-            .. BitConverter.GetBytes(0u),
-            .. BitConverter.GetBytes(0u),
-            .. BitConverter.GetBytes(1f),
-            .. BitConverter.GetBytes(0f),
-            .. BitConverter.GetBytes(0f),
-            .. BitConverter.GetBytes(1f),
-            .. BitConverter.GetBytes(0f),
-            .. BitConverter.GetBytes(0f),
-            .. BitConverter.GetBytes(0u),
-            .. BitConverter.GetBytes(1f),
-            .. BitConverter.GetBytes(0f),
-            .. BitConverter.GetBytes(0f),
-            .. BitConverter.GetBytes(1f),
-            .. BitConverter.GetBytes(0f),
-            .. BitConverter.GetBytes(0f),
         ];
+        foreach ((SilkMaterialParameter parameter, float value) in scalars)
+        {
+            payload.AddRange(BitConverter.GetBytes((uint)parameter));
+            payload.AddRange(BitConverter.GetBytes(1u));
+            payload.AddRange(BitConverter.GetBytes(value));
+        }
+        payload.AddRange(BitConverter.GetBytes(0u));
+        payload.AddRange(BitConverter.GetBytes(0u));
+        foreach (float value in (float[])[1, 0, 0, 1, 0, 0])
+        {
+            payload.AddRange(BitConverter.GetBytes(value));
+        }
+        payload.AddRange(BitConverter.GetBytes(0u));
+        foreach (float value in (float[])[1, 0, 0, 1, 0, 0])
+        {
+            payload.AddRange(BitConverter.GetBytes(value));
+        }
 
         var bytes = new byte[8 + payload.Count];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);

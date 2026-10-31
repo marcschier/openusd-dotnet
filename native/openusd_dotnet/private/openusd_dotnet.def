@@ -402,3 +402,5 @@ EXPORTS
     openusd_stage_get_vec4f_array @400
     openusd_stage_set_vec4f_array @401
     openusd_stage_get_linear_units @402
+    openusd_stage_review_adopt @403
+    openusd_stage_review_source_acknowledge_publication @404

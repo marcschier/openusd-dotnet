@@ -121,7 +121,8 @@ public:
     {
         Check(data->Inventory().size() < MaxSourceSpecs && path.GetPathElementCount() <= OpenUsdEdit::MaxDepth,
             "Source spec/path budget exceeded (65536 specs, 32 elements).");
-        // The lexical token preflight bounds this native allocation before List.
+        // File input is lexically preflighted; in-memory session capture applies
+        // the same spec and field limits before copying values.
         const auto fields = input.List(path);
         Check(fields.size() <= OpenUsdEdit::MaxFields, "Source field budget exceeded (128 per spec).");
         data->CreateSpec(path, input.GetSpecType(path));
@@ -137,6 +138,79 @@ public:
     }
     void Done(const SdfAbstractData&) override {}
 };
+
+class ResidentMatchVisitor final : public SdfAbstractDataSpecVisitor
+{
+public:
+    explicit ResidentMatchVisitor(const CountedData& expected) : expected(expected) {}
+    bool VisitSpec(const SdfAbstractData& input, const SdfPath& path) override
+    {
+        const auto expectedSpec = expected.Inventory().find(path);
+        if (expectedSpec == expected.Inventory().end()
+            || input.GetSpecType(path) != expected.GetSpecType(path))
+        {
+            matches = false;
+            return false;
+        }
+        const auto fields = input.List(path);
+        auto expectedFields = expected.List(path);
+        std::sort(expectedFields.begin(), expectedFields.end());
+        auto actualFields = fields;
+        std::sort(actualFields.begin(), actualFields.end());
+        if (actualFields != expectedFields)
+        {
+            matches = false;
+            return false;
+        }
+        for (const auto& field : fields)
+        {
+            VtValue actual;
+            VtValue admitted;
+            if (!input.Has(path, field, &actual) || !expected.Has(path, field, &admitted)
+                || !ValuesMatch(field, actual, admitted))
+            {
+                matches = false;
+                return false;
+            }
+        }
+        ++specCount;
+        return true;
+    }
+    void Done(const SdfAbstractData&) override {}
+    bool Matches() const { return matches && specCount == expected.Inventory().size(); }
+private:
+    static bool ValuesMatch(const TfToken& field, const VtValue& actual, const VtValue& expected)
+    {
+        if (field == SdfChildrenKeys->PropertyChildren && actual.IsHolding<TfTokenVector>()
+            && expected.IsHolding<TfTokenVector>())
+        {
+            auto actualProperties = actual.UncheckedGet<TfTokenVector>();
+            auto expectedProperties = expected.UncheckedGet<TfTokenVector>();
+            std::sort(actualProperties.begin(), actualProperties.end());
+            std::sort(expectedProperties.begin(), expectedProperties.end());
+            return actualProperties == expectedProperties;
+        }
+        return actual == expected;
+    }
+
+    const CountedData& expected;
+    size_t specCount = 0;
+    bool matches = true;
+};
+
+bool ResidentMatches(
+    const SdfLayerHandle& layer, const TfRefPtr<CountedData>& expected, bool allowCountedData = false)
+{
+    const auto resident = OpenUsdEdit::DataAccess::Get(*layer);
+    const auto& type = OpenUsdEdit::DataAccess::ConcreteType(resident);
+    if (!resident || (type != typeid(SdfUsdaData) && !(allowCountedData && type == typeid(CountedData))))
+    {
+        return false;
+    }
+    ResidentMatchVisitor visitor(*expected);
+    resident->VisitSpecs(&visitor);
+    return visitor.Matches();
+}
 
 void CheckLayerExtension(const std::string& path)
 {
@@ -268,6 +342,93 @@ TfRefPtr<CountedData> ParseText(const Bytes& bytes)
     resident->VisitSpecs(&visitor);
     return visitor.data;
 }
+
+TfRefPtr<CountedData> CaptureSessionOpinions(
+    const SdfLayerRefPtr& session, const std::string& expectedUserLayer)
+{
+    Check(static_cast<bool>(session), "A live session layer is required for adoption.");
+    const auto source = OpenUsdEdit::DataAccess::Get(*session);
+    const auto root = SdfPath::AbsoluteRootPath();
+    const std::vector<std::string> expectedPaths = expectedUserLayer.empty()
+        ? std::vector<std::string>{} : std::vector<std::string>{expectedUserLayer};
+    Check(session->GetSubLayerPaths() == expectedPaths,
+        "Foreign session sublayers block adoption; reconcile the session topology first.");
+    const auto offsets = session->GetSubLayerOffsets();
+    Check(offsets.empty() || (expectedPaths.size() == 1 && offsets.size() == 1
+        && offsets[0].GetOffset() == 0 && offsets[0].GetScale() == 1),
+        "Nondefault session sublayer offsets block adoption; reconcile the session topology first.");
+    VtValue field;
+    const bool hasPaths = source->Has(root, SdfFieldKeys->SubLayers, &field);
+    Check(expectedPaths.empty() ? !hasPaths
+        : hasPaths && field.IsHolding<std::vector<std::string>>()
+            && field.UncheckedGet<std::vector<std::string>>() == expectedPaths,
+        "Authored session sublayer topology differs from the owned review layer.");
+    Check(!source->Has(root, SdfFieldKeys->SubLayerOffsets, &field)
+        || (expectedPaths.size() == 1 && field.IsHolding<std::vector<SdfLayerOffset>>()
+            && field.UncheckedGet<std::vector<SdfLayerOffset>>().size() == 1
+            && field.UncheckedGet<std::vector<SdfLayerOffset>>()[0].GetOffset() == 0
+            && field.UncheckedGet<std::vector<SdfLayerOffset>>()[0].GetScale() == 1),
+        "Authored session sublayer offsets differ from the owned review layer.");
+    SourceVisitor visitor;
+    source->VisitSpecs(&visitor);
+    visitor.data->Erase(root, SdfFieldKeys->SubLayers);
+    visitor.data->Erase(root, SdfFieldKeys->SubLayerOffsets);
+    (void)EncodeReview(visitor.data);
+    return visitor.data;
+}
+
+bool HasAdoptableOpinions(const TfRefPtr<CountedData>& data)
+{
+    const auto root = SdfPath::AbsoluteRootPath();
+    for (const auto& field : data->List(root))
+    {
+        if (field != SdfFieldKeys->SubLayers && field != SdfFieldKeys->SubLayerOffsets) { return true; }
+    }
+    for (const auto& spec : data->Inventory())
+    {
+        if (spec.first != root || spec.second != 0) { return true; }
+    }
+    return false;
+}
+
+TfRefPtr<CountedData> MergeAdoptionOpinions(
+    const TfRefPtr<CountedData>& session, const TfRefPtr<CountedData>& user)
+{
+    if (!user)
+    {
+        Check(HasAdoptableOpinions(session), "There are no authored opinions to adopt.");
+        return session;
+    }
+    auto merged = TfCreateRefPtr(new CountedData);
+    merged->CopyFrom(user);
+    for (const auto& spec : session->Inventory())
+    {
+        const auto existingSpec = merged->Inventory().find(spec.first);
+        if (existingSpec == merged->Inventory().end())
+        {
+            merged->CreateSpec(spec.first, session->GetSpecType(spec.first));
+        }
+        else if (merged->GetSpecType(spec.first) != session->GetSpecType(spec.first))
+        {
+            throw Conflict("Session and review opinions define the same spec with different types.");
+        }
+        for (const auto& field : session->List(spec.first))
+        {
+            VtValue existing;
+            if (merged->Has(spec.first, field, &existing))
+            {
+                throw Conflict("Session and review opinions overlap; reconcile the authored fields before adoption.");
+            }
+            VtValue value;
+            Check(session->Has(spec.first, field, &value), "Captured session opinion disappeared.");
+            merged->Set(spec.first, field, value);
+        }
+    }
+    Check(HasAdoptableOpinions(merged), "There are no authored opinions to adopt.");
+    (void)EncodeReview(merged);
+    return merged;
+}
+
 SdfLayerRefPtr SeedLayer(const std::string& identifier, const TfRefPtr<CountedData>& data, bool anonymous)
 {
     std::string extension = std::filesystem::u8path(identifier).extension().u8string();
@@ -287,6 +448,8 @@ SdfLayerRefPtr SeedLayer(const std::string& identifier, const TfRefPtr<CountedDa
 Origin::Origin(const SdfLayerRefPtr& value, TfRefPtr<CountedData> content, File image,
     uint64_t admittedVersion, std::shared_ptr<const std::vector<File>> admittedFiles)
     : layer(value), data(std::move(content)), file(std::move(image)), version(admittedVersion), proof(std::move(admittedFiles)),
+      resident(OpenUsdEdit::DataAccess::Get(*value)),
+      residentIsCountedData(OpenUsdEdit::DataAccess::ConcreteType(resident) == typeid(CountedData)),
       changeKey(TfNotice::Register(TfCreateWeakPtr(this), &Origin::Changed, layer)),
       replaceKey(TfNotice::Register(TfCreateWeakPtr(this), &Origin::Replaced, layer)),
       renameKey(TfNotice::Register(TfCreateWeakPtr(this), &Origin::Renamed, layer)) {}
@@ -300,7 +463,8 @@ void Origin::Renamed(const SdfNotice::LayerIdentifierDidChange&) { changed.store
 void Origin::Verify() const
 {
     if (!layer || changed.load() || data->Version() != version || layer->IsMuted()
-        || OpenUsdEdit::DataAccess::Get(*layer) != data
+        || layer->IsDirty() || OpenUsdEdit::DataAccess::Get(*layer) != resident
+        || (residentIsCountedData && OpenUsdEdit::DataAccess::Get(*layer) != data)
         || layer->GetIdentifier() != file.path || Path(layer->GetRealPath(), false) != file.path)
     {
         throw Conflict("Verified resident source/dependency was changed, reloaded, renamed or replaced; reconcile and reopen without mutating shared source layers.");
@@ -320,7 +484,8 @@ void VerifyFiles(const std::vector<File>& files)
     }
 }
 
-Admission Admit(const std::string& root)
+Admission Admit(
+    const std::string& root, bool allowMatchingResidentLayers, SdfLayerHandle matchingCountedLayer)
 {
     DefaultResolver();
     std::lock_guard<std::recursive_mutex> lock(originMutex);
@@ -377,11 +542,12 @@ Admission Admit(const std::string& root)
         CheckLayerExtension(name);
         const auto cached = SdfLayer::Find(name);
         const auto known = origins.find(name);
-        if (cached && (known == origins.end() || known->second->layer != cached))
+        const bool hasKnownOrigin = cached && known != origins.end() && known->second->layer == cached;
+        if (cached && !hasKnownOrigin && !allowMatchingResidentLayers)
         {
             throw Conflict("Unverified cached source/dependency: close/reconcile its owners or use an isolated process. Before adding a new composition arc, OpenForReview its dependency and retain that stage until attachment. Shared layers are never reloaded or replaced.");
         }
-        if (cached)
+        if (hasKnownOrigin)
         {
             known->second->Verify();
             if (!(known->second->file == file.file))
@@ -395,6 +561,20 @@ Admission Admit(const std::string& root)
             tokens += PreflightText(file.bytes);
             Check(tokens <= OPENUSD_REVIEW_MAX_SOURCE_TOTAL_TOKENS, "Aggregate source lexical budget exceeded (1048576 tokens).");
             file.data = ParseText(file.bytes);
+            if (cached && cached->IsDirty())
+            {
+                throw Conflict("The resident source/dependency is dirty; reconcile before adopting this stage.");
+            }
+            if (cached && !ResidentMatches(cached, file.data, cached == matchingCountedLayer))
+            {
+                if (OpenUsdEdit::DataAccess::ConcreteType(OpenUsdEdit::DataAccess::Get(*cached)) == typeid(CountedData))
+                {
+                    throw Conflict(cached == matchingCountedLayer
+                        ? "The authorized resident CountedData does not match its admitted filesystem byte image."
+                        : "A resident CountedData layer is not the authorized review root.");
+                }
+                throw Conflict("The resident source/dependency differs from its admitted filesystem byte image; reconcile before adopting this stage.");
+            }
         }
         Dependencies(file.data, [&](const std::string& dependency, bool isLayer)
         {
@@ -455,11 +635,33 @@ Admission Admit(const std::string& root)
         if (cached)
         {
             const auto known = origins.find(name);
-            if (known == origins.end() || known->second->layer != cached)
+            if (known != origins.end() && known->second->layer == cached)
+            {
+                origin = known->second;
+                origin->Verify();
+            }
+            else if (allowMatchingResidentLayers && !cached->IsDirty()
+                && ResidentMatches(cached, entry.second.data, cached == matchingCountedLayer))
+            {
+                Check(origins.size() < MaxFiles, "Resident verified-origin registry exceeds 1024 files; close unused review stages.");
+                TfRefPtr<CountedData> admittedData = entry.second.data;
+                if (cached == matchingCountedLayer &&
+                    OpenUsdEdit::DataAccess::ConcreteType(OpenUsdEdit::DataAccess::Get(*cached)) == typeid(CountedData))
+                {
+                    const auto resident = OpenUsdEdit::DataAccess::Get(*cached);
+                    admittedData = TfCreateRefPtrFromProtectedWeakPtr(
+                        TfWeakPtr<CountedData>(const_cast<CountedData*>(
+                            static_cast<const CountedData*>(get_pointer(resident)))));
+                }
+                origin = std::make_shared<Origin>(
+                    cached, admittedData, entry.second.file, admittedData->Version(), proof);
+                origin->Verify();
+                origins[name] = origin;
+            }
+            else
             {
                 throw Conflict("A competing normal open cached an unverified dependency; close/reconcile it before retrying.");
             }
-            origin = known->second; origin->Verify();
         }
         else
         {
@@ -508,6 +710,42 @@ void VerifySource(const openusd_stage* stage)
     }
     for (const auto& origin : state.origins) { origin->Verify(); }
     VerifyFiles(state.source.files);
+}
+
+void AcknowledgeSourcePublication(openusd_stage* stage)
+{
+    DefaultResolver();
+    FileReadScope files;
+    auto& context = EditContext(stage);
+    Check(context.review != nullptr, "Source publication requires a verified review stage.");
+    auto& state = *context.review;
+    const auto root = stage->value->GetRootLayer();
+    Check(root && root->GetIdentifier() == state.source.root && !root->IsDirty(),
+        "Published source must be the clean root layer owned by this review stage.");
+    Check(stage->value->GetSessionLayer() == state.session
+        && stage->value->GetPathResolverContext() == state.resolver,
+        "The verified session or resolver context was replaced; reconcile before source publication.");
+    Check(stage->value->GetMutedLayers().empty()
+        && stage->value->GetLoadRules() == UsdStageLoadRules::LoadAll()
+        && stage->value->GetPopulationMask() == UsdStagePopulationMask::All(),
+        "The verified composition was muted, unloaded or masked; reconcile before source publication.");
+
+    std::lock_guard<std::recursive_mutex> lock(originMutex);
+    const auto previous = origins.find(state.source.root);
+    if (previous != origins.end() && previous->second->layer == root)
+    {
+        origins.erase(previous);
+    }
+
+    Admission refreshed = Admit(state.source.root, true, root);
+    Check(refreshed.resolver == state.resolver,
+        "The published source changed its resolver context; reopen the document before review persistence.");
+    Check(std::find(refreshed.layers.begin(), refreshed.layers.end(), root) != refreshed.layers.end(),
+        "The published source no longer matches the resident root layer; reopen the document.");
+    state.source = std::move(refreshed.source);
+    state.sourceLayers = std::move(refreshed.layers);
+    state.origins = std::move(refreshed.origins);
+    state.receipts.clear();
 }
 
 #if defined(OPENUSD_DOTNET_ENABLE_TEST_HOOKS)

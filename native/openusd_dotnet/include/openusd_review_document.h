@@ -34,6 +34,11 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_review_source_binding(
     const openusd_stage* stage, openusd_edit_buffer** owner,
     openusd_edit_buffer_view* view, openusd_error_buffer* error);
 
+// Acknowledges an explicitly published root-layer replacement and refreshes
+// the verified source/dependency baseline only when the resident root matches it.
+OPENUSD_DOTNET_API openusd_status openusd_stage_review_source_acknowledge_publication(
+    const openusd_stage* stage, openusd_error_buffer* error);
+
 // Returns an RDE1 envelope containing a URD1 document and a process-local
 // receipt. The caller publishes the document bytes; this API writes no file.
 OPENUSD_DOTNET_API openusd_status openusd_layer_review_capture(
@@ -65,6 +70,13 @@ OPENUSD_DOTNET_API openusd_status openusd_stage_review_import(
     const uint8_t* binding, size_t binding_size, int32_t* outcome,
     openusd_edit_buffer** owner, openusd_edit_buffer_view* view,
     openusd_error_buffer* error);
+
+// Adopts authored opinions from an unbound stage's session layer into a new
+// source-anchored review layer. The source and other stage layers must match
+// their admitted filesystem images; conflicts leave the stage unchanged.
+OPENUSD_DOTNET_API openusd_status openusd_stage_review_adopt(
+    const openusd_stage* stage, openusd_edit_buffer** owner,
+    openusd_edit_buffer_view* view, openusd_error_buffer* error);
 
 OPENUSD_DOTNET_API openusd_status openusd_layer_review_acknowledge_saved(
     const openusd_layer* layer, const uint8_t* receipt, size_t receipt_size,

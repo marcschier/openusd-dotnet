@@ -165,15 +165,11 @@ public sealed class SilkSceneState
     /// material is published, replaced, or removed.
     /// </summary>
     /// <remarks>
-    /// Whether a prim casts a shadow depends on its material as well as on its
-    /// geometry: an opacity-masked caster is excluded from every shadow map,
-    /// because the depth-only program binds no material and cannot discard. A
-    /// material can turn opaque or masked with no mesh command at all -- the same
-    /// prim keeps its binding while the material behind it is re-authored -- so
-    /// <see cref="GeometryRevision"/> alone would let a retained map, and the
-    /// diagnostic that named its skipped casters, survive the change that
-    /// invalidated both. A material binding change is already covered, because
-    /// re-binding a prim republishes its mesh record.
+    /// Shadow coverage depends on the material as well as the geometry. A
+    /// material-only edit can make a caster solid, invisible, or unsupported
+    /// without changing its mesh. <see cref="GeometryRevision"/> alone would
+    /// retain a stale map and diagnostic after that edit. Rebinding a prim
+    /// republishes its mesh and already changes the geometry revision.
     /// </remarks>
     public ulong MaterialRevision { get; private set; }
 

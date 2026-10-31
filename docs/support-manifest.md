@@ -37,6 +37,8 @@ Each entry maps a C macro from native/openusd_dotnet/include/openusd_dotnet.h to
 | `native-render-specification-query` | Implemented | `win-x64` |
 | `layer-authored-edit-transactions` | Implemented | `win-x64` |
 | `portable-review-document` | Implemented | `win-x64` |
+| `review-stage-adoption` | Implemented | `win-x64` |
+| `review-source-publication` | Implemented | `win-x64` |
 | `portable-review-document-inspection` | Implemented | `win-x64` |
 | `hierarchy-snapshot` | Implemented | `win-x64` |
 | `prim-property-snapshot` | Implemented | `win-x64` |
@@ -121,8 +123,28 @@ requires a pristine verified target and rolls back failed owned installation; re
 same-session saved receipts. Windows stable-read leases are required for verified opening; encoding is platform-neutral
 but non-Windows verified opening is not claimed.
 Crate/custom/URI/package/template/UDIM/value-clip/inherit/specialize/relocate portability, unsafe anchor-changing
-aliases, generic source saving and dirty legacy replay remain unsupported. Host publication/physical alias/lifecycle
-policy stays caller-owned.
+aliases, generic source saving and unverified dirty legacy replay remain unsupported. Host publication/physical
+alias/lifecycle policy stays caller-owned.
+
+### `review-stage-adoption`
+
+Explicit adoption of a dirty, unbound stage into a verified source-linked review. Native admission checks exact text-USD
+source/dependency bytes and resolver/composition state, then merges compatible authored session and owned anonymous
+review-layer opinions into a source-anchored review layer and replaces session data with a clean container. Source files
+are never written; conflicts and unsupported opinions are refused, and transaction failures roll back. Viewer success
+binds the source, clears prior Undo/Redo history, and leaves publication unacknowledged until the review is saved.
+Windows filesystem-backed text-USD only; foreign or nondefault session topology, dirty/foreign layers,
+muted/unloaded/masked compositions and physics overlays are refused.
+
+### `review-source-publication`
+
+Acknowledges a caller-published replacement of the verified review stage's root layer; the native operation writes no
+file. It requires the resident root to be clean and owned by the stage, preserves the verified session/resolver and full
+composition settings, re-admits the source and dependencies, and clears prior review receipts after a successful
+refresh. Viewer publication is Windows text-USD only: explicit per-document opt-in, root ownership and revision checks,
+source fingerprint validation, owned staging and atomic replacement precede native acknowledgement. A failed save
+attempts rollback; a failed refresh leaves the published source intact and disables review publication until reopen.
+Generic or implicit source writes and publication of other layers remain unsupported.
 
 ### `portable-review-document-inspection`
 
@@ -1070,16 +1092,18 @@ shadow atlas, renders supported casters from light space through a dedicated dep
 colour attachment, and samples it with a nine-tap filter in every checked mesh fragment permutation.
 collection:shadowLink is resolved independently of collection:lightLink, as UsdLux defines them, so an unlit or
 off-screen blocker can still cast; a prim the shadow collection excludes is not drawn into that light's map, while
-receiving is not restricted by shadowLink. A caster whose material is opacity-masked -- an authored opacity texture, an
-opacityThreshold above zero, or a constant opacity below one -- is excluded from every shadow map and reported as
-OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED against its prim path, because the depth-only caster program binds no material
-and cannot discard; alpha-tested and translucent shadow casters are not supported, and such a prim is still lit and
-still receives. A retained map is reused byte for byte until the descriptor table, caster geometry, caster restriction,
-or device generation changes, and is released when the table retires. Bounded at four maps of at most 2048 texels; a
-light type with no exact light-space projection, a scene with no caster extent, a table over the map budget, and a
-device that cannot record a depth-only pass are each reported as OPENUSD_SILK_SHADOW_UNSUPPORTED against the named light
-rather than rendered as an undiagnosed unshadowed image. Metal is source-complete and unclaimed: it reports no
-raster-shadow capability, so it allocates no map and diagnoses every shadow-enabled light
+receiving is not restricted by shadowLink. A UsdPreviewSurface caster with constant opacity and a positive
+opacityThreshold is omitted without an unsupported-caster diagnostic when its opacity is below the threshold, and casts
+a solid shadow at or above the threshold; omitted opacity defaults to one. Opacity textures, blended constant opacity
+without a positive threshold, and positive thresholds on other material kinds remain unsupported and are reported as
+OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED against the prim path. The depth-only program binds no material and cannot
+reproduce variable or blended coverage; unsupported casters remain lit and still receive shadows. A retained map is
+reused byte for byte until the descriptor table, caster geometry, material, caster restriction, or device generation
+changes, and is released when the table retires. Bounded at four maps of at most 2048 texels; a light type with no exact
+light-space projection, a scene with no caster extent, a table over the map budget, and a device that cannot record a
+depth-only pass are each reported as OPENUSD_SILK_SHADOW_UNSUPPORTED against the named light rather than rendered as an
+undiagnosed unshadowed image. Metal is source-complete and unclaimed: it reports no raster-shadow capability, so it
+allocates no map and diagnoses every shadow-enabled light
 
 ### `dome-light-linking`
 
@@ -1407,6 +1431,7 @@ Interactive desktop inspection, playback, selection, and focused editing capabil
 | `viewer-image-sequences` | Implemented | `win-x64` |
 | `viewer-authored-products` | Implemented | `win-x64` |
 | `review-camera-bookmarks` | Implemented | `win-x64` |
+| `viewer-dirty-stage-adoption` | Implemented | `win-x64` |
 | `viewer-completed-job-gallery` | Implemented | `win-x64` |
 | `viewer-picking` | Implemented | `win-x64`, `linux-x64` |
 | `viewer-physics` | Implemented | `win-x64`, `linux-x64` |
@@ -1467,6 +1492,15 @@ retired-document refusal are checked. Pause drains queued time/camera work, and 
 requested sample. Automatic views, changed/missing/inactive cameras, aspect/source mismatches, namespace collisions and
 malformed catalogs are refused instead of substituted. Persistent saved views are limited to the verified Windows
 text-USD review profile, not generic DCC camera editing.
+
+### `viewer-dirty-stage-adoption`
+
+File > Adopt Session into Review confirms and adopts compatible opinions from a dirty, unbound stage without writing
+source files. Native admission verifies the source/dependencies and composition; conflicts and unsupported state leave
+the document unchanged. Successful adoption binds the verified source, starts a fresh Undo/Redo history baseline, and
+leaves review publication unacknowledged until saved. Native and controller tests cover authored-state preservation,
+refusal/retry, cancellation boundaries, Undo/Redo, and save/reopen. The actual menu journey is desktop-only and was
+skipped in headless runs. Windows filesystem-backed text-USD only.
 
 ### `viewer-completed-job-gallery`
 

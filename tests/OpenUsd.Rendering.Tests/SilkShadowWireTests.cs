@@ -329,25 +329,66 @@ public sealed class SilkShadowWireTests
     }
 
     [Test]
-    public async Task AnOpacityMaskedMaterialDisqualifiesACaster()
+    public async Task ConstantOpacityThresholdDistinguishesSolidInvisibleAndUnsupportedCasters()
     {
-        // The depth-only caster program binds no material and cannot discard, so
-        // any material whose visible coverage differs from its geometry is
-        // disqualified rather than allowed to cast a solid shadow. All three
-        // authored forms count: an alpha-tested cutout, a blended surface, and an
-        // opacity map.
-        await Assert.That(IsMasked(null)).IsFalse();
-        await Assert.That(IsMasked([(SilkMaterialParameter.Opacity, 1f)])).IsFalse();
-        await Assert.That(IsMasked([(SilkMaterialParameter.Roughness, 0.4f)])).IsFalse();
-        await Assert.That(IsMasked([(SilkMaterialParameter.OpacityThreshold, 0.5f)])).IsTrue();
-        await Assert.That(IsMasked([(SilkMaterialParameter.Opacity, 0.5f)])).IsTrue();
+        await Assert.That(Classify(null)).IsEqualTo(SilkShadowOpacityCoverage.Solid);
+        await Assert.That(Classify([(SilkMaterialParameter.Opacity, 1f)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Solid);
+        await Assert.That(Classify([(SilkMaterialParameter.Roughness, 0.4f)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Solid);
+        await Assert.That(Classify([(SilkMaterialParameter.OpacityThreshold, 0.5f)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Solid);
+        await Assert.That(Classify([(SilkMaterialParameter.OpacityThreshold, 1f)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Solid);
+        await Assert.That(Classify([(SilkMaterialParameter.OpacityThreshold, MathF.BitIncrement(1f))]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Invisible);
+        await Assert.That(Classify([(SilkMaterialParameter.Opacity, 0.5f)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+        await Assert.That(Classify(
+            [(SilkMaterialParameter.Opacity, 0.5f), (SilkMaterialParameter.OpacityThreshold, 0f)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+        await Assert.That(Classify(
+            [(SilkMaterialParameter.Opacity, 0.5f), (SilkMaterialParameter.OpacityThreshold, -0.5f)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+        await Assert.That(Classify(
+            [(SilkMaterialParameter.Opacity, 1f), (SilkMaterialParameter.OpacityThreshold, 0f)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Solid);
+        await Assert.That(Classify(
+            [(SilkMaterialParameter.OpacityThreshold, 0.5f)], SilkSurfaceKind.MaterialXProjected))
+            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+        await Assert.That(Classify(
+            [(SilkMaterialParameter.OpacityThreshold, 0.5f)], SilkSurfaceKind.MdlDistilled))
+            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
         await Assert.That(
-                IsMasked(
+                Classify(
                 [
-                    (SilkMaterialParameter.Opacity, 1f),
-                    (SilkMaterialParameter.OpacityThreshold, 0.25f),
+                    (SilkMaterialParameter.Opacity, MathF.BitDecrement(0.5f)),
+                    (SilkMaterialParameter.OpacityThreshold, 0.5f),
                 ]))
-            .IsTrue();
+            .IsEqualTo(SilkShadowOpacityCoverage.Invisible);
+        await Assert.That(
+                Classify(
+                [
+                    (SilkMaterialParameter.Opacity, 0.5f),
+                    (SilkMaterialParameter.OpacityThreshold, 0.5f),
+                ]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Solid);
+        await Assert.That(
+                Classify(
+                [
+                    (SilkMaterialParameter.Opacity, MathF.BitIncrement(0.5f)),
+                    (SilkMaterialParameter.OpacityThreshold, 0.5f),
+                ]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Solid);
+    }
+
+    [Test]
+    public async Task NonfiniteConstantOpacityInputsAreRejected()
+    {
+        await Assert.That(() => Classify([(SilkMaterialParameter.Opacity, float.NaN)]))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => Classify([(SilkMaterialParameter.OpacityThreshold, float.PositiveInfinity)]))
+            .Throws<InvalidDataException>();
     }
 
     [Test]
@@ -416,10 +457,11 @@ public sealed class SilkShadowWireTests
     }
 
     /// <summary>
-    /// Applies a mesh, optionally bound to a material with the given scalar
-    /// inputs, and reports whether the shadow pass would disqualify it.
+    /// Applies a mesh and classifies its bound material's shadow coverage.
     /// </summary>
-    private static bool IsMasked((SilkMaterialParameter Parameter, float Value)[]? scalars)
+    private static SilkShadowOpacityCoverage Classify(
+        (SilkMaterialParameter Parameter, float Value)[]? scalars,
+        SilkSurfaceKind kind = SilkSurfaceKind.PreviewSurface)
     {
         const string meshPath = "/World/Caster";
         const string materialPath = "/World/Materials/Caster";
@@ -427,7 +469,7 @@ public sealed class SilkShadowWireTests
         List<byte[]> page = [];
         if (scalars is not null)
         {
-            page.Add(CreateMaterial(materialPath, scalars));
+            page.Add(CreateMaterial(materialPath, scalars, kind));
         }
         page.Add(CreateMesh(meshPath, scalars is null ? string.Empty : materialPath));
 
@@ -438,19 +480,20 @@ public sealed class SilkShadowWireTests
         }
         _ = scene.Apply(bytes.ToArray(), (uint)page.Count, 1);
         SilkMeshData mesh = scene.MeshesByPath[(meshPath, 0)];
-        return SilkShadowMapCache.IsOpacityMasked(scene, mesh);
+        return SilkShadowMapCache.ClassifyOpacity(scene, mesh);
     }
 
     private static byte[] CreateMaterial(
         string path,
-        (SilkMaterialParameter Parameter, float Value)[] scalars)
+        (SilkMaterialParameter Parameter, float Value)[] scalars,
+        SilkSurfaceKind kind = SilkSurfaceKind.PreviewSurface)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         List<byte> payload =
         [
             .. BitConverter.GetBytes(ComputeStableHash(path)),
             .. BitConverter.GetBytes((uint)pathBytes.Length),
-            .. BitConverter.GetBytes((uint)SilkSurfaceKind.PreviewSurface),
+            .. BitConverter.GetBytes((uint)kind),
             .. BitConverter.GetBytes((uint)scalars.Length),
             .. BitConverter.GetBytes(0u),
             .. pathBytes,

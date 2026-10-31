@@ -63,7 +63,7 @@
   },
   "abi": {
     "data": 26,
-    "dataCapabilities": 34359738367,
+    "dataCapabilities": 137438953471,
     "storm": 9,
     "stormChild": 9,
     "silkSession": 6,

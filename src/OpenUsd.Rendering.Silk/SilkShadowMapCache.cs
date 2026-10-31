@@ -11,6 +11,13 @@ internal readonly record struct SilkShadowCaster(
     SilkMeshGpuResource Mesh,
     Matrix4x4 ObjectToLightClip);
 
+internal enum SilkShadowOpacityCoverage
+{
+    Solid,
+    Invisible,
+    Unsupported,
+}
+
 /// <summary>
 /// Owns the retained shadow atlas, decides when it has to be rendered again, and
 /// releases it when a scene stops casting.
@@ -773,13 +780,10 @@ internal sealed class SilkShadowMapCache : IDisposable
                 continue;
             }
 
-            // An opacity-masked caster's depth coverage is not its geometric
-            // coverage, and the depth-only program binds no material and cannot
-            // discard, so drawing it would cast the solid shadow of a cutout card.
-            // Dropping and naming it is the one honest option available here.
-            if (IsOpacityMasked(scene, data))
+            SilkShadowOpacityCoverage coverage = ClassifyOpacity(scene, data);
+            if (coverage != SilkShadowOpacityCoverage.Solid)
             {
-                if (!unsupportedCasters.Contains(data.Path))
+                if (coverage == SilkShadowOpacityCoverage.Unsupported && !unsupportedCasters.Contains(data.Path))
                 {
                     unsupportedCasters.Add(data.Path);
                 }
@@ -805,7 +809,8 @@ internal sealed class SilkShadowMapCache : IDisposable
 
     internal static bool CanCastShadow(
         SilkSceneState scene, SilkMeshGpuResource resource, SilkMeshData mesh, int lightIndex) =>
-        IsPotentialCaster(scene, resource, mesh, lightIndex) && !IsOpacityMasked(scene, mesh);
+        IsPotentialCaster(scene, resource, mesh, lightIndex) &&
+        ClassifyOpacity(scene, mesh) == SilkShadowOpacityCoverage.Solid;
 
     private static bool IsPotentialCaster(
         SilkSceneState scene, SilkMeshGpuResource resource, SilkMeshData mesh, int lightIndex) =>
@@ -813,31 +818,49 @@ internal sealed class SilkShadowMapCache : IDisposable
         scene.LightLinks.Resolve(mesh.Path, mesh.InstanceIndex).CastsShadow(lightIndex);
 
     /// <summary>
-    /// Reports whether a caster's material discards or blends fragments, so that its
-    /// depth coverage is not the coverage of its geometry.
+    /// Classifies constant PreviewSurface cutoffs separately from unsupported variable coverage.
     /// </summary>
-    internal static bool IsOpacityMasked(SilkSceneState scene, SilkMeshData mesh)
+    internal static SilkShadowOpacityCoverage ClassifyOpacity(SilkSceneState scene, SilkMeshData mesh)
     {
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentNullException.ThrowIfNull(mesh);
         if (string.IsNullOrEmpty(mesh.MaterialPath) ||
             !scene.Materials.TryGetValue(mesh.MaterialPath, out SilkMaterialData? material))
         {
-            return false;
+            return SilkShadowOpacityCoverage.Solid;
+        }
+
+        if (material.SurfaceKind == SilkSurfaceKind.PreviewSurface)
+        {
+            float constantOpacity = SilkSurfaceUniformWriter.GetOpacity(material);
+            float constantThreshold = SilkSurfaceUniformWriter.GetOpacityThreshold(material);
+            if (material.GetTexture(SilkMaterialParameter.Opacity) is not null)
+            {
+                return SilkShadowOpacityCoverage.Unsupported;
+            }
+            if (constantThreshold > 0)
+            {
+                return constantOpacity < constantThreshold
+                    ? SilkShadowOpacityCoverage.Invisible
+                    : SilkShadowOpacityCoverage.Solid;
+            }
+            return constantOpacity < 1 ? SilkShadowOpacityCoverage.Unsupported : SilkShadowOpacityCoverage.Solid;
         }
 
         if (material.GetTexture(SilkMaterialParameter.Opacity) is not null)
         {
-            return true;
+            return SilkShadowOpacityCoverage.Unsupported;
         }
         ReadOnlySpan<float> threshold =
             material.GetScalar(SilkMaterialParameter.OpacityThreshold);
         if (!threshold.IsEmpty && threshold[0] > 0)
         {
-            return true;
+            return SilkShadowOpacityCoverage.Unsupported;
         }
         ReadOnlySpan<float> opacity = material.GetScalar(SilkMaterialParameter.Opacity);
-        return !opacity.IsEmpty && opacity[0] < 1;
+        return !opacity.IsEmpty && opacity[0] < 1
+            ? SilkShadowOpacityCoverage.Unsupported
+            : SilkShadowOpacityCoverage.Solid;
     }
 
     private ISilkGraphicsSampler RequireSampler() =>

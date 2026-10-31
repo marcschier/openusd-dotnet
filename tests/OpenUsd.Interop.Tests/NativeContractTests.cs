@@ -16,18 +16,25 @@ public sealed class NativeContractTests
     }
 
     [Test]
-    public async Task DataAbiTwentySixRequiresStageLinearUnitsAndAllPriorCapabilities()
+    public async Task DataAbiTwentySixRequiresReviewAdoptionAndPublicationAndAllPriorCapabilities()
     {
         uint abiVersion = OpenUsdNativeContract.AbiVersion;
         ulong requiredCapabilities = OpenUsdNativeContract.RequiredCapabilities;
         ulong exrCapability = OpenUsdNativeContract.ImageExrOutputCapability;
         ulong vec4fCapability = OpenUsdNativeContract.AttributeVec4fArraysCapability;
         ulong linearUnitsCapability = OpenUsdNativeContract.StageLinearUnitsCapability;
+        ulong reviewAdoptionCapability = OpenUsdNativeContract.ReviewStageAdoptionCapability;
+        ulong reviewSourcePublicationCapability = OpenUsdNativeContract.ReviewSourcePublicationCapability;
 
         await Assert.That(abiVersion).IsEqualTo(26U);
-        await Assert.That(requiredCapabilities).IsEqualTo(0x7FFFFFFFFUL);
+        await Assert.That(requiredCapabilities).IsEqualTo(0x1FFFFFFFFFUL);
         await Assert.That(linearUnitsCapability).IsEqualTo(1UL << 34);
         await Assert.That(requiredCapabilities & linearUnitsCapability).IsEqualTo(linearUnitsCapability);
+        await Assert.That(reviewAdoptionCapability).IsEqualTo(1UL << 35);
+        await Assert.That(requiredCapabilities & reviewAdoptionCapability).IsEqualTo(reviewAdoptionCapability);
+        await Assert.That(reviewSourcePublicationCapability).IsEqualTo(1UL << 36);
+        await Assert.That(requiredCapabilities & reviewSourcePublicationCapability)
+            .IsEqualTo(reviewSourcePublicationCapability);
         await Assert.That(vec4fCapability).IsEqualTo(1UL << 33);
         await Assert.That(exrCapability).IsEqualTo(1UL << 32);
         await Assert.That(requiredCapabilities & OpenUsdNativeContract.ImageExrOutputCapability)

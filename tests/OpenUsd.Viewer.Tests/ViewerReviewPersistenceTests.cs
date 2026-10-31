@@ -225,6 +225,84 @@ public sealed class ViewerReviewPersistenceTests
     }
 
     [Test]
+    public async Task ExactAuthoredStateSurvivesHistoryPublicationAndVerifiedReopen()
+    {
+        using ViewerPortableReviewFixture files = await ViewerPortableReviewFixture.CreateAsync();
+        byte[] sourceBytes = await File.ReadAllBytesAsync(files.SourcePath);
+        UsdLayerEditAddress[] addresses =
+        [
+            new("/Body.review:value", UsdLayerEditField.Default),
+            new("/Body.review:value", UsdLayerEditField.TimeSample, 2),
+            new("/Body.links", UsdLayerEditField.RelationshipTargets),
+            new("/Body.review:empty", UsdLayerEditField.Default)
+        ];
+
+        await using (UsdStageScheduler scheduler = UsdStageScheduler.OpenForReview(files.SourcePath))
+        {
+            UsdReviewSourceBinding binding = await scheduler.InvokeAsync(
+                static stage => stage.CaptureReviewSourceBinding());
+            await using var editor = new ViewerAuthoredEditController(scheduler, sourceBinding: binding);
+            ViewerAuthoredEditCapture before = await editor.CaptureAsync(addresses);
+            await AssertAbsentOpinionsAsync(before.Snapshot, addresses);
+
+            ViewerAuthoredEditResult applied = await editor.ApplyAsync(before,
+            [
+                UsdLayerEdit.Block(addresses[0], "double", creationCustom: true),
+                UsdLayerEdit.Set(addresses[1], UsdLayerEditValue.FromDouble(12), "double", creationCustom: true),
+                UsdLayerEdit.Set(addresses[2], UsdLayerEditValue.FromPathList(new UsdPathListEdit(false,
+                    addedItems: ["/Added"], prependedItems: ["/Prepended"], appendedItems: ["/Appended"],
+                    deletedItems: ["/Deleted"], orderedItems: ["/Ordered"]))),
+                UsdLayerEdit.Set(addresses[3], UsdLayerEditValue.FromDouble(101), "double",
+                    UsdLayerEditVariability.Uniform)
+            ], "Author exact opinions", Guid.NewGuid());
+            await Assert.That(applied.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await AssertPortableOpinionsAsync(applied.After!, addresses, emptyHasValue: true);
+
+            ViewerAuthoredEditResult cleared = await editor.ApplyAsync(
+                await editor.CaptureAsync([addresses[3]]), [UsdLayerEdit.Clear(addresses[3])],
+                "Clear authored value", Guid.NewGuid());
+            await Assert.That(cleared.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await AssertPortableOpinionsAsync((await editor.CaptureAsync(addresses)).Snapshot, addresses, false);
+
+            await Assert.That((await editor.UndoAsync()).Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await AssertPortableOpinionsAsync((await editor.CaptureAsync(addresses)).Snapshot, addresses, true);
+            await Assert.That((await editor.UndoAsync()).Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await AssertAbsentOpinionsAsync((await editor.CaptureAsync(addresses)).Snapshot, addresses);
+            await Assert.That((await editor.RedoAsync()).Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await AssertPortableOpinionsAsync((await editor.CaptureAsync(addresses)).Snapshot, addresses, true);
+            await Assert.That((await editor.RedoAsync()).Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+            await AssertPortableOpinionsAsync((await editor.CaptureAsync(addresses)).Snapshot, addresses, false);
+            await Assert.That(editor.UndoDepth).IsEqualTo(2);
+            await Assert.That(editor.RedoDepth).IsEqualTo(0);
+
+            ViewerReviewSaveResult saved = await editor.PublishReviewSaveAsync(
+                await editor.PrepareReviewSaveAsync(files.DestinationPath));
+            await Assert.That(saved.Acknowledged).IsTrue();
+            await Assert.That((await editor.ReadDocumentAsync()).HasChanges).IsFalse();
+            await Assert.That((await File.ReadAllBytesAsync(files.SourcePath)).SequenceEqual(sourceBytes)).IsTrue();
+        }
+
+        await using ViewerReviewDocumentFile file =
+            await ViewerReviewDocumentFile.InspectAsync(files.DestinationPath, CancellationToken.None);
+        UsdReviewDocument document = await file.ReadAsync(files.SourcePath, CancellationToken.None);
+        await using ViewerPreparedDocument prepared = await ViewerPreparedDocument.OpenReviewAsync(
+            document, files.SourcePath, file.Identity, recovery: false, CancellationToken.None);
+        await prepared.RevalidateSourceAsync(CancellationToken.None);
+        await using var reopened = new ViewerAuthoredEditController(prepared.Scheduler, prepared.SourceBinding);
+        reopened.InitializeImportedReview(prepared);
+
+        await AssertPortableOpinionsAsync((await reopened.CaptureAsync(addresses)).Snapshot, addresses, false);
+        await Assert.That(reopened.SavedReviewPath).IsEqualTo(files.DestinationPath);
+        await Assert.That(reopened.UndoDepth).IsEqualTo(0);
+        await Assert.That(reopened.RedoDepth).IsEqualTo(0);
+        await Assert.That((await reopened.ReadDocumentAsync()).HasChanges).IsFalse();
+        await Assert.That(await prepared.Scheduler.InvokeAsync(
+            static stage => stage.GetPrim("/Body").GetDouble("review:value", 2))).IsEqualTo(12d);
+        await Assert.That((await File.ReadAllBytesAsync(files.SourcePath)).SequenceEqual(sourceBytes)).IsTrue();
+        await files.AssertOriginalsUnchangedAsync();
+    }
+
+    [Test]
     public async Task AFileAppearingAfterCaptureCanBeRemovedAndFreshCaptureRetryReopensTheExactOpinion()
     {
         using ViewerPortableReviewFixture files = await ViewerPortableReviewFixture.CreateAsync();
@@ -283,5 +361,64 @@ public sealed class ViewerReviewPersistenceTests
         await Assert.That(await prepared.Scheduler.InvokeAsync(
             static stage => stage.GetPrim("/Body").GetDouble("review:value"))).IsEqualTo(47d);
         await files.AssertOriginalsUnchangedAsync();
+    }
+
+    private static async Task AssertAbsentOpinionsAsync(
+        UsdLayerAuthoredSnapshot snapshot, UsdLayerEditAddress[] addresses)
+    {
+        await Assert.That(snapshot.Opinions.Count).IsEqualTo(addresses.Length);
+        for (int index = 0; index < addresses.Length; index++)
+        {
+            UsdLayerAuthoredOpinion opinion = snapshot.Opinions[index];
+            await Assert.That(opinion.Address).IsEqualTo(addresses[index]);
+            await Assert.That(opinion.PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
+            await Assert.That(opinion.TypeName).IsNull();
+            await Assert.That(opinion.Variability).IsNull();
+            await Assert.That(opinion.Custom).IsNull();
+            await Assert.That(opinion.Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
+        }
+    }
+
+    private static async Task AssertPortableOpinionsAsync(
+        UsdLayerAuthoredSnapshot snapshot, UsdLayerEditAddress[] addresses, bool emptyHasValue)
+    {
+        await Assert.That(snapshot.Opinions.Count).IsEqualTo(addresses.Length);
+        for (int index = 0; index < addresses.Length; index++)
+        {
+            await Assert.That(snapshot.Opinions[index].Address).IsEqualTo(addresses[index]);
+        }
+        for (int index = 0; index < 2; index++)
+        {
+            UsdLayerAuthoredOpinion opinion = snapshot.Opinions[index];
+            await Assert.That(opinion.PropertyKind).IsEqualTo(UsdLayerPropertyKind.Attribute);
+            await Assert.That(opinion.TypeName).IsEqualTo("double");
+            await Assert.That(opinion.Variability).IsEqualTo(UsdLayerEditVariability.Varying);
+            await Assert.That(opinion.Custom).IsTrue();
+        }
+        await Assert.That(snapshot.Opinions[0].Value.Kind).IsEqualTo(UsdLayerEditValueKind.Block);
+        await Assert.That(snapshot.Opinions[1].Value.Kind).IsEqualTo(UsdLayerEditValueKind.Double);
+        await Assert.That(snapshot.Opinions[1].Value.AsDouble()).IsEqualTo(12d);
+
+        UsdLayerAuthoredOpinion relationship = snapshot.Opinions[2];
+        await Assert.That(relationship.PropertyKind).IsEqualTo(UsdLayerPropertyKind.Relationship);
+        UsdPathListEdit list = relationship.Value.AsPathList();
+        await Assert.That(list.IsExplicit).IsFalse();
+        await Assert.That(list.AddedItems.SequenceEqual(["/Added"])).IsTrue();
+        await Assert.That(list.PrependedItems.SequenceEqual(["/Prepended"])).IsTrue();
+        await Assert.That(list.AppendedItems.SequenceEqual(["/Appended"])).IsTrue();
+        await Assert.That(list.DeletedItems.SequenceEqual(["/Deleted"])).IsTrue();
+        await Assert.That(list.OrderedItems.SequenceEqual(["/Ordered"])).IsTrue();
+
+        UsdLayerAuthoredOpinion empty = snapshot.Opinions[3];
+        await Assert.That(empty.PropertyKind).IsEqualTo(UsdLayerPropertyKind.Attribute);
+        await Assert.That(empty.TypeName).IsEqualTo("double");
+        await Assert.That(empty.Variability).IsEqualTo(UsdLayerEditVariability.Uniform);
+        await Assert.That(empty.Custom).IsFalse();
+        await Assert.That(empty.Value.Kind).IsEqualTo(
+            emptyHasValue ? UsdLayerEditValueKind.Double : UsdLayerEditValueKind.Absent);
+        if (emptyHasValue)
+        {
+            await Assert.That(empty.Value.AsDouble()).IsEqualTo(101d);
+        }
     }
 }

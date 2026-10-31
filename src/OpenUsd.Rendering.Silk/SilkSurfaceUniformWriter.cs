@@ -105,14 +105,14 @@ internal static class SilkSurfaceUniformWriter
             shaded,
             SilkMaterialParameter.DiffuseColor,
             new Vector3(DefaultDiffuse, DefaultDiffuse, DefaultDiffuse));
-        float opacity = Scalar(shaded, SilkMaterialParameter.Opacity, DefaultOpacity);
+        float opacity = GetOpacity(shaded);
         Vector3 emissive = Vector(shaded, SilkMaterialParameter.EmissiveColor, Vector3.Zero);
         float occlusion = Scalar(shaded, SilkMaterialParameter.Occlusion, DefaultOcclusion);
         Vector3 specular = Vector(shaded, SilkMaterialParameter.SpecularColor, Vector3.Zero);
         float ior = Scalar(shaded, SilkMaterialParameter.Ior, DefaultIor);
         float metallic = Scalar(shaded, SilkMaterialParameter.Metallic, 0);
         float roughness = Scalar(shaded, SilkMaterialParameter.Roughness, DefaultRoughness);
-        float opacityThreshold = Scalar(shaded, SilkMaterialParameter.OpacityThreshold, 0);
+        float opacityThreshold = GetOpacityThreshold(shaded);
         float specularWorkflow = Scalar(shaded, SilkMaterialParameter.UseSpecularWorkflow, 0);
         float clearcoat = Scalar(shaded, SilkMaterialParameter.Clearcoat, 0);
         ReadOnlySpan<float> specularLevel = shaded is null
@@ -421,6 +421,12 @@ internal static class SilkSurfaceUniformWriter
         material is not null && TryReadVector(material, parameter, out Vector3 value)
             ? value
             : fallback;
+
+    internal static float GetOpacity(SilkMaterialData? material) =>
+        Scalar(material, SilkMaterialParameter.Opacity, DefaultOpacity);
+
+    internal static float GetOpacityThreshold(SilkMaterialData? material) =>
+        Scalar(material, SilkMaterialParameter.OpacityThreshold, 0);
 
     private static float Scalar(
         SilkMaterialData? material,
