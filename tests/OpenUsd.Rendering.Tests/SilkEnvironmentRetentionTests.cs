@@ -3160,7 +3160,9 @@ public sealed class SilkEnvironmentRetentionTests
     }
 
     [Test]
-    public async Task ConsecutiveSurfaceBindingsObserveEveryMaskWord()
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task ConsecutiveSurfaceBindingsObserveEveryMaskWord(bool useSceneMaterials)
     {
         using var device = new EnvironmentDevice();
         using var renderer = new SilkMeshRenderer(device);
@@ -3197,7 +3199,7 @@ public sealed class SilkEnvironmentRetentionTests
             "BindSurfaceBufferIfChanged",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("The per-draw surface binding seam changed.");
-        object?[] arguments = [commands, null, null];
+        object?[] arguments = [commands, null, null, useSceneMaterials];
         (int Mesh, int BindCount)[] sequence =
         [
             (0, 1), (1, 1), (2, 2), (2, 2), (3, 3), (4, 4), (0, 5),
