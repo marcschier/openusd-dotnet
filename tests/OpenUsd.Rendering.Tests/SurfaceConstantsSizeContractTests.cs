@@ -157,6 +157,23 @@ public sealed class SurfaceConstantsSizeContractTests
                 "transform. " + string.Join("; ", mismatches));
     }
 
+    [Test]
+    [Arguments("mesh.slang")]
+    [Arguments("shadow.mask.fragment.slang")]
+    public async Task ShadersIncludeTheSharedSurfaceParameters(string shaderFile)
+    {
+        string source = await File.ReadAllTextAsync(
+            Path.Combine(FindRepositoryRoot(), "eng", "shaders", "sources", shaderFile));
+        await Assert.That(Regex.IsMatch(
+            source,
+            """(?m)^[ \t]*#[ \t]*include[ \t]+"material\.surface\.slang"[ \t]*\r?$""",
+            RegexOptions.CultureInvariant)).IsTrue();
+        await Assert.That(Regex.IsMatch(
+            source,
+            @"\bstruct\s+SurfaceParameters\b",
+            RegexOptions.CultureInvariant)).IsFalse();
+    }
+
     /// <summary>
     /// Computes the byte size of <c>SurfaceParameters</c> from the shader source
     /// so the expectation is derived from the shader rather than restated.
@@ -164,7 +181,7 @@ public sealed class SurfaceConstantsSizeContractTests
     private static int ReadShaderSurfaceParametersByteSize(string root)
     {
         string source = File.ReadAllText(
-            Path.Combine(root, "eng", "shaders", "sources", "mesh.slang"));
+            Path.Combine(root, "eng", "shaders", "sources", "material.surface.slang"));
         Match block = Regex.Match(
             source,
             @"struct\s+SurfaceParameters\s*\{(?<body>[^}]*)\}",
@@ -172,7 +189,7 @@ public sealed class SurfaceConstantsSizeContractTests
         if (!block.Success)
         {
             throw new InvalidOperationException(
-                "SurfaceParameters was not found in mesh.slang.");
+                "SurfaceParameters was not found in material.surface.slang.");
         }
 
         int total = 0;
