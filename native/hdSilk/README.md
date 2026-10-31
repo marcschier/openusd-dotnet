@@ -184,11 +184,14 @@ unconnected value. This includes `HwPtexTexture_1`: Ptex sampling remains
 unsupported, and the warning is not a managed material diagnostic.
 
 The subdivision module can derive default Ptex face IDs and local triangle
-coordinates for refined Catmull-Clark, bilinear and Loop meshes. A non-quad
-control face has one Ptex face per corner, not one per authored face.
+coordinates for refined Catmull-Clark, bilinear and Loop meshes, and for
+unrefined Catmull-Clark or bilinear quads and Loop triangles. A non-quad
+Catmull-Clark or bilinear control face has one Ptex face per corner, not one
+per authored face. An unrefined visible non-quad therefore needs subface
+tessellation and is refused; holes still contribute to subsequent face IDs.
 The caller supplies separate output and scratch buffers and must discard their
-contents when mapping fails. Unrefined meshes and authored Ptex face remapping
-are outside this helper. The renderer does not yet publish these coordinates
+contents when mapping fails. Authored Ptex face remapping and polygonal `none`
+meshes are not handled. The renderer does not yet publish these coordinates
 or sample Ptex textures.
 
 ## Wire format

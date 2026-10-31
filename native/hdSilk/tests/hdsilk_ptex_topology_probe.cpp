@@ -2,6 +2,7 @@
 
 #include "subdivision.h"
 
+#include "pxr/imaging/hd/meshUtil.h"
 #include "pxr/imaging/pxOsd/subdivTags.h"
 #include "pxr/imaging/pxOsd/tokens.h"
 
@@ -185,6 +186,289 @@ bool FindPatch(
         }
     }
     return matches == 1;
+}
+
+struct CoarseTriangles
+{
+    VtArray<uint32_t> indices;
+    VtArray<uint32_t> subprims;
+};
+
+CoarseTriangles TriangulateCoarse(const HdMeshTopology& topology)
+{
+    HdMeshUtil util(&topology, SdfPath("/PtexCoarseProbe"));
+    VtVec3iArray indices;
+    VtIntArray params;
+    util.ComputeTriangleIndices(&indices, &params);
+    CoarseTriangles result;
+    result.indices.reserve(indices.size() * 3);
+    result.subprims.reserve(params.size());
+    for (size_t triangle = 0; triangle < indices.size(); ++triangle)
+    {
+        for (int corner = 0; corner < 3; ++corner)
+        {
+            result.indices.push_back(
+                static_cast<uint32_t>(indices[triangle][corner]));
+        }
+        result.subprims.push_back(static_cast<uint32_t>(
+            HdMeshUtil::DecodeFaceIndexFromCoarseFaceParam(params[triangle])));
+    }
+    return result;
+}
+
+bool TestCoarseCoordinatesMatchOpenSubdiv(const TestTopology& topology)
+{
+    const HdMeshTopology mesh = MakeMeshTopology(topology);
+    const CoarseTriangles emitted = TriangulateCoarse(mesh);
+    std::vector<HdSilkPtexTriangle> triangles(emitted.subprims.size());
+    std::vector<uint32_t> scratch(HdSilkCoarsePtexScratchCount(mesh));
+    const HdSilkPtexMappingStatus status = HdSilkWriteDefaultCoarsePtexTriangles(
+        mesh, emitted.indices, emitted.subprims,
+        triangles.data(), triangles.size(), scratch.data(), scratch.size());
+    if (status != HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail(
+            topology.name,
+            std::string("coarse Ptex mapping was refused: ") +
+                HdSilkPtexMappingStatusName(status));
+    }
+
+    const std::unique_ptr<Far::TopologyRefiner> oracle =
+        MakeOracleRefiner(topology, 1);
+    if (!oracle)
+    {
+        return Fail(topology.name, "coarse oracle refiner could not be created");
+    }
+    const Far::PtexIndices ptexIndices(*oracle);
+    const Far::TopologyLevel& coarse = oracle->GetLevel(0);
+    for (size_t triangle = 0; triangle < triangles.size(); ++triangle)
+    {
+        const int face = static_cast<int>(emitted.subprims[triangle]);
+        const Far::ConstIndexArray vertices = coarse.GetFaceVertices(face);
+        std::array<std::array<float, 2>, 4> expected{{
+            {{0.0F, 0.0F}}, {{1.0F, 0.0F}},
+            {{1.0F, 1.0F}}, {{0.0F, 1.0F}}}};
+        if (topology.scheme == Sdc::SCHEME_LOOP)
+        {
+            expected[2] = {{0.0F, 1.0F}};
+        }
+        if (triangles[triangle].faceIndex !=
+            static_cast<uint32_t>(ptexIndices.GetFaceId(face)))
+        {
+            return Fail(topology.name, "coarse Ptex face ID differs from OpenSubdiv");
+        }
+        for (int corner = 0; corner < 3; ++corner)
+        {
+            const uint32_t vertex =
+                emitted.indices[triangle * 3 + static_cast<size_t>(corner)];
+            int oracleCorner = -1;
+            for (int index = 0; index < vertices.size(); ++index)
+            {
+                if (vertices[index] == static_cast<int>(vertex))
+                {
+                    if (oracleCorner >= 0)
+                    {
+                        return Fail(topology.name, "oracle face repeats a vertex");
+                    }
+                    oracleCorner = index;
+                }
+            }
+            if (oracleCorner < 0 ||
+                triangles[triangle].cornerCoordinates[static_cast<size_t>(corner) * 2] !=
+                    expected[static_cast<size_t>(oracleCorner)][0] ||
+                triangles[triangle].cornerCoordinates[static_cast<size_t>(corner) * 2 + 1] !=
+                    expected[static_cast<size_t>(oracleCorner)][1])
+            {
+                return Fail(topology.name, "coarse corner differs from OpenSubdiv");
+            }
+        }
+    }
+    return true;
+}
+
+bool TestCoarseAnalyticOrientation()
+{
+    const TestTopology topology{
+        "coarse left-handed quad", Sdc::SCHEME_CATMARK, 4,
+        {4}, {0, 1, 2, 3}, {}, true};
+    const HdMeshTopology mesh = MakeMeshTopology(topology);
+    const CoarseTriangles emitted = TriangulateCoarse(mesh);
+    std::vector<HdSilkPtexTriangle> triangles(emitted.subprims.size());
+    std::vector<uint32_t> scratch(HdSilkCoarsePtexScratchCount(mesh));
+    if (HdSilkWriteDefaultCoarsePtexTriangles(
+            mesh, emitted.indices, emitted.subprims,
+            triangles.data(), triangles.size(), scratch.data(), scratch.size()) !=
+        HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail(topology.name, "mapping failed");
+    }
+    const std::array<float, 6> first{{1.0F, 1.0F, 0.0F, 1.0F, 0.0F, 0.0F}};
+    const std::array<float, 6> second{{1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F}};
+    if (triangles.size() != 2 || triangles[0].faceIndex != 0 ||
+        triangles[0].cornerCoordinates != first ||
+        triangles[1].cornerCoordinates != second)
+    {
+        return Fail(topology.name, "left-handed coordinates are incorrectly oriented");
+    }
+    return true;
+}
+
+bool TestCoarseRefusalAndRetry()
+{
+    const TestTopology quad{
+        "coarse buffer admission", Sdc::SCHEME_CATMARK, 4,
+        {4}, {0, 1, 2, 3}, {}, false};
+    const HdMeshTopology mesh = MakeMeshTopology(quad);
+    const CoarseTriangles emitted = TriangulateCoarse(mesh);
+    HdSilkPtexTriangle sentinel;
+    sentinel.faceIndex = 99;
+    sentinel.cornerCoordinates.fill(-1.0F);
+    std::vector<HdSilkPtexTriangle> triangles(emitted.subprims.size(), sentinel);
+    std::vector<uint32_t> scratch(HdSilkCoarsePtexScratchCount(mesh), 99);
+    const auto write = [&](const CoarseTriangles& source)
+    {
+        return HdSilkWriteDefaultCoarsePtexTriangles(
+            mesh, source.indices, source.subprims,
+            triangles.data(), triangles.size(), scratch.data(), scratch.size());
+    };
+    if (HdSilkWriteDefaultCoarsePtexTriangles(
+            mesh, emitted.indices, emitted.subprims,
+            triangles.data(), triangles.size() - 1, scratch.data(), scratch.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWriteDefaultCoarsePtexTriangles(
+            mesh, emitted.indices, emitted.subprims,
+            triangles.data(), triangles.size(), scratch.data(), scratch.size() - 1) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWriteDefaultCoarsePtexTriangles(
+            mesh, emitted.indices, emitted.subprims,
+            nullptr, triangles.size(), scratch.data(), scratch.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWriteDefaultCoarsePtexTriangles(
+            mesh, emitted.indices, emitted.subprims,
+            triangles.data(), triangles.size(),
+            reinterpret_cast<uint32_t*>(triangles.data()), scratch.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWriteDefaultCoarsePtexTriangles(
+            mesh, emitted.indices, emitted.subprims,
+            triangles.data(), triangles.size(),
+            const_cast<uint32_t*>(emitted.indices.cdata()), scratch.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers)
+    {
+        return Fail(quad.name, "invalid or overlapping buffers were accepted");
+    }
+    if (std::any_of(
+            triangles.begin(), triangles.end(),
+            [&](const HdSilkPtexTriangle& value)
+            {
+                return value.faceIndex != sentinel.faceIndex ||
+                    value.cornerCoordinates != sentinel.cornerCoordinates;
+            }) ||
+        std::any_of(scratch.begin(), scratch.end(), [](uint32_t value)
+            {
+                return value != 99;
+            }))
+    {
+        return Fail(quad.name, "buffer refusal modified caller storage");
+    }
+
+    CoarseTriangles changed = emitted;
+    std::swap(changed.indices[0], changed.indices[1]);
+    if (write(changed) != HdSilkPtexMappingStatus::TriangleMismatch)
+    {
+        return Fail(quad.name, "changed triangle winding was accepted");
+    }
+    changed = emitted;
+    changed.subprims[0] = 1;
+    if (write(changed) != HdSilkPtexMappingStatus::TriangleMismatch)
+    {
+        return Fail(quad.name, "unknown face identity was accepted");
+    }
+    changed = emitted;
+    changed.indices.resize(3);
+    changed.subprims.resize(1);
+    if (write(changed) != HdSilkPtexMappingStatus::TriangleMismatch)
+    {
+        return Fail(quad.name, "missing triangle was accepted");
+    }
+    if (write(emitted) != HdSilkPtexMappingStatus::Mapped ||
+        triangles[0].faceIndex != 0 ||
+        triangles[0].cornerCoordinates !=
+            std::array<float, 6>{{0.0F, 0.0F, 1.0F, 0.0F, 1.0F, 1.0F}})
+    {
+        return Fail(quad.name, "retry after refusal did not succeed");
+    }
+
+    const TestTopology pentagon{
+        "coarse non-quad", Sdc::SCHEME_CATMARK, 5,
+        {5}, {0, 1, 2, 3, 4}, {}, false};
+    const HdMeshTopology nonQuad = MakeMeshTopology(pentagon);
+    const CoarseTriangles fan = TriangulateCoarse(nonQuad);
+    std::vector<HdSilkPtexTriangle> nonQuadTriangles(fan.subprims.size());
+    std::vector<uint32_t> nonQuadScratch(HdSilkCoarsePtexScratchCount(nonQuad));
+    if (HdSilkWriteDefaultCoarsePtexTriangles(
+            nonQuad, fan.indices, fan.subprims,
+            nonQuadTriangles.data(), nonQuadTriangles.size(),
+            nonQuadScratch.data(), nonQuadScratch.size()) !=
+        HdSilkPtexMappingStatus::UnsupportedTopology)
+    {
+        return Fail(pentagon.name, "an unsplit non-quad was accepted");
+    }
+
+    const HdMeshTopology polygonal(
+        PxOsdOpenSubdivTokens->none, PxOsdOpenSubdivTokens->rightHanded,
+        VtIntArray{4}, VtIntArray{0, 1, 2, 3}, VtIntArray{});
+    const HdMeshTopology unknownOrientation(
+        PxOsdOpenSubdivTokens->catmullClark, TfToken("unknown"),
+        VtIntArray{4}, VtIntArray{0, 1, 2, 3}, VtIntArray{});
+    const HdMeshTopology incomplete(
+        PxOsdOpenSubdivTokens->catmullClark, PxOsdOpenSubdivTokens->rightHanded,
+        VtIntArray{4}, VtIntArray{0, 1, 2}, VtIntArray{});
+    const HdMeshTopology repeated(
+        PxOsdOpenSubdivTokens->catmullClark, PxOsdOpenSubdivTokens->rightHanded,
+        VtIntArray{4}, VtIntArray{0, 1, 1, 3}, VtIntArray{});
+    for (const HdMeshTopology* unsupported :
+         {&polygonal, &unknownOrientation, &incomplete, &repeated})
+    {
+        if (HdSilkWriteDefaultCoarsePtexTriangles(
+                *unsupported, emitted.indices, emitted.subprims,
+                triangles.data(), triangles.size(), scratch.data(), scratch.size()) !=
+            HdSilkPtexMappingStatus::UnsupportedTopology)
+        {
+            return Fail(quad.name, "invalid or unsupported topology was accepted");
+        }
+    }
+
+    const HdMeshTopology unsortedHoles(
+        PxOsdOpenSubdivTokens->catmullClark, PxOsdOpenSubdivTokens->rightHanded,
+        VtIntArray{4, 4}, VtIntArray{0, 1, 2, 3, 4, 5, 6, 7}, VtIntArray{1, 0});
+    std::vector<uint32_t> unsortedScratch(HdSilkCoarsePtexScratchCount(unsortedHoles));
+    if (HdSilkWriteDefaultCoarsePtexTriangles(
+            unsortedHoles, emitted.indices, emitted.subprims,
+            triangles.data(), triangles.size(), unsortedScratch.data(), unsortedScratch.size()) !=
+        HdSilkPtexMappingStatus::UnsupportedTopology)
+    {
+        return Fail(quad.name, "unsorted hole indices were accepted");
+    }
+    if (write(emitted) != HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail(quad.name, "valid topology did not recover after refusal");
+    }
+
+    const TestTopology holed{
+        "fully holed coarse quad", Sdc::SCHEME_CATMARK, 4,
+        {4}, {0, 1, 2, 3}, {0}, false};
+    const HdMeshTopology hole = MakeMeshTopology(holed);
+    const CoarseTriangles empty = TriangulateCoarse(hole);
+    std::vector<uint32_t> holeScratch(HdSilkCoarsePtexScratchCount(hole));
+    if (!empty.indices.empty() || !empty.subprims.empty() ||
+        HdSilkWriteDefaultCoarsePtexTriangles(
+            hole, empty.indices, empty.subprims, nullptr, 0,
+            holeScratch.data(), holeScratch.size()) !=
+            HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail(holed.name, "a fully holed cage did not produce an empty mapping");
+    }
+    return true;
 }
 
 bool TestPtexCoordinatesMatchOpenSubdiv(
@@ -505,6 +789,31 @@ bool TestUnrenderableBoundaryRefusal()
 
 int main()
 {
+    const std::vector<TestTopology> coarseTopologies{
+        {"coarse quad", Sdc::SCHEME_CATMARK, 4,
+            {4}, {0, 1, 2, 3}, {}, false},
+        {"coarse left quad", Sdc::SCHEME_CATMARK, 4,
+            {4}, {0, 1, 2, 3}, {}, true},
+        {"coarse bilinear quad", Sdc::SCHEME_BILINEAR, 4,
+            {4}, {0, 1, 2, 3}, {}, false},
+        {"coarse adjacent quads", Sdc::SCHEME_CATMARK, 6,
+            {4, 4}, {0, 1, 2, 3, 1, 4, 5, 2}, {}, false},
+        {"coarse left adjacent quads", Sdc::SCHEME_CATMARK, 6,
+            {4, 4}, {0, 1, 2, 3, 1, 4, 5, 2}, {}, true},
+        {"coarse loop", Sdc::SCHEME_LOOP, 3,
+            {3}, {0, 1, 2}, {}, false},
+        {"coarse left loop", Sdc::SCHEME_LOOP, 3,
+            {3}, {0, 1, 2}, {}, true},
+        {"coarse loop tetrahedron", Sdc::SCHEME_LOOP, 4,
+            {3, 3, 3, 3}, {0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3}, {}, false},
+        {"coarse first-face hole", Sdc::SCHEME_CATMARK, 6,
+            {4, 4}, {0, 1, 2, 3, 1, 4, 5, 2}, {0}, false},
+        {"coarse left first-face hole", Sdc::SCHEME_CATMARK, 6,
+            {4, 4}, {0, 1, 2, 3, 1, 4, 5, 2}, {0}, true},
+        {"coarse non-quad hole prefix", Sdc::SCHEME_CATMARK, 9,
+            {5, 4}, {0, 1, 2, 3, 4, 5, 6, 7, 8}, {0}, false},
+        {"coarse left non-quad hole prefix", Sdc::SCHEME_BILINEAR, 9,
+            {5, 4}, {0, 1, 2, 3, 4, 5, 6, 7, 8}, {0}, true}};
     const std::vector<TestTopology> topologies{
         {"quad", Sdc::SCHEME_CATMARK, 4, {4}, {0, 1, 2, 3}, {}, false},
         {"left-handed quad", Sdc::SCHEME_CATMARK, 4,
@@ -540,12 +849,21 @@ int main()
             {0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4,
                 1, 2, 6, 5, 2, 3, 7, 6, 3, 0, 4, 7, 8, 9, 10, 11},
             {}, false, true}};
-    if (!TestAnalyticQuadAndRotatedLoop() ||
+    if (!TestCoarseAnalyticOrientation() ||
+        !TestCoarseRefusalAndRetry() ||
+        !TestAnalyticQuadAndRotatedLoop() ||
         !TestBufferRefusalAndRetry() ||
         !TestLargePolygon() ||
         !TestUnrenderableBoundaryRefusal())
     {
         return 1;
+    }
+    for (const TestTopology& topology : coarseTopologies)
+    {
+        if (!TestCoarseCoordinatesMatchOpenSubdiv(topology))
+        {
+            return 1;
+        }
     }
     for (const TestTopology& topology : topologies)
     {
@@ -557,7 +875,8 @@ int main()
             }
         }
     }
-    std::cout << "Ptex topology probes passed for "
+    std::cout << "Ptex topology probes passed for " << coarseTopologies.size()
+              << " coarse meshes and "
               << topologies.size() * HdSilkMaxMeshRefineLevel
               << " refined meshes\n";
     return 0;

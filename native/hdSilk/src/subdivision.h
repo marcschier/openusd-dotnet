@@ -118,6 +118,28 @@ enum class HdSilkPtexMappingStatus : uint32_t
     TriangleMismatch = 5,
 };
 
+/// Scratch entries required to map an unrefined control cage. Returns zero when
+/// the count cannot be represented or the cage has no faces.
+size_t HdSilkCoarsePtexScratchCount(const HdMeshTopology& topology);
+
+/// Maps the triangles emitted by HdMeshUtil for an unrefined control cage.
+/// Catmull-Clark and bilinear quads and Loop triangles are supported; a
+/// rendered non-quad Catmull-Clark or bilinear face requires a separate
+/// subface tessellation and is refused. Holes still contribute face IDs.
+///
+/// The caller owns the output and scratch storage, sized to triangleSubprims
+/// and HdSilkCoarsePtexScratchCount() respectively. Neither may overlap the
+/// other or the input arrays. Both must be discarded on any non-Mapped result.
+/// Authored face remapping and the polygonal "none" scheme are not handled.
+HdSilkPtexMappingStatus HdSilkWriteDefaultCoarsePtexTriangles(
+    const HdMeshTopology& topology,
+    const VtArray<uint32_t>& triangleIndices,
+    const VtArray<uint32_t>& triangleSubprims,
+    HdSilkPtexTriangle* triangles,
+    size_t triangleCapacity,
+    uint32_t* scratch,
+    size_t scratchCapacity);
+
 /// The refined topology of one mesh, plus the refiner needed to interpolate its
 /// primvars. Rebuilt only when the control cage, its tags, its face-varying
 /// topologies, or the requested level change.
