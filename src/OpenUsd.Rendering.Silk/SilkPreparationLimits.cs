@@ -4,16 +4,18 @@ using System.Globalization;
 
 namespace OpenUsd.Rendering.Silk;
 
-/// <summary>Immutable coarse-mesh reservation and command-page ceilings for one native session.</summary>
+/// <summary>Immutable geometry reservation and command-page ceilings for one native session.</summary>
 /// <remarks>
 /// Every legacy or explicit sync is bounded without changing its purposes or material binding.
-/// Per-request limits may tighten these ceilings but cannot relax them. The mesh metric counts
+/// Per-request limits may tighten these ceilings but cannot relax them. The preparation metric counts
 /// conservative logical numeric-buffer reservations, not actual allocations. Page limits include
 /// serialized bytes, not other live pages or overlapping buffers during reallocation and copying.
 /// Source/SDK/material caches, metadata, textures and GPU resources are not covered.
 /// With CommandStorage enabled, the page ceiling additionally bounds each stored command;
 /// the separate storage policy bounds whole updates and live files.
-/// The profile requires Low complexity and SmoothShaded meshes without Skel, computed geometry or volumes.
+/// The profile requires Low complexity and SmoothShaded draw mode. It admits coarse meshes
+/// and supported linear basis curves.
+/// Skel, computed geometry, points, cubic or unsupported curves and volumes are refused.
 /// </remarks>
 public sealed class SilkPreparationLimits
 {
@@ -40,7 +42,7 @@ public sealed class SilkPreparationLimits
         CommandStorage = commandStorage;
     }
 
-    /// <summary>Gets the maximum concurrent logical mesh preparation reservation bytes.</summary>
+    /// <summary>Gets the maximum concurrent logical geometry preparation reservation bytes.</summary>
     public ulong MaximumMeshPreparationReservationBytes { get; }
 
     /// <summary>Gets the maximum serialized bytes in each native page and its managed copy.</summary>

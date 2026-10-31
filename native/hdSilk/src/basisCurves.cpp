@@ -8,6 +8,7 @@
 #include "renderDelegate.h"
 #include "sceneState.h"
 
+#include "pxr/base/gf/half.h"
 #include "pxr/base/gf/vec3d.h"
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/vt/value.h"
@@ -106,6 +107,23 @@ bool ExtractDisplayColor(const VtValue& value, GfVec3f* color)
     }
     return false;
 }
+
+uint64_t CountWidthValues(const VtValue& value)
+{
+    if (value.IsHolding<VtFloatArray>())
+    {
+        return value.UncheckedGet<VtFloatArray>().size();
+    }
+    if (value.IsHolding<VtDoubleArray>())
+    {
+        return value.UncheckedGet<VtDoubleArray>().size();
+    }
+    if (value.IsHolding<VtHalfArray>())
+    {
+        return value.UncheckedGet<VtHalfArray>().size();
+    }
+    return 1;
+}
 }
 
 HdSilkBasisCurves::HdSilkBasisCurves(SdfPath const& id)
@@ -146,6 +164,60 @@ HdSilkBasisCurves::_InitRepr(TfToken const& reprToken, HdDirtyBits* /*dirtyBits*
     }
 }
 
+uint64_t
+HdSilkBasisCurves::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) const
+{
+    for (size_t interpolation = 0; interpolation < HdInterpolationCount; ++interpolation)
+    {
+        if (!sceneDelegate->GetExtComputationPrimvarDescriptors(
+                id, static_cast<HdInterpolation>(interpolation)).empty())
+        {
+            throw std::invalid_argument(
+                "The bounded hdSilk curve preparation profile does not admit computed primvars.");
+        }
+    }
+
+    const HdBasisCurvesTopology topology = GetBasisCurvesTopology(sceneDelegate);
+    if (!HdSilkSupportsLinearCurveTopology(topology))
+    {
+        throw std::invalid_argument(
+            "The bounded hdSilk curve preparation profile admits only supported linear wraps.");
+    }
+    const VtValue pointValue = sceneDelegate->Get(id, HdTokens->points);
+    uint64_t points = 0;
+    if (pointValue.IsHolding<VtVec3fArray>())
+    {
+        points = pointValue.UncheckedGet<VtVec3fArray>().size();
+    }
+    else if (pointValue.IsHolding<VtVec3dArray>())
+    {
+        points = pointValue.UncheckedGet<VtVec3dArray>().size();
+    }
+    else
+    {
+        throw std::invalid_argument(
+            "The bounded hdSilk curve preparation profile requires resolved float3 or double3 points.");
+    }
+
+    const TfToken wrap = topology.GetCurveWrap();
+    const bool segmented = wrap == HdTokens->segmented;
+    const bool periodic = wrap == HdTokens->periodic;
+    uint64_t segments = 0;
+    for (int count : topology.GetCurveVertexCounts())
+    {
+        if (count <= 0)
+        {
+            continue;
+        }
+        const uint64_t vertices = static_cast<uint64_t>(count);
+        const uint64_t curveSegments =
+            segmented ? vertices / 2 : periodic ? vertices : vertices - 1;
+        segments = HdSilkMeshPreparationPlan::Add(segments, curveSegments);
+    }
+    const uint64_t widths = CountWidthValues(sceneDelegate->Get(id, HdTokens->widths));
+    return HdSilkCurvePreparationPlan(points, widths, segments).bytes;
+}
+
 void
 HdSilkBasisCurves::Sync(
     HdSceneDelegate* sceneDelegate,
@@ -154,21 +226,36 @@ HdSilkBasisCurves::Sync(
     TfToken const& /*reprToken*/)
 {
     const auto& budget = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState().MeshPreparationBudget();
-    if (budget->Enabled())
+    if (!budget->Enabled())
     {
-        budget->Refuse("The bounded hdSilk mesh preparation profile does not admit curve Rprims.");
-        *dirtyBits = HdChangeTracker::Clean;
+        _Sync(sceneDelegate, renderParam, dirtyBits);
         return;
     }
-    SdfPath const& id = GetId();
+    if (!budget->Refused())
+    {
+        try
+        {
+            _Sync(sceneDelegate, renderParam, dirtyBits);
+            return;
+        }
+        catch (const std::exception& error)
+        {
+            budget->Refuse(error.what());
+        }
+    }
+    *dirtyBits = HdChangeTracker::Clean;
+}
 
+void
+HdSilkBasisCurves::_Sync(
+    HdSceneDelegate* sceneDelegate,
+    HdRenderParam* renderParam,
+    HdDirtyBits* dirtyBits)
+{
+    SdfPath const& id = GetId();
+    const auto& budget = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState().MeshPreparationBudget();
     const bool visibilityDirty =
         HdChangeTracker::IsVisibilityDirty(*dirtyBits, id);
-    if (visibilityDirty)
-    {
-        _UpdateVisibility(sceneDelegate, dirtyBits);
-    }
-
     const bool topologyDirty = HdChangeTracker::IsTopologyDirty(*dirtyBits, id);
     const bool pointsDirty =
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points);
@@ -178,8 +265,32 @@ HdSilkBasisCurves::Sync(
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->displayColor);
     const bool primvarsDirty = (*dirtyBits & HdChangeTracker::DirtyPrimvar) != 0;
     const bool transformDirty = HdChangeTracker::IsTransformDirty(*dirtyBits, id);
-
+    const bool instancerDirty =
+        HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
+        HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
     const bool topologyRefreshed = topologyDirty || _topologyRevision == 0;
+    const bool recordDirty =
+        topologyRefreshed || pointsDirty || widthsDirty || transformDirty ||
+        visibilityDirty || displayColorDirty || primvarsDirty || instancerDirty;
+
+    // Keep the published record's lease when this sync does not replace it.
+    std::shared_ptr<HdSilkMeshPreparationLease> preparation;
+    if (budget->Enabled() && (recordDirty || !_preparationLease))
+    {
+        preparation = budget->Acquire(_PlanPreparation(sceneDelegate, id));
+        preparation->RetainPrevious(_preparationLease);
+        _preparationLease = preparation;
+    }
+    else if (!budget->Enabled())
+    {
+        _preparationLease.reset();
+    }
+
+    if (visibilityDirty)
+    {
+        _UpdateVisibility(sceneDelegate, dirtyBits);
+    }
+
     if (topologyRefreshed)
     {
         _topology = GetBasisCurvesTopology(sceneDelegate);
@@ -246,23 +357,20 @@ HdSilkBasisCurves::Sync(
         sceneDelegate->GetRenderIndex(),
         GetInstancerId());
 
-    const bool instancerDirty =
-        HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
-        HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
-
     HdSilkRenderParam* silkRenderParam =
         static_cast<HdSilkRenderParam*>(renderParam);
     if (!IsVisible() || !_topologySupported)
     {
         silkRenderParam->GetSceneState().RemoveMesh(id.GetString());
+        if (preparation) { preparation->Complete(); }
         *dirtyBits = HdChangeTracker::Clean;
         return;
     }
 
-    if (topologyRefreshed || pointsDirty || widthsDirty || transformDirty ||
-        visibilityDirty || displayColorDirty || primvarsDirty || instancerDirty)
+    if (recordDirty)
     {
         HdSilkMeshRecord record;
+        record.preparationLease = preparation;
         record.path = id.GetString();
         record.primId = GetPrimId();
         record.topologyKind = OPENUSD_SILK_TOPOLOGY_LINE_LIST;
@@ -293,6 +401,7 @@ HdSilkBasisCurves::Sync(
                 "hdSilk skipped basisCurves '%s': invalid or empty linear topology",
                 id.GetText());
             silkRenderParam->GetSceneState().RemoveMesh(id.GetString());
+            if (preparation) { preparation->Complete(); }
             *dirtyBits = HdChangeTracker::Clean;
             return;
         }
@@ -305,6 +414,7 @@ HdSilkBasisCurves::Sync(
             std::move(records));
     }
 
+    if (preparation) { preparation->Complete(); }
     *dirtyBits = HdChangeTracker::Clean;
 }
 

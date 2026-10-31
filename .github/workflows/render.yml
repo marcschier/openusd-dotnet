@@ -580,8 +580,21 @@ jobs:
             -Project 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj' `
             -Framework net10.0 `
             -Configuration Release `
-            -MinimumExpectedTests 8 `
+            -MinimumExpectedTests 16 `
             -TestArguments @('--treenode-filter', '/*/*/SilkLinearCurveNativeTests/*')
+          $env:OPENUSD_MESH_PREPARATION_REQUIRED = '1'
+          ./eng/run-managed-tests.ps1 `
+            -Project 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj' `
+            -Framework net10.0 `
+            -Configuration Release `
+            -MinimumExpectedTests 6 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkMeshPreparationNativeTests/LinearCurve*')
+          ./eng/run-managed-tests.ps1 `
+            -Project 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj' `
+            -Framework net10.0 `
+            -Configuration Release `
+            -MinimumExpectedTests 2 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkCurveDirtyNativeTests/*')
       - name: Execute sampled OpenVDB volume conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

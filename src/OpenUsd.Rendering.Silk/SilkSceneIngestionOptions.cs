@@ -34,11 +34,12 @@ public sealed class SilkSceneIngestionOptions
         MaterialBindingPurpose = NormalizeMaterialBindingPurpose(materialBindingPurpose);
     }
 
-    /// <summary>Creates an explicit coarse-mesh request with a native preparation reservation limit.</summary>
+    /// <summary>Creates an explicit geometry request with a native preparation reservation limit.</summary>
     /// <remarks>
     /// The limit counts conservative logical buffer reservations, not process memory, allocator overhead,
     /// source materialization, materials, instance metadata, command pages or GPU storage.
-    /// Only Low complexity and SmoothShaded meshes without Skel, computed geometry or volumes are admitted.
+    /// Low complexity and SmoothShaded draw mode admit coarse meshes and supported linear basis curves.
+    /// Skel, computed geometry, points, cubic or unsupported curves and volumes are refused.
     /// Changing the limit rebuilds native imaging. Older native libraries must reject this extension.
     /// </remarks>
     public SilkSceneIngestionOptions(
@@ -51,10 +52,10 @@ public sealed class SilkSceneIngestionOptions
         MaximumMeshPreparationReservationBytes = maximumMeshPreparationReservationBytes;
     }
 
-    /// <summary>Gets the optional native logical mesh preparation reservation limit in bytes.</summary>
+    /// <summary>Gets the optional native logical geometry preparation reservation limit in bytes.</summary>
     public ulong? MaximumMeshPreparationReservationBytes { get; }
 
-    /// <summary>Creates a bounded coarse-mesh request with a positive serialized command-page byte limit.</summary>
+    /// <summary>Creates a bounded geometry request with a positive serialized command-page byte limit.</summary>
     /// <remarks>
     /// Requires native preparation limits version 2. Each page is built directly into a capped
     /// buffer, then copied into managed storage. Reallocation/copying can overlap two buffers;

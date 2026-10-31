@@ -34,6 +34,24 @@ void ReservationArithmeticIsExactAndRejectsOverflow()
     Require(plan.bytes == 596, "Failed accounting changed the existing reservation.");
 }
 
+void CurveReservationIncludesSourceAndOverlappingLineBuffers()
+{
+    Require(HdSilkCurvePreparationPlan(4, 4, 3).bytes == 292,
+        "The linear-curve reservation changed.");
+    Require(HdSilkCurvePreparationPlan(0, 0, 0).bytes == sizeof(float),
+        "An empty width source must reserve the resolved default.");
+    const auto expectOverflow = [](auto action)
+    {
+        bool failed = false;
+        try { action(); }
+        catch (const std::overflow_error&) { failed = true; }
+        Require(failed, "Curve reservation arithmetic silently wrapped.");
+    };
+    expectOverflow([] { (void)HdSilkCurvePreparationPlan(UINT64_MAX, 0, 0); });
+    expectOverflow([] { (void)HdSilkCurvePreparationPlan(0, UINT64_MAX, 0); });
+    expectOverflow([] { (void)HdSilkCurvePreparationPlan(0, 0, UINT64_MAX); });
+}
+
 void LimitsAndSharedOwnersPreserveExactBoundaries()
 {
     const auto budget = std::make_shared<HdSilkMeshPreparationBudget>();
@@ -125,11 +143,12 @@ int main()
     try
     {
         ReservationArithmeticIsExactAndRejectsOverflow();
+        CurveReservationIncludesSourceAndOverlappingLineBuffers();
         LimitsAndSharedOwnersPreserveExactBoundaries();
         FailedReplacementRetainsOldAndNewUntilRecovery();
         ConcurrentReservationsCannotOvercommit();
         WorkerRefusalIsPublishedOnTheCallerAndResetForRetry();
-        std::cout << "hdSilk mesh preparation: 5 reservation contracts passed\n";
+        std::cout << "hdSilk mesh preparation: 6 reservation contracts passed\n";
         return 0;
     }
     catch (const std::exception& error)

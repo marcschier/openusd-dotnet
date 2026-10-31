@@ -806,9 +806,9 @@ refinement
 
 hdSilk expands linear segmented, nonperiodic, periodic, and pinned basis curves into line lists, preserving resolved
 point widths, invisible-segment identities, and independent closure of periodic curves. Invalid topology removes the
-retained curve until a valid edit republishes it. Cubic curves and curves in the bounded mesh-preparation profile remain
-unsupported. Windows tests compare animated output with independently authored segmented geometry on D3D12 WARP and
-Vulkan SwiftShader; Storm and Metal parity are not claimed.
+retained curve until a valid edit republishes it. The bounded preparation profile admits these linear wraps; cubic
+curves remain unsupported. Windows tests compare animated output with independently authored segmented geometry on D3D12
+WARP and Vulkan SwiftShader in legacy and bounded modes. Storm and Metal parity are not claimed.
 
 ### `point-instancer-instance-identity`
 
@@ -983,25 +983,25 @@ warehouse image are not claimed.
 
 ### `session-preparation-admission`
 
-Opt-in immutable hdSilk session ceilings apply conservative coarse-mesh reservation and serialized-page limits to every
-legacy and explicit sync. Per-request limits may tighten but cannot relax the session policy; purpose and
-allPurpose/full/preview binding choices remain unchanged. The one-shot native extension refuses reconfiguration and
-older libraries, and successful pages retain immutable usage snapshots independently of the session. Shared
-typed/invariant configuration reaches Viewer live/product/recreated sessions and MCP preview/sequence/product sessions,
-with explicit propagation to launched Viewers. Storm cannot bypass the configured policy. Capture diagnostics report
-stable effective ceilings without consuming one distinct job diagnostic per frame. Native entry-point,
+Opt-in immutable hdSilk session ceilings apply conservative mesh and linear-curve preparation reservation and
+serialized-page limits to every legacy and explicit sync. Per-request limits may tighten but cannot relax the session
+policy; purpose and allPurpose/full/preview binding choices remain unchanged. The one-shot native extension refuses
+reconfiguration and older libraries, and successful pages retain immutable usage snapshots independently of the session.
+Shared typed/invariant configuration reaches Viewer live/product/recreated sessions and MCP preview/sequence/product
+sessions, with explicit propagation to launched Viewers. Storm cannot bypass the configured policy. Capture diagnostics
+report stable effective ceilings without consuming one distinct job diagnostic per frame. Native entry-point,
 material-transition and lifetime cases, real D3D12/Vulkan captures, actual Viewer/MCP jobs, and a clean-feed NativeAOT
 consumer exercise the profile.
 
 **Limits:** Opt-in, not a total-memory/RAM/VRAM policy. Source opening, SDK/material caches, metadata, other live pages,
-overlapping buffers, textures and GPU resources remain outside these metrics. The existing coarse-mesh geometry
-restrictions remain; unsupported profiles fail rather than being omitted. Limits are chosen by the host, not mutable
-tool-call authority. Windows Viewer evidence uses D3D12; Vulkan capture fixtures use SwiftShader. Hardware Vulkan,
-Linux/Metal execution and a complete warehouse image remain unqualified.
+overlapping buffers, textures and GPU resources remain outside these metrics. Unsupported geometry profiles fail rather
+than being omitted. Limits are chosen by the host, not mutable tool-call authority. Windows Viewer evidence uses D3D12;
+Vulkan capture fixtures use SwiftShader. Hardware Vulkan, Linux/Metal execution and a complete warehouse image remain
+unqualified.
 
 ### `serialized-command-page-admission`
 
-Opt-in preparation limits version 2 adds a positive per-page serialized-byte ceiling to the existing coarse-mesh
+Opt-in preparation limits version 2 adds a positive per-page serialized-byte ceiling to the mesh and linear-curve
 reservation profile. All commands write directly into one amortized native byte buffer; capacity requests are checked
 before allocation and there are no separate per-command payload vectors/copies. Headers, frame, materials, environments,
 mesh updates and retirements share the page limit. Refusal preserves complete retry and previously owned pages; changing
@@ -1012,26 +1012,25 @@ a clean-feed NativeAOT consumer exercise the profile.
 
 **Limits:** Not total process memory or a global live-page budget. Native vector growth overlaps old/new buffers and
 managed copying overlaps native/managed buffers. Allocator overhead, metadata, other live pages, retained geometry,
-source/SDK/material caches, textures and GPU storage are excluded. The coarse-mesh numeric reservation metric and its
-restricted geometry profile are unchanged. Legacy/v1 calls remain page-unbounded. Vulkan fixture pixels use SwiftShader;
-hardware Vulkan, Linux/Metal and a complete warehouse image are not claimed.
+source/SDK/material caches, textures and GPU storage are excluded. Legacy/v1 calls remain page-unbounded. Vulkan fixture
+pixels use SwiftShader; hardware Vulkan, Linux/Metal and a complete warehouse image are not claimed.
 
 ### `coarse-mesh-preparation-admission`
 
-Opt-in version-1 native admission before coarse mesh triangulation, point conversion and supported attribute expansion.
-A positive caller limit bounds conservative logical numeric-buffer reservation charges, with one lease shared by a
-producer and its records and overlapping old/new reservations during updates. Worker refusals are latched and returned
-after the Hydra barrier instead of escaping the worker pool or publishing partial pages. The existing scene-ingestion
-options gain an explicit limit overload and successful pages report retained and peak charges. Old native libraries
-explicitly refuse the missing extension. Native limit/overflow/concurrency contracts, real Hydra
-boundary/instancing/retry cases, D3D12/Vulkan capture recovery and an actual clean-feed NativeAOT consumer cover the
-initial profile.
+Opt-in version-1 native admission before coarse mesh triangulation, supported linear-curve expansion, point conversion
+and supported attribute expansion. A positive caller limit bounds conservative logical numeric-buffer reservation
+charges, with one lease shared by a producer and its records and overlapping old/new reservations during updates. Worker
+refusals are latched and returned after the Hydra barrier instead of escaping the worker pool or publishing partial
+pages. The existing scene-ingestion options gain an explicit limit overload and successful pages report retained and
+peak charges. Old native libraries explicitly refuse the missing extension. Native limit/overflow/concurrency contracts,
+real Hydra boundary/instancing/retry cases, D3D12/Vulkan capture recovery and an actual clean-feed NativeAOT consumer
+cover the initial profile; hosted proof for the linear-curve extension is pending.
 
 **Limits:** The metric is not actual allocation or process memory. Source/SDK materialization and caches, allocator
 capacity/overhead, maps/strings, materials, instance metadata, serialized pages, textures and GPU resources are
-excluded. Version 1 refuses refinement, alternate draw modes, Skel/computed geometry, point/curve Rprims and volumes.
-Legacy defaults remain unchanged. Vulkan fixture pixels use SwiftShader; Linux/Metal and complete warehouse admission or
-rendering are not claimed.
+excluded. Version 1 refuses refinement, alternate draw modes, Skel/computed geometry, point Rprims, cubic or unsupported
+curves and volumes. Legacy defaults remain unchanged. Vulkan fixture pixels use SwiftShader; Linux/Metal and complete
+warehouse admission or rendering are not claimed.
 
 ### `bounded-128-direct-lights`
 

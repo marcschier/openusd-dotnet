@@ -165,8 +165,8 @@ Invisible curves and points do not renumber the remaining segment identities.
 Nonperiodic and pinned curves require at least two control points, and
 periodic curves require at least three. Invalid topology removes the retained
 curve and emits a native warning; a later valid edit republishes it. Cubic
-curves remain unsupported. The optional bounded mesh-preparation profile
-continues to refuse all curve Rprims.
+curves remain unsupported. The optional bounded preparation profile admits
+the four supported linear wraps.
 
 Constant widths remain one attribute value; uniform, varying and vertex
 widths are expanded onto the emitted line vertices. The renderer does not
@@ -218,11 +218,13 @@ session-6/page-24 calls retain their unbounded behavior. The three-argument mana
 `SilkSceneIngestionOptions` overload requests version 1 with a positive
 `maximumMeshPreparationReservationBytes`, and successful pages expose `MeshPreparationUsage`.
 
-The initial profile admits coarse, smooth-shaded mesh Rprims with resolved numeric points
-and the existing supported numeric attributes. It refuses refinement, other draw modes,
-Skel/computed geometry, point/curve Rprims and volumes, rather than silently ignoring their
-cost. Point-instancer references share the prototype reservation; their transform/identity
-metadata is not a numeric mesh buffer reservation.
+The profile admits coarse, smooth-shaded mesh Rprims with resolved numeric points
+and the existing supported numeric attributes. It also admits linear basis curves with
+segmented, nonperiodic, periodic or pinned wraps and float3 or double3 points. It refuses
+refinement, other draw modes, Skel/computed geometry, point Rprims, cubic or unsupported
+curve topologies and volumes, rather than silently ignoring their cost. Point-instancer
+references share the prototype reservation; their transform/identity metadata is not
+a numeric buffer reservation.
 
 The metric is **conservative logical buffer reservation bytes**, not actual allocation,
 private memory or RSS. For `P` source points, `T` upper-bound triangles (sum of `max(faceSize-2,0)`),
@@ -232,6 +234,13 @@ Each supported attribute adds `4(S+3E)`, where `S` is its source float-component
 triangulation, remapping/identity flags and overlapping attribute preparations before
 hdSilk builds those arrays. It intentionally does not discount holes, seams or compaction.
 The charge remains reserved for that mesh generation even after its temporary arrays shrink.
+
+For a supported linear curve, the charge is `12P + 4*max(W,1) + 76S`, where `P` is
+the number of source points, `W` is the number of source width values and `S` is the
+upper-bound segment count from the authored topology. The charge covers point and width
+conversion, emitted positions and normals, indices, overlapping emitted widths and segment
+identities. It counts the complete float, double or half width array even if its shape is
+later rejected, and does not discount invisible curves or points.
 
 A producer and its retained record share one reservation lease. A replacement reserves
 new work while the old lease remains live; failed partial preparation retains both until

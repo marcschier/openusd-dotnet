@@ -3916,6 +3916,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.ExitCode).IsEqualTo(0);
             await Assert.That(result.Output).Contains("PACKAGE_IMAGING_EXECUTION_OK");
             await Assert.That(result.Output).Contains("MESH_PREPARATION_ADMISSION=true");
+            await Assert.That(result.Output).Contains("CURVE_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("COMMAND_PAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("SESSION_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("PAGE_COPY_ACKNOWLEDGEMENT=true");
@@ -7488,6 +7489,38 @@ public sealed partial class RuntimePackageTests
                     if (!pluginLayout || !File.Exists(stagePath))
                     {
                         return 2;
+                    }
+
+                    string curvePath = Path.Combine(AppContext.BaseDirectory, "linear-curve.usda");
+                    File.WriteAllText(curvePath,
+                        "#usda 1.0\n" +
+                        "def BasisCurves \"Curve\" {\n" +
+                        "uniform token type = \"linear\"\n" +
+                        "uniform token wrap = \"nonperiodic\"\n" +
+                        "int[] curveVertexCounts = [4]\n" +
+                        "point3f[] points = [(0,0,0),(1,0,0),(1,1,0),(0,1,0)]\n" +
+                        "float[] widths = [0.1,0.2,0.3,0.4] (interpolation = \"vertex\")\n" +
+                        "}\n");
+                    using (var curveSession = OpenUsdSilkRuntime.Create(pluginPath, curvePath))
+                    {
+                        bool curveRefused = false;
+                        try
+                        {
+                            using OpenUsdSilkPage rejected = curveSession.Sync(16, 16,
+                                new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 291));
+                        }
+                        catch (OpenUsdSilkException)
+                        {
+                            curveRefused = true;
+                        }
+                        using OpenUsdSilkPage curve = curveSession.Sync(16, 16,
+                            new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 292));
+                        if (!curveRefused || curve.MeshPreparationUsage?.ReservedBytes != 292)
+                        {
+                            throw new InvalidOperationException(
+                                "The native package ignored or leaked linear curve reservations.");
+                        }
+                        Console.WriteLine("CURVE_PREPARATION_ADMISSION=true");
                     }
 
                     using (var preparationSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))

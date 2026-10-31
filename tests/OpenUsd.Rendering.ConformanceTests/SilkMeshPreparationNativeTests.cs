@@ -324,6 +324,16 @@ public sealed class SilkMeshPreparationNativeTests
         }
         """;
 
+    private const string LinearCurve = """
+        def BasisCurves "Curve" {
+            uniform token type = "linear"
+            uniform token wrap = "nonperiodic"
+            int[] curveVertexCounts = [4]
+            point3f[] points = [(0,0,0),(1,0,0),(1,1,0),(0,1,0)]
+            float[] widths = [0.1,0.2,0.3,0.4] (interpolation = "vertex")
+        }
+        """;
+
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
@@ -1178,8 +1188,131 @@ public sealed class SilkMeshPreparationNativeTests
     }
 
     [Test]
+    [Arguments("segmented", 2)]
+    [Arguments("nonperiodic", 3)]
+    [Arguments("periodic", 4)]
+    [Arguments("pinned", 3)]
+    public async Task LinearCurveReservationMatchesLegacyAtTheExactBoundary(string wrap, int segments)
+    {
+        string curve = LinearCurve.Replace("\"nonperiodic\"", $"\"{wrap}\"", StringComparison.Ordinal);
+        using Fixture fixture = Create(curve);
+        using OpenUsdSilkSession session = fixture.Open();
+        using OpenUsdSilkPage legacy = session.Sync(16, 16);
+        string expected = CurveValues(legacy);
+        await Assert.That(expected.Length).IsGreaterThan(0);
+        ulong cost = 4 * 12ul + 4 * 4ul + (ulong)segments * (2 * 36ul + 4ul);
+        using OpenUsdSilkPage bounded = session.Sync(16, 16, Options(cost));
+        await Assert.That(bounded.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        await Assert.That(bounded.MeshPreparationUsage.PeakReservedBytes).IsEqualTo(cost);
+        await Assert.That(CurveValues(bounded)).IsEqualTo(expected);
+        await Assert.That(() => session.Sync(16, 16, Options(cost - 1))).Throws<OpenUsdSilkException>();
+        await Assert.That(CurveValues(bounded)).IsEqualTo(expected);
+        using OpenUsdSilkPage retry = session.Sync(16, 16, Options(cost));
+        await Assert.That(retry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        await Assert.That(CurveValues(retry)).IsEqualTo(expected);
+        using OpenUsdSilkPage quiet = session.Sync(16, 16, Options(cost));
+        await Assert.That(CurveValues(quiet)).IsEqualTo(string.Empty);
+        await Assert.That(quiet.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+    }
+
+    [Test]
+    public async Task LinearCurveGrowthRefusalPreservesAndReleasesReservationsForRetry()
+    {
+        using Fixture fixture = Create(LinearCurve);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using OpenUsdSilkPage initial = session.Sync(16, 16, Options(4096));
+        string expected = CurveValues(initial);
+        ulong cost = initial.MeshPreparationUsage!.ReservedBytes;
+        UsdVec3f[] originalPoints = [new(0, 0, 0), new(1, 0, 0), new(1, 1, 0), new(0, 1, 0)];
+        float[] originalWidths = [0.1f, 0.2f, 0.3f, 0.4f];
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetFloatArray(
+            "widths", Enumerable.Repeat(0.5f, 1024).ToArray()));
+        await Assert.That(() => session.Sync(16, 16, Options(4096))).Throws<OpenUsdSilkException>();
+        await Assert.That(CurveValues(initial)).IsEqualTo(expected);
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetFloatArray("widths", originalWidths));
+        using OpenUsdSilkPage afterWidthRetry = session.Sync(16, 16, Options(4096));
+        await Assert.That(CurveValues(afterWidthRetry)).IsEqualTo(expected);
+        await Assert.That(afterWidthRetry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetVec3fArray(
+            "points", Enumerable.Repeat(new UsdVec3f(2, 3, 4), 1024).ToArray()));
+        await Assert.That(() => session.Sync(16, 16, Options(4096))).Throws<OpenUsdSilkException>();
+        await Assert.That(CurveValues(afterWidthRetry)).IsEqualTo(expected);
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetVec3fArray("points", originalPoints));
+        using OpenUsdSilkPage afterPointRetry = session.Sync(16, 16, Options(4096));
+        await Assert.That(CurveValues(afterPointRetry)).IsEqualTo(expected);
+        await Assert.That(afterPointRetry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+
+        await scheduler.InvokeAsync(stage => stage.RemovePrim("/Curve"));
+        using OpenUsdSilkPage removed = session.Sync(16, 16, Options(4096));
+        await Assert.That(removed.MeshPreparationUsage!.ReservedBytes).IsEqualTo(0ul);
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim curve = stage.DefinePrim("/Curve", "BasisCurves");
+            curve.SetToken("type", "linear");
+            curve.SetToken("wrap", "nonperiodic");
+            curve.SetInt32Array("curveVertexCounts", [4]);
+            curve.SetVec3fArray("points", originalPoints);
+            curve.SetFloatArray("widths", originalWidths);
+        });
+        using OpenUsdSilkPage restored = session.Sync(16, 16, Options(4096));
+        await Assert.That(restored.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        await Assert.That(CurveValues(restored)).IsEqualTo(expected);
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + LinearCurve);
+    }
+
+    [Test]
+    public async Task LinearCurveReservationsAggregateAndInstancesShareThePrototype()
+    {
+        using Fixture single = Create(LinearCurve);
+        using OpenUsdSilkSession one = single.Open();
+        using OpenUsdSilkPage onePage = one.Sync(16, 16, Options(4096));
+        ulong cost = onePage.MeshPreparationUsage!.ReservedBytes;
+        using Fixture pair = Create(
+            LinearCurve + "\n" + LinearCurve.Replace("\"Curve\"", "\"Other\"", StringComparison.Ordinal));
+        using OpenUsdSilkSession two = pair.Open();
+        await Assert.That(() => two.Sync(16, 16, Options(cost * 2 - 1))).Throws<OpenUsdSilkException>();
+        using OpenUsdSilkPage twoPage = two.Sync(16, 16, Options(cost * 2));
+        await Assert.That(twoPage.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost * 2);
+
+        using Fixture instances = Create("""
+            def PointInstancer "Instances" {
+                rel prototypes = </Instances/Curve>
+                int[] protoIndices = [0,0,0]
+                point3f[] positions = [(0,0,0),(2,0,0),(4,0,0)]
+            """ + "\n" + LinearCurve + "\n}");
+        using OpenUsdSilkSession instanced = instances.Open();
+        using OpenUsdSilkPage instancePage = instanced.Sync(16, 16, Options(cost));
+        await Assert.That(instancePage.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        int payloads = 0;
+        int references = 0;
+        using (SilkCommandEnumerator commands = instancePage.GetEnumerator())
+        {
+            while (commands.MoveNext())
+            {
+                if (commands.Current.Type == SilkCommandType.MeshUpsert)
+                {
+                    if (commands.Current.AsMeshUpsert().PointCount == 0)
+                    {
+                        references++;
+                    }
+                    else
+                    {
+                        payloads++;
+                    }
+                }
+            }
+        }
+        await Assert.That(payloads).IsEqualTo(1);
+        await Assert.That(references).IsEqualTo(2);
+    }
+
+    [Test]
     [Arguments("Points")]
-    [Arguments("BasisCurves")]
+    [Arguments("CubicBasisCurves")]
     [Arguments("Volume")]
     [Arguments("SkelRoot")]
     public async Task UnaccountedGeometryProfilesAreRefusedInsteadOfOmitted(string type)
@@ -1187,11 +1320,11 @@ public sealed class SilkMeshPreparationNativeTests
         string geometry = type switch
         {
             "Points" => "def Points \"Other\" {\npoint3f[] points = [(0,0,0)]\n}",
-            "BasisCurves" => """
+            "CubicBasisCurves" => """
                 def BasisCurves "Other" {
-                    point3f[] points = [(0,0,0),(1,0,0)]
-                    int[] curveVertexCounts = [2]
-                    uniform token type = "linear"
+                    point3f[] points = [(0,0,0),(1,0,0),(1,1,0),(0,1,0)]
+                    int[] curveVertexCounts = [4]
+                    uniform token type = "cubic"
                 }
                 """,
             _ => $"def {type} \"Other\" {{}}"
@@ -1219,6 +1352,54 @@ public sealed class SilkMeshPreparationNativeTests
 
     private static SilkSceneIngestionOptions PageOptions(int maximumPageBytes) =>
         new(RenderPurpose.Default | RenderPurpose.Render | RenderPurpose.Proxy, "full", 1_000_000, maximumPageBytes);
+
+    private static string CurveValues(OpenUsdSilkPage page)
+    {
+        var values = new List<string>();
+        using SilkCommandEnumerator commands = page.GetEnumerator();
+        while (commands.MoveNext())
+        {
+            if (commands.Current.Type != SilkCommandType.MeshUpsert)
+            {
+                continue;
+            }
+            SilkMeshUpsertCommand mesh = commands.Current.AsMeshUpsert();
+            values.Add(mesh.Path);
+            values.Add(mesh.TopologyKind.ToString());
+            for (int point = 0; point < mesh.PointCount; point++)
+            {
+                for (int component = 0; component < 3; component++)
+                {
+                    values.Add(BitConverter.SingleToInt32Bits(mesh.GetPointComponent(point, component)).ToString(
+                        System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+            for (int index = 0; index < mesh.IndexCount; index++)
+            {
+                values.Add(mesh.GetIndex(index).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            for (int segment = 0; segment < mesh.TriangleCount; segment++)
+            {
+                values.Add(mesh.GetTriangleSubprim(segment).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
+            }
+            for (int index = 0; index < mesh.AttributeCount; index++)
+            {
+                SilkMeshAttributeEntry attribute = mesh.GetAttribute(index);
+                values.Add(attribute.Name);
+                values.Add(attribute.Interpolation.ToString());
+                for (int element = 0; element < attribute.ElementCount; element++)
+                {
+                    for (int component = 0; component < attribute.ComponentCount; component++)
+                    {
+                        values.Add(BitConverter.SingleToInt32Bits(attribute.GetComponent(element, component))
+                            .ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                }
+            }
+        }
+        return string.Join(",", values);
+    }
 
     private static string MeshValues(OpenUsdSilkPage page)
     {

@@ -9,20 +9,32 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class SilkLinearCurveNativeTests
 {
     [Test]
-    [Arguments(SilkGraphicsBackend.D3D12, "nonperiodic")]
-    [Arguments(SilkGraphicsBackend.D3D12, "periodic")]
-    [Arguments(SilkGraphicsBackend.D3D12, "pinned")]
-    [Arguments(SilkGraphicsBackend.Vulkan, "nonperiodic")]
-    [Arguments(SilkGraphicsBackend.Vulkan, "periodic")]
-    [Arguments(SilkGraphicsBackend.Vulkan, "pinned")]
-    public async Task LinearWrapsMatchIndependentSegmentsAcrossTime(SilkGraphicsBackend backend, string wrap)
+    [Arguments(SilkGraphicsBackend.D3D12, "nonperiodic", false)]
+    [Arguments(SilkGraphicsBackend.D3D12, "periodic", false)]
+    [Arguments(SilkGraphicsBackend.D3D12, "pinned", false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "nonperiodic", false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "periodic", false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "pinned", false)]
+    [Arguments(SilkGraphicsBackend.D3D12, "nonperiodic", true)]
+    [Arguments(SilkGraphicsBackend.D3D12, "periodic", true)]
+    [Arguments(SilkGraphicsBackend.D3D12, "pinned", true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "nonperiodic", true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "periodic", true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "pinned", true)]
+    public async Task LinearWrapsMatchIndependentSegmentsAcrossTime(
+        SilkGraphicsBackend backend, string wrap, bool bounded)
     {
         using var fixture = new CurveFixture(wrap);
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
         var budget = new SilkGpuBufferBudget(4_194_304);
         budget.ConfigureDevice(device);
-        using OpenUsdSilkSession actual = OpenUsdSilkRuntime.Create(fixture.Plugins, fixture.ActualPath);
-        using OpenUsdSilkSession expected = OpenUsdSilkRuntime.Create(fixture.Plugins, fixture.ReferencePath);
+        var limits = new SilkPreparationLimits(4096, 100_000);
+        using OpenUsdSilkSession actual = bounded
+            ? OpenUsdSilkRuntime.Create(fixture.Plugins, fixture.ActualPath, limits)
+            : OpenUsdSilkRuntime.Create(fixture.Plugins, fixture.ActualPath);
+        using OpenUsdSilkSession expected = bounded
+            ? OpenUsdSilkRuntime.Create(fixture.Plugins, fixture.ReferencePath, limits)
+            : OpenUsdSilkRuntime.Create(fixture.Plugins, fixture.ReferencePath);
         using var actualRenderer = new SilkMeshRenderer(device);
         using var expectedRenderer = new SilkMeshRenderer(device);
         byte[]? first = null;
@@ -64,14 +76,18 @@ public sealed class SilkLinearCurveNativeTests
     }
 
     [Test]
-    [Arguments(SilkGraphicsBackend.D3D12)]
-    [Arguments(SilkGraphicsBackend.Vulkan)]
-    public async Task WrapEditsAndInvalidTopologyRepublishAndRecover(SilkGraphicsBackend backend)
+    [Arguments(SilkGraphicsBackend.D3D12, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true)]
+    public async Task WrapEditsAndInvalidTopologyRepublishAndRecover(SilkGraphicsBackend backend, bool bounded)
     {
         using var fixture = new CurveFixture("nonperiodic");
         await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.ActualPath);
         using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
-        using OpenUsdSilkSession actual = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using OpenUsdSilkSession actual = bounded
+            ? OpenUsdSilkRuntime.Create(fixture.Plugins, source, new SilkPreparationLimits(4096, 100_000))
+            : OpenUsdSilkRuntime.Create(fixture.Plugins, source);
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
         var budget = new SilkGpuBufferBudget(4_194_304);
         budget.ConfigureDevice(device);

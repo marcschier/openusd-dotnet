@@ -137,9 +137,9 @@ without `openusd_silk_session_sync_with_mesh_preparation` fail explicitly, rathe
 without enforcing the requested limit.
 
 This profile reserves conservative logical numeric-buffer charges before hdSilk triangulates,
-converts or expands mesh data. `OpenUsdSilkPage.MeshPreparationUsage` reports the configured,
-retained and peak concurrent reservations after a successful sync. Shared prototype/record
-owners count once; old/new preparation generations overlap until completion or recovery.
+converts or expands mesh and supported linear-curve data. `OpenUsdSilkPage.MeshPreparationUsage`
+reports the configured, retained and peak concurrent reservations after a successful sync.
+Shared prototype/record owners count once; old/new preparation generations overlap until completion or recovery.
 Unsupported geometry/profile choices fail the entire request, and a refused update publishes
 no page. Previously copied pages remain valid.
 
@@ -156,8 +156,9 @@ per-fragment RNM. The checked surface block was 272 bytes at that ABI; page ABI 
 304 bytes. Normal-only bindings reuse registers absent from those permutations, without adding a
 sampled-volume collision.
 
-Version 1 is restricted to Low-complexity, SmoothShaded mesh Rprims without Skel/external
-computations or volumes. Its numeric buffer metric excludes source/SDK materialization,
+Version 1 admits Low-complexity, SmoothShaded meshes and linear basis curves with segmented,
+nonperiodic, periodic or pinned wraps. It refuses Skel/external computations, points, cubic
+or unsupported curves and volumes. Its numeric buffer metric excludes source/SDK materialization,
 allocator capacity/overhead, material/instance metadata, pages, texture caches and GPU storage.
 It is not a total-process memory guarantee. The exact charge formula and ownership contract
 are in [the native hdSilk guide](../native/hdSilk/README.md#optional-mesh-preparation-admission).
@@ -4766,8 +4767,9 @@ one-pixel point-list subset and does not implement wide point splats.
 Linear segmented, nonperiodic, periodic and pinned basis curves use `LINE_LIST` topology. Periodic
 curves close each curve independently; nonperiodic and pinned curves connect consecutive control
 points. Invalid topology removes the retained curve until a valid edit republishes it. Cubic curves
-and curves in the bounded mesh-preparation profile remain unsupported. The added wrap modes have
-native topology and D3D12 WARP/Vulkan SwiftShader reference tests, but no Storm or Metal parity claim.
+remain unsupported. The bounded preparation profile also admits these linear wraps. Native topology
+and D3D12 WARP/Vulkan SwiftShader reference tests cover both bounded and legacy modes, but do not
+establish Storm or Metal parity.
 
 Linear curves carry their authored widths through the
 same attribute table, under the name `widths` with semantic `OPENUSD_SILK_ATTRIBUTE_WIDTH` and one

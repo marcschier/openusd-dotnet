@@ -79,6 +79,25 @@ struct HdSilkMeshPreparationPlan
     }
 };
 
+struct HdSilkCurvePreparationPlan
+{
+    uint64_t bytes = 0;
+
+    HdSilkCurvePreparationPlan(uint64_t points, uint64_t widths, uint64_t segments)
+    {
+        using Plan = HdSilkMeshPreparationPlan;
+        const uint64_t endpoints = Plan::Multiply(segments, 2);
+        const uint64_t sourceWidths = widths == 0 ? 1 : widths;
+        // Source point/width conversion, emitted points and normals, indices,
+        // overlapping emitted widths, and one identity per line segment.
+        bytes = Plan::Add(
+            Plan::Add(Plan::Multiply(points, 3 * sizeof(float)),
+                Plan::Multiply(sourceWidths, sizeof(float))),
+            Plan::Add(Plan::Multiply(endpoints, 9 * sizeof(float)),
+                Plan::Multiply(segments, sizeof(uint32_t))));
+    }
+};
+
 class HdSilkMeshPreparationBudget;
 
 class HdSilkMeshPreparationLease final
