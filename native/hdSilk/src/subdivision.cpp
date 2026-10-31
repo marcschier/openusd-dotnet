@@ -41,6 +41,7 @@
 #include <cstring>
 #include <limits>
 #include <numeric>
+#include <type_traits>
 #include <unordered_map>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -745,6 +746,84 @@ HdSilkWritePtexFaceOffsets(
             static_cast<int64_t>(offsetForFace(sourceFaces[triangle])));
     }
     return HdSilkPtexMappingStatus::Mapped;
+}
+
+HdSilkPtexMappingStatus
+HdSilkWritePtexFaceOffsetPrimvar(
+    const HdSilkPtexTriangle* mappings,
+    size_t mappingCount,
+    const uint32_t* sourceFaces,
+    size_t sourceFaceCount,
+    size_t authoredFaceCount,
+    HdInterpolation interpolation,
+    int elementSize,
+    const VtValue& value,
+    const VtIntArray* indices,
+    size_t textureFaceCount,
+    HdSilkPtexTriangle* output,
+    size_t outputCapacity)
+{
+    static_assert(std::is_same_v<int32_t, int>);
+
+    PtexMemoryRange outputRange;
+    PtexMemoryRange valueRange;
+    PtexMemoryRange indicesRange;
+    if (!MakePtexMemoryRange(output, outputCapacity, sizeof(*output), &outputRange) ||
+        !MakePtexMemoryRange(&value, 1, sizeof(value), &valueRange) ||
+        !MakePtexMemoryRange(indices, indices == nullptr ? 0 : 1, sizeof(*indices), &indicesRange) ||
+        PtexRangesOverlap(outputRange, valueRange) ||
+        PtexRangesOverlap(outputRange, indicesRange))
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+
+    HdSilkPtexFaceOffsets offsets;
+    if (interpolation == HdInterpolationConstant)
+    {
+        offsets.interpolation = HdSilkPtexOffsetInterpolation::Constant;
+    }
+    else if (interpolation == HdInterpolationUniform)
+    {
+        offsets.interpolation = HdSilkPtexOffsetInterpolation::Uniform;
+    }
+    else
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+    if (elementSize != 1)
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+
+    if (value.IsHolding<int>())
+    {
+        if (indices != nullptr)
+        {
+            return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+        }
+        offsets.values = &value.UncheckedGet<int>();
+        offsets.valueCount = 1;
+    }
+    else if (value.IsHolding<VtIntArray>())
+    {
+        const VtIntArray& values = value.UncheckedGet<VtIntArray>();
+        offsets.values = values.cdata();
+        offsets.valueCount = values.size();
+    }
+    else
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+
+    const int32_t indexedMarker = 0;
+    if (indices != nullptr)
+    {
+        offsets.indices = indices->empty() ? &indexedMarker : indices->cdata();
+        offsets.indexCount = indices->size();
+    }
+    return HdSilkWritePtexFaceOffsets(
+        mappings, mappingCount, sourceFaces, sourceFaceCount, authoredFaceCount,
+        offsets, textureFaceCount, output, outputCapacity);
 }
 
 HdSilkPtexMappingStatus

@@ -20,6 +20,8 @@
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/tf/token.h"
 #include "pxr/base/vt/array.h"
+#include "pxr/base/vt/value.h"
+#include "pxr/imaging/hd/enums.h"
 #include "pxr/imaging/hd/meshTopology.h"
 
 #include <array>
@@ -153,6 +155,26 @@ HdSilkPtexMappingStatus HdSilkWritePtexFaceOffsets(
     size_t sourceFaceCount,
     size_t authoredFaceCount,
     HdSilkPtexFaceOffsets offsets,
+    size_t textureFaceCount,
+    HdSilkPtexTriangle* output,
+    size_t outputCapacity);
+
+/// Resolves an authored Hydra integer primvar into the same face-offset
+/// mapping. A null indices pointer means unindexed; a non-null pointer means
+/// indexed even when the array is empty. The value and indices remain owned
+/// by the caller and must not overlap the output. Output is unchanged on
+/// refusal. Only constant or uniform integer values with a confirmed element
+/// size of one are accepted. Scalar uniform values require one authored face.
+HdSilkPtexMappingStatus HdSilkWritePtexFaceOffsetPrimvar(
+    const HdSilkPtexTriangle* mappings,
+    size_t mappingCount,
+    const uint32_t* sourceFaces,
+    size_t sourceFaceCount,
+    size_t authoredFaceCount,
+    HdInterpolation interpolation,
+    int elementSize,
+    const VtValue& value,
+    const VtIntArray* indices,
     size_t textureFaceCount,
     HdSilkPtexTriangle* output,
     size_t outputCapacity);

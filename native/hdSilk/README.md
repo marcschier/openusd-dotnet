@@ -203,12 +203,17 @@ a failure. Face-varying primvars, authored Ptex face remapping and polygonal
 
 A separate helper applies constant or uniform signed-integer `ptexFaceOffset`
 values, including indexed values, to default face IDs using each triangle's
-authored source face. It checks every value index and verifies each final ID
-against the provided texture face count before writing a separate caller-owned
-buffer. Failed calls leave that output and the original mappings unchanged for
-retry. Instance interpolation, other numeric types and arbitrary face-index
-remapping remain unsupported. None of these helpers has a renderer caller; Ptex
-coordinates are not published and Ptex textures are not sampled.
+authored source face. Its primvar adapter reads integer scalars or arrays from
+`VtValue` without copying and distinguishes an indexed input even when its
+indices array is empty. The caller must confirm an `elementSize` of one:
+larger indexed elements group multiple integers, so treating each integer as
+an offset would select the wrong value. An unindexed uniform scalar requires
+exactly one authored face. The helper checks every value index and verifies
+each final ID against the provided texture face count before writing a separate
+caller-owned buffer. Failed calls leave that output and the original mappings
+unchanged for retry. Instance interpolation, other numeric types and arbitrary
+face-index remapping remain unsupported. None of these helpers has a renderer
+caller; Ptex coordinates are not published and Ptex textures are not sampled.
 
 ## Wire format
 

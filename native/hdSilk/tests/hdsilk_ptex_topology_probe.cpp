@@ -5,6 +5,10 @@
 #include "pxr/imaging/hd/meshUtil.h"
 #include "pxr/imaging/pxOsd/subdivTags.h"
 #include "pxr/imaging/pxOsd/tokens.h"
+#include "pxr/usd/sdf/types.h"
+#include "pxr/usd/usd/stage.h"
+#include "pxr/usd/usdGeom/primvarsAPI.h"
+#include "pxr/usd/usdGeom/tokens.h"
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)
@@ -236,6 +240,223 @@ bool TestPtexFaceOffsets()
         HdSilkPtexMappingStatus::Mapped)
     {
         return Fail("Ptex face offsets", "empty mappings were refused");
+    }
+    return true;
+}
+
+bool TestPtexFaceOffsetPrimvars()
+{
+    UsdStageRefPtr stage = UsdStage::CreateInMemory();
+    if (!stage)
+    {
+        return Fail("Ptex primvars", "could not create the stage");
+    }
+    const UsdPrim mesh = stage->DefinePrim(SdfPath("/Mesh"), TfToken("Mesh"));
+    const UsdGeomPrimvarsAPI primvars(mesh);
+    const UsdGeomPrimvar constant = primvars.CreatePrimvar(
+        TfToken("ptexFaceOffset"), SdfValueTypeNames->Int, UsdGeomTokens->constant);
+    const UsdGeomPrimvar uniform = primvars.CreatePrimvar(
+        TfToken("uniformOffset"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform);
+    const UsdGeomPrimvar indexed = primvars.CreatePrimvar(
+        TfToken("indexedOffset"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform);
+    const UsdGeomPrimvar grouped = primvars.CreatePrimvar(
+        TfToken("groupedOffset"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform, 2);
+    if (!mesh || !constant || !uniform || !indexed || !grouped ||
+        !constant.Set(3) ||
+        !uniform.Set(VtIntArray{3, 0, -2}) ||
+        !indexed.Set(VtIntArray{-2, 3, 0}) ||
+        !indexed.SetIndices(VtIntArray{1, 2, 0}) ||
+        !grouped.Set(VtIntArray{3, 31, 0, 32, -2, 33}) ||
+        !grouped.SetIndices(VtIntArray{0, 1, 2}))
+    {
+        return Fail("Ptex primvars", "could not author the primvars");
+    }
+    VtValue constantValue;
+    VtValue uniformValue;
+    VtValue indexedValue;
+    VtValue groupedValue;
+    VtIntArray indexedValues;
+    VtIntArray groupedIndices;
+    if (!constant.Get(&constantValue) || !uniform.Get(&uniformValue) ||
+        !indexed.Get(&indexedValue) || !indexed.GetIndices(&indexedValues) ||
+        !grouped.Get(&groupedValue) || !grouped.GetIndices(&groupedIndices) ||
+        constant.GetInterpolation() != UsdGeomTokens->constant ||
+        uniform.GetInterpolation() != UsdGeomTokens->uniform ||
+        indexed.GetInterpolation() != UsdGeomTokens->uniform ||
+        constant.GetElementSize() != 1 || uniform.GetElementSize() != 1 ||
+        indexed.GetElementSize() != 1 || grouped.GetElementSize() != 2 ||
+        !constantValue.IsHolding<int>() ||
+        !uniformValue.IsHolding<VtIntArray>() ||
+        !indexedValue.IsHolding<VtIntArray>())
+    {
+        return Fail("Ptex primvars", "USD returned unexpected authored values");
+    }
+
+    std::array<HdSilkPtexTriangle, 3> mappings{};
+    mappings[0].faceIndex = 0;
+    mappings[1].faceIndex = 1;
+    mappings[2].faceIndex = 4;
+    for (size_t triangle = 0; triangle < mappings.size(); ++triangle)
+    {
+        mappings[triangle].cornerCoordinates.fill(static_cast<float>(triangle));
+    }
+    const auto original = mappings;
+    const std::array<uint32_t, 3> sourceFaces{{0, 1, 2}};
+    HdSilkPtexTriangle sentinel;
+    sentinel.faceIndex = 99;
+    sentinel.cornerCoordinates.fill(-1.0F);
+    std::array<HdSilkPtexTriangle, 4> output;
+    const auto expectMapped = [&](
+        HdInterpolation interpolation,
+        const VtValue& value,
+        const VtIntArray* indices,
+        const std::array<uint32_t, 3>& expected,
+        int elementSize = 1)
+    {
+        output.fill(sentinel);
+        if (HdSilkWritePtexFaceOffsetPrimvar(
+                mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+                3, interpolation, elementSize, value, indices, 8, output.data(), output.size()) !=
+            HdSilkPtexMappingStatus::Mapped)
+        {
+            return false;
+        }
+        for (size_t triangle = 0; triangle < mappings.size(); ++triangle)
+        {
+            if (output[triangle].faceIndex != expected[triangle] ||
+                output[triangle].cornerCoordinates != mappings[triangle].cornerCoordinates)
+            {
+                return false;
+            }
+        }
+        return output.back().faceIndex == sentinel.faceIndex &&
+            output.back().cornerCoordinates == sentinel.cornerCoordinates &&
+            SameMappings(mappings.data(), original.data(), mappings.size());
+    };
+    const VtIntArray constantIndex{1};
+    if (!expectMapped(HdInterpolationConstant, constantValue, nullptr, {{3, 4, 7}}) ||
+        !expectMapped(HdInterpolationConstant, VtValue(VtIntArray{3}), nullptr, {{3, 4, 7}}) ||
+        !expectMapped(HdInterpolationConstant, VtValue(VtIntArray{-2, 3}),
+            &constantIndex, {{3, 4, 7}}) ||
+        !expectMapped(HdInterpolationUniform, uniformValue, nullptr, {{3, 1, 2}}) ||
+        !expectMapped(HdInterpolationUniform, indexedValue, &indexedValues, {{3, 1, 2}}))
+    {
+        return Fail("Ptex primvars", "authored scalar, array or indexed mapping differs");
+    }
+
+    const auto expectRefused = [&](
+        HdInterpolation interpolation,
+        const VtValue& value,
+        const VtIntArray* indices,
+        HdSilkPtexMappingStatus expected,
+        int elementSize = 1)
+    {
+        output.fill(sentinel);
+        return HdSilkWritePtexFaceOffsetPrimvar(
+                mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+                3, interpolation, elementSize, value, indices, 8, output.data(), output.size()) ==
+                expected &&
+            std::all_of(output.begin(), output.end(), [&](const HdSilkPtexTriangle& entry)
+            {
+                return entry.faceIndex == sentinel.faceIndex &&
+                    entry.cornerCoordinates == sentinel.cornerCoordinates;
+            }) &&
+            SameMappings(mappings.data(), original.data(), mappings.size());
+    };
+    const VtIntArray emptyIndices;
+    const VtIntArray invalidIndex{1, -1, 0};
+    const VtIntArray zeroIndex{0};
+    if (!expectRefused(HdInterpolationUniform, constantValue, nullptr,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationConstant, constantValue, &zeroIndex,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationInstance, uniformValue, nullptr,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationVertex, uniformValue, nullptr,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationConstant, VtValue(3.0F), nullptr,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationUniform, VtValue(VtFloatArray{3, 0, -2}), nullptr,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationConstant, VtValue(), nullptr,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationConstant, VtValue(VtIntArray{}), nullptr,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationUniform, uniformValue, &emptyIndices,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationUniform, indexedValue, &invalidIndex,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expectRefused(HdInterpolationUniform, groupedValue, &groupedIndices,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets, grouped.GetElementSize()) ||
+        !expectRefused(HdInterpolationUniform, indexedValue, &indexedValues,
+            HdSilkPtexMappingStatus::InvalidFaceOffsets, 0) ||
+        !expectRefused(HdInterpolationConstant, VtValue(-1), nullptr,
+            HdSilkPtexMappingStatus::TextureFaceOutOfRange) ||
+        !expectMapped(HdInterpolationUniform, indexedValue, &indexedValues, {{3, 1, 2}}))
+    {
+        return Fail("Ptex primvars", "invalid primvar or retry changed the output");
+    }
+    const UsdTimeCode editedTime(1.0);
+    if (!indexed.Set(VtIntArray{1, 0, -1}, editedTime) ||
+        !indexed.SetIndices(VtIntArray{0, 1, 2}, editedTime))
+    {
+        return Fail("Ptex primvars", "could not author time-sampled values");
+    }
+    VtValue editedValue;
+    VtIntArray editedIndices;
+    if (!indexed.Get(&editedValue, editedTime) ||
+        !indexed.GetIndices(&editedIndices, editedTime) ||
+        !expectMapped(HdInterpolationUniform, editedValue, &editedIndices, {{1, 1, 3}}) ||
+        !expectMapped(HdInterpolationUniform, indexedValue, &indexedValues, {{3, 1, 2}}))
+    {
+        return Fail("Ptex primvars", "time-sampled edit or retained mapping differs");
+    }
+    const VtValue savedIndexedValue = indexedValue;
+    const VtIntArray savedIndexedValues = indexedValues;
+    if (HdSilkWritePtexFaceOffsetPrimvar(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, HdInterpolationUniform, 1, indexedValue, &indexedValues, 8,
+            reinterpret_cast<HdSilkPtexTriangle*>(&indexedValue), mappings.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsetPrimvar(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, HdInterpolationUniform, 1, indexedValue, &indexedValues, 8,
+            reinterpret_cast<HdSilkPtexTriangle*>(&indexedValues), mappings.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        indexedValue != savedIndexedValue || indexedValues != savedIndexedValues)
+    {
+        return Fail("Ptex primvars", "output overlapped a primvar owner");
+    }
+    VtIntArray aliasValues(21, 0);
+    aliasValues[0] = -2;
+    aliasValues[1] = 3;
+    VtValue aliasValue(aliasValues);
+    const VtIntArray& borrowedValues = aliasValue.UncheckedGet<VtIntArray>();
+    const std::vector<int> originalValues(borrowedValues.cbegin(), borrowedValues.cend());
+    if (HdSilkWritePtexFaceOffsetPrimvar(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, HdInterpolationUniform, 1, aliasValue, &indexedValues, 8,
+            reinterpret_cast<HdSilkPtexTriangle*>(const_cast<int*>(borrowedValues.cdata())),
+            mappings.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        !std::equal(borrowedValues.cbegin(), borrowedValues.cend(), originalValues.cbegin()))
+    {
+        return Fail("Ptex primvars", "output overlapped primvar values");
+    }
+    if (HdSilkWritePtexFaceOffsetPrimvar(
+            nullptr, 0, nullptr, 0, 0, HdInterpolationUniform,
+            1, VtValue(VtIntArray{7}), &emptyIndices, 0, nullptr, 0) !=
+        HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail("Ptex primvars", "empty indexed uniform mapping was refused");
+    }
+    if (HdSilkWritePtexFaceOffsetPrimvar(
+            mappings.data(), 1, sourceFaces.data(), 1, 1, HdInterpolationUniform,
+            1, constantValue, nullptr, 8, output.data(), output.size()) !=
+            HdSilkPtexMappingStatus::Mapped ||
+        output[0].faceIndex != 3 ||
+        output[0].cornerCoordinates != mappings[0].cornerCoordinates)
+    {
+        return Fail("Ptex primvars", "single-face uniform scalar was refused");
     }
     return true;
 }
@@ -1719,6 +1940,7 @@ int main()
                 1, 2, 6, 5, 2, 3, 7, 6, 3, 0, 4, 7, 8, 9, 10, 11},
             {}, false, true}};
     if (!TestPtexFaceOffsets() ||
+        !TestPtexFaceOffsetPrimvars() ||
         !TestPtexFaceOffsetRefusalsAndRetry() ||
         !TestPtexFaceOffsetIntegerBoundaries() ||
         !TestCoarseTriQuadRefusalsAndRetry() ||
