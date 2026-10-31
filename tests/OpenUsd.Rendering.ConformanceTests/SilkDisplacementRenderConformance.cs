@@ -736,7 +736,8 @@ internal static class SilkDisplacementRenderConformance
         bool repaired = false;
         using ISilkGraphicsDevice device = createDevice();
         using ISilkGraphicsTexture color = CreateColor(device);
-        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using ISilkGraphicsTexture depth =
+            device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(Size, Size));
         using var renderer = new SilkMeshRenderer(
             device,
             shaderFormat,
@@ -751,8 +752,19 @@ internal static class SilkDisplacementRenderConformance
             Quad("/Caster", CasterPoints(), QuadNormals()),
             Receiver("/Floor"),
             Shadow());
-        renderer.UpdateSelection(new SelectionState(["/Caster"]));
+        // The receiver occludes the caster in this camera; x-ray makes the
+        // selected caster's displaced silhouette observable.
+        var outline = new SilkSelectionOutlineSettings(
+            enabled: true,
+            SilkSelectionOutlineSettings.Default.Color,
+            width: 2,
+            visibleOnly: false);
+        renderer.UpdateSelection(
+            new SelectionState(["/Caster"]),
+            outline);
         byte[] broken = RenderInto(renderer, color, depth);
+        ulong brokenShadowRenders = renderer.ShadowMapRenderCount;
+        SilkSelectionOutlineDiagnostics brokenOutline = renderer.SelectionOutlineDiagnostics;
 
         // The file is repaired outside the scene: no page is republished, so only
         // the retry can pick it up, and it has to rebuild the retained geometry
@@ -760,25 +772,84 @@ internal static class SilkDisplacementRenderConformance
         repaired = true;
         renderer.GpuResources.RetryFailedTextures(renderer.Scene);
         byte[] fixedUp = RenderInto(renderer, color, depth);
+        ulong repairedShadowRenders = renderer.ShadowMapRenderCount;
+        SilkSelectionOutlineDiagnostics repairedOutline = renderer.SelectionOutlineDiagnostics;
 
         // The outline is what makes the frames above exercise the resolved
         // selection, so the pixel comparison against the control is made after it
         // is cleared -- the control scene has no selection to draw.
         renderer.UpdateSelection(SelectionState.Empty);
         byte[] unselected = RenderInto(renderer, color, depth);
+        // The displaced caster uses a conservative shadow bound. Match its
+        // light-space volume in the authored control so their shadow texels
+        // sample the same projection as well as the same surface. sqrt(3) is
+        // the identity transform's Frobenius norm.
+        double displacement = Amount * Math.Sqrt(3);
+        double padding = displacement + Math.Max(1e-7, displacement * 1e-6);
+        byte[] matchedShadow = Shadow(
+            new Vector3(0, 0, (ReceiverDepth + CasterDepth) * 0.5f),
+            new Vector3(1.5f, 1.5f, (CasterDepth - ReceiverDepth) * 0.5f),
+            padding);
         byte[] control = RenderShadowScene(
             createDevice,
             shaderFormat,
             Material(constant: null),
-            Displace(CasterPoints(), QuadNormals(), HeightAmounts()));
+            Displace(CasterPoints(), QuadNormals(), HeightAmounts()),
+            shadow: matchedShadow);
+        byte[] selectedControl = RenderShadowScene(
+            createDevice,
+            shaderFormat,
+            Material(constant: null),
+            Displace(CasterPoints(), QuadNormals(), HeightAmounts()),
+            shadow: matchedShadow,
+            selection: outline);
+        byte[] fresh = RenderShadowScene(
+            createDevice,
+            shaderFormat,
+            Material(textureAsset: HeightAsset),
+            CasterPoints());
+        byte[] freshNoShadow = RenderShadowScene(
+            createDevice,
+            shaderFormat,
+            Material(textureAsset: HeightAsset),
+            CasterPoints(),
+            shadow: EmptyShadow());
+        byte[] controlNoShadow = RenderShadowScene(
+            createDevice,
+            shaderFormat,
+            Material(constant: null),
+            Displace(CasterPoints(), QuadNormals(), HeightAmounts()),
+            shadow: EmptyShadow());
 
         await Assert.That(CountLit(fixedUp)).IsGreaterThan(100);
         await Assert.That(fixedUp.AsSpan().SequenceEqual(broken))
             .IsFalse()
             .Because("a repaired height field must reach the next frame");
+        await Assert.That(repairedOutline.Status).IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+        await Assert.That(repairedOutline.ResolvedMeshCount).IsEqualTo(1);
+        await Assert.That(repairedOutline.SelectedDraws).IsGreaterThan(brokenOutline.SelectedDraws);
+        await Assert.That(fixedUp.AsSpan().SequenceEqual(unselected))
+            .IsFalse()
+            .Because("the repaired surface must retain its selection outline");
+        await Assert.That(fixedUp.AsSpan().SequenceEqual(selectedControl))
+            .IsTrue()
+            .Because("the repaired selection must outline the analytically displaced surface");
+        await Assert.That(repairedShadowRenders).IsEqualTo(brokenShadowRenders + 1)
+            .Because("repairing the caster must rebuild the retained shadow map");
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(repairedShadowRenders)
+            .Because("clearing selection must not rebuild an unchanged shadow map");
         await Assert.That(unselected.AsSpan().SequenceEqual(control))
             .IsTrue()
-            .Because("the repaired frame must draw the surface the height field asks for");
+            .Because("the repaired frame and its shadow must match the independently displaced control");
+        await Assert.That(unselected.AsSpan().SequenceEqual(fresh))
+            .IsTrue()
+            .Because("retry must restore the same frame and shadow as a fresh height-field render");
+        await Assert.That(freshNoShadow.AsSpan().SequenceEqual(controlNoShadow))
+            .IsTrue()
+            .Because("the reference frames must agree without shadow sampling");
+        await Assert.That(fresh.AsSpan().SequenceEqual(freshNoShadow))
+            .IsFalse()
+            .Because("the shadow must affect the reference frame");
     }
 
     internal static async Task PixelRefusalKeepsPublishedDisplacementUntilRetry(
@@ -871,11 +942,15 @@ internal static class SilkDisplacementRenderConformance
         Func<ISilkGraphicsDevice> createDevice,
         SilkShaderBinaryFormat shaderFormat,
         byte[] material,
-        float[] casterPoints)
+        float[] casterPoints,
+        byte[]? shadow = null,
+        SilkSelectionOutlineSettings? selection = null)
     {
         using ISilkGraphicsDevice device = createDevice();
         using ISilkGraphicsTexture color = CreateColor(device);
-        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using ISilkGraphicsTexture depth = selection is null
+            ? CreateDepth(device)
+            : device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(Size, Size));
         using var renderer = new SilkMeshRenderer(device, shaderFormat, HeightDecoder);
         ApplyScene(
             renderer,
@@ -884,7 +959,11 @@ internal static class SilkDisplacementRenderConformance
             material,
             Quad("/Caster", casterPoints, QuadNormals()),
             Receiver("/Floor"),
-            Shadow());
+            shadow ?? Shadow());
+        if (selection is not null)
+        {
+            renderer.UpdateSelection(new SelectionState(["/Caster"]), selection);
+        }
         return RenderInto(renderer, color, depth);
     }
 
@@ -1301,7 +1380,7 @@ internal static class SilkDisplacementRenderConformance
         return bytes;
     }
 
-    private static byte[] Shadow(Vector3 center, Vector3 half)
+    private static byte[] Shadow(Vector3 center, Vector3 half, double radiusPadding = 0)
     {
         const int descriptorSize = 288;
         byte[] bytes = new byte[24 + descriptorSize];
@@ -1311,7 +1390,7 @@ internal static class SilkDisplacementRenderConformance
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), 1u);
 
         double radius = Math.Sqrt(
-            (half.X * half.X) + (half.Y * half.Y) + (half.Z * half.Z));
+            (half.X * half.X) + (half.Y * half.Y) + (half.Z * half.Z)) + radiusPadding;
         BuildLightSpace(center, radius, out double[] view, out double[] projection);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), 0u);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), 0u);
