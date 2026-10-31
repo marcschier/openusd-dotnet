@@ -336,6 +336,28 @@ add_test(NAME hdsilk_ptex_topology COMMAND hdsilk_ptex_topology_probe)
 set_tests_properties(hdsilk_ptex_topology
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
 
+add_executable(hdsilk_ptex_sync_probe hdsilk_ptex_sync_probe.cpp)
+target_compile_features(hdsilk_ptex_sync_probe PRIVATE cxx_std_17)
+target_link_libraries(
+    hdsilk_ptex_sync_probe PRIVATE openusd_hdsilk_test openusd_dotnet_renderer_test usd_m)
+target_include_directories(hdsilk_ptex_sync_probe PRIVATE ../src)
+target_include_directories(hdsilk_ptex_sync_probe SYSTEM PRIVATE "${pxr_DIR}/include")
+if(MSVC)
+    target_compile_options(hdsilk_ptex_sync_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_ptex_sync_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_dependencies(hdsilk_ptex_sync_probe hdsilk_probe_runtime)
+foreach(mode IN ITEMS usd filtered legacy)
+    add_test(
+        NAME hdsilk_ptex_sync_${mode}
+        COMMAND hdsilk_ptex_sync_probe ${mode} ${HDSILK_PROBE_PLUGIN_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-ptex-sync.usda)
+endforeach()
+set_tests_properties(hdsilk_ptex_sync_usd hdsilk_ptex_sync_filtered hdsilk_ptex_sync_legacy
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
+
 add_executable(hdsilk_scene_ingestion_probe hdsilk_scene_ingestion_probe.cpp)
 target_compile_features(hdsilk_scene_ingestion_probe PRIVATE cxx_std_17)
 target_link_libraries(

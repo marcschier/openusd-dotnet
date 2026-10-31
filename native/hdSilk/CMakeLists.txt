@@ -194,7 +194,8 @@ if(OPENUSD_HDSILK_BUILD_TESTS)
         openusd_hdsilk_test
         PRIVATE
             tests/curve_sync_test_hook.cpp
-            tests/geometry_sync_test_hook.cpp)
+            tests/geometry_sync_test_hook.cpp
+            tests/ptex_sync_test_hook.cpp)
     target_compile_definitions(
         openusd_hdsilk_test
         PRIVATE

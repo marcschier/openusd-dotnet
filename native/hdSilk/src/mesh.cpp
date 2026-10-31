@@ -9,6 +9,10 @@
 #include "renderDelegate.h"
 #include "sceneState.h"
 
+#ifdef OPENUSD_HDSILK_ENABLE_TEST_HOOKS
+#include "../tests/ptex_sync_test_hook.h"
+#endif
+
 #include "pxr/base/gf/vec2f.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/vec3i.h"
@@ -1771,6 +1775,9 @@ void
 HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, HdDirtyBits* dirtyBits)
 {
     SdfPath const& id = GetId();
+#ifdef OPENUSD_HDSILK_ENABLE_TEST_HOOKS
+    HdSilkTestObservePtexSync(sceneDelegate, id);
+#endif
     const auto& preparationBudget = static_cast<HdSilkRenderParam*>(renderParam)
         ->GetSceneState().MeshPreparationBudget();
     const bool visibilityDirty =

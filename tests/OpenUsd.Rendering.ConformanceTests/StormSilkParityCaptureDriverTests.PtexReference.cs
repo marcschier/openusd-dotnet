@@ -106,6 +106,21 @@ public sealed partial class StormSilkParityCaptureDriverTests
                 input with { StagePath = indexedStage },
                 StormGlContextFactory.CreateForCurrentPlatform(),
                 []).ConfigureAwait(false);
+            string faceIndexStage = Path.Combine(directory, "face-index.usda");
+            File.WriteAllText(
+                faceIndexStage,
+                ReplacePtexStageFragment(
+                    "int[] faceVertexCounts = [3, 3, 3, 3]",
+                    """
+        int[] faceVertexCounts = [3, 3, 3, 3]
+        int[] primvars:ptexFaceIndex = [1, 2, 3, 0] (
+            interpolation = "uniform"
+        )
+""".TrimStart()));
+            ParityCaptureSet faceIndex = await ParityCaptureDriver.CaptureAsync(
+                input with { StagePath = faceIndexStage },
+                StormGlContextFactory.CreateForCurrentPlatform(),
+                []).ConfigureAwait(false);
             string missingStage = Path.Combine(directory, "missing.usda");
             File.WriteAllText(
                 missingStage,
@@ -116,6 +131,8 @@ public sealed partial class StormSilkParityCaptureDriverTests
                 []).ConfigureAwait(false);
             ImageDelta reorderedDelta = ImageDelta.Compare(shifted.Storm, reordered.Storm);
             ImageDelta indexedDelta = ImageDelta.Compare(shifted.Storm, indexed.Storm);
+            ImageDelta faceIndexBaselineDelta = ImageDelta.Compare(baseline.Storm, faceIndex.Storm);
+            ImageDelta faceIndexShiftedDelta = ImageDelta.Compare(shifted.Storm, faceIndex.Storm);
             ImageDelta missingDelta = ImageDelta.Compare(baseline.Storm, missing.Storm);
             int[,] changedByFace = new int[4, 4];
             for (int changedFace = 0; changedFace < 4; changedFace++)
@@ -133,9 +150,14 @@ public sealed partial class StormSilkParityCaptureDriverTests
                 $"offset hash={Hash(shifted.Storm)}",
                 $"reordered hash={Hash(reordered.Storm)}",
                 $"indexed hash={Hash(indexed.Storm)}",
+                $"authored face-index hash={Hash(faceIndex.Storm)}",
                 $"missing hash={Hash(missing.Storm)}",
                 $"offset vs reordered max={reorderedDelta.MaximumChannelDelta} mean={reorderedDelta.MeanChannelDelta}",
                 $"offset vs indexed max={indexedDelta.MaximumChannelDelta} mean={indexedDelta.MeanChannelDelta}",
+                $"authored face-index vs baseline max={faceIndexBaselineDelta.MaximumChannelDelta} " +
+                    $"mean={faceIndexBaselineDelta.MeanChannelDelta}",
+                $"authored face-index vs offset max={faceIndexShiftedDelta.MaximumChannelDelta} " +
+                    $"mean={faceIndexShiftedDelta.MeanChannelDelta}",
                 $"baseline vs missing max={missingDelta.MaximumChannelDelta} mean={missingDelta.MeanChannelDelta}",
             };
             if (baseline.OpenGlEvidence is { } openGl)
@@ -189,6 +211,10 @@ public sealed partial class StormSilkParityCaptureDriverTests
             await Assert.That(reorderedDelta.MeanChannelDelta).IsLessThanOrEqualTo(0.25);
             await Assert.That(indexedDelta.MaximumChannelDelta).IsLessThanOrEqualTo(8);
             await Assert.That(indexedDelta.MeanChannelDelta).IsLessThanOrEqualTo(0.25);
+            await Assert.That(faceIndexBaselineDelta.MaximumChannelDelta).IsLessThanOrEqualTo(8)
+                .Because("This Storm fixture does not use the authored uniform ptexFaceIndex as a face remap.");
+            await Assert.That(faceIndexBaselineDelta.MeanChannelDelta).IsLessThanOrEqualTo(0.25);
+            await Assert.That(faceIndexShiftedDelta.MeanChannelDelta).IsGreaterThan(1.0);
             await Assert.That(missingDelta.MeanChannelDelta).IsGreaterThan(1.0);
             for (int face = 0; face < samples.Length; face++)
             {

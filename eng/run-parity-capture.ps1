@@ -611,6 +611,7 @@ try
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
         'PtexReferenceRespondsToAuthoredFaceOffsets',
+        'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
         'DisplayColorReachesPixelsForImplicitSurfacesAndMeshes',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
@@ -654,6 +655,8 @@ try
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'PtexReferenceRespondsToAuthoredFaceOffsets',
+        'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
@@ -665,6 +668,8 @@ try
     $linuxGlxTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'PtexReferenceRespondsToAuthoredFaceOffsets',
+        'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',

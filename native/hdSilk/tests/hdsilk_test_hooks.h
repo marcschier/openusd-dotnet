@@ -21,6 +21,37 @@ openusd_hdsilk_test_point_non_geometry_dirty(int32_t dirtyKind, int32_t exactLim
 OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_mesh_non_geometry_dirty(int32_t dirtyKind, int32_t exactLimit);
 
+typedef struct openusd_hdsilk_test_ptex_observation
+{
+    char path[512];
+    int32_t registered;
+    int32_t same_scene_delegate;
+    int32_t terminal_mesh;
+    int32_t instanced;
+    int32_t has_primvar;
+    int32_t path_truncated;
+    int32_t has_element_size;
+    int32_t element_size;
+    int32_t delegate_matches;
+    int32_t value_count;
+    int32_t values[4];
+    int32_t index_count;
+    int32_t indices[2];
+    int32_t strict_status;
+    int32_t default_one_status;
+    uint32_t mapped_faces[2];
+} openusd_hdsilk_test_ptex_observation;
+
+OPENUSD_HDSILK_API void
+openusd_hdsilk_test_begin_ptex_observation(void);
+
+OPENUSD_HDSILK_API size_t
+openusd_hdsilk_test_end_ptex_observation(
+    openusd_hdsilk_test_ptex_observation* observations, size_t capacity);
+
+OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_ptex_synthetic_sync(const char* stagePath, int32_t legacy);
+
 OPENUSD_HDSILK_API size_t
 openusd_hdsilk_test_get_session_in_flight(openusd_silk_session* session);
 

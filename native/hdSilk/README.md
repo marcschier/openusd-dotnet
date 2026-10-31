@@ -223,13 +223,27 @@ to do the same. Invalid metadata or incomplete indexed inputs are refused before
 the output is changed. The native probe covers time samples, scene edits and
 retry as well as malformed retained data sources.
 
+A test-only observation during USD imaging sync compares each Rprim with its
+terminal scene-index mesh and the delegate's raw offset values and indices.
+The tested ordinary mesh, propagated native-instance prototype and point-instancer
+prototype agree at both authored times. An indexed default-one primvar also
+agrees as its values and indices change. Instance Rprim IDs are generated Hydra
+paths; these observations do not establish the provenance of every producer.
+
+A filtering scene index can remove an authored element size of two while leaving
+the Rprim, delegate, values and indices matching. Forcing the missing size to one
+then maps the grouped values instead of refusing them. A separate legacy-delegate
+control also lacks this metadata. Both controls invoke Rprim sync directly rather
+than running Hydra's full sync loop. A renderer caller must establish the
+producer's guarantee independently and reject ambiguous metadata.
+
 A separate Storm-only reference renders four Ptex faces with authored offsets
 and compares them with reordered topology and indexed offsets. Individual-face
 and missing-texture controls demonstrate that the reference responds to those
-inputs. None of the helpers has a renderer caller; hdSilk does not publish Ptex
-coordinates or sample Ptex textures. The correspondence between an Rprim and
-an authoritative scene-index prim remains to be established for instances and
-other producer paths.
+inputs. In this Loop-mesh fixture, an authored uniform `ptexFaceIndex` does not
+remap the faces; that observation is not a general rule for other producers or
+shaders. None of the helpers has a renderer caller; hdSilk does not publish
+Ptex coordinates or sample Ptex textures.
 
 ## Wire format
 
