@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <numeric>
@@ -619,6 +620,338 @@ bool MapPtexChildCoordinates(
     }
     return true;
 }
+}
+
+HdSilkPtexMappingStatus
+HdSilkPlanDefaultCoarsePtexTriQuads(
+    const HdMeshTopology& topology,
+    size_t sourcePointCount,
+    HdSilkPtexCoarseTriQuadPlan* plan)
+{
+    if (plan == nullptr)
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+
+    const VtIntArray& counts = topology.GetFaceVertexCounts();
+    const VtIntArray& vertices = topology.GetFaceVertexIndices();
+    const VtIntArray& holes = topology.GetHoleIndices();
+    PtexMemoryRange planRange;
+    std::array<PtexMemoryRange, 3> inputRanges{};
+    if (!MakePtexMemoryRange(plan, 1, sizeof(*plan), &planRange) ||
+        !MakePtexMemoryRange(counts.cdata(), counts.size(), sizeof(int), &inputRanges[0]) ||
+        !MakePtexMemoryRange(vertices.cdata(), vertices.size(), sizeof(int), &inputRanges[1]) ||
+        !MakePtexMemoryRange(holes.cdata(), holes.size(), sizeof(int), &inputRanges[2]))
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+    for (const PtexMemoryRange& input : inputRanges)
+    {
+        if (PtexRangesOverlap(planRange, input))
+        {
+            return HdSilkPtexMappingStatus::InvalidBuffers;
+        }
+    }
+
+    OsdSdc::SchemeType scheme = OsdSdc::SCHEME_CATMARK;
+    if (!TryMapScheme(topology.GetScheme(), &scheme) ||
+        scheme == OsdSdc::SCHEME_LOOP ||
+        (topology.GetOrientation() != PxOsdOpenSubdivTokens->rightHanded &&
+         topology.GetOrientation() != PxOsdOpenSubdivTokens->leftHanded))
+    {
+        return HdSilkPtexMappingStatus::UnsupportedTopology;
+    }
+    const size_t maxIndex = static_cast<size_t>(std::numeric_limits<int>::max());
+    if (counts.size() > maxIndex || vertices.size() > maxIndex ||
+        holes.size() > maxIndex)
+    {
+        return HdSilkPtexMappingStatus::ExceedsBounds;
+    }
+    int previousHole = -1;
+    for (int hole : holes)
+    {
+        if (hole < 0 || hole <= previousHole ||
+            static_cast<size_t>(hole) >= counts.size())
+        {
+            return HdSilkPtexMappingStatus::UnsupportedTopology;
+        }
+        previousHole = hole;
+    }
+
+    size_t vertexOffset = 0;
+    size_t holeOffset = 0;
+    size_t inputPointCount = 0;
+    uint64_t additionalPoints = 0;
+    uint64_t quadCount = 0;
+    uint64_t nextPtexFace = 0;
+    for (size_t face = 0; face < counts.size(); ++face)
+    {
+        const int cornerCount = counts[face];
+        if (cornerCount < 3 ||
+            static_cast<size_t>(cornerCount) > vertices.size() - vertexOffset)
+        {
+            return HdSilkPtexMappingStatus::UnsupportedTopology;
+        }
+        for (int corner = 0; corner < cornerCount; ++corner)
+        {
+            const int vertex = vertices[vertexOffset + static_cast<size_t>(corner)];
+            if (vertex < 0)
+            {
+                return HdSilkPtexMappingStatus::UnsupportedTopology;
+            }
+            if (static_cast<size_t>(vertex) >= maxIndex)
+            {
+                return HdSilkPtexMappingStatus::ExceedsBounds;
+            }
+            if (static_cast<size_t>(vertex) >= sourcePointCount)
+            {
+                return HdSilkPtexMappingStatus::InvalidPoints;
+            }
+            inputPointCount = std::max(inputPointCount, static_cast<size_t>(vertex) + 1);
+        }
+        vertexOffset += static_cast<size_t>(cornerCount);
+
+        const uint64_t faceCount = cornerCount == 4
+            ? 1u
+            : static_cast<uint64_t>(cornerCount);
+        nextPtexFace += faceCount;
+        if (nextPtexFace > static_cast<uint64_t>(maxIndex))
+        {
+            return HdSilkPtexMappingStatus::FaceIndexOverflow;
+        }
+        const bool hole = holeOffset < holes.size() &&
+            static_cast<size_t>(holes[holeOffset]) == face;
+        if (hole)
+        {
+            ++holeOffset;
+            continue;
+        }
+        quadCount += faceCount;
+        if (cornerCount != 4)
+        {
+            additionalPoints += static_cast<uint64_t>(cornerCount) + 1;
+        }
+        if (quadCount > static_cast<uint64_t>(maxIndex / 6) ||
+            additionalPoints > static_cast<uint64_t>(maxIndex))
+        {
+            return HdSilkPtexMappingStatus::ExceedsBounds;
+        }
+    }
+    if (vertexOffset != vertices.size())
+    {
+        return HdSilkPtexMappingStatus::UnsupportedTopology;
+    }
+    if (additionalPoints > static_cast<uint64_t>(maxIndex - inputPointCount))
+    {
+        return HdSilkPtexMappingStatus::ExceedsBounds;
+    }
+
+    HdSilkPtexCoarseTriQuadPlan result;
+    result.inputPointCount = inputPointCount;
+    result.outputPointCount = inputPointCount + static_cast<size_t>(additionalPoints);
+    result.triangleCount = static_cast<size_t>(quadCount * 2);
+    result.scratchCount = inputPointCount;
+    *plan = result;
+    return HdSilkPtexMappingStatus::Mapped;
+}
+
+HdSilkPtexMappingStatus
+HdSilkWriteDefaultCoarsePtexTriQuads(
+    const HdMeshTopology& topology,
+    const VtVec3fArray& sourcePoints,
+    GfVec3f* points,
+    size_t pointCapacity,
+    uint32_t* triangleIndices,
+    size_t indexCapacity,
+    uint32_t* triangleSubprims,
+    size_t subprimCapacity,
+    HdSilkPtexTriangle* mappings,
+    size_t mappingCapacity,
+    uint32_t* scratch,
+    size_t scratchCapacity)
+{
+    HdSilkPtexCoarseTriQuadPlan plan;
+    const HdSilkPtexMappingStatus planned =
+        HdSilkPlanDefaultCoarsePtexTriQuads(topology, sourcePoints.size(), &plan);
+    if (planned != HdSilkPtexMappingStatus::Mapped)
+    {
+        return planned;
+    }
+    if (pointCapacity < plan.outputPointCount ||
+        indexCapacity < plan.triangleCount * 3 ||
+        subprimCapacity < plan.triangleCount ||
+        mappingCapacity < plan.triangleCount ||
+        scratchCapacity < plan.scratchCount)
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+    const VtIntArray& counts = topology.GetFaceVertexCounts();
+    const VtIntArray& vertices = topology.GetFaceVertexIndices();
+    const VtIntArray& holes = topology.GetHoleIndices();
+    std::array<PtexMemoryRange, 5> outputRanges{};
+    std::array<PtexMemoryRange, 4> inputRanges{};
+    if (!MakePtexMemoryRange(points, pointCapacity, sizeof(*points), &outputRanges[0]) ||
+        !MakePtexMemoryRange(
+            triangleIndices, indexCapacity, sizeof(*triangleIndices), &outputRanges[1]) ||
+        !MakePtexMemoryRange(
+            triangleSubprims, subprimCapacity, sizeof(*triangleSubprims), &outputRanges[2]) ||
+        !MakePtexMemoryRange(mappings, mappingCapacity, sizeof(*mappings), &outputRanges[3]) ||
+        !MakePtexMemoryRange(scratch, scratchCapacity, sizeof(*scratch), &outputRanges[4]) ||
+        !MakePtexMemoryRange(counts.cdata(), counts.size(), sizeof(int), &inputRanges[0]) ||
+        !MakePtexMemoryRange(vertices.cdata(), vertices.size(), sizeof(int), &inputRanges[1]) ||
+        !MakePtexMemoryRange(holes.cdata(), holes.size(), sizeof(int), &inputRanges[2]) ||
+        !MakePtexMemoryRange(
+            sourcePoints.cdata(), sourcePoints.size(), sizeof(GfVec3f), &inputRanges[3]))
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+    for (size_t output = 0; output < outputRanges.size(); ++output)
+    {
+        for (size_t other = output + 1; other < outputRanges.size(); ++other)
+        {
+            if (PtexRangesOverlap(outputRanges[output], outputRanges[other]))
+            {
+                return HdSilkPtexMappingStatus::InvalidBuffers;
+            }
+        }
+        for (const PtexMemoryRange& input : inputRanges)
+        {
+            if (PtexRangesOverlap(outputRanges[output], input))
+            {
+                return HdSilkPtexMappingStatus::InvalidBuffers;
+            }
+        }
+    }
+    for (size_t point = 0; point < plan.inputPointCount; ++point)
+    {
+        for (int component = 0; component < 3; ++component)
+        {
+            if (!std::isfinite(sourcePoints[point][component]))
+            {
+                return HdSilkPtexMappingStatus::InvalidPoints;
+            }
+        }
+    }
+    if (plan.scratchCount != 0)
+    {
+        std::fill_n(scratch, plan.scratchCount, std::numeric_limits<uint32_t>::max());
+    }
+    size_t vertexOffset = 0;
+    for (size_t face = 0; face < counts.size(); ++face)
+    {
+        const size_t cornerCount = static_cast<size_t>(counts[face]);
+        for (size_t corner = 0; corner < cornerCount; ++corner)
+        {
+            const size_t vertex = static_cast<size_t>(vertices[vertexOffset + corner]);
+            if (scratch[vertex] == static_cast<uint32_t>(face))
+            {
+                return HdSilkPtexMappingStatus::UnsupportedTopology;
+            }
+            scratch[vertex] = static_cast<uint32_t>(face);
+        }
+        vertexOffset += cornerCount;
+    }
+    if (plan.inputPointCount != 0)
+    {
+        std::copy_n(sourcePoints.cdata(), plan.inputPointCount, points);
+    }
+
+    constexpr std::array<size_t, 6> triangleCorners{{0, 1, 2, 2, 3, 0}};
+    constexpr std::array<PtexCoordinate, 4> coordinates{{
+        {0.0F, 0.0F}, {1.0F, 0.0F}, {1.0F, 1.0F}, {0.0F, 1.0F}}};
+    size_t triangleOffset = 0;
+    const auto emitQuad = [&](
+        const std::array<uint32_t, 4>& quad, uint32_t sourceFace, uint32_t ptexFace)
+    {
+        for (size_t triangle = 0; triangle < 2; ++triangle)
+        {
+            HdSilkPtexTriangle mapping;
+            mapping.faceIndex = ptexFace;
+            for (size_t corner = 0; corner < 3; ++corner)
+            {
+                const size_t quadCorner = triangleCorners[triangle * 3 + corner];
+                triangleIndices[triangleOffset * 3 + corner] = quad[quadCorner];
+                mapping.cornerCoordinates[corner * 2] = coordinates[quadCorner].u;
+                mapping.cornerCoordinates[corner * 2 + 1] = coordinates[quadCorner].v;
+            }
+            triangleSubprims[triangleOffset] = sourceFace;
+            mappings[triangleOffset] = mapping;
+            ++triangleOffset;
+        }
+    };
+
+    const bool leftHanded =
+        topology.GetOrientation() == PxOsdOpenSubdivTokens->leftHanded;
+    vertexOffset = 0;
+    size_t pointOffset = plan.inputPointCount;
+    size_t holeOffset = 0;
+    uint32_t nextPtexFace = 0;
+    for (size_t face = 0; face < counts.size(); ++face)
+    {
+        const size_t cornerCount = static_cast<size_t>(counts[face]);
+        const uint32_t faceCount = cornerCount == 4
+            ? 1u
+            : static_cast<uint32_t>(cornerCount);
+        const bool hole = holeOffset < holes.size() &&
+            static_cast<size_t>(holes[holeOffset]) == face;
+        if (hole)
+        {
+            ++holeOffset;
+        }
+        else if (cornerCount == 4)
+        {
+            const std::array<uint32_t, 4> quad{{
+                static_cast<uint32_t>(vertices[vertexOffset]),
+                static_cast<uint32_t>(vertices[vertexOffset + (leftHanded ? 3 : 1)]),
+                static_cast<uint32_t>(vertices[vertexOffset + 2]),
+                static_cast<uint32_t>(vertices[vertexOffset + (leftHanded ? 1 : 3)])}};
+            emitQuad(quad, static_cast<uint32_t>(face), nextPtexFace);
+        }
+        else
+        {
+            std::array<double, 3> center{{0.0, 0.0, 0.0}};
+            for (size_t corner = 0; corner < cornerCount; ++corner)
+            {
+                const size_t next = (corner + 1) % cornerCount;
+                const GfVec3f& first =
+                    sourcePoints[static_cast<size_t>(vertices[vertexOffset + corner])];
+                const GfVec3f& second =
+                    sourcePoints[static_cast<size_t>(vertices[vertexOffset + next])];
+                for (int component = 0; component < 3; ++component)
+                {
+                    points[pointOffset + corner][component] = static_cast<float>(
+                        (static_cast<double>(first[component]) + second[component]) * 0.5);
+                    center[static_cast<size_t>(component)] += first[component];
+                }
+            }
+            for (int component = 0; component < 3; ++component)
+            {
+                points[pointOffset + cornerCount][component] = static_cast<float>(
+                    center[static_cast<size_t>(component)] / static_cast<double>(cornerCount));
+            }
+            for (size_t corner = 0; corner < cornerCount; ++corner)
+            {
+                const size_t previous = (corner + cornerCount - 1) % cornerCount;
+                const std::array<uint32_t, 4> quad{{
+                    static_cast<uint32_t>(vertices[vertexOffset + corner]),
+                    static_cast<uint32_t>(pointOffset + (leftHanded ? previous : corner)),
+                    static_cast<uint32_t>(pointOffset + cornerCount),
+                    static_cast<uint32_t>(pointOffset + (leftHanded ? corner : previous))}};
+                const size_t ptexCorner = leftHanded && corner != 0
+                    ? cornerCount - corner
+                    : corner;
+                emitQuad(
+                    quad, static_cast<uint32_t>(face),
+                    nextPtexFace + static_cast<uint32_t>(ptexCorner));
+            }
+            pointOffset += cornerCount + 1;
+        }
+        nextPtexFace += faceCount;
+        vertexOffset += cornerCount;
+    }
+    return pointOffset == plan.outputPointCount && triangleOffset == plan.triangleCount
+        ? HdSilkPtexMappingStatus::Mapped
+        : HdSilkPtexMappingStatus::UnsupportedTopology;
 }
 
 size_t
@@ -1628,6 +1961,10 @@ HdSilkPtexMappingStatusName(HdSilkPtexMappingStatus status)
         return "unsupported-topology";
     case HdSilkPtexMappingStatus::TriangleMismatch:
         return "triangle-mismatch";
+    case HdSilkPtexMappingStatus::ExceedsBounds:
+        return "exceeds-bounds";
+    case HdSilkPtexMappingStatus::InvalidPoints:
+        return "invalid-points";
     }
     return "unknown";
 }

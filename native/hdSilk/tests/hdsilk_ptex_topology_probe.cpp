@@ -33,8 +33,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -281,6 +283,497 @@ bool TestCoarseCoordinatesMatchOpenSubdiv(const TestTopology& topology)
             {
                 return Fail(topology.name, "coarse corner differs from OpenSubdiv");
             }
+        }
+    }
+    return true;
+}
+
+bool TestCoarseTriQuadsMatchHydraAndOpenSubdiv(const TestTopology& topology)
+{
+    const HdMeshTopology mesh = MakeMeshTopology(topology);
+    VtVec3fArray sourcePoints;
+    for (int point = 0; point < topology.vertices + 2; ++point)
+    {
+        sourcePoints.push_back(GfVec3f(
+            static_cast<float>(point % 7) * 0.25F,
+            static_cast<float>((point * point + 2) % 11) * 0.125F,
+            static_cast<float>(point) * 0.0625F));
+    }
+
+    HdMeshUtil util(&mesh, SdfPath("/PtexTriQuadProbe"));
+    HdQuadInfo quadInfo;
+    util.ComputeQuadInfo(&quadInfo);
+    VtIntArray expectedIndices;
+    VtIntArray expectedParams;
+    util.ComputeTriQuadIndices(&expectedIndices, &expectedParams);
+    VtValue expectedPointsValue;
+    if (!util.ComputeQuadrangulatedPrimvar(
+            &quadInfo, sourcePoints.cdata(), static_cast<int>(sourcePoints.size()),
+            HdTypeFloatVec3, &expectedPointsValue) ||
+        !expectedPointsValue.IsHolding<VtVec3fArray>())
+    {
+        return Fail(topology.name, "Hydra could not quadrangulate the source points");
+    }
+    const VtVec3fArray& expectedPoints = expectedPointsValue.UncheckedGet<VtVec3fArray>();
+
+    HdSilkPtexCoarseTriQuadPlan plan;
+    if (HdSilkPlanDefaultCoarsePtexTriQuads(mesh, sourcePoints.size(), &plan) !=
+            HdSilkPtexMappingStatus::Mapped ||
+        plan.inputPointCount != static_cast<size_t>(quadInfo.pointsOffset) ||
+        plan.outputPointCount != expectedPoints.size() ||
+        plan.triangleCount * 3 != expectedIndices.size() ||
+        plan.triangleCount != expectedParams.size() * 2 ||
+        plan.scratchCount != plan.inputPointCount)
+    {
+        return Fail(topology.name, "coarse Ptex triangulation plan differs from Hydra");
+    }
+    std::vector<GfVec3f> points(plan.outputPointCount);
+    std::vector<uint32_t> indices(plan.triangleCount * 3);
+    std::vector<uint32_t> subprims(plan.triangleCount);
+    std::vector<HdSilkPtexTriangle> mappings(plan.triangleCount);
+    std::vector<uint32_t> scratch(plan.scratchCount);
+    if (HdSilkWriteDefaultCoarsePtexTriQuads(
+            mesh, sourcePoints, points.data(), points.size(),
+            indices.data(), indices.size(), subprims.data(), subprims.size(),
+            mappings.data(), mappings.size(), scratch.data(), scratch.size()) !=
+        HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail(topology.name, "coarse Ptex triangulation was refused");
+    }
+    for (size_t point = 0; point < points.size(); ++point)
+    {
+        for (int component = 0; component < 3; ++component)
+        {
+            if (!std::isfinite(points[point][component]) ||
+                std::abs(points[point][component] - expectedPoints[point][component]) >
+                    0.00001F)
+            {
+                return Fail(topology.name, "generated point differs from Hydra");
+            }
+        }
+    }
+    for (size_t index = 0; index < indices.size(); ++index)
+    {
+        if (indices[index] != static_cast<uint32_t>(expectedIndices[index]))
+        {
+            return Fail(topology.name, "triangle index differs from Hydra");
+        }
+    }
+
+    const std::unique_ptr<Far::TopologyRefiner> oracle =
+        MakeOracleRefiner(topology, 1);
+    if (!oracle)
+    {
+        return Fail(topology.name, "tri-quad oracle refiner could not be created");
+    }
+    const std::unique_ptr<Far::PatchTable> patches = MakeOraclePatchTable(*oracle);
+    if (!patches)
+    {
+        return Fail(topology.name, "tri-quad oracle patch table could not be created");
+    }
+    const Far::PtexIndices ptexIndices(*oracle);
+    const Far::TopologyLevel& coarse = oracle->GetLevel(0);
+    const Far::TopologyLevel& first = oracle->GetLevel(1);
+    const std::array<std::array<float, 2>, 4> corners{{
+        {{0.0F, 0.0F}}, {{1.0F, 0.0F}}, {{1.0F, 1.0F}}, {{0.0F, 1.0F}}}};
+    constexpr std::array<int, 6> triangleCorners{{0, 1, 2, 2, 3, 0}};
+    for (size_t quad = 0; quad < expectedParams.size(); ++quad)
+    {
+        const int face = HdMeshUtil::DecodeFaceIndexFromCoarseFaceParam(expectedParams[quad]);
+        const Far::ConstIndexArray coarseVertices = coarse.GetFaceVertices(face);
+        Far::PatchParam patch;
+        uint32_t expectedFace = static_cast<uint32_t>(ptexIndices.GetFaceId(face));
+        if (coarseVertices.size() != 4)
+        {
+            const Far::Index sourceVertex = static_cast<Far::Index>(indices[quad * 6]);
+            const Far::Index childVertex = coarse.GetVertexChildVertex(sourceVertex);
+            Far::Index childFace = -1;
+            const Far::ConstIndexArray children = coarse.GetFaceChildFaces(face);
+            for (int child = 0; child < children.size(); ++child)
+            {
+                const Far::ConstIndexArray childVertices =
+                    first.GetFaceVertices(children[child]);
+                if (childVertices.size() == 4 && childVertices[0] == childVertex)
+                {
+                    if (childFace >= 0)
+                    {
+                        return Fail(topology.name, "two Ptex subfaces share a source corner");
+                    }
+                    childFace = children[child];
+                }
+            }
+            if (childFace < 0 ||
+                !FindPatch(*patches, first.GetFaceVertices(childFace), &patch))
+            {
+                return Fail(topology.name, "Ptex subface is absent from the patch table");
+            }
+            expectedFace = static_cast<uint32_t>(patch.GetFaceId());
+        }
+
+        for (size_t triangle = 0; triangle < 2; ++triangle)
+        {
+            const size_t triangleIndex = quad * 2 + triangle;
+            if (subprims[triangleIndex] != static_cast<uint32_t>(face) ||
+                mappings[triangleIndex].faceIndex != expectedFace)
+            {
+                return Fail(topology.name, "source or Ptex face identity differs");
+            }
+            for (size_t corner = 0; corner < 3; ++corner)
+            {
+                const size_t local = triangle * 3 + corner;
+                int expectedCorner = triangleCorners[local];
+                if (coarseVertices.size() == 4)
+                {
+                    expectedCorner = -1;
+                    const Far::Index vertex =
+                        static_cast<Far::Index>(indices[quad * 6 + local]);
+                    for (int candidate = 0; candidate < 4; ++candidate)
+                    {
+                        if (coarseVertices[candidate] == vertex)
+                        {
+                            expectedCorner = candidate;
+                        }
+                    }
+                    if (expectedCorner < 0)
+                    {
+                        return Fail(topology.name, "quad vertex is absent from the coarse face");
+                    }
+                }
+                float u = corners[static_cast<size_t>(expectedCorner)][0];
+                float v = corners[static_cast<size_t>(expectedCorner)][1];
+                if (coarseVertices.size() != 4)
+                {
+                    patch.Unnormalize(u, v);
+                }
+                if (!std::isfinite(mappings[triangleIndex].cornerCoordinates[corner * 2]) ||
+                    !std::isfinite(mappings[triangleIndex].cornerCoordinates[corner * 2 + 1]) ||
+                    std::abs(mappings[triangleIndex].cornerCoordinates[corner * 2] - u) >
+                        0.000001F ||
+                    std::abs(mappings[triangleIndex].cornerCoordinates[corner * 2 + 1] - v) >
+                        0.000001F)
+                {
+                    return Fail(topology.name, "Ptex corner differs from the patch table");
+                }
+            }
+        }
+    }
+    return true;
+}
+
+bool TestCoarseTriQuadRefusalsAndRetry()
+{
+    const TestTopology topology{
+        "tri-quad admission", Sdc::SCHEME_CATMARK, 5,
+        {5}, {0, 1, 2, 3, 4}, {}, false};
+    const HdMeshTopology mesh = MakeMeshTopology(topology);
+    VtVec3fArray source(5, GfVec3f(1.0F, 2.0F, 3.0F));
+    HdSilkPtexCoarseTriQuadPlan plan;
+    if (HdSilkPlanDefaultCoarsePtexTriQuads(mesh, source.size(), &plan) !=
+            HdSilkPtexMappingStatus::Mapped ||
+        plan.inputPointCount != 5 || plan.outputPointCount != 11 ||
+        plan.triangleCount != 10 || plan.scratchCount != 5)
+    {
+        return Fail(topology.name, "pentagon storage plan is incorrect");
+    }
+    const GfVec3f sentinel(-9.0F);
+    std::vector<GfVec3f> points(plan.outputPointCount, sentinel);
+    std::vector<uint32_t> indices(plan.triangleCount * 3, 99);
+    std::vector<uint32_t> subprims(plan.triangleCount, 99);
+    HdSilkPtexTriangle mappingSentinel;
+    mappingSentinel.faceIndex = 99;
+    mappingSentinel.cornerCoordinates.fill(-9.0F);
+    std::vector<HdSilkPtexTriangle> mappings(plan.triangleCount, mappingSentinel);
+    std::vector<uint32_t> scratch(plan.scratchCount, 99);
+    const auto write = [&](
+        const HdMeshTopology& input, const VtVec3fArray& positions,
+        GfVec3f* pointOutput, size_t pointCapacity,
+        uint32_t* indexOutput, size_t indexCapacity,
+        uint32_t* subprimOutput, size_t subprimCapacity,
+        HdSilkPtexTriangle* mappingOutput, size_t mappingCapacity,
+        uint32_t* scratchOutput, size_t scratchCapacity)
+    {
+        return HdSilkWriteDefaultCoarsePtexTriQuads(
+            input, positions, pointOutput, pointCapacity,
+            indexOutput, indexCapacity, subprimOutput, subprimCapacity,
+            mappingOutput, mappingCapacity, scratchOutput, scratchCapacity);
+    };
+    const auto defaultWrite = [&](const HdMeshTopology& input, const VtVec3fArray& positions)
+    {
+        return write(
+            input, positions, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size());
+    };
+    if (defaultWrite(mesh, source) != HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail(topology.name, "exact planned capacities were refused");
+    }
+    std::fill(points.begin(), points.end(), sentinel);
+    std::fill(indices.begin(), indices.end(), 99);
+    std::fill(subprims.begin(), subprims.end(), 99);
+    std::fill(mappings.begin(), mappings.end(), mappingSentinel);
+    std::fill(scratch.begin(), scratch.end(), 99);
+    if (HdSilkPlanDefaultCoarsePtexTriQuads(mesh, source.size(), nullptr) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, nullptr, points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), nullptr, indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            nullptr, subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), nullptr, mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            nullptr, scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size() - 1, indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size() - 1,
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size() - 1, mappings.data(), mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size() - 1,
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size() - 1) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            indices.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            indices.data(), subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(),
+            reinterpret_cast<uint32_t*>(points.data()), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, const_cast<GfVec3f*>(source.cdata()), points.size(),
+            indices.data(), indices.size(), subprims.data(), subprims.size(),
+            mappings.data(), mappings.size(), scratch.data(), scratch.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            reinterpret_cast<uint32_t*>(const_cast<GfVec3f*>(source.cdata())), scratch.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        write(mesh, source, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            reinterpret_cast<uint32_t*>(
+                const_cast<int*>(mesh.GetFaceVertexIndices().cdata())), scratch.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers)
+    {
+        return Fail(topology.name, "invalid or overlapping buffers were accepted");
+    }
+    const auto outputsUnchanged = [&]()
+    {
+        return std::all_of(points.begin(), points.end(),
+            [&](const GfVec3f& value) { return value == sentinel; }) &&
+            std::all_of(indices.begin(), indices.end(), [](uint32_t value) { return value == 99; }) &&
+            std::all_of(subprims.begin(), subprims.end(), [](uint32_t value) { return value == 99; }) &&
+            std::all_of(mappings.begin(), mappings.end(), [&](const HdSilkPtexTriangle& value)
+            {
+                return value.faceIndex == mappingSentinel.faceIndex &&
+                    value.cornerCoordinates == mappingSentinel.cornerCoordinates;
+            });
+    };
+    if (!outputsUnchanged() ||
+        !std::all_of(scratch.begin(), scratch.end(), [](uint32_t value) { return value == 99; }))
+    {
+        return Fail(topology.name, "buffer refusal changed an output");
+    }
+    VtVec3fArray invalidPoints = source;
+    invalidPoints[2][1] = std::numeric_limits<float>::quiet_NaN();
+    if (defaultWrite(mesh, invalidPoints) != HdSilkPtexMappingStatus::InvalidPoints ||
+        !outputsUnchanged() ||
+        !std::all_of(scratch.begin(), scratch.end(), [](uint32_t value) { return value == 99; }))
+    {
+        return Fail(topology.name, "non-finite source points were accepted");
+    }
+    invalidPoints[2][1] = std::numeric_limits<float>::infinity();
+    if (defaultWrite(mesh, invalidPoints) != HdSilkPtexMappingStatus::InvalidPoints ||
+        !outputsUnchanged())
+    {
+        return Fail(topology.name, "infinite source points were accepted");
+    }
+    const TestTopology duplicate{
+        "duplicate corner", Sdc::SCHEME_CATMARK, 5,
+        {5}, {0, 1, 2, 1, 4}, {}, false};
+    TestTopology duplicateHole = duplicate;
+    duplicateHole.holes = {0};
+    if (defaultWrite(MakeMeshTopology(duplicate), source) !=
+            HdSilkPtexMappingStatus::UnsupportedTopology ||
+        !outputsUnchanged() ||
+        defaultWrite(MakeMeshTopology(duplicateHole), source) !=
+            HdSilkPtexMappingStatus::UnsupportedTopology ||
+        !outputsUnchanged() ||
+        defaultWrite(mesh, source) != HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail(topology.name, "invalid topology or corrected retry was mishandled");
+    }
+    for (const GfVec3f& point : points)
+    {
+        if (point != source[0])
+        {
+            return Fail(topology.name, "successful retry did not generate the expected points");
+        }
+    }
+    return true;
+}
+
+bool TestCoarseTriQuadPlanningRefusals()
+{
+    const TfToken scheme = PxOsdOpenSubdivTokens->catmullClark;
+    const TfToken orientation = PxOsdOpenSubdivTokens->rightHanded;
+    const HdMeshTopology valid(
+        scheme, orientation, VtIntArray{5}, VtIntArray{0, 1, 2, 3, 4}, VtIntArray{});
+    const HdMeshTopology polygonal(
+        PxOsdOpenSubdivTokens->none, orientation,
+        VtIntArray{3}, VtIntArray{0, 1, 2}, VtIntArray{});
+    const HdMeshTopology loop(
+        PxOsdOpenSubdivTokens->loop, orientation,
+        VtIntArray{3}, VtIntArray{0, 1, 2}, VtIntArray{});
+    const HdMeshTopology unknownOrientation(
+        scheme, TfToken("unknown"), VtIntArray{3}, VtIntArray{0, 1, 2}, VtIntArray{});
+    const HdMeshTopology shortFace(
+        scheme, orientation, VtIntArray{2}, VtIntArray{0, 1}, VtIntArray{});
+    const HdMeshTopology incomplete(
+        scheme, orientation, VtIntArray{4}, VtIntArray{0, 1, 2}, VtIntArray{});
+    const HdMeshTopology extra(
+        scheme, orientation, VtIntArray{3}, VtIntArray{0, 1, 2, 3}, VtIntArray{});
+    const HdMeshTopology negative(
+        scheme, orientation, VtIntArray{3}, VtIntArray{0, -1, 2}, VtIntArray{});
+    const HdMeshTopology unsortedHoles(
+        scheme, orientation, VtIntArray{3, 3}, VtIntArray{0, 1, 2, 3, 4, 5},
+        VtIntArray{1, 0});
+    const HdMeshTopology duplicateHoles(
+        scheme, orientation, VtIntArray{3, 3}, VtIntArray{0, 1, 2, 3, 4, 5},
+        VtIntArray{1, 1});
+    const HdMeshTopology missingHole(
+        scheme, orientation, VtIntArray{3}, VtIntArray{0, 1, 2}, VtIntArray{1});
+    const HdMeshTopology negativeHole(
+        scheme, orientation, VtIntArray{3}, VtIntArray{0, 1, 2}, VtIntArray{-1});
+    const HdMeshTopology sparseOverflow(
+        scheme, orientation, VtIntArray{3},
+        VtIntArray{std::numeric_limits<int>::max() - 1, 0, 1}, VtIntArray{});
+    const HdMeshTopology indexOverflow(
+        scheme, orientation, VtIntArray{3},
+        VtIntArray{std::numeric_limits<int>::max(), 0, 1}, VtIntArray{});
+
+    const auto expect = [](
+        const HdMeshTopology& mesh, size_t pointCount, HdSilkPtexMappingStatus status)
+    {
+        HdSilkPtexCoarseTriQuadPlan plan{17, 18, 19, 20};
+        return HdSilkPlanDefaultCoarsePtexTriQuads(mesh, pointCount, &plan) == status &&
+            plan.inputPointCount == 17 && plan.outputPointCount == 18 &&
+            plan.triangleCount == 19 && plan.scratchCount == 20;
+    };
+    for (const HdMeshTopology* unsupported :
+         {&polygonal, &loop, &unknownOrientation, &shortFace, &incomplete, &extra,
+             &negative, &unsortedHoles, &duplicateHoles, &missingHole, &negativeHole})
+    {
+        if (!expect(*unsupported, 8, HdSilkPtexMappingStatus::UnsupportedTopology))
+        {
+            return Fail("tri-quad planning", "invalid topology or holes were accepted");
+        }
+    }
+    const size_t maxIndex = static_cast<size_t>(std::numeric_limits<int>::max());
+    if (!expect(valid, 4, HdSilkPtexMappingStatus::InvalidPoints) ||
+        !expect(sparseOverflow, maxIndex, HdSilkPtexMappingStatus::ExceedsBounds) ||
+        !expect(indexOverflow, maxIndex + 1, HdSilkPtexMappingStatus::ExceedsBounds))
+    {
+        return Fail("tri-quad planning", "point or count bounds were not enforced");
+    }
+    return true;
+}
+
+bool TestCoarseTriQuadEmptyHolesAndExtremePoints()
+{
+    const TfToken scheme = PxOsdOpenSubdivTokens->catmullClark;
+    const TfToken orientation = PxOsdOpenSubdivTokens->rightHanded;
+    const HdMeshTopology empty(scheme, orientation, VtIntArray{}, VtIntArray{}, VtIntArray{});
+    HdSilkPtexCoarseTriQuadPlan plan;
+    if (HdSilkPlanDefaultCoarsePtexTriQuads(empty, 0, &plan) !=
+            HdSilkPtexMappingStatus::Mapped ||
+        plan.inputPointCount != 0 || plan.outputPointCount != 0 ||
+        plan.triangleCount != 0 || plan.scratchCount != 0 ||
+        HdSilkWriteDefaultCoarsePtexTriQuads(
+            empty, VtVec3fArray{}, nullptr, 0, nullptr, 0, nullptr, 0,
+            nullptr, 0, nullptr, 0) != HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail("empty tri-quad", "an empty mesh did not produce an empty plan");
+    }
+
+    const HdMeshTopology hole(
+        scheme, orientation, VtIntArray{4}, VtIntArray{0, 1, 2, 3}, VtIntArray{0});
+    const VtVec3fArray source(4, GfVec3f(2.0F, 3.0F, 4.0F));
+    if (HdSilkPlanDefaultCoarsePtexTriQuads(hole, source.size(), &plan) !=
+            HdSilkPtexMappingStatus::Mapped ||
+        plan.inputPointCount != 4 || plan.outputPointCount != 4 ||
+        plan.triangleCount != 0 || plan.scratchCount != 4)
+    {
+        return Fail("holed tri-quad", "a fully holed mesh produced geometry");
+    }
+    std::vector<GfVec3f> copied(plan.outputPointCount);
+    std::vector<uint32_t> scratch(plan.scratchCount);
+    if (HdSilkWriteDefaultCoarsePtexTriQuads(
+            hole, source, copied.data(), copied.size(), nullptr, 0, nullptr, 0,
+            nullptr, 0, scratch.data(), scratch.size()) !=
+            HdSilkPtexMappingStatus::Mapped ||
+        !std::all_of(copied.begin(), copied.end(),
+            [&](const GfVec3f& point) { return point == source[0]; }))
+    {
+        return Fail("holed tri-quad", "a fully holed mesh did not copy its base points");
+    }
+
+    const HdMeshTopology pentagon(
+        scheme, orientation, VtIntArray{5}, VtIntArray{0, 1, 2, 3, 4}, VtIntArray{});
+    VtVec3fArray extreme(6, GfVec3f(std::numeric_limits<float>::max()));
+    extreme[5][0] = std::numeric_limits<float>::quiet_NaN();
+    if (HdSilkPlanDefaultCoarsePtexTriQuads(pentagon, extreme.size(), &plan) !=
+        HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail("extreme tri-quad", "finite referenced points were refused");
+    }
+    std::vector<GfVec3f> points(plan.outputPointCount);
+    std::vector<uint32_t> indices(plan.triangleCount * 3);
+    std::vector<uint32_t> subprims(plan.triangleCount);
+    std::vector<HdSilkPtexTriangle> mappings(plan.triangleCount);
+    scratch.resize(plan.scratchCount);
+    if (HdSilkWriteDefaultCoarsePtexTriQuads(
+            pentagon, extreme, points.data(), points.size(), indices.data(), indices.size(),
+            subprims.data(), subprims.size(), mappings.data(), mappings.size(),
+            scratch.data(), scratch.size()) != HdSilkPtexMappingStatus::Mapped ||
+        !std::all_of(points.begin(), points.end(),
+            [&](const GfVec3f& point) { return point == extreme[0]; }))
+    {
+        return Fail("extreme tri-quad", "finite midpoint or centre overflowed");
+    }
+    return true;
+}
+
+bool TestLargeCoarseTriQuads()
+{
+    constexpr int cornerCount = 1024;
+    for (bool leftHanded : {false, true})
+    {
+        TestTopology polygon{
+            leftHanded ? "large left tri-quad" : "large tri-quad",
+            Sdc::SCHEME_CATMARK, cornerCount, {cornerCount}, {}, {}, leftHanded};
+        polygon.indices.reserve(cornerCount);
+        for (int corner = 0; corner < cornerCount; ++corner)
+        {
+            polygon.indices.push_back(corner);
+        }
+        if (!TestCoarseTriQuadsMatchHydraAndOpenSubdiv(polygon))
+        {
+            return false;
         }
     }
     return true;
@@ -789,6 +1282,37 @@ bool TestUnrenderableBoundaryRefusal()
 
 int main()
 {
+    const std::vector<TestTopology> coarseTriQuadTopologies{
+        {"tri-quad quad", Sdc::SCHEME_CATMARK, 4,
+            {4}, {0, 1, 2, 3}, {}, false},
+        {"tri-quad left quad", Sdc::SCHEME_CATMARK, 4,
+            {4}, {0, 1, 2, 3}, {}, true},
+        {"tri-quad triangle", Sdc::SCHEME_CATMARK, 3,
+            {3}, {0, 1, 2}, {}, false},
+        {"tri-quad left triangle", Sdc::SCHEME_CATMARK, 3,
+            {3}, {0, 1, 2}, {}, true},
+        {"tri-quad sparse points", Sdc::SCHEME_CATMARK, 9,
+            {3}, {0, 4, 8}, {}, false},
+        {"tri-quad pentagon", Sdc::SCHEME_CATMARK, 5,
+            {5}, {0, 1, 2, 3, 4}, {}, false},
+        {"tri-quad left pentagon", Sdc::SCHEME_CATMARK, 5,
+            {5}, {0, 1, 2, 3, 4}, {}, true},
+        {"tri-quad adjacent mixed", Sdc::SCHEME_CATMARK, 5,
+            {3, 4}, {0, 1, 2, 2, 1, 3, 4}, {}, false},
+        {"tri-quad left adjacent mixed", Sdc::SCHEME_CATMARK, 5,
+            {3, 4}, {0, 1, 2, 2, 1, 3, 4}, {}, true},
+        {"tri-quad mixed holes", Sdc::SCHEME_CATMARK, 17,
+            {5, 3, 4, 5},
+            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+            {0, 2}, false},
+        {"tri-quad left mixed holes", Sdc::SCHEME_BILINEAR, 17,
+            {5, 3, 4, 5},
+            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+            {0, 2}, true},
+        {"tri-quad bilinear mixed", Sdc::SCHEME_BILINEAR, 12,
+            {3, 4, 5}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {}, false},
+        {"tri-quad left bilinear mixed", Sdc::SCHEME_BILINEAR, 12,
+            {3, 4, 5}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {}, true}};
     const std::vector<TestTopology> coarseTopologies{
         {"coarse quad", Sdc::SCHEME_CATMARK, 4,
             {4}, {0, 1, 2, 3}, {}, false},
@@ -849,7 +1373,11 @@ int main()
             {0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4,
                 1, 2, 6, 5, 2, 3, 7, 6, 3, 0, 4, 7, 8, 9, 10, 11},
             {}, false, true}};
-    if (!TestCoarseAnalyticOrientation() ||
+    if (!TestCoarseTriQuadRefusalsAndRetry() ||
+        !TestCoarseTriQuadPlanningRefusals() ||
+        !TestCoarseTriQuadEmptyHolesAndExtremePoints() ||
+        !TestLargeCoarseTriQuads() ||
+        !TestCoarseAnalyticOrientation() ||
         !TestCoarseRefusalAndRetry() ||
         !TestAnalyticQuadAndRotatedLoop() ||
         !TestBufferRefusalAndRetry() ||
@@ -857,6 +1385,13 @@ int main()
         !TestUnrenderableBoundaryRefusal())
     {
         return 1;
+    }
+    for (const TestTopology& topology : coarseTriQuadTopologies)
+    {
+        if (!TestCoarseTriQuadsMatchHydraAndOpenSubdiv(topology))
+        {
+            return 1;
+        }
     }
     for (const TestTopology& topology : coarseTopologies)
     {
@@ -875,7 +1410,9 @@ int main()
             }
         }
     }
-    std::cout << "Ptex topology probes passed for " << coarseTopologies.size()
+    std::cout << "Ptex topology probes passed for "
+              << coarseTriQuadTopologies.size() << " coarse tri-quad meshes, "
+              << coarseTopologies.size()
               << " coarse meshes and "
               << topologies.size() * HdSilkMaxMeshRefineLevel
               << " refined meshes\n";

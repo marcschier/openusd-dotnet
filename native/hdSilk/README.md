@@ -185,14 +185,22 @@ unsupported, and the warning is not a managed material diagnostic.
 
 The subdivision module can derive default Ptex face IDs and local triangle
 coordinates for refined Catmull-Clark, bilinear and Loop meshes, and for
-unrefined Catmull-Clark or bilinear quads and Loop triangles. A non-quad
-Catmull-Clark or bilinear control face has one Ptex face per corner, not one
-per authored face. An unrefined visible non-quad therefore needs subface
-tessellation and is refused; holes still contribute to subsequent face IDs.
-The caller supplies separate output and scratch buffers and must discard their
-contents when mapping fails. Authored Ptex face remapping and polygonal `none`
-meshes are not handled. The renderer does not yet publish these coordinates
-or sample Ptex textures.
+unrefined Catmull-Clark or bilinear quads and Loop triangles. The unsplit
+mapping refuses visible non-quad Catmull-Clark or bilinear faces: each has
+one Ptex face per corner, not one per authored face.
+
+A separate caller-buffered helper plans and emits triangulated Ptex subfaces
+for unrefined Catmull-Clark and bilinear control cages. It copies base points
+through the highest referenced index, adds edge midpoints and face centres,
+and retains each triangle's authored face identity. Holes contribute to later
+Ptex face IDs but produce no subfaces or added points. The caller admits the
+planned point, index, face, coordinate and scratch buffers before writing.
+The writer refuses overlapping or undersized buffers, repeated face vertices
+and non-finite copied points; its per-face validation does not establish full
+mesh connectivity. Callers must discard all output and scratch contents after
+a failure. Face-varying primvars, authored Ptex face remapping and polygonal
+`none` meshes are not handled. Neither helper has a renderer caller; Ptex
+coordinates are not published and Ptex textures are not sampled.
 
 ## Wire format
 

@@ -116,7 +116,53 @@ enum class HdSilkPtexMappingStatus : uint32_t
     FaceIndexOverflow = 3,
     UnsupportedTopology = 4,
     TriangleMismatch = 5,
+    ExceedsBounds = 6,
+    InvalidPoints = 7,
 };
+
+struct HdSilkPtexCoarseTriQuadPlan
+{
+    size_t inputPointCount = 0;
+    size_t outputPointCount = 0;
+    size_t triangleCount = 0;
+    size_t scratchCount = 0;
+};
+
+/// Plans the storage needed to split each visible non-quad control face into
+/// Ptex subfaces and then triangulate the resulting quads. Only Catmull-Clark
+/// and bilinear topology is supported. Holes contribute to Ptex face numbering
+/// but not to the generated points or triangles.
+///
+/// The returned counts do not reserve memory. The caller must admit the point,
+/// triangle-index, source-face, Ptex-coordinate, and scratch buffers before
+/// calling HdSilkWriteDefaultCoarsePtexTriQuads(). The plan must not overlap
+/// the topology arrays and is unchanged when planning fails.
+HdSilkPtexMappingStatus HdSilkPlanDefaultCoarsePtexTriQuads(
+    const HdMeshTopology& topology,
+    size_t sourcePointCount,
+    HdSilkPtexCoarseTriQuadPlan* plan);
+
+/// Writes the planned control-cage points and triangle topology, one authored
+/// source-face index and one default Ptex mapping per triangle. Original
+/// referenced points precede the generated edge and face-centre points.
+///
+/// All buffers are caller-owned, must have the planned capacity, and must not
+/// overlap each other or the inputs. On any failure none may be published.
+/// Face-varying primvars and authored Ptex remapping are not expanded here.
+/// The helper validates per-face indices and holes, not full mesh connectivity.
+HdSilkPtexMappingStatus HdSilkWriteDefaultCoarsePtexTriQuads(
+    const HdMeshTopology& topology,
+    const VtVec3fArray& sourcePoints,
+    GfVec3f* points,
+    size_t pointCapacity,
+    uint32_t* triangleIndices,
+    size_t indexCapacity,
+    uint32_t* triangleSubprims,
+    size_t subprimCapacity,
+    HdSilkPtexTriangle* mappings,
+    size_t mappingCapacity,
+    uint32_t* scratch,
+    size_t scratchCapacity);
 
 /// Scratch entries required to map an unrefined control cage. Returns zero when
 /// the count cannot be represented or the cage has no faces.
