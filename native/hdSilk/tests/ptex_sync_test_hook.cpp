@@ -50,7 +50,7 @@ namespace
 class ReplaceChildDataSource final : public HdContainerDataSource
 {
 public:
-    HD_DECLARE_DATASOURCE(ReplaceChildDataSource);
+    HD_DECLARE_DATASOURCE(ReplaceChildDataSource)
 
     ReplaceChildDataSource(
         HdContainerDataSourceHandle source,
