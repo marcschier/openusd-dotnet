@@ -154,6 +154,348 @@ bool Fail(const std::string& context, const std::string& message)
     return false;
 }
 
+bool SameMappings(
+    const HdSilkPtexTriangle* first,
+    const HdSilkPtexTriangle* second,
+    size_t count)
+{
+    for (size_t index = 0; index < count; ++index)
+    {
+        if (first[index].faceIndex != second[index].faceIndex ||
+            first[index].cornerCoordinates != second[index].cornerCoordinates)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool TestPtexFaceOffsets()
+{
+    std::array<HdSilkPtexTriangle, 6> mappings{};
+    const std::array<uint32_t, 6> faceIds{{0, 0, 1, 1, 3, 4}};
+    const std::array<uint32_t, 6> sourceFaces{{0, 0, 1, 1, 2, 2}};
+    for (size_t triangle = 0; triangle < mappings.size(); ++triangle)
+    {
+        mappings[triangle].faceIndex = faceIds[triangle];
+        mappings[triangle].cornerCoordinates.fill(static_cast<float>(triangle) * 0.125F);
+    }
+    const auto original = mappings;
+    HdSilkPtexTriangle sentinel;
+    sentinel.faceIndex = 99;
+    sentinel.cornerCoordinates.fill(-1.0F);
+    std::array<HdSilkPtexTriangle, 7> output;
+    const auto expect = [&](
+        HdSilkPtexFaceOffsets offsets,
+        size_t textureFaceCount,
+        const std::array<uint32_t, 6>& expected)
+    {
+        output.fill(sentinel);
+        if (HdSilkWritePtexFaceOffsets(
+                mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+                3, offsets, textureFaceCount, output.data(), output.size()) !=
+            HdSilkPtexMappingStatus::Mapped)
+        {
+            return false;
+        }
+        for (size_t triangle = 0; triangle < mappings.size(); ++triangle)
+        {
+            if (output[triangle].faceIndex != expected[triangle] ||
+                output[triangle].cornerCoordinates != original[triangle].cornerCoordinates)
+            {
+                return false;
+            }
+        }
+        return output.back().faceIndex == sentinel.faceIndex &&
+            output.back().cornerCoordinates == sentinel.cornerCoordinates &&
+            SameMappings(mappings.data(), original.data(), mappings.size());
+    };
+
+    const int32_t constant = 2;
+    const std::array<int32_t, 3> uniform{{3, 0, -2}};
+    const std::array<int32_t, 3> indexedValues{{-2, 3, 0}};
+    const std::array<int32_t, 3> indices{{1, 2, 0}};
+    const int32_t constantIndex = 1;
+    if (!expect({}, 5, {{0, 0, 1, 1, 3, 4}}) ||
+        !expect({HdSilkPtexOffsetInterpolation::Constant, &constant, 1, nullptr, 0},
+            7, {{2, 2, 3, 3, 5, 6}}) ||
+        !expect({HdSilkPtexOffsetInterpolation::Uniform, uniform.data(), uniform.size(),
+                nullptr, 0},
+            4, {{3, 3, 1, 1, 1, 2}}) ||
+        !expect({HdSilkPtexOffsetInterpolation::Uniform, indexedValues.data(),
+                indexedValues.size(), indices.data(), indices.size()},
+            4, {{3, 3, 1, 1, 1, 2}}) ||
+        !expect({HdSilkPtexOffsetInterpolation::Constant, indexedValues.data(),
+                indexedValues.size(), &constantIndex, 1},
+            8, {{3, 3, 4, 4, 6, 7}}))
+    {
+        return Fail("Ptex face offsets", "constant, uniform or indexed mapping differs");
+    }
+    if (HdSilkWritePtexFaceOffsets(
+            nullptr, 0, nullptr, 0, 0, {}, 0, nullptr, 0) !=
+        HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail("Ptex face offsets", "empty mappings were refused");
+    }
+    return true;
+}
+
+bool TestPtexFaceOffsetRefusalsAndRetry()
+{
+    std::array<HdSilkPtexTriangle, 3> mappings{};
+    mappings[0].faceIndex = 0;
+    mappings[1].faceIndex = 2;
+    mappings[2].faceIndex = 4;
+    const auto original = mappings;
+    std::array<uint32_t, 3> sourceFaces{{0, 2, 2}};
+    const std::array<int32_t, 3> validValues{{1, 0, -1}};
+    const std::array<int32_t, 3> validIndices{{0, 1, 2}};
+    HdSilkPtexTriangle sentinel;
+    sentinel.faceIndex = 99;
+    sentinel.cornerCoordinates.fill(-1.0F);
+    std::array<HdSilkPtexTriangle, 3> output;
+    const auto expect = [&](
+        HdSilkPtexFaceOffsets offsets,
+        size_t textureFaceCount,
+        HdSilkPtexMappingStatus status)
+    {
+        output.fill(sentinel);
+        return HdSilkWritePtexFaceOffsets(
+                mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+                3, offsets, textureFaceCount, output.data(), output.size()) == status &&
+            std::all_of(output.begin(), output.end(), [&](const HdSilkPtexTriangle& value)
+            {
+                return value.faceIndex == sentinel.faceIndex &&
+                    value.cornerCoordinates == sentinel.cornerCoordinates;
+            }) &&
+            SameMappings(mappings.data(), original.data(), mappings.size());
+    };
+    const int32_t negative = -1;
+    const int32_t tooLarge = std::numeric_limits<int32_t>::max();
+    const std::array<int32_t, 3> lateUnderflow{{1, 0, -5}};
+    const std::array<int32_t, 3> badIndex{{0, -1, 2}};
+    const std::array<int32_t, 3> missingIndex{{0, 3, 2}};
+    if (!expect({HdSilkPtexOffsetInterpolation::None, validValues.data(), 1, nullptr, 0},
+            5, HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expect({static_cast<HdSilkPtexOffsetInterpolation>(99), nullptr, 0, nullptr, 0},
+            5, HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expect({HdSilkPtexOffsetInterpolation::Constant, nullptr, 0, nullptr, 0},
+            5, HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expect({HdSilkPtexOffsetInterpolation::Constant, validValues.data(), 2, nullptr, 0},
+            5, HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expect({HdSilkPtexOffsetInterpolation::Uniform, validValues.data(), 2, nullptr, 0},
+            5, HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expect({HdSilkPtexOffsetInterpolation::Uniform, validValues.data(), validValues.size(),
+                validIndices.data(), validIndices.size() - 1},
+            5, HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expect({HdSilkPtexOffsetInterpolation::Uniform, validValues.data(), validValues.size(),
+                badIndex.data(), badIndex.size()},
+            5, HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expect({HdSilkPtexOffsetInterpolation::Uniform, validValues.data(), validValues.size(),
+                missingIndex.data(), missingIndex.size()},
+            5, HdSilkPtexMappingStatus::InvalidFaceOffsets) ||
+        !expect({HdSilkPtexOffsetInterpolation::Constant, &negative, 1, nullptr, 0},
+            5, HdSilkPtexMappingStatus::TextureFaceOutOfRange) ||
+        !expect({HdSilkPtexOffsetInterpolation::Constant, &tooLarge, 1, nullptr, 0},
+            5, HdSilkPtexMappingStatus::TextureFaceOutOfRange) ||
+        !expect({HdSilkPtexOffsetInterpolation::Uniform, lateUnderflow.data(),
+                lateUnderflow.size(), nullptr, 0},
+            5, HdSilkPtexMappingStatus::TextureFaceOutOfRange) ||
+        !expect({}, 0, HdSilkPtexMappingStatus::TextureFaceOutOfRange) ||
+        !expect({}, 4, HdSilkPtexMappingStatus::TextureFaceOutOfRange))
+    {
+        return Fail("Ptex face offsets", "invalid offsets or face ranges were accepted");
+    }
+    output.fill(sentinel);
+    const HdSilkPtexFaceOffsets valid{
+        HdSilkPtexOffsetInterpolation::Uniform, validValues.data(), validValues.size(),
+        validIndices.data(), validIndices.size()};
+    sourceFaces[1] = 3;
+    if (HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, valid, 5, output.data(), output.size()) !=
+        HdSilkPtexMappingStatus::UnsupportedTopology ||
+        !std::all_of(output.begin(), output.end(), [&](const HdSilkPtexTriangle& value)
+        {
+            return value.faceIndex == sentinel.faceIndex &&
+                value.cornerCoordinates == sentinel.cornerCoordinates;
+        }))
+    {
+        return Fail("Ptex face offsets", "invalid source face changed the output");
+    }
+    sourceFaces[1] = 2;
+    std::array<HdSilkPtexTriangle, 4> aliasedMappings{};
+    std::copy(mappings.begin(), mappings.end(), aliasedMappings.begin());
+    alignas(HdSilkPtexTriangle) std::array<uint32_t, 21> aliasedSourceFaces{};
+    alignas(HdSilkPtexTriangle) std::array<int32_t, 21> aliasedValues{};
+    alignas(HdSilkPtexTriangle) std::array<int32_t, 21> aliasedIndices{};
+    std::copy(sourceFaces.begin(), sourceFaces.end(), aliasedSourceFaces.begin());
+    std::copy(validValues.begin(), validValues.end(), aliasedValues.begin());
+    std::copy(validIndices.begin(), validIndices.end(), aliasedIndices.begin());
+    if (HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size() - 1,
+            3, valid, 5, output.data(), output.size()) !=
+            HdSilkPtexMappingStatus::TriangleMismatch ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, valid, 5, output.data(), output.size() - 1) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, valid, 5, mappings.data(), mappings.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            aliasedMappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, valid, 5, aliasedMappings.data() + 1, mappings.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, valid, 5, nullptr, output.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            nullptr, mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, valid, 5, output.data(), output.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), nullptr, sourceFaces.size(),
+            3, valid, 5, output.data(), output.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, {HdSilkPtexOffsetInterpolation::Uniform, nullptr, 3, nullptr, 0},
+            5, output.data(), output.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, {HdSilkPtexOffsetInterpolation::Uniform, validValues.data(),
+                validValues.size(), nullptr, 3},
+            5, output.data(), output.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, valid, 5, output.data(), std::numeric_limits<size_t>::max()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), aliasedSourceFaces.data(), sourceFaces.size(),
+            3, valid, 5, reinterpret_cast<HdSilkPtexTriangle*>(aliasedSourceFaces.data()),
+            output.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, {HdSilkPtexOffsetInterpolation::Uniform, aliasedValues.data(),
+                validValues.size(), validIndices.data(), validIndices.size()},
+            5, reinterpret_cast<HdSilkPtexTriangle*>(aliasedValues.data()),
+            output.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, {HdSilkPtexOffsetInterpolation::Uniform, validValues.data(),
+                validValues.size(), aliasedIndices.data(), validIndices.size()},
+            5, reinterpret_cast<HdSilkPtexTriangle*>(aliasedIndices.data()),
+            output.size()) != HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            static_cast<size_t>(std::numeric_limits<int>::max()) + 1,
+            valid, 5, output.data(), output.size()) !=
+            HdSilkPtexMappingStatus::ExceedsBounds ||
+        HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, valid, static_cast<size_t>(std::numeric_limits<int>::max()) + 1,
+            output.data(), output.size()) != HdSilkPtexMappingStatus::ExceedsBounds ||
+        !SameMappings(mappings.data(), original.data(), mappings.size()) ||
+        !std::all_of(output.begin(), output.end(),
+            [&](const HdSilkPtexTriangle& value)
+            {
+                return value.faceIndex == sentinel.faceIndex &&
+                    value.cornerCoordinates == sentinel.cornerCoordinates;
+            }))
+    {
+        return Fail("Ptex face offsets", "invalid buffer or count was accepted");
+    }
+    if (HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            3, valid, 5, output.data(), output.size()) !=
+            HdSilkPtexMappingStatus::Mapped ||
+        output[0].faceIndex != 1 || output[1].faceIndex != 1 || output[2].faceIndex != 3)
+    {
+        return Fail("Ptex face offsets", "valid retry did not recover");
+    }
+    return true;
+}
+
+bool TestPtexFaceOffsetIntegerBoundaries()
+{
+    HdSilkPtexTriangle mapping;
+    mapping.faceIndex = static_cast<uint32_t>(std::numeric_limits<int>::max()) - 1;
+    mapping.cornerCoordinates.fill(0.5F);
+    const uint32_t sourceFace = 0;
+    int32_t offset = 2;
+    const HdSilkPtexFaceOffsets constant{
+        HdSilkPtexOffsetInterpolation::Constant, &offset, 1, nullptr, 0};
+    HdSilkPtexTriangle output;
+    output.faceIndex = 99;
+    output.cornerCoordinates.fill(-1.0F);
+    const HdSilkPtexTriangle sentinel = output;
+    const size_t maxTextureFaces = static_cast<size_t>(std::numeric_limits<int>::max());
+    if (HdSilkWritePtexFaceOffsets(
+            &mapping, 1, &sourceFace, 1, 1, constant, maxTextureFaces, &output, 1) !=
+            HdSilkPtexMappingStatus::TextureFaceOutOfRange ||
+        !SameMappings(&output, &sentinel, 1))
+    {
+        return Fail("Ptex face offsets", "large signed addition was not refused atomically");
+    }
+    offset = 0;
+    if (HdSilkWritePtexFaceOffsets(
+            &mapping, 1, &sourceFace, 1, 1, constant, maxTextureFaces, &output, 1) !=
+            HdSilkPtexMappingStatus::Mapped ||
+        !SameMappings(&output, &mapping, 1))
+    {
+        return Fail("Ptex face offsets", "last valid texture face was refused");
+    }
+    mapping.faceIndex = std::numeric_limits<uint32_t>::max();
+    offset = std::numeric_limits<int32_t>::min();
+    output = sentinel;
+    if (HdSilkWritePtexFaceOffsets(
+            &mapping, 1, &sourceFace, 1, 1, constant, maxTextureFaces, &output, 1) !=
+            HdSilkPtexMappingStatus::TextureFaceOutOfRange ||
+        !SameMappings(&output, &sentinel, 1))
+    {
+        return Fail("Ptex face offsets", "unsigned face boundary was not refused atomically");
+    }
+    return true;
+}
+
+bool TestPtexOffsetsFollowSourceFaces(
+    const std::string& context,
+    const std::vector<HdSilkPtexTriangle>& mappings,
+    const uint32_t* sourceFaces,
+    size_t sourceFaceCount,
+    size_t authoredFaceCount)
+{
+    std::vector<int32_t> offsets(authoredFaceCount);
+    for (size_t face = 0; face < authoredFaceCount; ++face)
+    {
+        offsets[face] = static_cast<int32_t>(face + 1);
+    }
+    std::vector<HdSilkPtexTriangle> result(mappings.size());
+    const HdSilkPtexFaceOffsets uniform{
+        HdSilkPtexOffsetInterpolation::Uniform, offsets.data(), offsets.size(), nullptr, 0};
+    if (HdSilkWritePtexFaceOffsets(
+            mappings.data(), mappings.size(), sourceFaces, sourceFaceCount,
+            authoredFaceCount, uniform, static_cast<size_t>(std::numeric_limits<int>::max()),
+            result.data(), result.size()) != HdSilkPtexMappingStatus::Mapped)
+    {
+        return Fail(context, "uniform Ptex offsets were refused");
+    }
+    for (size_t triangle = 0; triangle < mappings.size(); ++triangle)
+    {
+        const uint32_t expected =
+            mappings[triangle].faceIndex + static_cast<uint32_t>(offsets[sourceFaces[triangle]]);
+        if (result[triangle].faceIndex != expected ||
+            result[triangle].cornerCoordinates != mappings[triangle].cornerCoordinates)
+        {
+            return Fail(context, "Ptex offset did not follow the authored source face");
+        }
+    }
+    return true;
+}
+
 bool SameVertices(Far::ConstIndexArray first, Far::ConstIndexArray second)
 {
     if (first.size() != second.size())
@@ -457,7 +799,8 @@ bool TestCoarseTriQuadsMatchHydraAndOpenSubdiv(const TestTopology& topology)
             }
         }
     }
-    return true;
+    return TestPtexOffsetsFollowSourceFaces(
+        topology.name, mappings, subprims.data(), subprims.size(), topology.counts.size());
 }
 
 bool TestCoarseTriQuadRefusalsAndRetry()
@@ -1083,7 +1426,9 @@ bool TestPtexCoordinatesMatchOpenSubdiv(
     {
         return Fail(context, "triangle or patch counts do not reconcile");
     }
-    return true;
+    const VtArray<uint32_t>& sourceFaces = subdivision.GetTriangleSubprims();
+    return TestPtexOffsetsFollowSourceFaces(
+        context, triangles, sourceFaces.cdata(), sourceFaces.size(), topology.counts.size());
 }
 
 bool TestAnalyticQuadAndRotatedLoop()
@@ -1373,7 +1718,10 @@ int main()
             {0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4,
                 1, 2, 6, 5, 2, 3, 7, 6, 3, 0, 4, 7, 8, 9, 10, 11},
             {}, false, true}};
-    if (!TestCoarseTriQuadRefusalsAndRetry() ||
+    if (!TestPtexFaceOffsets() ||
+        !TestPtexFaceOffsetRefusalsAndRetry() ||
+        !TestPtexFaceOffsetIntegerBoundaries() ||
+        !TestCoarseTriQuadRefusalsAndRetry() ||
         !TestCoarseTriQuadPlanningRefusals() ||
         !TestCoarseTriQuadEmptyHolesAndExtremePoints() ||
         !TestLargeCoarseTriQuads() ||

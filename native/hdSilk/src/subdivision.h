@@ -118,7 +118,44 @@ enum class HdSilkPtexMappingStatus : uint32_t
     TriangleMismatch = 5,
     ExceedsBounds = 6,
     InvalidPoints = 7,
+    InvalidFaceOffsets = 8,
+    TextureFaceOutOfRange = 9,
 };
+
+enum class HdSilkPtexOffsetInterpolation : uint32_t
+{
+    None = 0,
+    Constant = 1,
+    Uniform = 2,
+};
+
+struct HdSilkPtexFaceOffsets
+{
+    HdSilkPtexOffsetInterpolation interpolation = HdSilkPtexOffsetInterpolation::None;
+    const int32_t* values = nullptr;
+    size_t valueCount = 0;
+    const int32_t* indices = nullptr;
+    size_t indexCount = 0;
+};
+
+/// Applies integer ptexFaceOffset values to default mappings. Constant values
+/// apply to every triangle; uniform values select the authored source face.
+/// Indexed values use one index per constant or authored face respectively.
+///
+/// The caller owns a separate output buffer with room for mappingCount entries.
+/// It must not overlap any input. The output is unchanged on failure, and every
+/// resulting face ID must be below textureFaceCount. Instance interpolation,
+/// other numeric types and arbitrary face-index remapping are not handled.
+HdSilkPtexMappingStatus HdSilkWritePtexFaceOffsets(
+    const HdSilkPtexTriangle* mappings,
+    size_t mappingCount,
+    const uint32_t* sourceFaces,
+    size_t sourceFaceCount,
+    size_t authoredFaceCount,
+    HdSilkPtexFaceOffsets offsets,
+    size_t textureFaceCount,
+    HdSilkPtexTriangle* output,
+    size_t outputCapacity);
 
 struct HdSilkPtexCoarseTriQuadPlan
 {

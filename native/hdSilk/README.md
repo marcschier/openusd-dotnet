@@ -199,7 +199,15 @@ The writer refuses overlapping or undersized buffers, repeated face vertices
 and non-finite copied points; its per-face validation does not establish full
 mesh connectivity. Callers must discard all output and scratch contents after
 a failure. Face-varying primvars, authored Ptex face remapping and polygonal
-`none` meshes are not handled. Neither helper has a renderer caller; Ptex
+`none` meshes are not handled.
+
+A separate helper applies constant or uniform signed-integer `ptexFaceOffset`
+values, including indexed values, to default face IDs using each triangle's
+authored source face. It checks every value index and verifies each final ID
+against the provided texture face count before writing a separate caller-owned
+buffer. Failed calls leave that output and the original mappings unchanged for
+retry. Instance interpolation, other numeric types and arbitrary face-index
+remapping remain unsupported. None of these helpers has a renderer caller; Ptex
 coordinates are not published and Ptex textures are not sampled.
 
 ## Wire format
