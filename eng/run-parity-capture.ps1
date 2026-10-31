@@ -610,6 +610,7 @@ try
     $windowsWglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'PtexReferenceRespondsToAuthoredFaceOffsets',
         'CuratedSceneParityClaimsAreStructured',
         'DisplayColorReachesPixelsForImplicitSurfacesAndMeshes',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',

@@ -212,6 +212,7 @@ def Xform "World"
             "eng/run-parity-capture.ps1",
             "src/OpenUsd.Rendering/ParityImageComparison.cs",
             "tests/OpenUsd.Rendering.ConformanceTests/ParityEvidenceInputs.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/StormSilkParityCaptureDriverTests.PtexReference.cs",
         })
         {
             await Assert.That(source.Files.Any(file => file.Path == requiredPath))
@@ -7455,6 +7456,7 @@ def Xform "World"
             "tests\\OpenUsd.Rendering.ConformanceTests\\ParityExecutionIdentity.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\ParityExecutionIdentityTests.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\StormSilkParityCaptureDriverTests.cs",
+            "tests\\OpenUsd.Rendering.ConformanceTests\\StormSilkParityCaptureDriverTests.PtexReference.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\StormSilkParityCaptureDriverTests.Scale.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\WindowsMesaWglRuntimeLoader.cs",
             "tests\\OpenUsd.Rendering.ConformanceTests\\WindowsWglStormContext.cs",

@@ -3,6 +3,7 @@
 #include "subdivision.h"
 
 #include "pxr/base/tf/diagnostic.h"
+#include "pxr/imaging/hd/primvarSchema.h"
 #include "pxr/imaging/pxOsd/meshTopologyValidation.h"
 #include "pxr/imaging/pxOsd/subdivTags.h"
 #include "pxr/imaging/pxOsd/tokens.h"
@@ -824,6 +825,120 @@ HdSilkWritePtexFaceOffsetPrimvar(
     return HdSilkWritePtexFaceOffsets(
         mappings, mappingCount, sourceFaces, sourceFaceCount, authoredFaceCount,
         offsets, textureFaceCount, output, outputCapacity);
+}
+
+HdSilkPtexMappingStatus
+HdSilkWritePtexFaceOffsetDataSource(
+    const HdSilkPtexTriangle* mappings,
+    size_t mappingCount,
+    const uint32_t* sourceFaces,
+    size_t sourceFaceCount,
+    size_t authoredFaceCount,
+    const HdPrimvarSchema& primvar,
+    HdSilkPtexMissingElementSize missingElementSize,
+    float shutterOffset,
+    size_t textureFaceCount,
+    HdSilkPtexTriangle* output,
+    size_t outputCapacity)
+{
+    const size_t maxCount = static_cast<size_t>(std::numeric_limits<int>::max());
+    if (mappingCount > maxCount || authoredFaceCount > maxCount ||
+        textureFaceCount > maxCount)
+    {
+        return HdSilkPtexMappingStatus::ExceedsBounds;
+    }
+    if (mappingCount != sourceFaceCount)
+    {
+        return HdSilkPtexMappingStatus::TriangleMismatch;
+    }
+    PtexMemoryRange outputRange;
+    PtexMemoryRange schemaRange;
+    if (outputCapacity < mappingCount ||
+        !MakePtexMemoryRange(output, outputCapacity, sizeof(*output), &outputRange) ||
+        !MakePtexMemoryRange(&primvar, 1, sizeof(primvar), &schemaRange) ||
+        PtexRangesOverlap(outputRange, schemaRange))
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+    if (!std::isfinite(shutterOffset) ||
+        (missingElementSize != HdSilkPtexMissingElementSize::Reject &&
+         missingElementSize != HdSilkPtexMissingElementSize::KnownDefaultOne))
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+
+    const HdContainerDataSourceHandle container = primvar.GetContainer();
+    if (!container)
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+    const HdTokenDataSourceHandle interpolationSource = primvar.GetInterpolation();
+    if (!interpolationSource)
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+    const TfToken interpolationToken = interpolationSource->GetTypedValue(shutterOffset);
+    HdInterpolation interpolation;
+    if (interpolationToken == HdPrimvarSchemaTokens->constant)
+    {
+        interpolation = HdInterpolationConstant;
+    }
+    else if (interpolationToken == HdPrimvarSchemaTokens->uniform)
+    {
+        interpolation = HdInterpolationUniform;
+    }
+    else
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+
+    const HdDataSourceBaseHandle elementSizeSource =
+        container->Get(HdPrimvarSchemaTokens->elementSize);
+    if (elementSizeSource)
+    {
+        const HdIntDataSourceHandle elementSize = HdIntDataSource::Cast(elementSizeSource);
+        if (!elementSize || elementSize->GetTypedValue(shutterOffset) != 1)
+        {
+            return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+        }
+    }
+    else if (missingElementSize != HdSilkPtexMissingElementSize::KnownDefaultOne)
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+
+    const HdDataSourceBaseHandle indexedValueSource =
+        container->Get(HdPrimvarSchemaTokens->indexedPrimvarValue);
+    const HdDataSourceBaseHandle indicesSource =
+        container->Get(HdPrimvarSchemaTokens->indices);
+    if (static_cast<bool>(indexedValueSource) != static_cast<bool>(indicesSource))
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+    const HdDataSourceBaseHandle rawValueSource = indexedValueSource
+        ? indexedValueSource
+        : container->Get(HdPrimvarSchemaTokens->primvarValue);
+    const HdSampledDataSourceHandle valueSource = HdSampledDataSource::Cast(rawValueSource);
+    if (!valueSource)
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+    const VtValue value = valueSource->GetValue(shutterOffset);
+    if (!indicesSource)
+    {
+        return HdSilkWritePtexFaceOffsetPrimvar(
+            mappings, mappingCount, sourceFaces, sourceFaceCount, authoredFaceCount,
+            interpolation, 1, value, nullptr, textureFaceCount, output, outputCapacity);
+    }
+    const HdIntArrayDataSourceHandle indexArray = HdIntArrayDataSource::Cast(indicesSource);
+    if (!indexArray)
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
+    const VtIntArray indices = indexArray->GetTypedValue(shutterOffset);
+    return HdSilkWritePtexFaceOffsetPrimvar(
+        mappings, mappingCount, sourceFaces, sourceFaceCount, authoredFaceCount,
+        interpolation, 1, value, &indices, textureFaceCount, output, outputCapacity);
 }
 
 HdSilkPtexMappingStatus

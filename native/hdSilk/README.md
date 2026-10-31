@@ -212,8 +212,24 @@ exactly one authored face. The helper checks every value index and verifies
 each final ID against the provided texture face count before writing a separate
 caller-owned buffer. Failed calls leave that output and the original mappings
 unchanged for retry. Instance interpolation, other numeric types and arbitrary
-face-index remapping remain unsupported. None of these helpers has a renderer
-caller; Ptex coordinates are not published and Ptex textures are not sampled.
+face-index remapping remain unsupported.
+
+A scene-index adapter reads the interpolation, raw indexed value, indices and
+element size from `HdPrimvarSchema` at the requested shutter offset. It accepts
+missing element-size metadata only when the caller identifies a producer that
+guarantees the default of one. The tested `UsdImagingStageSceneIndex` omits
+this metadata for its default; arbitrary scene-index producers cannot be assumed
+to do the same. Invalid metadata or incomplete indexed inputs are refused before
+the output is changed. The native probe covers time samples, scene edits and
+retry as well as malformed retained data sources.
+
+A separate Storm-only reference renders four Ptex faces with authored offsets
+and compares them with reordered topology and indexed offsets. Individual-face
+and missing-texture controls demonstrate that the reference responds to those
+inputs. None of the helpers has a renderer caller; hdSilk does not publish Ptex
+coordinates or sample Ptex textures. The correspondence between an Rprim and
+an authoritative scene-index prim remains to be established for instances and
+other producer paths.
 
 ## Wire format
 

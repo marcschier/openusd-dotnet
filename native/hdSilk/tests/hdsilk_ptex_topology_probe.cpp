@@ -3,12 +3,16 @@
 #include "subdivision.h"
 
 #include "pxr/imaging/hd/meshUtil.h"
+#include "pxr/imaging/hd/primvarSchema.h"
+#include "pxr/imaging/hd/primvarsSchema.h"
+#include "pxr/imaging/hd/retainedDataSource.h"
 #include "pxr/imaging/pxOsd/subdivTags.h"
 #include "pxr/imaging/pxOsd/tokens.h"
 #include "pxr/usd/sdf/types.h"
 #include "pxr/usd/usd/stage.h"
 #include "pxr/usd/usdGeom/primvarsAPI.h"
 #include "pxr/usd/usdGeom/tokens.h"
+#include "pxr/usdImaging/usdImaging/stageSceneIndex.h"
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)
@@ -457,6 +461,267 @@ bool TestPtexFaceOffsetPrimvars()
         output[0].cornerCoordinates != mappings[0].cornerCoordinates)
     {
         return Fail("Ptex primvars", "single-face uniform scalar was refused");
+    }
+    return true;
+}
+
+bool TestPtexFaceOffsetSceneIndex()
+{
+    const UsdStageRefPtr stage = UsdStage::CreateInMemory();
+    if (!stage)
+    {
+        return Fail("Ptex scene index", "could not create the stage");
+    }
+    const SdfPath path("/Mesh");
+    const UsdPrim mesh = stage->DefinePrim(path, TfToken("Mesh"));
+    const UsdGeomPrimvarsAPI primvars(mesh);
+    const UsdGeomPrimvar uniform = primvars.CreatePrimvar(
+        TfToken("uniformOffset"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform);
+    const UsdGeomPrimvar indexed = primvars.CreatePrimvar(
+        TfToken("indexedOffset"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform);
+    UsdGeomPrimvar grouped = primvars.CreatePrimvar(
+        TfToken("groupedOffset"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform, 2);
+    const UsdTimeCode first(1.0);
+    const UsdTimeCode second(2.0);
+    if (!mesh || !uniform || !indexed || !grouped ||
+        !uniform.Set(VtIntArray{1, 1, 1, -3}, first) ||
+        !uniform.Set(VtIntArray{0, 0, 0, 0}, second) ||
+        !indexed.Set(VtIntArray{-3, 1}, first) ||
+        !indexed.SetIndices(VtIntArray{1, 1, 1, 0}, first) ||
+        !indexed.Set(VtIntArray{0}, second) ||
+        !indexed.SetIndices(VtIntArray{0, 0, 0, 0}, second) ||
+        !grouped.Set(VtIntArray{1, 99, -3, 99}) ||
+        !grouped.SetIndices(VtIntArray{0, 0, 0, 1}))
+    {
+        return Fail("Ptex scene index", "could not author test primvars");
+    }
+
+    UsdImagingStageSceneIndexRefPtr scene = UsdImagingStageSceneIndex::New();
+    scene->SetStage(stage);
+    scene->SetTime(first);
+    const auto getPrimvar = [&](const TfToken& name)
+    {
+        return HdPrimvarsSchema::GetFromParent(scene->GetPrim(path).dataSource)
+            .GetPrimvar(name);
+    };
+    const HdPrimvarSchema uniformSchema = getPrimvar(TfToken("uniformOffset"));
+    const HdPrimvarSchema indexedSchema = getPrimvar(TfToken("indexedOffset"));
+    const HdPrimvarSchema groupedSchema = getPrimvar(TfToken("groupedOffset"));
+    if (!uniformSchema || !indexedSchema || !groupedSchema ||
+        uniformSchema.GetElementSize() || indexedSchema.GetElementSize() ||
+        !groupedSchema.GetElementSize() ||
+        groupedSchema.GetElementSize()->GetTypedValue(0.0F) != 2)
+    {
+        return Fail("Ptex scene index", "UsdImaging element-size metadata differs");
+    }
+
+    std::array<HdSilkPtexTriangle, 4> mappings{};
+    const std::array<uint32_t, 4> sourceFaces{{0, 1, 2, 3}};
+    for (size_t i = 0; i < mappings.size(); ++i)
+    {
+        mappings[i].faceIndex = static_cast<uint32_t>(i);
+        mappings[i].cornerCoordinates.fill(static_cast<float>(i));
+    }
+    const auto original = mappings;
+    HdSilkPtexTriangle sentinel;
+    sentinel.faceIndex = 99;
+    sentinel.cornerCoordinates.fill(-1.0F);
+    std::array<HdSilkPtexTriangle, 5> output;
+    const auto expectMapped = [&](const HdPrimvarSchema& schema, float offset,
+                                  const std::array<uint32_t, 4>& expected,
+                                  HdSilkPtexMissingElementSize missingElementSize =
+                                      HdSilkPtexMissingElementSize::KnownDefaultOne)
+    {
+        output.fill(sentinel);
+        if (HdSilkWritePtexFaceOffsetDataSource(
+                mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+                sourceFaces.size(), schema, missingElementSize, offset, 4,
+                output.data(), output.size()) !=
+            HdSilkPtexMappingStatus::Mapped)
+        {
+            return false;
+        }
+        for (size_t i = 0; i < mappings.size(); ++i)
+        {
+            if (output[i].faceIndex != expected[i] ||
+                output[i].cornerCoordinates != mappings[i].cornerCoordinates)
+            {
+                return false;
+            }
+        }
+        return output.back().faceIndex == sentinel.faceIndex &&
+            output.back().cornerCoordinates == sentinel.cornerCoordinates &&
+            SameMappings(mappings.data(), original.data(), mappings.size());
+    };
+    const auto expectRefused = [&](const HdPrimvarSchema& schema, float offset,
+                                   HdSilkPtexMissingElementSize missingElementSize =
+                                       HdSilkPtexMissingElementSize::KnownDefaultOne)
+    {
+        output.fill(sentinel);
+        return HdSilkWritePtexFaceOffsetDataSource(
+                mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+                sourceFaces.size(), schema, missingElementSize, offset, 4,
+                output.data(), output.size()) ==
+                HdSilkPtexMappingStatus::InvalidFaceOffsets &&
+            std::all_of(output.begin(), output.end(), [&](const HdSilkPtexTriangle& entry)
+            {
+                return entry.faceIndex == sentinel.faceIndex &&
+                    entry.cornerCoordinates == sentinel.cornerCoordinates;
+            }) &&
+            SameMappings(mappings.data(), original.data(), mappings.size());
+    };
+
+    const std::array<uint32_t, 4> rotated{{1, 2, 3, 0}};
+    const std::array<uint32_t, 4> identity{{0, 1, 2, 3}};
+    if (!expectMapped(uniformSchema, 0.0F, rotated) ||
+        !expectMapped(indexedSchema, 0.0F, rotated) ||
+        !expectMapped(uniformSchema, 1.0F, identity) ||
+        !expectMapped(indexedSchema, 1.0F, identity) ||
+        !expectRefused(groupedSchema, 0.0F) ||
+        !expectRefused(HdPrimvarSchema(nullptr), 0.0F) ||
+        !expectRefused(uniformSchema, std::numeric_limits<float>::quiet_NaN()) ||
+        !expectMapped(indexedSchema, 0.0F, rotated))
+    {
+        return Fail("Ptex scene index", "mapping, metadata refusal or retry differs");
+    }
+    scene->SetTime(second);
+    if (!expectMapped(getPrimvar(TfToken("uniformOffset")), 0.0F, identity) ||
+        !expectMapped(getPrimvar(TfToken("indexedOffset")), 0.0F, identity))
+    {
+        return Fail("Ptex scene index", "scene-time update was not sampled");
+    }
+    if (!grouped.SetElementSize(1) ||
+        !grouped.Set(VtIntArray{1, -3}) ||
+        !grouped.SetIndices(VtIntArray{0, 0, 0, 1}))
+    {
+        return Fail("Ptex scene index", "could not repair grouped primvar");
+    }
+    scene->ApplyPendingUpdates();
+    if (!expectMapped(getPrimvar(TfToken("groupedOffset")), 0.0F, rotated))
+    {
+        return Fail("Ptex scene index", "metadata edit did not recover mapping");
+    }
+
+    using IntArraySource = HdRetainedTypedSampledDataSource<VtIntArray>;
+    using TokenSource = HdRetainedTypedSampledDataSource<TfToken>;
+    using IntSource = HdRetainedTypedSampledDataSource<int>;
+    using FloatArraySource = HdRetainedTypedSampledDataSource<VtFloatArray>;
+    const HdDataSourceBaseHandle uniformValues =
+        IntArraySource::New(VtIntArray{1, 1, 1, -3});
+    const HdDataSourceBaseHandle uniformInterpolation =
+        TokenSource::New(HdPrimvarSchemaTokens->uniform);
+    const HdDataSourceBaseHandle one = IntSource::New(1);
+    const HdDataSourceBaseHandle two = IntSource::New(2);
+    const HdDataSourceBaseHandle zero = IntSource::New(0);
+    const HdDataSourceBaseHandle wrongType = TokenSource::New(TfToken("wrong"));
+    const HdDataSourceBaseHandle indexedValues = IntArraySource::New(VtIntArray{1, -3});
+    const HdDataSourceBaseHandle validIndices =
+        IntArraySource::New(VtIntArray{0, 0, 0, 1});
+    const auto makeSchema = [](
+        const HdDataSourceBaseHandle& value,
+        const HdDataSourceBaseHandle& indexedValue,
+        const HdDataSourceBaseHandle& indices,
+        const HdDataSourceBaseHandle& interpolation,
+        const HdDataSourceBaseHandle& elementSize)
+    {
+        const std::array<TfToken, 5> names{{
+            HdPrimvarSchemaTokens->primvarValue,
+            HdPrimvarSchemaTokens->indexedPrimvarValue,
+            HdPrimvarSchemaTokens->indices,
+            HdPrimvarSchemaTokens->interpolation,
+            HdPrimvarSchemaTokens->elementSize}};
+        const std::array<HdDataSourceBaseHandle, 5> sources{{
+            value, indexedValue, indices, interpolation, elementSize}};
+        return HdPrimvarSchema(
+            HdRetainedContainerDataSource::New(names.size(), names.data(), sources.data()));
+    };
+    const HdPrimvarSchema explicitOne = makeSchema(
+        uniformValues, nullptr, nullptr, uniformInterpolation, one);
+    const HdPrimvarSchema absentSize = makeSchema(
+        uniformValues, nullptr, nullptr, uniformInterpolation, nullptr);
+    const HdPrimvarSchema bothValues = makeSchema(
+        IntArraySource::New(VtIntArray{0, 0, 0, 0}), indexedValues, validIndices,
+        uniformInterpolation, one);
+    if (!expectMapped(explicitOne, 0.0F, rotated, HdSilkPtexMissingElementSize::Reject) ||
+        !expectMapped(bothValues, 0.0F, rotated, HdSilkPtexMissingElementSize::Reject) ||
+        !expectRefused(absentSize, 0.0F, HdSilkPtexMissingElementSize::Reject))
+    {
+        return Fail("Ptex scene index", "element-size provenance or raw indexed values differ");
+    }
+    const std::array<HdPrimvarSchema, 12> malformed{{
+        makeSchema(uniformValues, nullptr, nullptr, uniformInterpolation, wrongType),
+        makeSchema(uniformValues, nullptr, nullptr, uniformInterpolation, two),
+        makeSchema(uniformValues, nullptr, nullptr, uniformInterpolation, zero),
+        makeSchema(uniformValues, nullptr, nullptr, wrongType, one),
+        makeSchema(uniformValues, nullptr, nullptr, one, one),
+        makeSchema(uniformValues, nullptr, nullptr, nullptr, one),
+        makeSchema(FloatArraySource::New(VtFloatArray{1, 1, 1, -3}), nullptr, nullptr,
+            uniformInterpolation, one),
+        makeSchema(HdRetainedContainerDataSource::New(), nullptr, nullptr,
+            uniformInterpolation, one),
+        makeSchema(nullptr, indexedValues, nullptr, uniformInterpolation, one),
+        makeSchema(uniformValues, nullptr, validIndices, uniformInterpolation, one),
+        makeSchema(nullptr, indexedValues, wrongType, uniformInterpolation, one),
+        makeSchema(nullptr, indexedValues, IntArraySource::New(VtIntArray{}),
+            uniformInterpolation, one)}};
+    for (const HdPrimvarSchema& schema : malformed)
+    {
+        if (!expectRefused(schema, 0.0F))
+        {
+            return Fail("Ptex scene index", "malformed schema changed output or was accepted");
+        }
+    }
+    if (!expectRefused(makeSchema(nullptr, indexedValues,
+            IntArraySource::New(VtIntArray{0, 0, 0, -1}), uniformInterpolation, one), 0.0F) ||
+        !expectRefused(makeSchema(nullptr, indexedValues,
+            IntArraySource::New(VtIntArray{0, 0, 0, 2}), uniformInterpolation, one), 0.0F) ||
+        !expectRefused(explicitOne, std::numeric_limits<float>::infinity()) ||
+        !expectRefused(explicitOne, 0.0F,
+            static_cast<HdSilkPtexMissingElementSize>(2)) ||
+        !expectMapped(explicitOne, 0.0F, rotated))
+    {
+        return Fail("Ptex scene index", "invalid indices, time or retry differs");
+    }
+
+    HdPrimvarSchema schemaOwner = explicitOne;
+    const HdContainerDataSourceHandle originalOwner = schemaOwner.GetContainer();
+    if (HdSilkWritePtexFaceOffsetDataSource(
+            mappings.data(), 1, sourceFaces.data(), 1, 1, schemaOwner,
+            HdSilkPtexMissingElementSize::Reject, 0.0F, 4,
+            reinterpret_cast<HdSilkPtexTriangle*>(&schemaOwner), 1) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        schemaOwner.GetContainer() != originalOwner ||
+        HdSilkWritePtexFaceOffsetDataSource(
+            mappings.data(), mappings.size(), sourceFaces.data(), sourceFaces.size(),
+            sourceFaces.size(), explicitOne, HdSilkPtexMissingElementSize::Reject,
+            0.0F, 4, mappings.data(), mappings.size()) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        !SameMappings(mappings.data(), original.data(), mappings.size()))
+    {
+        return Fail("Ptex scene index", "aliased schema or mappings changed");
+    }
+
+    VtIntArray aliasedValues{0, 0, 0, 0, 0, 0, 0};
+    VtIntArray aliasedIndices{0, 0, 0, 0, 0, 0, 0};
+    const HdPrimvarSchema valueAlias = makeSchema(
+        IntArraySource::New(aliasedValues), nullptr, nullptr, uniformInterpolation, one);
+    const HdPrimvarSchema indexAlias = makeSchema(
+        nullptr, IntArraySource::New(VtIntArray{0}), IntArraySource::New(aliasedIndices),
+        uniformInterpolation, one);
+    if (HdSilkWritePtexFaceOffsetDataSource(
+            mappings.data(), 1, sourceFaces.data(), 1, 1, valueAlias,
+            HdSilkPtexMissingElementSize::Reject, 0.0F, 4,
+            reinterpret_cast<HdSilkPtexTriangle*>(const_cast<int*>(aliasedValues.cdata())), 1) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        HdSilkWritePtexFaceOffsetDataSource(
+            mappings.data(), 1, sourceFaces.data(), 1, 1, indexAlias,
+            HdSilkPtexMissingElementSize::Reject, 0.0F, 4,
+            reinterpret_cast<HdSilkPtexTriangle*>(const_cast<int*>(aliasedIndices.cdata())), 1) !=
+            HdSilkPtexMappingStatus::InvalidBuffers ||
+        aliasedValues != VtIntArray{0, 0, 0, 0, 0, 0, 0} ||
+        aliasedIndices != VtIntArray{0, 0, 0, 0, 0, 0, 0})
+    {
+        return Fail("Ptex scene index", "aliased data-source values or indices changed");
     }
     return true;
 }
@@ -1941,6 +2206,7 @@ int main()
             {}, false, true}};
     if (!TestPtexFaceOffsets() ||
         !TestPtexFaceOffsetPrimvars() ||
+        !TestPtexFaceOffsetSceneIndex() ||
         !TestPtexFaceOffsetRefusalsAndRetry() ||
         !TestPtexFaceOffsetIntegerBoundaries() ||
         !TestCoarseTriQuadRefusalsAndRetry() ||

@@ -32,6 +32,8 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+class HdPrimvarSchema;
+
 /// The highest uniform refinement level hdSilk will evaluate. Uniform
 /// Catmull-Clark quadruples the face count per level, so a bound is what keeps
 /// a session-level complexity switch from turning a mid-sized asset into an
@@ -131,6 +133,12 @@ enum class HdSilkPtexOffsetInterpolation : uint32_t
     Uniform = 2,
 };
 
+enum class HdSilkPtexMissingElementSize : uint32_t
+{
+    Reject = 0,
+    KnownDefaultOne = 1,
+};
+
 struct HdSilkPtexFaceOffsets
 {
     HdSilkPtexOffsetInterpolation interpolation = HdSilkPtexOffsetInterpolation::None;
@@ -175,6 +183,24 @@ HdSilkPtexMappingStatus HdSilkWritePtexFaceOffsetPrimvar(
     int elementSize,
     const VtValue& value,
     const VtIntArray* indices,
+    size_t textureFaceCount,
+    HdSilkPtexTriangle* output,
+    size_t outputCapacity);
+
+/// Resolves an offset primvar from a Hydra scene-index data source. The caller
+/// may use KnownDefaultOne only for a producer that guarantees the default.
+/// An explicit element size other than one is refused. Values and indices are
+/// sampled at the given shutter offset.
+/// The caller must not alias output with the schema's data-source objects.
+HdSilkPtexMappingStatus HdSilkWritePtexFaceOffsetDataSource(
+    const HdSilkPtexTriangle* mappings,
+    size_t mappingCount,
+    const uint32_t* sourceFaces,
+    size_t sourceFaceCount,
+    size_t authoredFaceCount,
+    const HdPrimvarSchema& primvar,
+    HdSilkPtexMissingElementSize missingElementSize,
+    float shutterOffset,
     size_t textureFaceCount,
     HdSilkPtexTriangle* output,
     size_t outputCapacity);
