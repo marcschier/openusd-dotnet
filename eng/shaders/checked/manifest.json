@@ -395,7 +395,7 @@
     },
     {
       "path": "native/hdSilk/CMakeLists.txt",
-      "sha256": "312f9a37afd221c6d644794d41118125708d01b75af9b04d9b09e11b814f4f57"
+      "sha256": "96d25f54ee17d3a8bcfad135175599266eeb6be63a5432cfbef037f4b46b9a82"
     },
     {
       "path": "native/hdSilk/src/materialXBridge.cpp",
