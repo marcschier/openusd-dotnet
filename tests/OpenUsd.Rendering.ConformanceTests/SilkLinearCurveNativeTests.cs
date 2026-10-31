@@ -40,7 +40,8 @@ public sealed class SilkLinearCurveNativeTests
             await Assert.That(actualMesh.Indices.Span.SequenceEqual(expectedMesh.Indices.Span)).IsTrue();
             await Assert.That(actualMesh.TriangleSubprims.Span.SequenceEqual(expectedMesh.TriangleSubprims.Span))
                 .IsTrue();
-            SilkVertexAttributeData actualWidths = actualMesh.Attributes.Single(attribute => attribute.Name == "widths");
+            SilkVertexAttributeData actualWidths =
+                actualMesh.Attributes.Single(attribute => attribute.Name == "widths");
             SilkVertexAttributeData expectedWidths =
                 expectedMesh.Attributes.Single(attribute => attribute.Name == "widths");
             await Assert.That(actualWidths.Interpolation).IsEqualTo(SilkAttributeInterpolation.Vertex);
