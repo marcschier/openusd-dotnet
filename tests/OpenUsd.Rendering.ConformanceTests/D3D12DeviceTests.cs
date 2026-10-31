@@ -1042,6 +1042,20 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
+    public async Task WarpDoesNotFoldDomeShadowLinkIntoReceiverLinking()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDomeLinkConformance.DomeShadowCollectionDoesNotChangeReceiverLinking(device);
+    }
+
+    [Test]
     public async Task WarpSplitsTheSpecularSkyByDomeLink()
     {
         if (!OperatingSystem.IsWindows())

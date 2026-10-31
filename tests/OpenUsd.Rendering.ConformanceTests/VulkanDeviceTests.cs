@@ -463,6 +463,19 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
+    public async Task SwiftShaderDoesNotFoldDomeShadowLinkIntoReceiverLinking()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        await SilkDomeLinkConformance.DomeShadowCollectionDoesNotChangeReceiverLinking(device);
+    }
+
+    [Test]
     public async Task SwiftShaderSplitsTheSpecularSkyByDomeLink()
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
