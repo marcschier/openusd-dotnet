@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.Metal;
@@ -32,6 +33,11 @@ public sealed class MetalArgumentBufferContractTests
 
     private static readonly Regex DirectSamplerPattern = new(
         @"\[\[sampler\((?<index>\d+)\)\]\]",
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(5));
+
+    private static readonly Regex ArgumentBufferMemberPattern = new(
+        @"\[\[\s*id\s*\(\s*\d+\s*\)\s*\]\]",
         RegexOptions.CultureInvariant,
         TimeSpan.FromSeconds(5));
 
@@ -155,19 +161,29 @@ public sealed class MetalArgumentBufferContractTests
             .GetFiles(checkedRoot, "*.metal")
             .Order(StringComparer.Ordinal)];
 
-        // Twenty-nine checked programs expand from the manifest, including the
-        // two display-transform programs, the subprim pick vertex stage, the two
-        // unbiased whole-resource stages, the occluded selection-mask
-        // fragment stage the one-pass x-ray composite reads its second
-        // silhouette channel from, and the two world-space normal capture
-        // stages. A glob that silently matched fewer files would make the loop
-        // below vacuous.
-        await Assert.That(sources.Length).IsEqualTo(29);
+        using JsonDocument manifest = JsonDocument.Parse(
+            await File.ReadAllTextAsync(Path.Combine(checkedRoot, "manifest.json")));
+        string[] expectedSources =
+        [
+            .. manifest.RootElement.GetProperty("programs").EnumerateArray()
+                .Where(program => program.GetProperty("artifacts").TryGetProperty("metal", out _))
+                .Select(program => Path.GetFileName(
+                    program.GetProperty("artifacts").GetProperty("metal").GetProperty("path").GetString()
+                    ?? throw new InvalidDataException("A Metal artifact path is missing.")))
+        ];
+        await Assert.That(expectedSources).IsNotEmpty();
+        await Assert.That(expectedSources.Distinct(StringComparer.Ordinal).Count())
+            .IsEqualTo(expectedSources.Length);
+        await Assert.That(sources.Select(source => Path.GetFileName(source)).ToArray())
+            .IsEquivalentTo(expectedSources);
 
         var directBindingPrograms = new List<string>();
         foreach (string source in sources)
         {
             string text = await File.ReadAllTextAsync(source);
+            await Assert.That(ArgumentBufferMemberPattern.IsMatch(text))
+                .IsFalse()
+                .Because($"{Path.GetFileName(source)} declares an argument-buffer member.");
             // Slang names an argument-buffer parameter with the same [[buffer(n)]]
             // attribute it uses for a plain constant buffer, so the attribute alone proves
             // nothing. What does prove it is the direct texture and sampler attributes:
@@ -186,8 +202,21 @@ public sealed class MetalArgumentBufferContractTests
         // path unusable for it.
         await Assert.That(directBindingPrograms).Contains("mesh.volume.fragment.metal");
         await Assert.That(directBindingPrograms).Contains("mesh.fragment.uv+material+normal.metal");
+        await Assert.That(directBindingPrograms).Contains("shadow.mask.fragment.metal");
         await Assert.That(MetalArgumentBufferCompatibility.CheckedProgramsUseDirectArguments)
             .IsTrue();
+    }
+
+    [Test]
+    [Arguments("texture2d<float> texture [[id(3)]];", true)]
+    [Arguments("sampler filter [[ id ( 12 ) ]];", true)]
+    [Arguments("texture2d<float> texture [[texture(3)]];", false)]
+    [Arguments("constant float& value [[buffer(3)]];", false)]
+    public async Task ArgumentBufferMemberAttributesAreDistinguishedFromDirectBindings(
+        string declaration,
+        bool expected)
+    {
+        await Assert.That(ArgumentBufferMemberPattern.IsMatch(declaration)).IsEqualTo(expected);
     }
 
     [Test]
