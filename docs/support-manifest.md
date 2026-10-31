@@ -668,7 +668,8 @@ material evaluated per pixel in the shader, and MaterialX image sampling read fr
 rather than the UsdUVTexture names. Explicitly not supported: generated OpenPBR shader code, transmission, subsurface,
 sheen/fuzz, thin film, anisotropy, coat tint/coat IOR/coat normal, MaterialX specular_color as a specular workflow,
 per-channel or connected colour-typed standard_surface opacity, connected (per-pixel) nodedef weights, more than two
-texture-coordinate sets or UV transforms per material, and composite operands with different streams or transforms
+texture-coordinate sets or UV transforms per material, composite operands with different streams or transforms, and
+surface textures with different missing-coordinate reader fallbacks
 
 ### `mdl-only-material-reporting`
 
@@ -1083,27 +1084,29 @@ usdlux-shadow-linking
 
 ### `usdlux-shadow-linking`
 
-Raster shadow maps for authored distant lights, and the caster restriction collection:shadowLink expresses. hdSilk
-derives one bounded light-space orthographic descriptor per shadow-enabled UsdLuxDistantLight from the world bounds of
-the published casters and carries it on the ABI v19 SHADOW command with its map index, square power-of-two resolution,
-depth bias, world-space normal bias and PCF radius; the table is compared and published whole, so an unchanged scene
-publishes no command and a consumer keeps every retained map. Managed Silk retains the table, allocates one bounded
-shadow atlas, renders supported casters from light space through a dedicated depth-only pipeline family that binds no
-colour attachment, and samples it with a nine-tap filter in every checked mesh fragment permutation.
-collection:shadowLink is resolved independently of collection:lightLink, as UsdLux defines them, so an unlit or
-off-screen blocker can still cast; a prim the shadow collection excludes is not drawn into that light's map, while
-receiving is not restricted by shadowLink. A UsdPreviewSurface caster with constant opacity and a positive
-opacityThreshold is omitted without an unsupported-caster diagnostic when its opacity is below the threshold, and casts
-a solid shadow at or above the threshold; omitted opacity defaults to one. Opacity textures, blended constant opacity
-without a positive threshold, and positive thresholds on other material kinds remain unsupported and are reported as
-OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED against the prim path. The depth-only program binds no material and cannot
-reproduce variable or blended coverage; unsupported casters remain lit and still receive shadows. A retained map is
-reused byte for byte until the descriptor table, caster geometry, material, caster restriction, or device generation
-changes, and is released when the table retires. Bounded at four maps of at most 2048 texels; a light type with no exact
-light-space projection, a scene with no caster extent, a table over the map budget, and a device that cannot record a
-depth-only pass are each reported as OPENUSD_SILK_SHADOW_UNSUPPORTED against the named light rather than rendered as an
-undiagnosed unshadowed image. Metal is source-complete and unclaimed: it reports no raster-shadow capability, so it
-allocates no map and diagnoses every shadow-enabled light
+Raster shadow maps cover authored UsdLuxDistantLights and zero-radius UsdLuxSphereLights whose ShapingAPI cone angle is
+greater than 0 and less than 90 degrees. The cone angle is the half-angle used by the shading cutoff; wider cones,
+unshaped point lights and finite-radius spheres need other projections or multiple maps. hdSilk derives one bounded
+orthographic descriptor for each supported distant light and one perspective descriptor for each supported sphere spot
+from the world bounds of the published casters. It carries the descriptors on the ABI v19 SHADOW command with map index,
+square power-of-two resolution, depth bias, world-space normal bias and PCF radius; the table is compared and published
+whole, so an unchanged scene publishes no command and a consumer keeps every retained map. Managed Silk retains the
+table, allocates one bounded shadow atlas, renders supported casters from light space through a dedicated depth-only
+pipeline family that binds no colour attachment, expands perspective frusta for prepared caster displacement, and
+samples the atlas with a nine-tap filter in every checked mesh fragment permutation. collection:shadowLink is resolved
+independently of collection:lightLink, as UsdLux defines them, so an unlit or off-screen blocker can still cast; a prim
+the shadow collection excludes is not drawn into that light's map, while receiving is not restricted by shadowLink. A
+UsdPreviewSurface caster with constant opacity and a positive opacityThreshold is omitted without an unsupported-caster
+diagnostic when its opacity is below the threshold, and casts a solid shadow at or above the threshold; omitted opacity
+defaults to one. Opacity textures, blended constant opacity without a positive threshold, and positive thresholds on
+other material kinds remain unsupported and are reported as OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED against the prim
+path. The depth-only program binds no material and cannot reproduce variable or blended coverage; unsupported casters
+remain lit and still receive shadows. A retained map is reused byte for byte until the descriptor table, caster
+geometry, material, caster restriction, or device generation changes, and is released when the table retires. A spot
+whose caster bounds cannot fit in a finite perspective frustum is rejected. The table is bounded at four maps of at most
+2048 texels; unsupported light shapes, scenes with no caster extent, map-budget overflow, and devices that cannot record
+a depth-only pass are reported as OPENUSD_SILK_SHADOW_UNSUPPORTED against the named light. Metal is source-complete and
+unclaimed: it reports no raster-shadow capability, so it allocates no map and diagnoses every shadow-enabled light
 
 ### `dome-light-linking`
 
@@ -1319,16 +1322,19 @@ cases also remain CPU fallbacks.
 Pixel-observable UsdPreviewSurface displacement resolved from the independent Hydra displacement terminal, not inferred
 from a surface input. A finite constant or a directly connected UsdUVTexture height field moves each emitted
 object-space point along its resolved object-space shading normal in the retained interleaved vertex buffer shared by
-colour, raster-shadow, pick, and selection passes. Texture displacement supports its own UV primvar and affine, bilinear
-base-level sampling, signed and over-unit float heights, observed source color-space and per-axis wrap metadata,
-transparent-black borders with scale and bias applied after filtering, and authored fallback when the image cannot be
-resolved. Subdivision determines displacement density; the exact order is subdivide, deform, then displace.
+colour, raster-shadow, pick, and selection passes. Texture displacement supports its own UV primvar and a folded affine,
+bilinear base-level sampling, signed and over-unit float heights, observed source color-space and per-axis wrap
+metadata, transparent-black borders with scale and bias applied after filtering, and authored fallback when the image
+cannot be resolved. Subdivision determines displacement density; the exact order is subdivide, deform, then displace.
 Material/UV/file/refusal identity, cache-before-work reuse, bounded image preflight and LRU retention, transactional
 failed-texture retry, per-instance diagnostics, and selection/shadow invalidation are gated. D3D12 WARP and Vulkan
 SwiftShader pixel tests cover constant and texture movement, shadows, unsupported flat fallback, cache reuse,
 deformed-rig CPU fallback ordering, and repaired height fields reaching selection and shadows
 
-**Limits:** The raster-shadow light frustum is still fitted to undisplaced native caster bounds and reports
+**Limits:** When surface textures exist, displacement uses their primary UV transform: its affine must match that
+transform and its missing-coordinate fallback must match any surface texture using the same primvar. A mismatch leaves
+displacement unpublished with a diagnostic. Without a surface texture, the displacement affine becomes primary. The
+raster-shadow light frustum is still fitted to undisplaced native caster bounds and reports
 OPENUSD_SILK_DISPLACEMENT_SHADOW_BOUNDS_UNVERIFIED. Displaced skinned rigs use authoritative CPU deformation rather than
 the ABI v20 GPU kernel. UDIM and two-image composite height fields, MaterialX displacement projection, adaptive or
 limit-surface tessellation, re-derived shading frames, and image metadata modes unavailable or unrepresentable through

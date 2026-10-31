@@ -1092,7 +1092,7 @@ public sealed partial class SilkMeshRenderer :
         }
         else
         {
-            _shadowMaps.Prepare(Scene, GpuResources);
+            _shadowMaps.Prepare(Scene, GpuResources, options.UseSceneMaterials);
         }
         // The prefiltered environment is resolved next and for the same reason:
         // the frame constants carry whether it is live and how many prefiltered
@@ -1283,7 +1283,7 @@ public sealed partial class SilkMeshRenderer :
                 0,
                 SilkBindingLayoutDescriptor.FrameParametersBinding,
                 frameBuffer);
-            BindSurfaceBufferIfChanged(commands, singleMesh, ref boundSurface);
+            BindSurfaceBufferIfChanged(commands, singleMesh, ref boundSurface, options.UseSceneMaterials);
             BindMaterialResources(commands, singleMesh, features);
             commands.DrawIndexed(singleMesh.IndexCount);
             drawCount++;
@@ -1351,7 +1351,7 @@ public sealed partial class SilkMeshRenderer :
                             0,
                             SilkBindingLayoutDescriptor.FrameParametersBinding,
                             frameBuffer);
-                        BindSurfaceBufferIfChanged(commands, mesh, ref boundSurface);
+                        BindSurfaceBufferIfChanged(commands, mesh, ref boundSurface, options.UseSceneMaterials);
                         BindMaterialResources(commands, mesh, key.Features);
                         commands.DrawIndexed(mesh.IndexCount);
                         drawCount++;
@@ -1391,7 +1391,7 @@ public sealed partial class SilkMeshRenderer :
                     0,
                     SilkBindingLayoutDescriptor.FrameParametersBinding,
                     frameBuffer);
-                BindSurfaceBufferIfChanged(commands, first, ref boundSurface);
+                BindSurfaceBufferIfChanged(commands, first, ref boundSurface, options.UseSceneMaterials);
                 BindMaterialResources(commands, first, key.Features);
                 commands.DrawIndexedInstanced(first.IndexCount, checked((uint)meshes.Count));
                 drawCount++;
@@ -1551,10 +1551,11 @@ public sealed partial class SilkMeshRenderer :
     private void BindSurfaceBufferIfChanged(
         ISilkGraphicsCommandList commands,
         SilkMeshGpuResource mesh,
-        ref (string MaterialPath, SilkLightLinkMasks LinkMasks)? boundSurface)
+        ref (string MaterialPath, SilkLightLinkMasks LinkMasks)? boundSurface,
+        bool useSceneMaterials)
     {
         (string MaterialPath, SilkLightLinkMasks LinkMasks) next = (
-            mesh.Mesh.MaterialPath,
+            useSceneMaterials ? mesh.Mesh.MaterialPath : string.Empty,
             Scene.LightLinks.Resolve(mesh.Mesh.Path, mesh.Mesh.InstanceIndex));
         if (boundSurface is { } bound &&
             bound.LinkMasks == next.LinkMasks &&
@@ -1566,7 +1567,8 @@ public sealed partial class SilkMeshRenderer :
         commands.SetStorageBuffer(
             0,
             SilkBindingLayoutDescriptor.SurfaceParametersBinding,
-            GpuResources.RequireSurfaceBuffer(Scene, mesh.Mesh, RenderHeadlight.Deterministic));
+            GpuResources.RequireSurfaceBuffer(
+                Scene, mesh.Mesh, RenderHeadlight.Deterministic, useSceneMaterials));
         boundSurface = next;
     }
 
@@ -2142,7 +2144,8 @@ public sealed partial class SilkMeshRenderer :
                 foreach ((ulong id, SilkMeshData mesh) in Scene.Meshes)
                 {
                     SilkMeshGpuResource resource = GpuResources.GetPreparedMesh(id);
-                    if (!SilkShadowMapCache.CanCastShadow(Scene, resource, mesh, (int)descriptor.LightIndex))
+                    if (!SilkShadowMapCache.CanCastShadow(
+                        Scene, resource, mesh, (int)descriptor.LightIndex, options.UseSceneMaterials))
                     {
                         continue;
                     }
@@ -2352,9 +2355,12 @@ public sealed partial class SilkMeshRenderer :
                     ? _displayTransform.PreparePage(options.DisplayTransform, target, options.Exposure) : null;
                 using SilkSceneGpuResources.PreparedMeshUpdate? gpu =
                     GpuResources.Prepare(Scene, delta, options.UseSceneMaterials && !retained,
-                        prepareUniformCapacity: true, reloadDependencies: !retained);
+                        prepareUniformCapacity: true, reloadDependencies: !retained,
+                        useSceneMaterials: options.UseSceneMaterials);
                 using SilkShadowMapCache.PreparedCapacity? shadow =
-                    _shadowMaps.PrepareCapacity(Scene, prepareRendering: true);
+                    _shadowMaps.PrepareCapacity(
+                        Scene, GpuResources, prepareRendering: true,
+                        useSceneMaterials: options.UseSceneMaterials);
                 using PreparedFrameInstances? instances = PrepareFrameInstances(options);
                 using PreparedSelectionGeometry? selection = PrepareSelectionGeometry(gpu is not null);
                 using PreparedSelectionResources? outline = displayTarget is { } selectionColor &&
@@ -2410,6 +2416,13 @@ public sealed partial class SilkMeshRenderer :
                             Scene, delta, gpu?.TexturesPrepared == true, gpu?.SurfacesPrepared == true);
                     }
                 }
+            }
+            catch (SilkShadowProjectionException projectionFailure)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo
+                    .Capture(projectionFailure.InnerException!)
+                    .Throw();
+                throw;
             }
             catch (Exception preparationFailure)
             {

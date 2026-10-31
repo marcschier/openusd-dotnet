@@ -17,7 +17,7 @@
     "metalStandard": "macos-metal2.4",
     "xcodeVersion": "16.4"
   },
-  "outputRoot": "eng/shaders/.cache/checked-build",
+  "outputRoot": "eng/shaders/.cache/pr28-update-link/checked-build",
   "programs": [
     {
       "name": "mesh.vertex",
@@ -52,9 +52,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -83,9 +83,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -114,7 +114,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.metal"
           ]
         },
         "reflection": {
@@ -122,11 +122,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/mesh.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -138,7 +138,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/mesh.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.spv"
           ]
         }
       }
@@ -177,9 +177,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.uv.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.uv.dxil.json"
           ]
         },
         "spirv": {
@@ -209,9 +209,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.uv.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.uv.spirv.json"
           ]
         },
         "metal": {
@@ -241,7 +241,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv.metal"
           ]
         },
         "reflection": {
@@ -249,11 +249,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.uv.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.uv.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.uv.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.uv.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -265,7 +265,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv.spv"
           ]
         }
       }
@@ -305,9 +305,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv+normal.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv+normal.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.uv+normal.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.uv+normal.dxil.json"
           ]
         },
         "spirv": {
@@ -338,9 +338,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv+normal.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv+normal.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.uv+normal.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.uv+normal.spirv.json"
           ]
         },
         "metal": {
@@ -371,7 +371,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv+normal.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv+normal.metal"
           ]
         },
         "reflection": {
@@ -379,11 +379,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.uv+normal.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.uv+normal.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.vertex.uv+normal.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.vertex.uv+normal.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv+normal.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv+normal.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -395,7 +395,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/mesh.vertex.uv+normal.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.vertex.uv+normal.spv"
           ]
         }
       }
@@ -435,9 +435,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.dxil.json"
           ]
         },
         "spirv": {
@@ -468,9 +468,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.spirv.json"
           ]
         },
         "metal": {
@@ -501,7 +501,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.metal"
           ]
         },
         "reflection": {
@@ -509,11 +509,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/mesh.fragment.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -525,7 +525,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/mesh.fragment.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.spv"
           ]
         }
       }
@@ -566,9 +566,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv.dxil.json"
           ]
         },
         "spirv": {
@@ -600,9 +600,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv.spirv.json"
           ]
         },
         "metal": {
@@ -634,7 +634,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv.metal"
           ]
         },
         "reflection": {
@@ -642,11 +642,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -658,7 +658,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv.spv"
           ]
         }
       }
@@ -700,9 +700,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+material.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+material.dxil.json"
           ]
         },
         "spirv": {
@@ -735,9 +735,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+material.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+material.spirv.json"
           ]
         },
         "metal": {
@@ -770,7 +770,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material.metal"
           ]
         },
         "reflection": {
@@ -778,11 +778,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+material.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+material.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+material.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+material.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -794,7 +794,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material.spv"
           ]
         }
       }
@@ -836,9 +836,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+normal.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+normal.dxil.json"
           ]
         },
         "spirv": {
@@ -871,9 +871,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+normal.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+normal.spirv.json"
           ]
         },
         "metal": {
@@ -906,7 +906,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+normal.metal"
           ]
         },
         "reflection": {
@@ -914,11 +914,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+normal.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+normal.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+normal.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+normal.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -930,7 +930,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+normal.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+normal.spv"
           ]
         }
       }
@@ -973,9 +973,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material+normal.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material+normal.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+material+normal.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+material+normal.dxil.json"
           ]
         },
         "spirv": {
@@ -1009,9 +1009,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material+normal.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material+normal.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+material+normal.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+material+normal.spirv.json"
           ]
         },
         "metal": {
@@ -1045,7 +1045,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material+normal.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material+normal.metal"
           ]
         },
         "reflection": {
@@ -1053,11 +1053,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+material+normal.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+material+normal.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.fragment.uv+material+normal.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.fragment.uv+material+normal.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material+normal.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material+normal.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -1069,7 +1069,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/mesh.fragment.uv+material+normal.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.fragment.uv+material+normal.spv"
           ]
         }
       }
@@ -1109,9 +1109,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.volume.fragment.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.volume.fragment.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.volume.fragment.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.volume.fragment.dxil.json"
           ]
         },
         "spirv": {
@@ -1142,9 +1142,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.volume.fragment.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.volume.fragment.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.volume.fragment.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.volume.fragment.spirv.json"
           ]
         },
         "metal": {
@@ -1175,7 +1175,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/mesh.volume.fragment.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.volume.fragment.metal"
           ]
         },
         "reflection": {
@@ -1183,11 +1183,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.volume.fragment.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.volume.fragment.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.volume.fragment.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/mesh.volume.fragment.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/mesh.volume.fragment.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.volume.fragment.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -1199,7 +1199,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/mesh.volume.fragment.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/mesh.volume.fragment.spv"
           ]
         }
       }
@@ -1235,9 +1235,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/shadow.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/shadow.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -1264,9 +1264,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/shadow.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/shadow.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -1293,7 +1293,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/shadow.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.vertex.metal"
           ]
         },
         "reflection": {
@@ -1301,11 +1301,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/shadow.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/shadow.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/shadow.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -1317,7 +1317,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/shadow.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.vertex.spv"
           ]
         }
       }
@@ -1353,9 +1353,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/shadow.fragment.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.fragment.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.fragment.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/shadow.fragment.dxil.json"
           ]
         },
         "spirv": {
@@ -1382,9 +1382,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/shadow.fragment.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.fragment.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.fragment.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/shadow.fragment.spirv.json"
           ]
         },
         "metal": {
@@ -1411,7 +1411,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/shadow.fragment.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.fragment.metal"
           ]
         },
         "reflection": {
@@ -1419,11 +1419,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.fragment.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/shadow.fragment.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.fragment.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/shadow.fragment.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/shadow.fragment.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.fragment.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -1435,7 +1435,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/shadow.fragment.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/shadow.fragment.spv"
           ]
         }
       }
@@ -1471,9 +1471,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/normal.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/normal.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/normal.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -1500,9 +1500,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/normal.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/normal.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/normal.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -1529,7 +1529,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/normal.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.vertex.metal"
           ]
         },
         "reflection": {
@@ -1537,11 +1537,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/normal.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/normal.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/normal.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/normal.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/normal.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -1553,7 +1553,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/normal.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.vertex.spv"
           ]
         }
       }
@@ -1589,9 +1589,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/normal.fragment.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.fragment.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/normal.fragment.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/normal.fragment.dxil.json"
           ]
         },
         "spirv": {
@@ -1618,9 +1618,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/normal.fragment.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.fragment.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/normal.fragment.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/normal.fragment.spirv.json"
           ]
         },
         "metal": {
@@ -1647,7 +1647,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/normal.fragment.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.fragment.metal"
           ]
         },
         "reflection": {
@@ -1655,11 +1655,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/normal.fragment.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/normal.fragment.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/normal.fragment.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/normal.fragment.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/normal.fragment.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.fragment.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -1671,7 +1671,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/normal.fragment.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/normal.fragment.spv"
           ]
         }
       }
@@ -1707,9 +1707,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -1736,9 +1736,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -1765,7 +1765,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.vertex.metal"
           ]
         },
         "reflection": {
@@ -1773,11 +1773,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/pick.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -1789,7 +1789,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/pick.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.vertex.spv"
           ]
         }
       }
@@ -1825,9 +1825,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.whole.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.whole.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.whole.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.whole.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -1854,9 +1854,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.whole.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.whole.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.whole.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.whole.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -1883,7 +1883,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.whole.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.whole.vertex.metal"
           ]
         },
         "reflection": {
@@ -1891,11 +1891,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.whole.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.whole.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.whole.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.whole.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/pick.whole.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.whole.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -1907,7 +1907,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/pick.whole.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.whole.vertex.spv"
           ]
         }
       }
@@ -1943,9 +1943,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.subprim.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.subprim.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.subprim.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.subprim.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -1972,9 +1972,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.subprim.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.subprim.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.subprim.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.subprim.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -2001,7 +2001,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.subprim.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.subprim.vertex.metal"
           ]
         },
         "reflection": {
@@ -2009,11 +2009,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.subprim.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.subprim.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.subprim.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.subprim.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/pick.subprim.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.subprim.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -2025,7 +2025,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/pick.subprim.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.subprim.vertex.spv"
           ]
         }
       }
@@ -2061,9 +2061,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.fragment.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.fragment.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.fragment.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.fragment.dxil.json"
           ]
         },
         "spirv": {
@@ -2090,9 +2090,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.fragment.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.fragment.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.fragment.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.fragment.spirv.json"
           ]
         },
         "metal": {
@@ -2119,7 +2119,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/pick.fragment.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.fragment.metal"
           ]
         },
         "reflection": {
@@ -2127,11 +2127,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.fragment.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.fragment.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/pick.fragment.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/pick.fragment.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/pick.fragment.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.fragment.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -2143,7 +2143,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/pick.fragment.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/pick.fragment.spv"
           ]
         }
       }
@@ -2179,9 +2179,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -2208,9 +2208,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -2237,7 +2237,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.vertex.metal"
           ]
         },
         "reflection": {
@@ -2245,11 +2245,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/selection.mask.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -2261,7 +2261,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/selection.mask.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.vertex.spv"
           ]
         }
       }
@@ -2297,9 +2297,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.whole.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.whole.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.whole.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.whole.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -2326,9 +2326,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.whole.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.whole.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.whole.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.whole.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -2355,7 +2355,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.whole.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.whole.vertex.metal"
           ]
         },
         "reflection": {
@@ -2363,11 +2363,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.whole.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.whole.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.whole.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.whole.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/selection.mask.whole.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.whole.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -2379,7 +2379,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/selection.mask.whole.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.whole.vertex.spv"
           ]
         }
       }
@@ -2415,9 +2415,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.subprim.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.subprim.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.subprim.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.subprim.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -2444,9 +2444,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.subprim.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.subprim.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.subprim.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.subprim.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -2473,7 +2473,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.subprim.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.subprim.vertex.metal"
           ]
         },
         "reflection": {
@@ -2481,11 +2481,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.subprim.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.subprim.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.subprim.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.subprim.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/selection.mask.subprim.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.subprim.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -2497,7 +2497,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/selection.mask.subprim.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.subprim.vertex.spv"
           ]
         }
       }
@@ -2533,9 +2533,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.fragment.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.fragment.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.fragment.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.fragment.dxil.json"
           ]
         },
         "spirv": {
@@ -2562,9 +2562,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.fragment.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.fragment.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.fragment.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.fragment.spirv.json"
           ]
         },
         "metal": {
@@ -2591,7 +2591,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.fragment.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.fragment.metal"
           ]
         },
         "reflection": {
@@ -2599,11 +2599,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.fragment.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.fragment.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.fragment.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.fragment.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/selection.mask.fragment.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.fragment.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -2615,7 +2615,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/selection.mask.fragment.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.fragment.spv"
           ]
         }
       }
@@ -2651,9 +2651,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.occluded.fragment.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.occluded.fragment.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.occluded.fragment.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.occluded.fragment.dxil.json"
           ]
         },
         "spirv": {
@@ -2680,9 +2680,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.occluded.fragment.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.occluded.fragment.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.occluded.fragment.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.occluded.fragment.spirv.json"
           ]
         },
         "metal": {
@@ -2709,7 +2709,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.mask.occluded.fragment.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.occluded.fragment.metal"
           ]
         },
         "reflection": {
@@ -2717,11 +2717,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.occluded.fragment.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.occluded.fragment.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.mask.occluded.fragment.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.mask.occluded.fragment.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/selection.mask.occluded.fragment.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.occluded.fragment.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -2733,7 +2733,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/selection.mask.occluded.fragment.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.mask.occluded.fragment.spv"
           ]
         }
       }
@@ -2769,9 +2769,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.outline.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.outline.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -2798,9 +2798,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.outline.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.outline.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -2827,7 +2827,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.outline.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.vertex.metal"
           ]
         },
         "reflection": {
@@ -2835,11 +2835,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.outline.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.outline.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/selection.outline.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -2851,7 +2851,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/selection.outline.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.vertex.spv"
           ]
         }
       }
@@ -2887,9 +2887,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.outline.fragment.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.fragment.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.fragment.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.outline.fragment.dxil.json"
           ]
         },
         "spirv": {
@@ -2916,9 +2916,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.outline.fragment.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.fragment.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.fragment.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.outline.fragment.spirv.json"
           ]
         },
         "metal": {
@@ -2945,7 +2945,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/selection.outline.fragment.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.fragment.metal"
           ]
         },
         "reflection": {
@@ -2953,11 +2953,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.fragment.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.outline.fragment.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/selection.outline.fragment.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/selection.outline.fragment.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/selection.outline.fragment.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.fragment.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -2969,7 +2969,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/selection.outline.fragment.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/selection.outline.fragment.spv"
           ]
         }
       }
@@ -3005,9 +3005,9 @@
             "-profile",
             "vs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/display.transform.vertex.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.vertex.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/display.transform.vertex.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/display.transform.vertex.dxil.json"
           ]
         },
         "spirv": {
@@ -3034,9 +3034,9 @@
             "-profile",
             "vs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/display.transform.vertex.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.vertex.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/display.transform.vertex.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/display.transform.vertex.spirv.json"
           ]
         },
         "metal": {
@@ -3063,7 +3063,7 @@
             "-profile",
             "vs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/display.transform.vertex.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.vertex.metal"
           ]
         },
         "reflection": {
@@ -3071,11 +3071,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/display.transform.vertex.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/display.transform.vertex.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/display.transform.vertex.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/display.transform.vertex.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/display.transform.vertex.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.vertex.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -3087,7 +3087,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/display.transform.vertex.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.vertex.spv"
           ]
         }
       }
@@ -3123,9 +3123,9 @@
             "-profile",
             "ps_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/display.transform.fragment.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.fragment.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/display.transform.fragment.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/display.transform.fragment.dxil.json"
           ]
         },
         "spirv": {
@@ -3152,9 +3152,9 @@
             "-profile",
             "ps_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/display.transform.fragment.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.fragment.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/display.transform.fragment.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/display.transform.fragment.spirv.json"
           ]
         },
         "metal": {
@@ -3181,7 +3181,7 @@
             "-profile",
             "ps_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/display.transform.fragment.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.fragment.metal"
           ]
         },
         "reflection": {
@@ -3189,11 +3189,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/display.transform.fragment.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/display.transform.fragment.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/display.transform.fragment.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/display.transform.fragment.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/display.transform.fragment.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.fragment.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -3205,7 +3205,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/display.transform.fragment.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/display.transform.fragment.spv"
           ]
         }
       }
@@ -3241,9 +3241,9 @@
             "-profile",
             "cs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/compute.fill.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.fill.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/compute.fill.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/compute.fill.dxil.json"
           ]
         },
         "spirv": {
@@ -3270,9 +3270,9 @@
             "-profile",
             "cs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/compute.fill.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.fill.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/compute.fill.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/compute.fill.spirv.json"
           ]
         },
         "metal": {
@@ -3299,7 +3299,7 @@
             "-profile",
             "cs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/compute.fill.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.fill.metal"
           ]
         },
         "reflection": {
@@ -3307,11 +3307,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/compute.fill.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/compute.fill.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/compute.fill.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/compute.fill.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/compute.fill.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.fill.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -3323,7 +3323,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/compute.fill.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.fill.spv"
           ]
         }
       }
@@ -3359,9 +3359,9 @@
             "-profile",
             "cs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/compute.scale.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.scale.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/compute.scale.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/compute.scale.dxil.json"
           ]
         },
         "spirv": {
@@ -3388,9 +3388,9 @@
             "-profile",
             "cs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/compute.scale.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.scale.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/compute.scale.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/compute.scale.spirv.json"
           ]
         },
         "metal": {
@@ -3417,7 +3417,7 @@
             "-profile",
             "cs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/compute.scale.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.scale.metal"
           ]
         },
         "reflection": {
@@ -3425,11 +3425,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/compute.scale.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/compute.scale.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/compute.scale.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/compute.scale.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/compute.scale.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.scale.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -3441,7 +3441,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/compute.scale.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/compute.scale.spv"
           ]
         }
       }
@@ -3477,9 +3477,9 @@
             "-profile",
             "cs_6_0",
             "-o",
-            "eng/shaders/.cache/checked-build/deform.compute.dxil",
+            "eng/shaders/.cache/pr28-update-link/checked-build/deform.compute.dxil",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/deform.compute.dxil.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/deform.compute.dxil.json"
           ]
         },
         "spirv": {
@@ -3506,9 +3506,9 @@
             "-profile",
             "cs_6_0+spirv_1_5",
             "-o",
-            "eng/shaders/.cache/checked-build/deform.compute.spv",
+            "eng/shaders/.cache/pr28-update-link/checked-build/deform.compute.spv",
             "-reflection-json",
-            "eng/shaders/.cache/checked-build/.raw-reflection/deform.compute.spirv.json"
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/deform.compute.spirv.json"
           ]
         },
         "metal": {
@@ -3535,7 +3535,7 @@
             "-profile",
             "cs_6_0+METAL_2_4",
             "-o",
-            "eng/shaders/.cache/checked-build/deform.compute.metal"
+            "eng/shaders/.cache/pr28-update-link/checked-build/deform.compute.metal"
           ]
         },
         "reflection": {
@@ -3543,11 +3543,11 @@
           "arguments": [
             "eng/shaders/scripts/normalize-reflection.py",
             "--dxil-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/deform.compute.dxil.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/deform.compute.dxil.json",
             "--spirv-input",
-            "eng/shaders/.cache/checked-build/.raw-reflection/deform.compute.spirv.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/.raw-reflection/deform.compute.spirv.json",
             "--output",
-            "eng/shaders/.cache/checked-build/deform.compute.reflection.json",
+            "eng/shaders/.cache/pr28-update-link/checked-build/deform.compute.reflection.json",
             "--manifest",
             "eng/shaders/shader-manifest.json",
             "--program",
@@ -3559,7 +3559,7 @@
           "arguments": [
             "--target-env",
             "vulkan1.2",
-            "eng/shaders/.cache/checked-build/deform.compute.spv"
+            "eng/shaders/.cache/pr28-update-link/checked-build/deform.compute.spv"
           ]
         }
       }

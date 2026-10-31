@@ -108,6 +108,211 @@ public sealed class SilkMeshPreparationNativeTests
         await Assert.That(await File.ReadAllTextAsync(actualFixture.Path)).IsEqualTo(source);
     }
 
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, "none")]
+    [Arguments(SilkGraphicsBackend.D3D12, "uvEmission")]
+    [Arguments(SilkGraphicsBackend.D3D12, "uvOpacity")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "none")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "uvEmission")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "uvOpacity")]
+    public async Task DistinctReaderFallbacksMatchAuthoredCoordinatesAcrossUpdates(
+        SilkGraphicsBackend backend,
+        string authoredPrimvar)
+    {
+        const string emissionSamples = "{0:(0,0.5), 1:(1,0.5), 2:(1,0.5), 3:(0,0.5)}";
+        const string opacitySamples = "{0:(1,0.5), 1:(1,0.5), 2:(0,0.5), 3:(1,0.5)}";
+        const string emissionCoordinates = """
+            texCoord2f[] primvars:uvEmission (interpolation = "constant")
+            texCoord2f[] primvars:uvEmission.timeSamples = {
+                0:[(0,0.5)], 1:[(1,0.5)], 2:[(1,0.5)], 3:[(0,0.5)]
+            }
+            """;
+        const string opacityCoordinates = """
+            texCoord2f[] primvars:uvOpacity (interpolation = "constant")
+            texCoord2f[] primvars:uvOpacity.timeSamples = {
+                0:[(1,0.5)], 1:[(1,0.5)], 2:[(0,0.5)], 3:[(1,0.5)]
+            }
+            """;
+        const string authoredEmissionCoordinates = """
+            texCoord2f[] primvars:uvEmission (interpolation = "constant")
+            texCoord2f[] primvars:uvEmission.timeSamples = {
+                0:[(1,0.5)], 1:[(0,0.5)], 2:[(0,0.5)], 3:[(1,0.5)]
+            }
+            """;
+        const string authoredOpacityCoordinates = """
+            texCoord2f[] primvars:uvOpacity (interpolation = "constant")
+            texCoord2f[] primvars:uvOpacity.timeSamples = {
+                0:[(0,0.5)], 1:[(0,0.5)], 2:[(1,0.5)], 3:[(0,0.5)]
+            }
+            """;
+        const string material = """
+            def Material "Material" {
+                token outputs:surface.connect = </Material/Surface.outputs:surface>
+                def Shader "Surface" {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor = (0,0,0)
+                    color3f inputs:emissiveColor.connect = </Material/Emission.outputs:rgb>
+                    float inputs:opacity.connect = </Material/Opacity.outputs:r>
+                    token outputs:surface
+                }
+                def Shader "Emission" {
+                    uniform token info:id = "UsdUVTexture"
+                    asset inputs:file = @emission.png@
+                    token inputs:sourceColorSpace = "raw"
+                    token inputs:wrapS = "clamp"
+                    token inputs:wrapT = "clamp"
+                    float2 inputs:st.connect = </Material/Transform.outputs:result>
+                    float3 outputs:rgb
+                }
+                def Shader "Opacity" {
+                    uniform token info:id = "UsdUVTexture"
+                    asset inputs:file = @opacity.png@
+                    token inputs:sourceColorSpace = "raw"
+                    token inputs:wrapS = "clamp"
+                    token inputs:wrapT = "clamp"
+                    float2 inputs:st.connect = </Material/OpacityReader.outputs:result>
+                    float outputs:r
+                }
+                def Shader "Transform" {
+                    uniform token info:id = "UsdTransform2d"
+                    float2 inputs:scale = (0.5,1)
+                    float2 inputs:translation = (0.25,0)
+                    float2 inputs:in.connect = </Material/EmissionReader.outputs:result>
+                    float2 outputs:result
+                }
+                def Shader "EmissionReader" {
+                    uniform token info:id = "UsdPrimvarReader_float2"
+                    token inputs:varname = "uvEmission"
+                    float2 inputs:fallback.timeSamples = {0:(0,0.5), 1:(1,0.5), 2:(1,0.5), 3:(0,0.5)}
+                    float2 outputs:result
+                }
+                def Shader "OpacityReader" {
+                    uniform token info:id = "UsdPrimvarReader_float2"
+                    token inputs:varname = "uvOpacity"
+                    float2 inputs:fallback.timeSamples = {0:(1,0.5), 1:(1,0.5), 2:(0,0.5), 3:(1,0.5)}
+                    float2 outputs:result
+                }
+            }
+            """;
+        string mesh = Mesh.Replace("def Mesh \"Mesh\" {",
+            "def Mesh \"Mesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\nrel material:binding = </Material>",
+            StringComparison.Ordinal);
+        static string AddCoordinates(string sourceMesh, string declarations) =>
+            sourceMesh.Replace("uniform token subdivisionScheme",
+                declarations + "\nuniform token subdivisionScheme", StringComparison.Ordinal);
+
+        string actualMesh = authoredPrimvar switch
+        {
+            "none" => mesh,
+            "uvEmission" => AddCoordinates(mesh, authoredEmissionCoordinates),
+            "uvOpacity" => AddCoordinates(mesh, authoredOpacityCoordinates),
+            _ => throw new ArgumentOutOfRangeException(nameof(authoredPrimvar))
+        };
+        string expectedEmission = authoredPrimvar == "uvEmission" ? authoredEmissionCoordinates : emissionCoordinates;
+        string expectedOpacity = authoredPrimvar == "uvOpacity" ? authoredOpacityCoordinates : opacityCoordinates;
+        string explicitMesh = AddCoordinates(mesh, expectedEmission + "\n" + expectedOpacity);
+        string referenceMaterial = material.Replace(opacitySamples, emissionSamples, StringComparison.Ordinal);
+        await Assert.That(referenceMaterial).IsNotEqualTo(material);
+        using Fixture actualFixture = Create(material + "\n" + actualMesh);
+        using Fixture expectedFixture = Create(referenceMaterial + "\n" + explicitMesh);
+        foreach (Fixture fixture in new[] { actualFixture, expectedFixture })
+        {
+            string directory = System.IO.Path.GetDirectoryName(fixture.Path)!;
+            using FileStream emission = File.Create(System.IO.Path.Combine(directory, "emission.png"));
+            using FileStream opacity = File.Create(System.IO.Path.Combine(directory, "opacity.png"));
+            _ = PngRgba8Writer.Write(emission, 2, 1, [255, 0, 0, 255, 0, 0, 255, 255], 1024);
+            _ = PngRgba8Writer.Write(opacity, 2, 1, [64, 64, 64, 255, 255, 255, 255, 255], 1024);
+        }
+
+        string source = await File.ReadAllTextAsync(actualFixture.Path);
+        await Assert.That(source.Contains("primvars:uvEmission", StringComparison.Ordinal))
+            .IsEqualTo(authoredPrimvar == "uvEmission");
+        await Assert.That(source.Contains("primvars:uvOpacity", StringComparison.Ordinal))
+            .IsEqualTo(authoredPrimvar == "uvOpacity");
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        new SilkGpuBufferBudget(4_194_304).ConfigureDevice(device);
+        new SilkTexturePreparationBudgets(new(4_194_304), new(4_194_304), new(4_194_304)).ConfigureDevice(device);
+        var policy = new SilkTextureResidencyOptions(1024, 1024, true);
+        var limits = new SilkPreparationLimits(1_000_000, 65536, new(131072, 65536, 65536, 31));
+        using OpenUsdSilkSession actualSession = OpenUsdSilkRuntime.Create(actualFixture.Plugins,
+            actualFixture.Path, limits);
+        using OpenUsdSilkSession expectedSession = OpenUsdSilkRuntime.Create(expectedFixture.Plugins,
+            expectedFixture.Path, limits);
+        using var actual = new SilkMeshRenderer(device, policy);
+        using var expected = new SilkMeshRenderer(device, policy);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(32, 32));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(32, 32));
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0.5f, 0.5f, 3), new Vector3(0.5f, 0.5f, 0), Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+        (float Emission, float Opacity)[] coordinates = authoredPrimvar switch
+        {
+            "none" => [(0, 1), (1, 1), (1, 0), (0, 1)],
+            "uvEmission" => [(1, 1), (0, 1), (0, 0), (1, 1)],
+            "uvOpacity" => [(0, 0), (1, 0), (1, 1), (0, 0)],
+            _ => throw new ArgumentOutOfRangeException(nameof(authoredPrimvar))
+        };
+        byte[]? initial = null;
+        byte[]? previous = null;
+        for (int time = 0; time < coordinates.Length; time++)
+        {
+            using OpenUsdSilkPage actualPage = actualSession.Sync(32, 32, time, camera);
+            _ = actual.ApplyAndRender(actualPage, color, depth);
+            SilkMaterialData projected = actual.Scene.Materials["/Material"];
+            await Assert.That(projected.GetTexture(SilkMaterialParameter.EmissiveColor)?.UvPrimvar)
+                .IsEqualTo("uvEmission");
+            await Assert.That(projected.GetTexture(SilkMaterialParameter.Opacity)?.UvPrimvar)
+                .IsEqualTo("uvOpacity");
+            SilkVertexAttributeData? emission = actual.Scene.Meshes.Values.Single().FindTexCoord("uvEmission");
+            SilkVertexAttributeData? opacity = actual.Scene.Meshes.Values.Single().FindTexCoord("uvOpacity");
+            await Assert.That(emission).IsNotNull();
+            await Assert.That(opacity).IsNotNull();
+            await Assert.That(emission!.Interpolation).IsEqualTo(SilkAttributeInterpolation.Constant);
+            await Assert.That(opacity!.Interpolation).IsEqualTo(SilkAttributeInterpolation.Constant);
+            await Assert.That(emission.Data.ToArray().SequenceEqual([coordinates[time].Emission, 0.5f])).IsTrue();
+            await Assert.That(opacity.Data.ToArray().SequenceEqual([coordinates[time].Opacity, 0.5f])).IsTrue();
+            await Assert.That(actual.GpuResources.Diagnostics.Entries.Select(static entry => entry.Code))
+                .DoesNotContain(SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable);
+
+            byte[] pixels = new byte[32 * 32 * 8];
+            color.ReadbackForTesting(pixels);
+            using OpenUsdSilkPage expectedPage = expectedSession.Sync(32, 32, time, camera);
+            _ = expected.ApplyAndRender(expectedPage, color, depth);
+            SilkMaterialData reference = expected.Scene.Materials["/Material"];
+            await Assert.That(reference.GetTexture(SilkMaterialParameter.EmissiveColor)?.UvPrimvar)
+                .IsEqualTo("uvEmission");
+            await Assert.That(reference.GetTexture(SilkMaterialParameter.Opacity)?.UvPrimvar)
+                .IsEqualTo("uvOpacity");
+            SilkVertexAttributeData? referenceEmission =
+                expected.Scene.Meshes.Values.Single().FindTexCoord("uvEmission");
+            SilkVertexAttributeData? referenceOpacity =
+                expected.Scene.Meshes.Values.Single().FindTexCoord("uvOpacity");
+            await Assert.That(referenceEmission).IsNotNull();
+            await Assert.That(referenceOpacity).IsNotNull();
+            await Assert.That(referenceEmission!.Data.ToArray()
+                .SequenceEqual([coordinates[time].Emission, 0.5f])).IsTrue();
+            await Assert.That(referenceOpacity!.Data.ToArray()
+                .SequenceEqual([coordinates[time].Opacity, 0.5f])).IsTrue();
+            byte[] referencePixels = new byte[pixels.Length];
+            color.ReadbackForTesting(referencePixels);
+            await Assert.That(pixels.SequenceEqual(referencePixels)).IsTrue();
+            if (time == 0)
+            {
+                initial = pixels;
+            }
+            else if (time == coordinates.Length - 1)
+            {
+                await Assert.That(pixels.SequenceEqual(initial!)).IsTrue();
+            }
+            else
+            {
+                await Assert.That(pixels.SequenceEqual(previous!)).IsFalse();
+            }
+            previous = pixels;
+        }
+        await Assert.That(await File.ReadAllTextAsync(actualFixture.Path)).IsEqualTo(source);
+    }
+
     private const string Mesh = """
         def Mesh "Mesh" {
             uniform token subdivisionScheme = "none"

@@ -146,7 +146,8 @@ struct FrameParameters
     // lives in, or -1 for a dome that has no prefiltered response and
     // contributes through domeAmbient alone.
     float4 domeEnvironment[8];
-    // Per direct light: the UsdLux ShapingAPI cone of a rect or disk light.
+    // Per direct light: the UsdLux ShapingAPI cone of a rect or disk light, or
+    // a zero-radius sphere spot.
     //   x: cos of the cone angle; y: the focus exponent; z: non-zero when the
     //   cone is narrower than 180 degrees and therefore attenuates. Every other
     //   light, and every frame without the shaping table, writes zero.

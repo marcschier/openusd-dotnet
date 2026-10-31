@@ -362,10 +362,9 @@ struct HdSilkMaterialTexture
     // meaningful only for OPENUSD_SILK_COMPOSITE_MIX.
     uint32_t compositeOp = 0;
     float compositeFactor = 0.0f;
-    // The folded MaterialX place2d transform this texture reads its coordinates
-    // through, as the row-major affine (m00, m01, m10, m11, tx, ty). Resolved per
-    // texture so the material-wide reconciliation can tell agreement from
-    // divergence; only the reconciled material transform reaches the wire.
+    // The texture's folded UV transform as the row-major affine
+    // (m00, m01, m10, m11, tx, ty). Surface reconciliation selects the primary
+    // or alternate transform; displacement uses the primary.
     float uvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     std::string asset;
     std::string uvPrimvar;
@@ -383,8 +382,8 @@ struct HdSilkMaterialRecord
     uint32_t surfaceKind = 0;
     // The primary constant UV transform, the one the material's first surface
     // texture samples through, as the row-major affine (m00, m01, m10, m11, tx,
-    // ty). Identity unless a MaterialX place2d node with constant inputs was
-    // folded into it.
+    // ty). Identity unless a supported texture-coordinate transform is folded
+    // into it.
     float uvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     // The second folded transform, read by the surface parameters whose bit
     // (1u << parameter) is set in alternateUvParameterMask. Identity and zero
@@ -417,9 +416,9 @@ struct HdSilkLightRecord
     float diffuse = 1.0f;
     float specular = 1.0f;
     float radius = 0.5f;
-    // UsdLux ShapingAPI as Storm applies it: only rect and disk lights read it,
-    // the cone is in degrees about the light's -Z axis, and focus is the cosine
-    // exponent. 180 degrees means unshaped, which every other light type keeps.
+    // UsdLux ShapingAPI cone in degrees about the light's -Z emission axis;
+    // focus is the cosine exponent. A zero-radius sphere may use it as a spot.
+    // 180 degrees means unshaped.
     float shapingConeAngle = 180.0f;
     float shapingFocus = 0.0f;
     // UsdLux enableColorTemperature/colorTemperature in Kelvin. Storm tints every

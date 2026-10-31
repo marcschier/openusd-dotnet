@@ -1885,8 +1885,10 @@ public enum SilkTextureWrap : uint
     /// intent: <c>black</c> states the addressing, while <c>useMetadata</c>
     /// defers it to wrap metadata inside the image file. The renderer resolves
     /// observed per-axis metadata; USD's documented fallback when metadata is
-    /// absent is <c>black</c>. Unavailable or unsupported metadata also falls
-    /// back to the black border and emits a texture-fallback diagnostic.
+    /// absent is <c>black</c>. If a queried image has no wrap metadata, this
+    /// fallback needs no diagnostic. For a decoded image, an unavailable query
+    /// or unsupported wrap mode makes fragment sampling report a black-border
+    /// fallback; vertex displacement refuses the field.
     /// </remarks>
     UseMetadata = 4,
 
@@ -2063,9 +2065,13 @@ public readonly ref struct SilkMaterialTextureEntry
     public string Asset => _asset;
 
     /// <summary>
-    /// Gets the primvar supplying texture coordinates, empty when the texture
-    /// has no resolvable reader connection.
+    /// Gets the texture-coordinate primvar, or the encoded dimensions for a
+    /// <see cref="SilkMaterialParameter.VolumeDensity"/> texture.
     /// </summary>
+    /// <remarks>
+    /// See <see cref="SilkMaterialTexture.UvPrimvar"/> for the surface,
+    /// displacement and volume-density interpretations.
+    /// </remarks>
     public string UvPrimvar => _uvPrimvar;
 
     private float ReadVector(int baseOffset, int component)
@@ -3053,8 +3059,8 @@ public enum SilkShadowUnsupportedFeatures : uint
     None = 0,
 
     /// <summary>
-    /// A shadow-enabled direct light is not a distant light. Only a distant
-    /// light has an exact light-space projection here.
+    /// The light has no supported projection. Distant lights and zero-radius
+    /// sphere spots with a cone half-angle below 90 degrees are supported.
     /// </summary>
     LightType = 1,
 
@@ -3107,7 +3113,7 @@ public readonly record struct SilkShadowDescriptor(
 [Flags]
 public enum SilkShadowDescriptorOptions : uint
 {
-    /// <summary>No flags.</summary>
+    /// <summary>The projection performs a perspective divide.</summary>
     None = 0,
 
     /// <summary>The projection has no perspective divide.</summary>

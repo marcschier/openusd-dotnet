@@ -12,8 +12,8 @@ namespace OpenUsd.Rendering.Tests;
 /// <remarks>
 /// hdSilk publishes one 16-byte entry per direct-light slot: the cone angle in
 /// degrees, the focus exponent and two reserved words. The GPU frame turns that
-/// into (cos cone, focus, shaped, 0) for rect and disk lights narrower than 180
-/// degrees, which is where Storm's area-light approximation applies a cone.
+/// into (cos cone, focus, shaped, 0) for rect and disk lights, plus zero-radius
+/// sphere lights with a cone narrower than 180 degrees.
 /// </remarks>
 public sealed class SilkLightShapingWireTests
 {
@@ -106,13 +106,15 @@ public sealed class SilkLightShapingWireTests
     }
 
     [Test]
-    public async Task UniformWritesShapedConeOnlyForNarrowRectAndDiskLights()
+    public async Task UniformWritesShapedConeForRectAndDiskLights()
     {
         // Slot order: rect 45/2, disk 90/0, rect 180, sphere 30/4, distant 10/1.
         byte[] page = CreateFrame(lightCount: 5, types: [3u, 4u, 3u, 2u, 1u]);
         PutShaping(page, 0, 45f, 2f);
         PutShaping(page, 1, 90f, 0f);
         PutShaping(page, 2, 180f, 3f);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            page.AsSpan(LightTableOffset + (3 * LightEntrySize) + 172), 0.5f);
         PutShaping(page, 3, 30f, 4f);
         PutShaping(page, 4, 10f, 1f);
         SilkFrameState frame = ReadFrame(page);
@@ -125,9 +127,66 @@ public sealed class SilkLightShapingWireTests
             .IsEqualTo(new Vector4(MathF.Cos(45 * (MathF.PI / 180)), 2, 1, 0));
         await Assert.That(ReadVector(constants, 1))
             .IsEqualTo(new Vector4(MathF.Cos(90 * (MathF.PI / 180)), 0, 1, 0));
+        await Assert.That(ReadVector(constants, 3)).IsEqualTo(Vector4.Zero);
         for (int light = 2; light < 128; light++)
         {
             await Assert.That(ReadVector(constants, light)).IsEqualTo(Vector4.Zero);
+        }
+    }
+
+    [Test]
+    public async Task UniformWritesShapedConeForNarrowZeroRadiusSphere()
+    {
+        byte[] page = CreateFrame(lightCount: 1, types: [2u]);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            page.AsSpan(LightTableOffset + 172), 0);
+        const float cone = 30f;
+        const float focus = 4f;
+        PutShaping(page, 0, cone, focus);
+        SilkFrameState frame = ReadFrame(page);
+        byte[] constants = Enumerable.Repeat((byte)0xE1, SilkFrameUniformWriter.ByteSize).ToArray();
+
+        SilkFrameUniformWriter.Write(frame, constants, false, RenderOutputTransform.Identity, 0);
+
+        await Assert.That(frame.Lights.ToArray()[0].Radius).IsEqualTo(0f);
+        await Assert.That(ReadVector(constants, 0))
+            .IsEqualTo(new Vector4(MathF.Cos(cone * (MathF.PI / 180)), focus, 1, 0));
+    }
+
+    [Test]
+    public async Task UniformLeavesNonzeroRadiusSphereUnshaped()
+    {
+        byte[] page = CreateFrame(lightCount: 1, types: [2u]);
+        const float radius = 0.375f;
+        BinaryPrimitives.WriteSingleLittleEndian(
+            page.AsSpan(LightTableOffset + 172), radius);
+        PutShaping(page, 0, 30f, 4f);
+        SilkFrameState frame = ReadFrame(page);
+        byte[] constants = Enumerable.Repeat((byte)0xE1, SilkFrameUniformWriter.ByteSize).ToArray();
+
+        SilkFrameUniformWriter.Write(frame, constants, false, RenderOutputTransform.Identity, 0);
+
+        await Assert.That(frame.Lights.ToArray()[0].Radius).IsEqualTo(radius);
+        await Assert.That(ReadVector(constants, 0)).IsEqualTo(Vector4.Zero);
+    }
+
+    [Test]
+    public async Task UniformLeavesUnrelatedLightTypesUnshaped()
+    {
+        // Distant (1) and cylinder (5) do not use the rect/disk/spot shaping uniform.
+        foreach (uint type in new[] { 1u, 5u })
+        {
+            byte[] page = CreateFrame(lightCount: 1, types: [type]);
+            PutShaping(page, 0, 30f, 4f);
+            SilkFrameState frame = ReadFrame(page);
+            byte[] constants = Enumerable.Repeat(
+                (byte)0xE1, SilkFrameUniformWriter.ByteSize).ToArray();
+
+            SilkFrameUniformWriter.Write(
+                frame, constants, false, RenderOutputTransform.Identity, 0);
+
+            await Assert.That(frame.Lights.ToArray()[0].Type).IsEqualTo(type);
+            await Assert.That(ReadVector(constants, 0)).IsEqualTo(Vector4.Zero);
         }
     }
 

@@ -49,6 +49,8 @@ internal static class SilkDisplacementRenderConformance
     private const float Amount = 0.45f;
     private const string MaterialPath = "/World/Materials/Displaced";
     private const string HeightAsset = "displacement-height.png";
+    private const string ShadowBoundsBaseHeightAsset = "shadow-bounds-base.png";
+    private const string ShadowBoundsRaisedHeightAsset = "shadow-bounds-raised.png";
 
     /// <summary>
     /// An authored constant moves the drawn surface by exactly that amount along
@@ -173,6 +175,372 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(displaced.AsSpan().SequenceEqual(undisplaced))
             .IsFalse()
             .Because("displacing the caster must change the shadowed image");
+    }
+
+    internal static async Task ShadowBoundsFollowDisplacementTowardTheLight(
+        ISilkGraphicsDevice device,
+        float casterScale = 1f)
+    {
+        const float amount = 5f;
+        if (!float.IsFinite(casterScale) || casterScale <= 0f)
+        {
+            throw new ArgumentOutOfRangeException(nameof(casterScale));
+        }
+
+        // Moving parallel to the light preserves the receiver footprint while leaving the source frustum.
+        Vector3 direction = LightDirection();
+        float[] normals = LightAlignedNormals();
+        float[] worldPoints = CasterPoints();
+        float[] localPoints = ScalePoints(worldPoints, 1f / casterScale);
+        float[] displaced = Displace(worldPoints, normals, amount * casterScale);
+        double[] transform = UniformScaleTransform(casterScale);
+        var originalMinimum = new Vector3(-1, -1, ReceiverDepth);
+        var originalMaximum = new Vector3(1, 1, CasterDepth);
+        Vector3 originalCenter = (originalMinimum + originalMaximum) * 0.5f;
+        Vector3 originalHalf = (originalMaximum - originalMinimum) * 0.5f;
+        float nearest = float.PositiveInfinity;
+        for (int offset = 0; offset < displaced.Length; offset += 3)
+        {
+            var point = new Vector3(displaced[offset], displaced[offset + 1], displaced[offset + 2]);
+            nearest = MathF.Min(nearest, Vector3.Dot(point - originalCenter, direction));
+        }
+        await Assert.That(nearest).IsGreaterThan(originalHalf.Length())
+            .Because("Every displaced point must lie beyond the source-derived shadow frustum.");
+
+        using ISilkGraphicsTexture color = CreateColor(device);
+        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var initial = new OpenUsdSilkPage(30, 1,
+            [
+                .. Frame(), .. Material(constant: null),
+                .. Quad("/Caster", localPoints, normals, transform: transform),
+                .. Receiver("/Floor"), .. Shadow(originalCenter, originalHalf)
+            ], 5);
+        _ = renderer.ApplyAndRender(initial, color, depth);
+        byte[] baseline = ReadPixels(color);
+        // The 0.6 light tilt projects the caster center to x = -0.36 on the receiver.
+        const int shadowed = ((32 * Size) + 20) * 4;
+        const int lit = ((32 * Size) + 51) * 4;
+        await Assert.That(baseline[shadowed]).IsLessThan((byte)40);
+        await Assert.That(baseline[lit]).IsGreaterThan((byte)90);
+        ulong renders = renderer.ShadowMapRenderCount;
+
+        Vector3 movedMaximum = new(
+            MathF.Max(1f, displaced[3]),
+            1f,
+            MathF.Max(ReceiverDepth, displaced[2]));
+        Vector3 movedCenter = (originalMinimum + movedMaximum) * 0.5f;
+        Vector3 movedHalf = (movedMaximum - originalMinimum) * 0.5f;
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        using var reference = new OpenUsdSilkPage(30, 1,
+            [
+                .. Frame(), .. Material(constant: null), .. Quad("/Caster", displaced, normals),
+                .. Receiver("/Floor"), .. Shadow(movedCenter, movedHalf)
+            ], 5);
+        _ = referenceRenderer.ApplyAndRender(reference, color, depth);
+        byte[] expected = ReadPixels(color);
+        await Assert.That(expected[shadowed]).IsLessThan((byte)40)
+            .Because("The independently displaced caster must shadow the same receiver sample.");
+        await Assert.That(expected[lit]).IsGreaterThan((byte)90);
+        using var noShadow = new OpenUsdSilkPage(30, 2, EmptyShadow(), 1);
+        _ = referenceRenderer.ApplyAndRender(noShadow, color, depth);
+        await Assert.That(ReadPixels(color)[shadowed]).IsGreaterThan((byte)90)
+            .Because("The receiver sample must be lit when the reference shadow is retired.");
+
+        using var moved = new OpenUsdSilkPage(30, 2, Material(constant: amount), 1);
+        _ = renderer.ApplyAndRender(moved, color, depth);
+        byte[] actual = ReadPixels(color);
+        await Assert.That(actual[shadowed]).IsLessThan((byte)40)
+            .Because("Moving a caster toward the light must not remove its shadow.");
+        await Assert.That(actual[lit]).IsGreaterThan((byte)90);
+        (int expectedLeft, int expectedRight) = ShadowExtent(expected, 32);
+        (int actualLeft, int actualRight) = ShadowExtent(actual, 32);
+        await Assert.That(actualLeft >= 0 && actualRight >= actualLeft)
+            .IsTrue()
+            .Because("The transformed caster must produce a measurable shadow.");
+        await Assert.That(Math.Abs(actualLeft - expectedLeft) <= 1)
+            .IsTrue()
+            .Because("The transformed caster's shadow must begin at the independently displaced world-space bound.");
+        await Assert.That(Math.Abs(actualRight - expectedRight) <= 1)
+            .IsTrue()
+            .Because("The transformed caster's shadow must end at the independently displaced world-space bound.");
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
+
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(actual)).IsTrue();
+
+        using var restored = new OpenUsdSilkPage(30, 3, Material(constant: null), 1);
+        _ = renderer.ApplyAndRender(restored, color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(baseline)).IsTrue();
+    }
+
+    internal static async Task ImageDrivenShadowBoundsFollowHeightFieldUpdate(
+        ISilkGraphicsDevice device,
+        SilkShaderBinaryFormat shaderFormat)
+    {
+        const float maximumDisplacement = 5f;
+        float textureScale = maximumDisplacement / Amount;
+        float[] normals = LightAlignedNormals();
+        float[] amounts = [0f, textureScale * Amount, 0f, 0f];
+        float[] displaced = Displace(CasterPoints(), normals, amounts);
+        var originalMinimum = new Vector3(-1, -1, ReceiverDepth);
+        var originalMaximum = new Vector3(1, 1, CasterDepth);
+        Vector3 originalCenter = (originalMinimum + originalMaximum) * 0.5f;
+        Vector3 originalHalf = (originalMaximum - originalMinimum) * 0.5f;
+        float furthest = float.NegativeInfinity;
+        Vector3 movedMinimum = originalMinimum;
+        Vector3 movedMaximum = originalMaximum;
+        Vector3 direction = LightDirection();
+        for (int offset = 0; offset < displaced.Length; offset += 3)
+        {
+            var point = new Vector3(displaced[offset], displaced[offset + 1], displaced[offset + 2]);
+            furthest = MathF.Max(furthest, Vector3.Dot(point - originalCenter, direction));
+            movedMinimum = Vector3.Min(movedMinimum, point);
+            movedMaximum = Vector3.Max(movedMaximum, point);
+        }
+        await Assert.That(furthest).IsGreaterThan(originalHalf.Length())
+            .Because("The updated image must move one caster vertex beyond the source-derived shadow frustum.");
+
+        using ISilkGraphicsTexture color = CreateColor(device);
+        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using var renderer = new SilkMeshRenderer(device, shaderFormat, HeightDecoder);
+        using var initial = new OpenUsdSilkPage(30, 1,
+            [
+                .. Frame(),
+                .. Material(textureAsset: ShadowBoundsBaseHeightAsset, textureScale: textureScale),
+                .. Quad("/Caster", CasterPoints(), normals),
+                .. Receiver("/Floor"),
+                .. Shadow(originalCenter, originalHalf)
+            ], 5);
+        _ = renderer.ApplyAndRender(initial, color, depth);
+        byte[] baseline = ReadPixels(color);
+        const int shadowed = ((32 * Size) + 20) * 4;
+        const int lit = ((32 * Size) + 51) * 4;
+        await Assert.That(baseline[shadowed]).IsLessThan((byte)40);
+        await Assert.That(baseline[lit]).IsGreaterThan((byte)90);
+        ulong renders = renderer.ShadowMapRenderCount;
+
+        using var referenceRenderer = new SilkMeshRenderer(device, shaderFormat, HeightDecoder);
+        using var reference = new OpenUsdSilkPage(30, 1,
+            [
+                .. Frame(),
+                .. Material(textureAsset: ShadowBoundsRaisedHeightAsset, textureScale: 0f),
+                .. Quad("/Caster", displaced, normals),
+                .. Receiver("/Floor"),
+                .. Shadow((movedMinimum + movedMaximum) * 0.5f, (movedMaximum - movedMinimum) * 0.5f)
+            ], 5);
+        _ = referenceRenderer.ApplyAndRender(reference, color, depth);
+        byte[] expected = ReadPixels(color);
+        await Assert.That(expected[shadowed]).IsLessThan((byte)40);
+        await Assert.That(expected[lit]).IsGreaterThan((byte)90);
+        (int expectedLeft, int expectedRight) = ShadowExtent(expected, 32);
+
+        using var changed = new OpenUsdSilkPage(30, 2,
+            Material(textureAsset: ShadowBoundsRaisedHeightAsset, textureScale: textureScale), 1);
+        _ = renderer.ApplyAndRender(changed, color, depth);
+        byte[] actual = ReadPixels(color);
+        await Assert.That(actual[shadowed]).IsLessThan((byte)40)
+            .Because("The image-driven caster must keep its receiver shadow after leaving the original bounds.");
+        await Assert.That(actual[lit]).IsGreaterThan((byte)90);
+        (int actualLeft, int actualRight) = ShadowExtent(actual, 32);
+        await Assert.That(actualLeft >= 0 && actualRight >= actualLeft).IsTrue();
+        await Assert.That(Math.Abs(actualLeft - expectedLeft) <= 1).IsTrue();
+        await Assert.That(Math.Abs(actualRight - expectedRight) <= 1).IsTrue();
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
+
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(actual)).IsTrue();
+
+        using var restored = new OpenUsdSilkPage(30, 3,
+            Material(textureAsset: ShadowBoundsBaseHeightAsset, textureScale: textureScale), 1);
+        _ = renderer.ApplyAndRender(restored, color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(baseline)).IsTrue();
+    }
+
+    internal static async Task DeformedShadowBoundsFollowDisplacement(ISilkGraphicsDevice device)
+    {
+        const float amount = 5f;
+        const float translationX = 0.35f;
+        float[] normals = LightAlignedNormals();
+        SilkMeshDeformationData rig = CasterTranslationRig(translationX);
+        float[] deformedPoints = EvaluatePoints(rig);
+        float[] displaced = Displace(deformedPoints, normals, amount);
+        var originalMinimum = new Vector3(-1, -1, ReceiverDepth);
+        var originalMaximum = new Vector3(1, 1, CasterDepth);
+        Vector3 originalCenter = (originalMinimum + originalMaximum) * 0.5f;
+        Vector3 originalHalf = (originalMaximum - originalMinimum) * 0.5f;
+        Vector3 movedMinimum = originalMinimum;
+        Vector3 movedMaximum = originalMaximum;
+        for (int offset = 0; offset < displaced.Length; offset += 3)
+        {
+            var point = new Vector3(displaced[offset], displaced[offset + 1], displaced[offset + 2]);
+            movedMinimum = Vector3.Min(movedMinimum, point);
+            movedMaximum = Vector3.Max(movedMaximum, point);
+        }
+
+        using ISilkGraphicsTexture color = CreateColor(device);
+        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var initial = new OpenUsdSilkPage(30, 1,
+            [
+                .. Frame(),
+                .. Material(constant: null),
+                .. Quad("/Caster", deformedPoints, normals, deformation: rig),
+                .. Receiver("/Floor"),
+                .. Shadow(originalCenter, originalHalf)
+            ], 5);
+        _ = renderer.ApplyAndRender(initial, color, depth);
+        byte[] baseline = ReadPixels(color);
+        const int shadowed = ((32 * Size) + 32) * 4;
+        const int lit = ((32 * Size) + 51) * 4;
+        await Assert.That(baseline[shadowed]).IsLessThan((byte)40);
+        await Assert.That(baseline[lit]).IsGreaterThan((byte)90);
+        ulong renders = renderer.ShadowMapRenderCount;
+
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        using var reference = new OpenUsdSilkPage(30, 1,
+            [
+                .. Frame(),
+                .. Material(constant: null),
+                .. Quad("/Caster", displaced, normals),
+                .. Receiver("/Floor"),
+                .. Shadow((movedMinimum + movedMaximum) * 0.5f, (movedMaximum - movedMinimum) * 0.5f)
+            ], 5);
+        _ = referenceRenderer.ApplyAndRender(reference, color, depth);
+        byte[] expected = ReadPixels(color);
+        await Assert.That(expected[shadowed]).IsLessThan((byte)40);
+        await Assert.That(expected[lit]).IsGreaterThan((byte)90);
+        (int expectedLeft, int expectedRight) = ShadowExtent(expected, 32, 8, 52);
+
+        using var changed = new OpenUsdSilkPage(30, 2, Material(constant: amount), 1);
+        _ = renderer.ApplyAndRender(changed, color, depth);
+        byte[] actual = ReadPixels(color);
+        await Assert.That(actual[shadowed]).IsLessThan((byte)40)
+            .Because("The deformed caster must retain its shadow after displacement.");
+        await Assert.That(actual[lit]).IsGreaterThan((byte)90);
+        (int actualLeft, int actualRight) = ShadowExtent(actual, 32, 8, 52);
+        await Assert.That(actualLeft >= 0 && actualRight >= actualLeft).IsTrue();
+        await Assert.That(Math.Abs(actualLeft - expectedLeft) <= 1).IsTrue();
+        await Assert.That(Math.Abs(actualRight - expectedRight) <= 1).IsTrue();
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
+
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(actual)).IsTrue();
+
+        using var restored = new OpenUsdSilkPage(30, 3, Material(constant: null), 1);
+        _ = renderer.ApplyAndRender(restored, color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(baseline)).IsTrue();
+    }
+
+    internal static async Task InstancedShadowBoundsFollowDisplacement(ISilkGraphicsDevice device)
+    {
+        const float amount = 5f;
+        const float instanceScale = 2f;
+        const float affineStretch = 4f;
+        const int instanceId = 17;
+        const string instancerPath = "/World/Instancer";
+        float[] normals = LightAlignedNormals();
+        float[] displaced = Displace(CasterPoints(), normals, amount);
+        float[] scaledDisplaced = ScalePoints(displaced, instanceScale);
+        double[] affineTransform = StretchAlongLightDirectionTransform(affineStretch);
+        float[] affineDisplaced = TransformPoints(displaced, affineTransform);
+        var originalMinimum = new Vector3(-1, -1, ReceiverDepth);
+        var originalMaximum = new Vector3(1, 1, CasterDepth);
+        Vector3 originalCenter = (originalMinimum + originalMaximum) * 0.5f;
+        Vector3 originalHalf = (originalMaximum - originalMinimum) * 0.5f;
+        Vector3 movedMinimum = originalMinimum;
+        Vector3 movedMaximum = originalMaximum;
+        foreach (float[] points in new[] { displaced, scaledDisplaced, affineDisplaced })
+        {
+            for (int offset = 0; offset < points.Length; offset += 3)
+            {
+                var point = new Vector3(points[offset], points[offset + 1], points[offset + 2]);
+                movedMinimum = Vector3.Min(movedMinimum, point);
+                movedMaximum = Vector3.Max(movedMaximum, point);
+            }
+        }
+
+        using ISilkGraphicsTexture color = CreateColor(device);
+        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var initial = new OpenUsdSilkPage(30, 1,
+            [
+                .. Frame(),
+                .. Material(constant: null),
+                .. Quad(
+                    "/Caster",
+                    CasterPoints(),
+                    normals,
+                    instanceId: instanceId,
+                    instanceIndex: 0,
+                    instancerPath: instancerPath),
+                .. InstanceReference(
+                    "/Caster",
+                    instanceId,
+                    instanceIndex: 1,
+                    instancerPath: instancerPath,
+                    transform: UniformScaleTransform(instanceScale)),
+                .. InstanceReference(
+                    "/Caster",
+                    instanceId,
+                    instanceIndex: 2,
+                    instancerPath: instancerPath,
+                    transform: affineTransform),
+                .. Receiver("/Floor"),
+                .. Shadow(originalCenter, originalHalf)
+            ], 7);
+        _ = renderer.ApplyAndRender(initial, color, depth);
+        byte[] baseline = ReadPixels(color);
+        const int shadowed = ((32 * Size) + 20) * 4;
+        const int lit = ((32 * Size) + 51) * 4;
+        await Assert.That(baseline[shadowed]).IsLessThan((byte)40);
+        await Assert.That(baseline[lit]).IsGreaterThan((byte)90);
+        await Assert.That(renderer.Scene.GetInstances("/Caster").Count).IsEqualTo(3);
+        ulong renders = renderer.ShadowMapRenderCount;
+
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        using var reference = new OpenUsdSilkPage(30, 1,
+            [
+                .. Frame(),
+                .. Material(constant: null),
+                .. Quad("/PrototypeControl", displaced, normals, primId: 3),
+                .. Quad("/InstanceControl", scaledDisplaced, normals, primId: 4),
+                .. Quad("/AffineInstanceControl", affineDisplaced, normals, primId: 5),
+                .. Receiver("/Floor"),
+                .. Shadow((movedMinimum + movedMaximum) * 0.5f, (movedMaximum - movedMinimum) * 0.5f)
+            ], 7);
+        _ = referenceRenderer.ApplyAndRender(reference, color, depth);
+        byte[] expected = ReadPixels(color);
+        await Assert.That(expected[shadowed]).IsLessThan((byte)40);
+        await Assert.That(expected[lit]).IsGreaterThan((byte)90);
+        (int expectedLeft, int expectedRight) = ShadowExtent(expected, 32, 8, 52);
+
+        using var changed = new OpenUsdSilkPage(30, 2, Material(constant: amount), 1);
+        _ = renderer.ApplyAndRender(changed, color, depth);
+        byte[] actual = ReadPixels(color);
+        await Assert.That(actual[shadowed]).IsLessThan((byte)40)
+            .Because("The displaced instance must remain inside the expanded shadow bounds.");
+        await Assert.That(actual[lit]).IsGreaterThan((byte)90);
+        (int actualLeft, int actualRight) = ShadowExtent(actual, 32, 8, 52);
+        await Assert.That(actualLeft >= 0 && actualRight >= actualLeft).IsTrue();
+        await Assert.That(Math.Abs(actualLeft - expectedLeft) <= 1).IsTrue();
+        await Assert.That(Math.Abs(actualRight - expectedRight) <= 1).IsTrue();
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
+
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(actual)).IsTrue();
+
+        using var restored = new OpenUsdSilkPage(30, 3, Material(constant: null), 1);
+        _ = renderer.ApplyAndRender(restored, color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(baseline)).IsTrue();
     }
 
     /// <summary>
@@ -529,6 +897,11 @@ internal static class SilkDisplacementRenderConformance
             color,
             depth,
             new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1));
+        return ReadPixels(color);
+    }
+
+    private static byte[] ReadPixels(ISilkGraphicsTexture color)
+    {
         byte[] pixels = new byte[Size * Size * 4];
         color.ReadbackForTesting(pixels);
         return pixels;
@@ -589,6 +962,49 @@ internal static class SilkDisplacementRenderConformance
         return Displace(points, normals, amounts);
     }
 
+    private static float[] ScalePoints(float[] points, float scale)
+    {
+        float[] scaled = new float[points.Length];
+        for (int index = 0; index < points.Length; index++)
+        {
+            scaled[index] = points[index] * scale;
+        }
+        return scaled;
+    }
+
+    private static double[] StretchAlongLightDirectionTransform(float scale)
+    {
+        Vector3 direction = LightDirection();
+        double xx = direction.X * direction.X * (scale - 1);
+        double xz = direction.X * direction.Z * (scale - 1);
+        double zz = direction.Z * direction.Z * (scale - 1);
+        return
+        [
+            1 + xx, 0, xz, 0,
+            0, 1, 0, 0,
+            xz, 0, 1 + zz, 0,
+            0, 0, 0, 1
+        ];
+    }
+
+    private static float[] TransformPoints(float[] points, double[] transform)
+    {
+        float[] transformed = new float[points.Length];
+        for (int offset = 0; offset < points.Length; offset += 3)
+        {
+            double x = points[offset];
+            double y = points[offset + 1];
+            double z = points[offset + 2];
+            transformed[offset] = (float)(
+                (x * transform[0]) + (y * transform[4]) + (z * transform[8]) + transform[12]);
+            transformed[offset + 1] = (float)(
+                (x * transform[1]) + (y * transform[5]) + (z * transform[9]) + transform[13]);
+            transformed[offset + 2] = (float)(
+                (x * transform[2]) + (y * transform[6]) + (z * transform[10]) + transform[14]);
+        }
+        return transformed;
+    }
+
     /// <summary>Moves every point by its own amount along its own normal.</summary>
     private static float[] Displace(float[] points, float[] normals, float[] amounts)
     {
@@ -623,6 +1039,46 @@ internal static class SilkDisplacementRenderConformance
         0.25f, -0.25f, CasterDepth,
         0.25f, 0.25f, CasterDepth,
         -0.25f, 0.25f, CasterDepth
+    ];
+
+    private static float[] LightAlignedNormals()
+    {
+        Vector3 direction = LightDirection();
+        return
+        [
+            direction.X, direction.Y, direction.Z,
+            direction.X, direction.Y, direction.Z,
+            direction.X, direction.Y, direction.Z,
+            direction.X, direction.Y, direction.Z
+        ];
+    }
+
+    private static (int Left, int Right) ShadowExtent(
+        byte[] pixels,
+        int y,
+        int firstCandidate = 10,
+        int lastCandidate = 30)
+    {
+        int left = -1;
+        int right = -1;
+        for (int x = firstCandidate; x <= lastCandidate; x++)
+        {
+            if (pixels[((y * Size) + x) * 4] >= 40)
+            {
+                continue;
+            }
+            left = left < 0 ? x : left;
+            right = x;
+        }
+        return (left, right);
+    }
+
+    private static double[] UniformScaleTransform(float scale) =>
+    [
+        scale, 0, 0, 0,
+        0, scale, 0, 0,
+        0, 0, scale, 0,
+        0, 0, 0, 1
     ];
 
     /// <summary>
@@ -676,11 +1132,13 @@ internal static class SilkDisplacementRenderConformance
     /// </remarks>
     private static SilkDecodedImage HeightDecoder(string asset, bool srgb)
     {
-        if (!string.Equals(asset, HeightAsset, StringComparison.Ordinal))
+        byte[] rows = asset switch
         {
-            throw new FileNotFoundException($"Texture '{asset}' is absent.", asset);
-        }
-        byte[] rows = [0, 64, 128, 255];
+            HeightAsset => [0, 64, 128, 255],
+            ShadowBoundsBaseHeightAsset => [0, 0, 0, 0],
+            ShadowBoundsRaisedHeightAsset => [0, 0, 0, 255],
+            _ => throw new FileNotFoundException($"Texture '{asset}' is absent.", asset)
+        };
         byte[] pixels = new byte[16];
         for (int texel = 0; texel < 4; texel++)
         {
@@ -735,6 +1193,28 @@ internal static class SilkDisplacementRenderConformance
                 0, 1, 0, 0,
                 0, 0, 1, 0,
                 pose * 0.4f, pose * 0.3f, 0, 1
+            ],
+            geomBindTransform:
+            [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1
+            ]);
+
+    private static SilkMeshDeformationData CasterTranslationRig(float translationX) =>
+        SilkDeformationRigBuilder.Build(
+            bindPoints: CasterPoints(),
+            bindNormals: LightAlignedNormals(),
+            influencesPerPoint: 1,
+            jointIndices: [0, 0, 0, 0],
+            jointWeights: [1, 1, 1, 1],
+            jointMatrices:
+            [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                translationX, 0, 0, 1
             ],
             geomBindTransform:
             [
@@ -808,7 +1288,20 @@ internal static class SilkDisplacementRenderConformance
     private static Vector3 LightDirection() =>
         Vector3.Normalize(new Vector3(LightTiltX, 0, 1));
 
-    private static byte[] Shadow()
+    private static byte[] Shadow() =>
+        Shadow(
+            new Vector3(0, 0, (ReceiverDepth + CasterDepth) * 0.5f),
+            new Vector3(1.5f, 1.5f, (CasterDepth - ReceiverDepth) * 0.5f));
+
+    private static byte[] EmptyShadow()
+    {
+        byte[] bytes = new byte[24];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Shadow);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        return bytes;
+    }
+
+    private static byte[] Shadow(Vector3 center, Vector3 half)
     {
         const int descriptorSize = 288;
         byte[] bytes = new byte[24 + descriptorSize];
@@ -817,8 +1310,6 @@ internal static class SilkDisplacementRenderConformance
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), 1u);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), 1u);
 
-        var center = new Vector3(0, 0, (ReceiverDepth + CasterDepth) * 0.5f);
-        var half = new Vector3(1.5f, 1.5f, (CasterDepth - ReceiverDepth) * 0.5f);
         double radius = Math.Sqrt(
             (half.X * half.X) + (half.Y * half.Y) + (half.Z * half.Z));
         BuildLightSpace(center, radius, out double[] view, out double[] projection);
@@ -949,10 +1440,15 @@ internal static class SilkDisplacementRenderConformance
         float[] normals,
         SilkMeshDeformationData? deformation = null,
         int primId = 1,
-        string materialPath = MaterialPath)
+        string materialPath = MaterialPath,
+        double[]? transform = null,
+        int instanceId = 0,
+        int instanceIndex = 0,
+        string instancerPath = "")
     {
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         byte[] material = Encoding.UTF8.GetBytes(materialPath);
+        byte[] instancer = Encoding.UTF8.GetBytes(instancerPath);
         uint[] indices = [0, 2, 1, 0, 3, 2];
         int pointCount = points.Length / 3;
         byte[] block = deformation is null ? [] : EncodeBlock(deformation);
@@ -969,7 +1465,9 @@ internal static class SilkDisplacementRenderConformance
             (2 * sizeof(uint)) +
             material.Length +
             attributeBytes +
-            block.Length;
+            block.Length +
+            instancer.Length +
+            (instancer.Length == 0 ? 0 : 8 + instancer.Length);
         byte[] bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
@@ -977,6 +1475,8 @@ internal static class SilkDisplacementRenderConformance
             bytes.AsSpan(8),
             SilkWireFormat.ComputeStableHash(pathValue));
         BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), primId);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(20), instanceId);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(24), instanceIndex);
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(28),
             (uint)SilkTopologyKind.TriangleList);
@@ -995,12 +1495,12 @@ internal static class SilkDisplacementRenderConformance
                 bytes.AsSpan(64 + (component * sizeof(float))),
                 component == 3 ? 1.0f : 0.8f);
         }
-        double[] identity = SilkMeshRendererConformance.Identity();
+        double[] objectTransform = transform ?? SilkMeshRendererConformance.Identity();
         for (int element = 0; element < 16; element++)
         {
             BinaryPrimitives.WriteDoubleLittleEndian(
                 bytes.AsSpan(80 + (element * sizeof(double))),
-                identity[element]);
+                objectTransform[element]);
         }
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(216), (uint)material.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220), 2);
@@ -1009,6 +1509,8 @@ internal static class SilkDisplacementRenderConformance
             deformation is null ? 0u : (uint)deformation.Options);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(228), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(232), (uint)block.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(260), (uint)instancer.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(264), instancer.Length == 0 ? 0u : 1u);
 
         path.CopyTo(bytes, MeshFixedSize);
         int cursor = MeshFixedSize + path.Length;
@@ -1044,6 +1546,63 @@ internal static class SilkDisplacementRenderConformance
             pointCount,
             texCoords);
         block.CopyTo(bytes, cursor);
+        cursor += block.Length;
+        if (instancer.Length != 0)
+        {
+            instancer.CopyTo(bytes, cursor);
+            cursor += instancer.Length;
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), (uint)instancer.Length);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(cursor + 4), instanceIndex);
+            instancer.CopyTo(bytes, cursor + 8);
+        }
+        return bytes;
+    }
+
+    private static byte[] InstanceReference(
+        string pathValue,
+        int instanceId,
+        int instanceIndex,
+        string instancerPath,
+        double[] transform)
+    {
+        byte[] path = Encoding.UTF8.GetBytes(pathValue);
+        byte[] instancer = Encoding.UTF8.GetBytes(instancerPath);
+        int size = MeshFixedSize + path.Length + instancer.Length + 8 + instancer.Length;
+        byte[] bytes = new byte[size];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            bytes.AsSpan(8),
+            SilkWireFormat.ComputeStableHash(pathValue));
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), 1);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(20), instanceId);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(24), instanceIndex);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), (uint)SilkTopologyKind.TriangleList);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(44), (uint)SilkMeshCullStyle.Nothing);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48), (uint)path.Length);
+        for (int component = 0; component < 4; component++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(64 + (component * sizeof(float))),
+                component == 3 ? 1f : 0.8f);
+        }
+        for (int element = 0; element < 16; element++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(
+                bytes.AsSpan(80 + (element * sizeof(double))),
+                transform[element]);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(260), (uint)instancer.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(264), 1);
+        path.CopyTo(bytes, MeshFixedSize);
+        int cursor = MeshFixedSize + path.Length;
+        instancer.CopyTo(bytes, cursor);
+        cursor += instancer.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), (uint)instancer.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(cursor + 4), instanceIndex);
+        instancer.CopyTo(bytes, cursor + 8);
         return bytes;
     }
 

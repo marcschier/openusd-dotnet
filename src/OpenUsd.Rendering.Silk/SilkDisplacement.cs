@@ -229,16 +229,16 @@ internal readonly record struct SilkDisplacementPlan(
 /// never clamped.
 /// </para>
 /// <para>
-/// Addressing is the authored wrap mode, evaluated exactly. <c>black</c> and
-/// <c>useMetadata</c> are a transparent-black border: a texel outside the image
-/// contributes zero <em>sampled</em> value, including its share of a bilinear
-/// blend near an edge, which is what a border-addressed sampler computes. The
-/// fragment sampler uses the same border behavior. MaterialX <c>constant</c> is
-/// a border too, but its border is the authored <c>default</c>, read through the
-/// same channel selection as a texel: outside the image the sampled value is the
-/// default rather than zero. When one axis is <c>black</c> and the other
-/// <c>constant</c>, a coordinate outside the black axis is black, because a
-/// clamp-to-border sampler on that axis decides before the other axis is read.
+/// Addressing uses the resolved wrap mode. <c>black</c> is a transparent-black
+/// border: a texel outside the image contributes zero <em>sampled</em> value,
+/// including its share of a bilinear blend near an edge. Production preparation
+/// resolves <c>useMetadata</c> from the image before constructing the field; an
+/// unresolved value passed directly to the field uses the black fallback.
+/// MaterialX <c>constant</c> is a border too, but its border is the authored
+/// <c>default</c>, read through the same channel selection as a texel. When one
+/// axis is <c>black</c> and the other <c>constant</c>, a coordinate outside the
+/// black axis is black, because a clamp-to-border sampler on that axis decides
+/// before the other axis is read.
 /// </para>
 /// <para>
 /// The authored <c>scale</c> and <c>bias</c> are applied to the <em>filtered</em>
@@ -538,12 +538,9 @@ internal sealed class SilkDisplacementField
     /// with a texel of the image.
     /// </summary>
     /// <remarks>
-    /// <see cref="SilkTextureWrap.UseMetadata"/> is a border here for the reason
-    /// USD gives: it defers addressing to wrap metadata inside the image file,
-    /// hdSilk reads no such metadata, and the documented fallback when none is
-    /// present is <c>black</c>. It stays a distinct wire value, and a distinct
-    /// part of this field's identity, because a consumer that does read metadata
-    /// must be able to tell the two apart.
+    /// Production preparation resolves <see cref="SilkTextureWrap.UseMetadata"/>
+    /// before creating a field. If passed directly, it uses USD's
+    /// transparent-black fallback for absent metadata.
     /// </remarks>
     internal static bool IsBorder(SilkTextureWrap wrap) =>
         wrap is SilkTextureWrap.Black or SilkTextureWrap.UseMetadata or SilkTextureWrap.Constant;

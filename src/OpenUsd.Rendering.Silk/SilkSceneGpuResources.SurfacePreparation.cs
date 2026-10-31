@@ -62,7 +62,8 @@ public sealed partial class SilkSceneGpuResources
         internal void Retire(ISilkGraphicsBuffer buffer) => _retired.Add(buffer);
         internal void Track(ISilkGraphicsBuffer buffer) => _created.Add(buffer);
 
-        internal void Prepare(SilkSceneState scene, SilkSceneDelta delta, bool prepareUniformCapacity)
+        internal void Prepare(
+            SilkSceneState scene, SilkSceneDelta delta, bool prepareUniformCapacity, bool useSceneMaterials)
         {
             foreach (string path in delta.ChangedMaterialPaths.Span)
             {
@@ -97,7 +98,8 @@ public sealed partial class SilkSceneGpuResources
             }
             foreach (SilkMeshData mesh in scene.Meshes.Values)
             {
-                _owner.RequireSurfaceBuffer(scene, mesh, RenderHeadlight.Deterministic);
+                _owner.RequireSurfaceBuffer(
+                    scene, mesh, RenderHeadlight.Deterministic, useSceneMaterials);
             }
         }
 

@@ -342,9 +342,9 @@ internal sealed class SilkDisplacementTests
     }
 
     /// <summary>
-    /// Every authored wrap mode addresses a coordinate outside the unit range the
-    /// way USD defines it, and <c>black</c> and <c>useMetadata</c> are a true
-    /// transparent-black border rather than a clamp.
+    /// Resolved wrap modes address a coordinate outside the unit range. Passing
+    /// unresolved <c>useMetadata</c> directly to the field uses the same
+    /// transparent-black fallback as <c>black</c>, rather than a clamp.
     /// </summary>
     [Test]
     public async Task WrapModesAddressOutsideTheUnitRange()

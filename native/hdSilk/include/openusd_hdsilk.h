@@ -451,11 +451,12 @@ extern "C" {
 ///   float  cone_angle (degrees, 0..180; 180 is unshaped)
 ///   float  focus (cosine exponent, >= 0)
 ///   uint32 reserved[2] (0)
-/// Only rect and disk lights carry a shaped cone, matching Storm's area-light
-/// approximation: UsdLux ShapingAPI cone angle (default 90, so these lights
-/// are lit on their -Z side only) and focus. Every other published type writes
-/// 180 and 0. A slot past the direct-light count is all zero. Cone softness and
-/// IES profiles are not published.
+/// Rect and disk lights carry the Storm area-light approximation: ShapingAPI
+/// cone angle (default 90, so these lights are lit on their -Z side only) and
+/// focus. Zero-radius sphere lights also carry cone and focus when the authored
+/// cone is below 180 degrees, shaping spot emission. Finite-radius spheres and
+/// other published types write 180 and 0. A slot past the direct-light count
+/// is all zero. Cone softness and IES profiles are not published.
 ///
 /// ABI v21 appends the bounded dome table after ambient_intensity. It exists so
 /// that a dome light can be addressed by a per-prim UsdLux collection, which the
@@ -621,6 +622,9 @@ extern "C" {
 ///       88    * uint8    asset[asset_byte_count] (UTF-8, resolved, no NUL)
 ///        *    * uint8    uv_primvar[uv_primvar_byte_count] (UTF-8, no NUL)
 ///
+/// For OPENUSD_SILK_MATERIAL_VOLUME_DENSITY, uv_primvar instead contains the
+/// comma-separated width, height and depth of the cached R32 field.
+///
 /// ABI v13 adds output_channel. It is the resolved output port of the connected
 /// UsdUVTexture -- the "r", "g", "b", "a" or "rgb" token the surface input is
 /// wired to -- and it is required rather than optional: a consumer cannot infer
@@ -635,17 +639,17 @@ extern "C" {
 ///
 /// wrap_s, wrap_t, and fallback are resolved from whichever schema the connected
 /// image node belongs to, not from one fixed set of names. A UsdUVTexture states
-/// them as wrapS/wrapT and fallback, and an unauthored wrap resolves to
-/// OPENUSD_SILK_WRAP_BLACK. A MaterialX ND_image_* states them as uaddressmode,
-/// vaddressmode, and default, and an unauthored address mode resolves to
+/// them as wrapS/wrapT and fallback, and an unauthored wrap publishes
+/// OPENUSD_SILK_WRAP_USE_METADATA. A MaterialX ND_image_* states them as
+/// uaddressmode, vaddressmode, and default, and an unauthored address mode resolves to
 /// OPENUSD_SILK_WRAP_REPEAT because MaterialX defaults both axes to periodic.
 /// MaterialX "constant" addressing is carried as OPENUSD_SILK_WRAP_CONSTANT,
 /// whose border is this entry's fallback, the node's `default`. An address mode
 /// outside the four MaterialX names is rejected with a diagnostic and the input
 /// keeps its documented default.
 ///
-/// ABI v14 appends uv_transform, the one constant texture-coordinate transform
-/// every texture of this material samples through, as the row-major affine
+/// ABI v14 appends uv_transform, the primary constant texture-coordinate
+/// transform, as the row-major affine
 /// (m00, m01, m10, m11, tx, ty) applied as u' = m00*u + m01*v + tx and
 /// v' = m10*u + m11*v + ty. It is the identity (1, 0, 0, 1, 0, 0) unless the
 /// graph routes texture coordinates through a chain of MaterialX place2d or
@@ -657,12 +661,11 @@ extern "C" {
 /// one; see alternate_uv_transform below. hdSilk reconciles both halves of the
 /// coordinate stream: a texture asking for a third transform, or naming a third
 /// uv_primvar, is dropped with a diagnostic rather than sampled with coordinates
-/// it did not author. Every uv_primvar surviving in one MATERIAL_UPSERT is
-/// therefore one of at most two names or empty, which is what lets a consumer
-/// take the streams from the first entries that name them. A chain with a
-/// non-constant input, a
-/// chain passing through any other node, and a chain that never reaches a
-/// coordinate node are likewise rejected with a diagnostic and leave the input
+/// it did not author. Every surface uv_primvar surviving in one MATERIAL_UPSERT
+/// is therefore one of at most two names or empty. Displacement can name its
+/// own coordinate set. A chain with a non-constant input, a chain passing
+/// through any other node, and a chain that never reaches a coordinate node are
+/// likewise rejected with a diagnostic and leave the input
 /// at the documented default, because folding part of an authored chain would
 /// render coordinates the graph never produced.
 ///
@@ -713,8 +716,8 @@ extern "C" {
 /// parameter has *both* entries of that second parameter dropped with a
 /// diagnostic, leaving that input at its documented default; publishing only its
 /// first operand would render one of two authored images and look plausible.
-/// Both operands read the material's single texture-coordinate stream, which the
-/// uv_primvar reconciliation above already guarantees.
+/// Both operands must use the same texture-coordinate stream and folded
+/// transform. Other inputs may use the alternate stream or transform.
 ///
 /// surface_kind is OPENUSD_SILK_SURFACE_UNSUPPORTED when the bound network is
 /// not a UsdPreviewSurface. Such a material is still published, with empty
@@ -1132,19 +1135,20 @@ extern "C" {
 #define OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION 1024u
 
 /// Descriptor flags. ORTHOGRAPHIC states that the projection has no perspective
-/// divide, which is exact for a distant light and is the only projection hdSilk
-/// derives today. CASTER_LINKED states that at least one published prim is
-/// excluded from this light's caster collection, so a consumer that ignores the
-/// LIGHT_LINK shadow mask renders a knowably different image.
+/// divide; it is used for distant lights. A zero-radius sphere spot uses a
+/// perspective projection with no flag. CASTER_LINKED states that at least one
+/// published prim is excluded from this light's caster collection, so a consumer
+/// that ignores the LIGHT_LINK shadow mask renders a knowably different image.
 #define OPENUSD_SILK_SHADOW_FLAG_NONE 0u
 #define OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC 1u
 #define OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED 2u
 
 /// Authored shadow state hdSilk did not put on the SHADOW command.
-/// LIGHT_TYPE is set when a shadow-enabled direct light is not a distant light:
-/// only a distant light has an exact light-space projection here, and a sphere,
-/// rect, disk or cylinder light would need a projection this producer has not
-/// derived. MAP_BUDGET is set when more lights asked for a map than
+/// LIGHT_TYPE is set when a light has no supported projection: distant lights
+/// use orthographic maps, and zero-radius sphere spots use one perspective map
+/// when their ShapingAPI cone half-angle is in (0, 90) degrees. Wider or
+/// unshaped sphere lights, finite spheres and area lights need other projections
+/// or multiple maps. MAP_BUDGET is set when more lights asked for a map than
 /// OPENUSD_SILK_MAX_SHADOW_MAPS allows. NO_CASTERS is set when a light asked for
 /// a map but the published geometry has no world extent to derive one from.
 #define OPENUSD_SILK_SHADOW_UNSUPPORTED_NONE 0u
@@ -1289,9 +1293,8 @@ extern "C" {
 /// Texture wrap modes.
 ///
 /// OPENUSD_SILK_WRAP_BLACK is published for UsdUVTexture's authored "black" and
-/// unrecognized wrap tokens. The managed fragment sampler maps BLACK and
-/// useMetadata to a transparent-black border. The vertex-stage displacement
-/// sampler applies the same border behavior.
+/// unrecognized wrap tokens. Fragment sampling and vertex-stage displacement
+/// both use a transparent-black border for BLACK.
 #define OPENUSD_SILK_WRAP_BLACK 0u
 #define OPENUSD_SILK_WRAP_CLAMP 1u
 #define OPENUSD_SILK_WRAP_REPEAT 2u
@@ -1303,10 +1306,11 @@ extern "C" {
 /// Carried distinctly from OPENUSD_SILK_WRAP_BLACK because the two record
 /// different authored intent: `black` states the addressing, while
 /// `useMetadata` defers it to wrap metadata inside the image file. This delegate
-/// reads no image metadata, so both resolve to the same addressing -- USD's
-/// documented fallback when no metadata is present is `black` -- but a consumer
-/// that does read metadata must be able to tell them apart, and a consumer that
-/// reports what it resolved must be able to say which one it resolved.
+/// reads no image metadata. Consumers resolve the observed wrap on each axis,
+/// or use USD's `black` fallback without a diagnostic when a queried image has
+/// no wrap metadata. For a decoded image, an unavailable query or unsupported
+/// wrap mode makes fragment sampling report a black-border fallback; vertex
+/// displacement refuses the field.
 #define OPENUSD_SILK_WRAP_USE_METADATA 4u
 
 /// MaterialX `constant` addressing (ABI v29). Outside the unit range the

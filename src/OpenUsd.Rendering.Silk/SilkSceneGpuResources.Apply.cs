@@ -14,7 +14,8 @@ public sealed partial class SilkSceneGpuResources
 
     internal PreparedMeshUpdate? Prepare(
         SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures = true,
-        bool prepareUniformCapacity = false, bool reloadDependencies = true)
+        bool prepareUniformCapacity = false, bool reloadDependencies = true,
+        bool useSceneMaterials = true)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(scene);
@@ -33,7 +34,9 @@ public sealed partial class SilkSceneGpuResources
         _preparing = prepared;
         try
         {
-            prepared.Prepare(scene, delta, prepareMaterialTextures, prepareUniformCapacity, reloadDependencies);
+            prepared.Prepare(
+                scene, delta, prepareMaterialTextures, prepareUniformCapacity, reloadDependencies,
+                useSceneMaterials);
             return prepared;
         }
         catch (Exception preparationFailure)
@@ -84,7 +87,7 @@ public sealed partial class SilkSceneGpuResources
 
         internal void Prepare(
             SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures, bool prepareUniformCapacity,
-            bool reloadDependencies)
+            bool reloadDependencies, bool useSceneMaterials)
         {
             if (reloadDependencies && _owner.RequiresEnvironmentPreparation(scene))
             {
@@ -169,7 +172,7 @@ public sealed partial class SilkSceneGpuResources
             if (_owner.RequiresSurfacePreparation)
             {
                 _surfaces = new PreparedSurfaceUpdate(_owner);
-                _surfaces.Prepare(scene, delta, prepareUniformCapacity);
+                _surfaces.Prepare(scene, delta, prepareUniformCapacity, useSceneMaterials);
             }
             if (prepareUniformCapacity && SilkMeshGpuGeometryResource.UsesInstanceAdmission(_owner._device))
             {

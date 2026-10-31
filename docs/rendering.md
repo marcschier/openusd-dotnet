@@ -3353,9 +3353,10 @@ attribute payload only when the named coordinate is absent. The values remain be
 material UV transform, so that transform is applied exactly once. Existing authored attributes
 win, source layers are never changed, and lightweight instances reuse the prototype default.
 Changing or removing a reader default republishes its bound prototype families; unrelated
-shading-only edits do not. Connected/non-finite defaults and conflicting defaults for the same
-single coordinate stream are diagnosed rather than silently merged. This is an additive
-projection using the existing mesh attribute encoding, not an ABI version change.
+shading-only edits do not. Connected or non-finite defaults are rejected. Surface textures
+must share a reader fallback even when they use different primvars; displacement must match
+the fallback of each surface texture using the same primvar. A conflict is diagnosed rather
+than silently merged. This projection uses the existing mesh attribute encoding.
 
 `SilkSceneGpuResources.Diagnostics` returns a deterministic snapshot of at most 128 deduplicated
 material and texture warnings. Unresolved relationships and unsupported surface networks retain flat
@@ -3471,10 +3472,11 @@ reads it that way for `ND_image_*` and the UsdUVTexture way for `UsdUVTexture`:
 - `uaddressmode` and `vaddressmode` are read per axis and default to `periodic`, which is the wire's repeat mode.
   `clamp` and `mirror` map to the matching wire modes, and `constant` maps to `SilkTextureWrap.Constant`, added in
   page ABI 29. An address mode outside the supported enumeration is reported and the input keeps its default.
-- `SilkTextureWrap.Black` records UsdUVTexture's `black`/unauthored `wrap`. Samples outside the image return
-  transparent black rather than the edge texel. The fragment sampler maps `black` and `useMetadata` to
-  transparent-black border sampling on D3D12, Vulkan, and Metal; vertex displacement resolves image metadata
-  separately.
+- `SilkTextureWrap.Black` records UsdUVTexture's authored `black` or an unrecognized wrap token. Samples outside the
+  image use a transparent-black border on D3D12, Vulkan, and Metal. An unauthored wrap instead publishes
+  `SilkTextureWrap.UseMetadata`, which resolves each axis from image metadata or uses the black fallback without a
+  diagnostic when a queried image has no wrap metadata. For a decoded image, an unavailable query or unsupported wrap
+  mode makes fragment sampling report a black-border fallback; vertex displacement refuses the field.
 - `SilkTextureWrap.Constant` returns the MaterialX `default` outside the image. No backend sampler takes a per-texture
   border colour, so the texture cache surrounds the decoded image with a one-texel ring of the default, after scale and
   bias, on each constant axis. The surface block carries a per-axis mask of the slots with a ring, and the shader remaps
@@ -3593,6 +3595,9 @@ texture then samples whichever of the two streams its entry names, through which
 parameter selects. A transformed base colour beside an untransformed normal map, and a base colour on `uvSet0` beside
 a normal map on `uvSet1`, are therefore both supported, and neither texture is dropped.
 
+Surface textures must also agree on the missing-coordinate reader fallback, even when they read
+different primvars. A conflicting input is left at its default with a diagnostic.
+
 Three shapes remain outside the projection and are rejected with a `TF_WARN` naming the material, the parameter, and
 the cause, instead of being sampled through coordinates they never authored:
 
@@ -3604,18 +3609,19 @@ the cause, instead of being sampled through coordinates they never authored:
 - A composite whose two operands read different streams or different transforms. One input samples one stream
   through one transform, so the whole parameter is dropped.
 
-Displacement and the detail normal never take the alternate transform. Displacement is sampled per vertex through its
-own folded affine, and the detail normal through `DetailUvRow0`/`DetailUvRow1`. A mask bit naming either of them, or
-a parameter with no published surface texture, would make the shader read a transform nothing asked for. The native
-serializer therefore skips such a material with a `TF_WARN` and counts it as rejected, and the managed parser refuses
-the same mask with `InvalidDataException`.
+Displacement and the detail normal never take the alternate transform. Displacement uses the primary transform, which
+is its own folded affine when no surface texture exists; a mismatch leaves displacement unpublished. The detail normal
+uses `DetailUvRow0`/`DetailUvRow1`. A mask bit naming either of them, or a parameter with no published surface
+texture, would make the shader read a transform nothing asked for. The native serializer therefore skips such a
+material with a `TF_WARN` and counts it as rejected, and the managed parser refuses the same mask with
+`InvalidDataException`.
 
 The second stream travels in the vertex payload rather than in the material wire, so it does not change the page
 ABI. A mesh with a secondary set uses a 40-byte vertex (56 bytes with tangents), with the secondary coordinates in the
 last two floats. Tangents follow the stream the normal map samples, or the detail normal's stream when there is no
 normal map. GPU deformation handles at most eight floats per vertex, so a mesh with a secondary set is deformed on the
-CPU. A missing secondary primvar reads as zero coordinates and reports `TextureCoordinatesUnavailable` naming the
-requested primvar, exactly as a missing primary primvar does.
+CPU. Either missing primvar uses its resolved reader fallback when one is published. Without a fallback, it reads as
+zero coordinates and reports `TextureCoordinatesUnavailable` naming the requested primvar.
 
 Unsupported MaterialX terminals and unsupported upstream nodes are not approximated. hdSilk publishes an unsupported
 material record or leaves the individual input at its documented default and emits a `TF_WARN` naming the material,
@@ -3692,8 +3698,10 @@ transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Rect and di
 `UsdLuxShapingAPI` the way Storm's area-light approximation does: when `shaping:cone:angle` is below
 180 degrees, a surface outside the cone receives nothing, and inside it the contribution is scaled by
 the emitter-axis cosine raised to `shaping:focus`. Because Storm's default cone is 90 degrees, an
-unshaped rect or disk light emits only from its front face. Cone softness, IES profiles and sphere-light
-shaping are not applied. Every direct light and every dome also honours `enableColorTemperature`:
+unshaped rect or disk light emits only from its front face. Cone softness and IES profiles are not
+applied, and finite-radius sphere lights remain unshaped. A zero-radius sphere light applies its
+ShapingAPI cone and focus when the cone is below 180 degrees, shaping its direct emission as a spot.
+Every direct light and every dome also honours `enableColorTemperature`:
 hdSilk multiplies the authored colour by `UsdLuxBlackbodyTemperatureAsRgb(colorTemperature)`, the
 same luminance-normalized tint Storm applies. It does so when it selects the frame's direct lights,
 resolves an untextured dome's ambient term, or builds a textured dome's environment record, so the
@@ -4015,20 +4023,26 @@ to do while any submission is still registered against it.
 
 ### hdSilk raster shadows
 
-hdSilk casts raster shadows for authored `UsdLuxDistantLight`s. A light that authors
-`inputs:shadow:enable` gets one bounded light-space shadow map, its casters are rendered from light
-space through a depth-only pipeline before the colour pass, and every prim the light reaches is shaded
-against that map. Nothing else casts: a sphere, rect, disk or cylinder light is named as unsupported
-rather than approximated.
+hdSilk casts raster shadows for authored `UsdLuxDistantLight`s and spot-shaped, zero-radius
+`UsdLuxSphereLight`s. A distant light gets one bounded orthographic map; a sphere light gets one
+perspective map when its ShapingAPI cone angle is greater than 0 and less than 90 degrees. The cone
+angle is the half-angle used by the shading cutoff, so a wider cone cannot fit in one perspective
+projection. The caster geometry is rendered from light space through a depth-only pipeline before
+the colour pass, and each prim the light reaches is shaded against that map. Unshaped point lights,
+wide-cone or finite-radius sphere lights, and rect, disk or cylinder lights remain unsupported rather
+than being approximated.
 
 **What travels.** Page ABI v19 adds the `SHADOW` command. It carries up to
 `OPENUSD_SILK_MAX_SHADOW_MAPS` (4) descriptors, each naming its light's index in the FRAME light
 table, its map index, a square power-of-two resolution between 256 and 2048, the row-major
 light-space view and projection, a normalized depth bias, a world-space normal bias, and a PCF radius
-in texels. The matrices use exactly the FRAME camera's conventions — row-major, row-vector, OpenGL
-`[-w, +w]` clip depth — so one consumer-side depth conversion covers the camera and every light.
-hdSilk derives the projection from the world bounds of the published casters, cached per record as
-object-space bounds when the record is published so that an unchanged scene never re-walks its points.
+in texels. Distant-light descriptors set `ORTHOGRAPHIC`; spot descriptors leave it clear and carry a
+perspective projection. The matrices use exactly the FRAME camera's conventions — row-major,
+row-vector, OpenGL `[-w, +w]` clip depth — so one consumer-side depth conversion covers the camera
+and every light. hdSilk derives both projections from the world bounds of the published casters,
+cached per record as object-space bounds when the record is published so an unchanged scene never
+re-walks its points. A spot map is published only when the caster bounds lie wholly in front of its
+emitter.
 The table is compared and published whole: a page whose descriptors are unchanged publishes no command
 at all, which is how a consumer knows a retained map is still the one those lights and those caster
 bounds produced, and a scene that authors no shadow publishes no command and allocates nothing.
@@ -4081,6 +4095,9 @@ composite material image.
 descriptor table, the caster geometry revision (which moves on upsert, removal, deformation, and
 restoration), the material revision, the caster restriction, or the device generation. A material-only
 edit can change whether a caster is solid, invisible, or unsupported without changing its mesh. The
+maximum displacement of prepared casters expands the shadow frustum and depth range before rendering;
+if a perspective near plane would cross the emitter, preparation rejects the projection instead of
+publishing a map that can clip displaced geometry. The
 device generation it keys on is the combined one every reset a backend reports advances, not the
 picking or selection-outline generation alone: a device lost on an ordinary colour or shadow
 submission drops every image the device held, including this atlas, without either subsystem generation
@@ -4098,10 +4115,11 @@ of the resolution the descriptor asks for.
 
 **What is named rather than approximated.** A shadow-enabled light with no descriptor is reported as
 `OPENUSD_SILK_SHADOW_UNSUPPORTED` against its light-table index and resolved type, with the reason: a
-light type with no exact light-space projection, a scene whose published geometry has no world extent
-to derive one from, a table over the map budget, or a device that cannot record a depth-only pass. The
-diagnostic is re-derived whenever the frame or the shadow table moves, so a light that starts getting a
-map, or stops asking for one, stops being reported.
+light shape with no supported projection, a spot whose caster bounds cannot fit in a finite perspective
+frustum, a scene whose published geometry has no world extent to derive one from, a table over the map
+budget, or a device that cannot record a depth-only pass. The diagnostic is re-derived whenever the
+frame or the shadow table moves, so a light that starts getting a map, or stops asking for one, stops
+being reported.
 
 **Evidence.** `SilkShadowConformance` renders a receiver in front of a caster under one tilted distant
 light on D3D12 WARP and Vulkan SwiftShader and requires the shadow to land where the geometry says it
@@ -4120,6 +4138,10 @@ diagnostics, and resource release on D3D12 WARP and Vulkan SwiftShader, with and
 admission. `SilkShadowWireTests` pins the cutoff defaults, adjacent threshold values and invalid
 inputs as well as the wire layout and its rejections, including the reserved header field.
 `SilkTextureResidencyTests` keeps texture-driven opacity outside the supported caster set.
+`PerspectiveSpotShadowPixelsMatchAnalyticReceiver` checks shaped-sphere illumination against a
+perspective descriptor on both backends; `hdsilk_direct_lights_probe` pins native spot descriptor
+production and cone boundaries. `SilkShadowAtlasRetentionTests` checks perspective displacement
+frustum expansion and rejects a displacement that crosses the near plane.
 `SilkShadowDiagnosticTests` pins the naming in both directions,
 `SilkShadowNormalSpaceSourceContractTests` pins the world space the shadow bias works in — a defect
 the constant depth bias hides from any gate a 64-pixel frame can resolve — and `hdsilk_probe` pins
@@ -4143,10 +4165,11 @@ synchronisation behaviour rather than shading:
   `VulkanSampledDepthBarrierSourceContractTests` instead of being left to a backend that happens to be
   permissive.
 
-What is deliberately not claimed: shadows from sphere, rect, disk, cylinder and dome lights, which
-need a cube or perspective light-space projection this producer has not derived; more than four
-simultaneous shadow maps; cascaded or camera-fitted light-space partitions, since the single map is
-fitted to the whole caster bound rather than to the view frustum; shadows from line and point
+What is deliberately not claimed: shadows from unshaped or wide-cone point lights, finite-radius
+sphere lights, rect, disk, cylinder and dome lights, which need a cubemap, wider projection or area
+light model this producer has not derived; more than four simultaneous shadow maps; cascaded or
+camera-fitted light-space partitions, since the single map is fitted to the whole caster bound rather
+than to the view frustum; shadows from line and point
 topologies, which rasterize at one pixel and would publish a single-texel artefact rather than an
 occluder; texture-driven alpha tests, blended translucent shadow casters, and positive thresholds on
 non-PreviewSurface materials, which are dropped and named rather than approximated with a solid shadow
@@ -5117,10 +5140,9 @@ through `st2` is exactly representable and publishes both -- neither is dropped,
 rewritten into the other. With no surface texture, the displacement's folded affine becomes the
 material's primary transform. Otherwise, a different affine or a different missing-coordinate fallback
 for the same primvar leaves displacement unpublished with a diagnostic. Displacement cannot select
-the alternate surface transform. `VerifyDisplacementStageProbe` gates this against a composed stage,
-not a hand-built map.
+the alternate surface transform.
 
-The rules are gated against a real stage as well as against hand-built networks:
+The terminal and independent-coordinate behavior is also checked against a composed stage:
 `test-assets/displacement-terminal-stage.usda` is composed by UsdImaging and read through
 `GetMaterialResource`, and `VerifyDisplacementStageProbe` checks the claims a hand-built network map
 cannot make -- a connected output publishes, an unconnected one publishes nothing even though the same
@@ -5185,9 +5207,10 @@ what a border-addressed sampler computes and what a clamp cannot reproduce. The 
 `bias` are then applied to the filtered value, because that is where UsdUVTexture puts them -- the
 reader samples, then scales and biases. A fully bordered sample therefore resolves to the authored
 bias rather than to zero, and a blend that straddles an edge carries the bias exactly once instead of
-once per texel. The wire carries no custom border colour, so MaterialX `constant` cannot use its
-authored `default` as the out-of-range value; `default` remains the fallback for an unreadable image. The two
-modes are distinct on the wire: `OPENUSD_SILK_WRAP_USE_METADATA` is published for an authored
+once per texel. MaterialX `constant` instead reads its authored `default` outside the image; fragment sampling
+uses a padded ring. The low-level displacement field also handles a `constant` border on the CPU, although a
+MaterialX displacement terminal is not projected. `black` and `useMetadata` remain distinct on the wire:
+`OPENUSD_SILK_WRAP_USE_METADATA` is published for an authored
 `useMetadata` and for an unauthored `wrap` -- which is the same thing, since `useMetadata` is the
 schema default -- while `OPENUSD_SILK_WRAP_BLACK` is published for an authored `black` and for a token
 this delegate does not recognise.

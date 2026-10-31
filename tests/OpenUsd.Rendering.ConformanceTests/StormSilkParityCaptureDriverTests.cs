@@ -3966,9 +3966,9 @@ def Xform "World"
     /// </summary>
     /// <remarks>
     /// MaterialX defaults <c>uaddressmode</c>/<c>vaddressmode</c> to
-    /// <c>periodic</c>, while UsdUVTexture's unauthored <c>wrap</c> resolves to
-    /// black. hdSilk reads MaterialX's address names and publishes the selected
-    /// sampler mode.
+    /// <c>periodic</c>, while UsdUVTexture's unauthored <c>wrap</c> defers to
+    /// image metadata. hdSilk reads MaterialX's address names and publishes the
+    /// selected sampler mode.
     ///
     /// At coordinate 1.25 on a 2x2 image, periodic wraps to the 0.25 texel centre
     /// and reads the first column, clamp reads the last column, and black reads

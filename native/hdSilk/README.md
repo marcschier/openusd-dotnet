@@ -123,12 +123,15 @@ an explicit frame flag so omitting them never invents a camera headlight.
 The direct and shadow memberships are independent four-word, 128-bit masks,
 resolved against the same path-sorted light ordering as the frame. The dome
 table and mask remain separately bounded at eight. Shadows remain bounded at
-four distant-light maps: this expansion adds no area-light or dome shadows.
+four descriptors: distant lights use orthographic maps, and supported zero-radius
+sphere spots use one perspective map. Unshaped point, area-light and dome shadows
+remain unsupported.
 The native frame is 25416 bytes, and each link entry is 44 bytes plus its UTF-8
 path. Page ABI 28 appended a 2048-byte table of 16-byte entries after the dome
 block: the `UsdLuxShapingAPI` cone angle and focus of each direct light, with two
-reserved zero words. Only rect and disk lights publish a cone below 180 degrees;
-every other light, and every slot past the light count, carries 180 and zero.
+reserved zero words. Rect and disk lights publish cone and focus; zero-radius
+sphere lights also publish them when the cone is below 180 degrees. Other types,
+finite-radius spheres and slots past the light count carry 180 and zero.
 The managed/GPU frame is 17344 bytes at the existing raw-buffer binding;
 the 240-byte per-draw surface block carries two integer `uint4` masks, without
 floating-point conversion or per-element native calls.

@@ -497,7 +497,7 @@ void VerifyDirectShapeAndControlWire()
                 shape.type == OPENUSD_SILK_LIGHT_DISK;
             Require(slot.shapingConeAngle == (shaped ? 45.0f : 180.0f) &&
                     slot.shapingFocus == (shaped ? 3.0f : 0.0f),
-                label + ": only rect and disk lights may carry a ShapingAPI cone");
+                label + ": unexpected shaping values for finite-radius spheres or non-area lights");
             Require(slot.transform == std::array<double, 16>{
                     0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0,
                     0.0, 0.0, 1.0, 0.0, 3.0, 4.0, 5.0, 1.0},
@@ -3464,6 +3464,145 @@ void VerifyHighIndexShadowDescriptors()
         "unchanged high shadows republished or FRAME changed");
 }
 
+void VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/ShapedSphere";
+    light.type = OPENUSD_SILK_LIGHT_SPHERE;
+    light.shadowEnabled = 1u;
+    light.radius = 0.0f;
+    light.shapingConeAngle = 45.0f;
+    light.shapingFocus = 0.0f;
+    light.transform[14] = 10.0;
+    state.ReplaceLight(light);
+
+    HdSilkMeshRecord mesh;
+    mesh.path = "/Geom/PerspectiveCaster";
+    mesh.primId = 93;
+    mesh.topologyRevision = 1;
+    mesh.points = CasterPoints3;
+    mesh.indices = {0u, 1u, 2u};
+    mesh.triangleSubprims = {0u};
+    state.ReplaceMeshInstances(mesh.path, {mesh});
+
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+    const RetainedPage baseline = ReadRetainedPage(bytes, count);
+    RequireOrder(baseline, {1u, 9u, 2u}, "shaped zero-radius sphere perspective baseline");
+    Require(revision == 1u && baseline.frame.directLightCount == 1u &&
+            baseline.frame.directLights[0].type == 2u &&
+            baseline.frame.directLights[0].shadowEnabled == 1u &&
+            baseline.frame.directLights[0].radius == 0.0f &&
+            baseline.frame.directLights[0].shapingConeAngle == 45.0f,
+        "shaped zero-radius sphere must remain the selected cone-shaped direct light");
+    RequireShadowHeader(baseline, 1u, 1u, 0u,
+        "shaped zero-radius sphere perspective descriptor");
+
+    // The light is at (0, 0, 10), directed along -Z. The caster bounds are
+    // centered at the origin with radius 3, giving a 7/13 near/far interval.
+    // A 45-degree half-angle produces unit X/Y focal coefficients; at the
+    // far plane the world-space texel width is 26/1024, yielding 39/1024 bias.
+    constexpr ShadowOracle perspective45{
+        {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+         0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -10.0, 1.0},
+        {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+         0.0, 0.0, -10.0 / 3.0, -1.0, 0.0, 0.0, -91.0 / 3.0, 0.0},
+        0.0380859375f};
+    const ShadowView& shadow = baseline.shadows.maps[0];
+    Require(shadow.lightIndex == 0u && shadow.mapIndex == 0u &&
+            shadow.resolution == 1024u && shadow.reserved == 0u &&
+            (shadow.flags & OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC) == 0u,
+        "shaped zero-radius sphere must publish one perspective descriptor without Orthographic");
+    RequireShadow(shadow, 0u, 0u, 0u, perspective45,
+        "shaped zero-radius sphere cone-derived perspective oracle");
+    const double lightOriginViewZ = 10.0 * shadow.view[10] + shadow.view[14];
+    Require(shadow.view[12] == 0.0 && shadow.view[13] == 0.0 && lightOriginViewZ == 0.0,
+        "perspective view must place the sphere light origin at camera-space zero");
+
+    const std::vector<uint8_t> quietBytes = state.BuildPage(&revision, &count);
+    const RetainedPage quiet = ReadRetainedPage(quietBytes, count);
+    RequireOrder(quiet, {1u}, "shaped zero-radius sphere unchanged republish");
+    Require(revision == 2u && quiet.frameBytes == baseline.frameBytes &&
+            !quiet.hasShadows && quiet.shadowBytes.empty(),
+        "unchanged perspective shadow must not republish a changed SHADOW page");
+}
+
+void VerifyZeroRadiusUnshapedSphereRemainsUnsupported()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/UnshapedSphere";
+    light.type = OPENUSD_SILK_LIGHT_SPHERE;
+    light.shadowEnabled = 1u;
+    light.radius = 0.0f;
+    light.shapingConeAngle = 180.0f;
+    light.shapingFocus = 0.0f;
+    state.ReplaceLight(light);
+
+    HdSilkMeshRecord mesh;
+    mesh.path = "/Geom/UnshapedSphereCaster";
+    mesh.primId = 94;
+    mesh.topologyRevision = 1;
+    mesh.points = CasterPoints3;
+    mesh.indices = {0u, 1u, 2u};
+    mesh.triangleSubprims = {0u};
+    state.ReplaceMeshInstances(mesh.path, {mesh});
+
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+    const RetainedPage page = ReadRetainedPage(bytes, count);
+    RequireOrder(page, {1u, 9u, 2u}, "zero-radius unshaped sphere unsupported");
+    Require(revision == 1u && page.frame.directLightCount == 1u &&
+            page.frame.directLights[0].type == 2u &&
+            page.frame.directLights[0].shadowEnabled == 1u &&
+            page.frame.directLights[0].radius == 0.0f &&
+            page.frame.directLights[0].shapingConeAngle == 180.0f,
+        "zero-radius unshaped sphere must remain an enabled direct light");
+    RequireShadowHeader(page, 0u, 1u, OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
+        "zero-radius unshaped sphere unsupported diagnostic");
+    Require(page.shadows.maps.empty(),
+        "zero-radius unshaped sphere must remain unsupported until cubemap support");
+}
+
+void VerifyZeroRadiusSpherePerspectiveConeBoundaries()
+{
+    for (const float cone : {0.0f, 90.0f})
+    {
+        HdSilkSceneState state;
+        HdSilkLightRecord light;
+        light.path = "/Lights/BoundarySphere";
+        light.type = OPENUSD_SILK_LIGHT_SPHERE;
+        light.shadowEnabled = 1u;
+        light.radius = 0.0f;
+        light.shapingConeAngle = cone;
+        light.transform[14] = 10.0;
+        state.ReplaceLight(light);
+
+        HdSilkMeshRecord mesh;
+        mesh.path = "/Geom/BoundarySphereCaster";
+        mesh.primId = 95;
+        mesh.topologyRevision = 1;
+        mesh.points = CasterPoints3;
+        mesh.indices = {0u, 1u, 2u};
+        mesh.triangleSubprims = {0u};
+        state.ReplaceMeshInstances(mesh.path, {mesh});
+
+        uint64_t revision = 0;
+        uint32_t count = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+        const RetainedPage page = ReadRetainedPage(bytes, count);
+        Require(page.frame.directLights[0].shapingConeAngle == cone,
+            "zero-radius sphere cone boundary changed in the frame record");
+        RequireShadowHeader(page, 0u, 1u, OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
+            "zero-radius sphere cone boundary unsupported diagnostic");
+        Require(page.shadows.maps.empty(),
+            "zero-radius sphere cone outside (0, 90) must not publish a perspective map");
+    }
+}
+
 void VerifyShadowBudgetAndUnsupportedTypes()
 {
     static_assert(OPENUSD_SILK_MAX_SHADOW_MAPS == 4u);
@@ -3486,7 +3625,8 @@ void VerifyShadowBudgetAndUnsupportedTypes()
         // Budget is checked BEFORE direction eligibility: the fifth invalid
         // direction is diagnosed as budget overflow, not as NO_CASTERS.
         {{30u, 31u, 64u, 96u, 127u}, {30u, 31u, 64u, 96u}, 2u, true},
-        {{31u, 64u, 96u, 127u}, {31u, 64u, 96u}, 4u, true},
+        // A zero direction invalidates the projection, not caster eligibility.
+        {{31u, 64u, 96u, 127u}, {31u, 64u, 96u}, OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE, true},
         {{31u, 64u, 96u, 127u}, {31u, 64u, 96u, 127u}, 0u, false}};
     HdSilkSceneState state;
     HdSilkMeshRecord caster;
@@ -3814,9 +3954,10 @@ void VerifyShadowEligibilityBoundaries()
                 page.frame.directLights[127].transform[9] == row.direction[1] &&
                 page.frame.directLights[127].transform[10] == row.direction[2],
             label + ": direction rejection must not become a direct selection filter");
-        // Current source reuses NO_CASTERS (4) for a direction at/below
-        // 1e-12; there is no separate invented direction-reason bit.
-        RequireShadowHeader(page, row.oracle == nullptr ? 0 : 1, 128u, row.oracle == nullptr ? 4u : 0u, label);
+        // A direction at/below 1e-12 invalidates the projection; no separate
+        // direction-reason bit is published.
+        RequireShadowHeader(page, row.oracle == nullptr ? 0 : 1, 128u,
+            row.oracle == nullptr ? OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE : 0u, label);
         RequireTriangle(page.meshes[0], mesh.path, 102, 1, CasterPoints3, IdentityTransform,
             "", 0u, label + " usable caster control");
         if (row.oracle != nullptr)
@@ -3862,6 +4003,12 @@ int main(int argc, char* argv[])
         {"domes-shadows", "VerifyDomeBudgetAmbientAndEnvironment", VerifyDomeBudgetAmbientAndEnvironment},
         {"domes-shadows", "VerifyIndependentDomeLinks", VerifyIndependentDomeLinks},
         {"domes-shadows", "VerifyHighIndexShadowDescriptors", VerifyHighIndexShadowDescriptors},
+        {"domes-shadows", "VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow",
+            VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow},
+        {"domes-shadows", "VerifyZeroRadiusUnshapedSphereRemainsUnsupported",
+            VerifyZeroRadiusUnshapedSphereRemainsUnsupported},
+        {"domes-shadows", "VerifyZeroRadiusSpherePerspectiveConeBoundaries",
+            VerifyZeroRadiusSpherePerspectiveConeBoundaries},
         {"domes-shadows", "VerifyShadowBudgetAndUnsupportedTypes", VerifyShadowBudgetAndUnsupportedTypes},
         {"domes-shadows", "VerifyShadowEligibilityBoundaries", VerifyShadowEligibilityBoundaries}};
 

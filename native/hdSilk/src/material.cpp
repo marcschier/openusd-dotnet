@@ -505,9 +505,8 @@ uint32_t _ReadWrap(const std::map<TfToken, VtValue>& parameters, const TfToken& 
     {
         // UsdUVTexture's schema default for `wrap` is `useMetadata`, so an
         // unauthored wrap is that value rather than an authored `black`. It is
-        // published as such: this delegate reads no image metadata, so a
-        // consumer resolves it to black addressing, but it must be able to say
-        // that it did so because no metadata was read.
+        // published as such: this delegate reads no image metadata, so the
+        // consumer resolves the observed per-axis wrap or its black fallback.
         return OPENUSD_SILK_WRAP_USE_METADATA;
     }
     if (wrap == _tokens->clamp.GetString())
@@ -557,11 +556,9 @@ bool _TryReadStringParameter(
 /// Maps one MaterialX `uaddressmode`/`vaddressmode` value onto the wire wrap
 /// enum.
 ///
-/// The MaterialX default is `periodic`, not the `black` that UsdUVTexture's
-/// unauthored `wrap` resolves to, so an image node with no authored address
-/// mode tiles. Reading the UsdUVTexture token names here instead published
-/// `black` for every MaterialX image, which selected a transparent-black border
-/// and stopped the tiled texture from repeating.
+/// The MaterialX default is `periodic`, while UsdUVTexture's unauthored `wrap`
+/// defers to image metadata. A MaterialX image with no authored address mode
+/// therefore tiles without consulting that metadata.
 ///
 /// `constant` is carried as OPENUSD_SILK_WRAP_CONSTANT. MaterialX returns the
 /// node's `default` outside the unit range, and the entry's fallback already
@@ -1331,8 +1328,8 @@ bool _IsCoordinateNode(const HdMaterialNode& node)
 /// Resolves the MaterialX texcoord index to its conventional USD primvar name.
 ///
 /// Index zero uses `st`; positive indices append their value (`st1`, `st2`, ...).
-/// The material wire carries one named coordinate stream, so the resulting
-/// primvar name is enough to select the requested set without expanding the wire.
+/// Each texture entry carries its primvar name; reconciliation admits at most
+/// two surface coordinate streams per material.
 bool _TryResolveTexCoordIndex(
     const HdMaterialNetwork& network,
     const HdMaterialNode& node,
@@ -2392,10 +2389,9 @@ bool _TryCreateTextureEntry(
     if (_IsMaterialXImage(texture))
     {
         // MaterialX states addressing on uaddressmode/vaddressmode, defaulting to
-        // periodic; UsdUVTexture states it on wrapS/wrapT, defaulting to black.
-        // Reading the UsdUVTexture names from a MaterialX image found nothing and
-        // published black, so a MaterialX texture that the graph tiles was clamped
-        // to its edge texels instead.
+        // periodic; UsdUVTexture uses wrapS/wrapT and defaults to useMetadata.
+        // The old projection read the UsdUVTexture names, so a MaterialX texture
+        // that should tile was clamped to its edge texels instead.
         std::string unsupportedMode;
         if (!_TryReadMaterialXAddressMode(
                 texture.parameters, _tokens->uaddressmode, &entry.wrapS,
@@ -2551,6 +2547,16 @@ bool _TryPublishCompositeEntries(
     return true;
 }
 
+/// Whether one texture entry belongs to the material's surface
+/// texture-coordinate streams.
+///
+/// Displacement is sampled per vertex from its own coordinate set. Its affine
+/// and fallback are reconciled separately with the surface bindings.
+bool _BelongsToSurfaceUvStream(const HdSilkMaterialTexture& texture)
+{
+    return texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT;
+}
+
 /// Settles the texture-coordinate streams this material publishes.
 ///
 /// The renderer builds at most two coordinate streams per material and at most
@@ -2577,19 +2583,6 @@ bool _TryPublishCompositeEntries(
 ///
 /// Returns whether anything was dropped, so the caller can re-settle the stream
 /// against the survivors.
-/// Whether one texture entry belongs to the material's surface
-/// texture-coordinate streams.
-///
-/// Displacement does not. It is sampled per vertex, from its own authored
-/// coordinate set and through its own folded affine, so it neither constrains
-/// the surface stream nor is constrained by it -- a material whose surface
-/// samples `st` and whose height field samples `st2` is exactly representable,
-/// and reconciling the two would drop one of them for no reason.
-bool _BelongsToSurfaceUvStream(const HdSilkMaterialTexture& texture)
-{
-    return texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT;
-}
-
 bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
 {
     for (size_t index = 0; index < 6; ++index)
@@ -2663,6 +2656,19 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
     const auto streamOf = [&primvar](const HdSilkMaterialTexture& texture) -> const std::string& {
         return texture.uvPrimvar.empty() ? primvar : texture.uvPrimvar;
     };
+    const auto fallbackAgreesWithStream =
+        [&record, &streamOf](const HdSilkMaterialTexture& texture) {
+            const auto firstOnStream = std::find_if(
+                record.textures.begin(),
+                record.textures.end(),
+                [&streamOf, &texture](const HdSilkMaterialTexture& other) {
+                    return _BelongsToSurfaceUvStream(other) &&
+                        streamOf(other) == streamOf(texture);
+                });
+            return firstOnStream != record.textures.end() &&
+                texture.uvFallback[0] == firstOnStream->uvFallback[0] &&
+                texture.uvFallback[1] == firstOnStream->uvFallback[1];
+        };
 
     std::vector<uint32_t> divergent;
     for (const HdSilkMaterialTexture& texture : record.textures)
@@ -2688,8 +2694,7 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
                 break;
             }
         }
-        const bool fallbackAgrees = texture.uvFallback[0] == first->uvFallback[0] &&
-            texture.uvFallback[1] == first->uvFallback[1];
+        const bool fallbackAgrees = fallbackAgreesWithStream(texture);
         if (transformAgrees && primvarAgrees && pairAgrees && fallbackAgrees)
         {
             continue;
@@ -2704,7 +2709,8 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
         {
             TF_WARN(
                 "hdSilk material '%s' texture for parameter %u asks for a different "
-                "primvar-reader fallback than its single coordinate stream; this input is left at its default.",
+                "primvar-reader fallback than another surface texture on the same "
+                "coordinate stream; this input is left at its default.",
                 record.path.c_str(), texture.parameter);
             continue;
         }
@@ -2929,10 +2935,9 @@ _FindDisplacementTerminal(const HdMaterialNetwork& network)
 /// happens to carry. The terminal node must be a `UsdPreviewSurface`, because
 /// that is the only shader whose displacement output this renderer evaluates,
 /// and its `inputs:displacement` must be either unconnected -- in which case the
-/// authored constant is published -- or driven by a `UsdUVTexture`. Anything
-/// else is a graph hdSilk cannot evaluate per vertex and is reported by name
-/// instead of being collapsed to whichever constant Hydra left behind the
-/// connection.
+/// authored constant is published -- or driven by a direct image node the
+/// texture resolver supports. Other graphs are reported by name instead of
+/// being collapsed to whichever constant Hydra left behind the connection.
 void
 _ResolveDisplacementTerminal(
     const HdMaterialNetworkMap& networkMap,
@@ -3063,15 +3068,13 @@ _ResolveDisplacementTerminal(
     record.scalars.push_back(scalar);
 }
 
-/// Settles the one texture-coordinate affine a displacement may sample through.
+/// Reconciles displacement with the primary surface affine and reader fallback.
 ///
-/// The wire carries one folded affine per material, because the renderer builds
-/// one surface coordinate stream. A displacement samples its own primvar, which
-/// the wire does carry per texture, but it cannot carry a second affine. When the
-/// material publishes no surface texture the displacement's own affine becomes
-/// the material's -- nothing else reads it -- and when it publishes one, a
-/// displacement asking for a *different* affine is genuinely unrepresentable and
-/// is reported rather than sampled through coordinates it did not author.
+/// The wire carries two surface affines, but displacement samples only through
+/// the primary. Without a surface texture, its own affine becomes the primary.
+/// Otherwise the affine must match the primary and the fallback must agree with
+/// each surface texture using the same primvar. A mismatch leaves displacement
+/// unpublished rather than sampling coordinates it did not author.
 void _ReconcileDisplacementTransform(HdSilkMaterialRecord& record)
 {
     HdSilkMaterialTexture* displacement = nullptr;
@@ -3114,9 +3117,9 @@ void _ReconcileDisplacementTransform(HdSilkMaterialRecord& record)
         return;
     }
     TF_WARN(
-        "hdSilk material '%s' displacement asks for a different folded texture "
-        "coordinate transform or reader fallback than the material's surface textures; hdSilk "
-        "carries one transform per material and one default per missing primvar, so the displacement is left "
+        "hdSilk material '%s' displacement uses the primary surface UV transform "
+        "and requires a matching reader fallback for a shared primvar; the "
+        "authored transform or fallback differs, so displacement is left "
         "unpublished rather than sampled through coordinates it did not author.",
         record.path.c_str());
     std::vector<HdSilkMaterialTexture> kept;
@@ -3132,8 +3135,8 @@ void _ReconcileDisplacementTransform(HdSilkMaterialRecord& record)
 }
 
 /// Finishes any resolved record: resolves the displacement terminal, then
-/// reconciles the single texture-coordinate stream and the single composite the
-/// wire carries.
+/// reconciles its transform, the surface coordinate streams and the single
+/// composite the wire carries.
 ///
 /// Called on every exit of `Resolve`, including the ones that could not classify
 /// a surface at all. Displacement is a separate material terminal in USD, so a

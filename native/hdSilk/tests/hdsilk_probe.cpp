@@ -18,6 +18,7 @@
 #include "pxr/base/gf/matrix4d.h"
 #include "pxr/base/gf/vec2f.h"
 #include "pxr/base/gf/vec3d.h"
+#include "pxr/base/tf/diagnosticTrap.h"
 #include "pxr/imaging/cameraUtil/conformWindow.h"
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/usd/sdf/assetPath.h"
@@ -8723,6 +8724,498 @@ bool VerifyDisplacementTerminal()
     return true;
 }
 
+bool VerifyDisplacementUvReconciliation()
+{
+    struct UvCase
+    {
+        const char* name;
+        bool surfaceTexture;
+        bool identitySurfaceTransform;
+        bool differentFallback;
+        bool differentPrimvar;
+        bool alternateSurfaceTransform;
+        bool publishDisplacement;
+    };
+    const std::array<UvCase, 6> cases{{
+        {"matching", true, true, false, false, false, true},
+        {"primary-transform-mismatch", true, false, false, false, false, false},
+        {"shared-primvar-fallback-mismatch", true, true, true, false, false, false},
+        {"alternate-transform-only", true, false, false, false, true, false},
+        {"different-primvar-fallback", true, true, true, true, false, true},
+        {"displacement-only", false, false, false, false, false, true},
+    }};
+    const SdfPath materialPath("/World/Displaced");
+    for (const UvCase& testCase : cases)
+    {
+        HdMaterialNetworkMap map =
+            MakeDisplacementNetwork(true, DisplacementDriver::Texture);
+        if (testCase.surfaceTexture)
+        {
+            HdMaterialNetworkMap surfaceMap = MakeTransform2dNetwork(true);
+            HdMaterialNetwork& surface = surfaceMap.map[HdMaterialTerminalTokens->surface];
+            const TfToken primvar(testCase.differentPrimvar ? "uvSet1" : "st");
+            for (HdMaterialNode& node : surface.nodes)
+            {
+                if (node.identifier == TfToken("UsdPrimvarReader_float2"))
+                {
+                    node.parameters[TfToken("varname")] = VtValue(primvar);
+                    if (testCase.differentFallback)
+                    {
+                        node.parameters[TfToken("fallback")] =
+                            VtValue(GfVec2f(0.25F, 0.75F));
+                    }
+                }
+                if (node.identifier == TfToken("UsdTransform2d") &&
+                    testCase.identitySurfaceTransform)
+                {
+                    node.parameters[TfToken("rotation")] = VtValue(0.0F);
+                    node.parameters[TfToken("scale")] = VtValue(GfVec2f(1.0F, 1.0F));
+                    node.parameters[TfToken("translation")] = VtValue(GfVec2f(0.0F, 0.0F));
+                }
+            }
+            surface.primvars = {primvar};
+            if (testCase.alternateSurfaceTransform)
+            {
+                HdMaterialNode secondTexture;
+                secondTexture.path = SdfPath("/World/Preview/SecondTexture");
+                secondTexture.identifier = TfToken("UsdUVTexture");
+                secondTexture.parameters[TfToken("file")] =
+                    VtValue(SdfAssetPath("textures/roughness.png"));
+                surface.nodes.push_back(secondTexture);
+                surface.relationships.push_back(
+                    {SdfPath("/World/Preview/Reader"), TfToken("result"),
+                        secondTexture.path, TfToken("st")});
+                surface.relationships.push_back(
+                    {secondTexture.path, TfToken("r"),
+                        SdfPath("/World/Preview/Surface"), TfToken("roughness")});
+            }
+            map.map[HdMaterialTerminalTokens->surface] = std::move(surface);
+        }
+        else
+        {
+            HdMaterialNetwork& displacement = map.map[HdMaterialTerminalTokens->displacement];
+            HdMaterialNode transform;
+            transform.path = SdfPath("/World/Displaced/Transform");
+            transform.identifier = TfToken("UsdTransform2d");
+            transform.parameters[TfToken("scale")] = VtValue(GfVec2f(2.0F, 3.0F));
+            transform.parameters[TfToken("translation")] = VtValue(GfVec2f(0.25F, 0.5F));
+            displacement.nodes.insert(displacement.nodes.end() - 1, transform);
+            displacement.relationships[0] =
+                {SdfPath("/World/Displaced/Reader"), TfToken("result"),
+                    transform.path, TfToken("in")};
+            displacement.relationships.push_back(
+                {transform.path, TfToken("result"),
+                    SdfPath("/World/Displaced/Height"), TfToken("st")});
+        }
+
+        TfDiagnosticTrap diagnostics;
+        const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
+        const HdSilkMaterialTexture* surface =
+            FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+        const HdSilkMaterialTexture* displacement =
+            FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DISPLACEMENT);
+        if ((surface != nullptr) != testCase.surfaceTexture ||
+            (displacement != nullptr) != testCase.publishDisplacement ||
+            diagnostics.HasErrors())
+        {
+            std::cerr << "Unexpected displacement UV publication in case "
+                      << testCase.name << ".\n";
+            return false;
+        }
+        if (testCase.publishDisplacement &&
+            (displacement->asset != "textures/height.png" || displacement->uvPrimvar != "st" ||
+                !UvTransformMatches(
+                    record.uvTransform,
+                    testCase.surfaceTexture
+                        ? std::array<float, 6>{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F}
+                        : std::array<float, 6>{2.0F, 0.0F, 0.0F, 3.0F, 0.25F, 0.5F}) ||
+                (testCase.differentPrimvar && surface->uvPrimvar != "uvSet1")))
+        {
+            std::cerr << "Published displacement coordinates were wrong in case "
+                      << testCase.name << ".\n";
+            return false;
+        }
+        if (testCase.alternateSurfaceTransform &&
+            (FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_ROUGHNESS) == nullptr ||
+                record.alternateUvParameterMask !=
+                    (1u << OPENUSD_SILK_MATERIAL_ROUGHNESS) ||
+                !UvTransformMatches(
+                    record.uvTransform, {0.0F, -1.0F, 2.0F, 0.0F, 0.5F, 0.25F}) ||
+                !UvTransformMatches(
+                    record.alternateUvTransform, {1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F})))
+        {
+            std::cerr << "The secondary surface affine was not published.\n";
+            return false;
+        }
+        if (testCase.publishDisplacement)
+        {
+            if (diagnostics.HasWarnings())
+            {
+                std::cerr << "Accepted displacement coordinates raised a warning in case "
+                          << testCase.name << ".\n";
+                return false;
+            }
+            continue;
+        }
+
+        const auto& warnings = diagnostics.GetWarnings();
+        if (warnings.size() != 1 ||
+            warnings[0].GetCommentary().find("primary surface UV transform") ==
+                std::string::npos ||
+            warnings[0].GetCommentary().find("matching reader fallback") ==
+                std::string::npos ||
+            warnings[0].GetCommentary().find("displacement is left unpublished") ==
+                std::string::npos)
+        {
+            std::cerr << "Displacement UV warning did not describe the rejected binding "
+                      << "in case " << testCase.name << ".\n";
+            return false;
+        }
+        diagnostics.ClearWarnings();
+    }
+    return true;
+}
+
+bool VerifySurfaceUvFallbackDiagnostic()
+{
+    const SdfPath materialPath("/World/Preview");
+    for (bool differentFallback : {false, true})
+    {
+        HdMaterialNetworkMap map = MakeTransform2dNetwork(true);
+        HdMaterialNetwork& network = map.map[HdMaterialTerminalTokens->surface];
+
+        HdMaterialNode reader;
+        reader.path = SdfPath("/World/Preview/SecondReader");
+        reader.identifier = TfToken("UsdPrimvarReader_float2");
+        reader.parameters[TfToken("varname")] = VtValue(TfToken("uvSet1"));
+        reader.parameters[TfToken("fallback")] = VtValue(
+            differentFallback ? GfVec2f(0.25F, 0.75F) : GfVec2f(0.0F, 0.0F));
+
+        HdMaterialNode texture;
+        texture.path = SdfPath("/World/Preview/SecondTexture");
+        texture.identifier = TfToken("UsdUVTexture");
+        texture.parameters[TfToken("file")] = VtValue(SdfAssetPath("textures/roughness.png"));
+        network.nodes.insert(network.nodes.end() - 1, reader);
+        network.nodes.insert(network.nodes.end() - 1, texture);
+        network.relationships.push_back(
+            {reader.path, TfToken("result"), texture.path, TfToken("st")});
+        network.relationships.push_back(
+            {texture.path, TfToken("r"),
+                SdfPath("/World/Preview/Surface"), TfToken("roughness")});
+        TfDiagnosticTrap diagnostics;
+        const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
+        const HdSilkMaterialTexture* base =
+            FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+        const HdSilkMaterialTexture* roughness =
+            FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_ROUGHNESS);
+        if (base == nullptr || base->uvPrimvar != "uvSet1" ||
+            (roughness == nullptr) != differentFallback ||
+            (roughness != nullptr && roughness->uvPrimvar != "uvSet1") ||
+            diagnostics.HasErrors())
+        {
+            std::cerr << "Surface fallback reconciliation published the wrong textures.\n";
+            return false;
+        }
+        if (!differentFallback)
+        {
+            if (diagnostics.HasWarnings())
+            {
+                std::cerr << "Matching surface reader fallbacks raised a warning.\n";
+                return false;
+            }
+            continue;
+        }
+
+        const auto& warnings = diagnostics.GetWarnings();
+        if (warnings.size() != 1 ||
+            warnings[0].GetCommentary().find(
+                "parameter " + std::to_string(OPENUSD_SILK_MATERIAL_ROUGHNESS)) ==
+                std::string::npos ||
+            warnings[0].GetCommentary().find("same coordinate stream") == std::string::npos ||
+            warnings[0].GetCommentary().find("input is left at its default") == std::string::npos)
+        {
+            std::cerr << "The surface fallback warning did not identify the rejected input.\n";
+            return false;
+        }
+        diagnostics.ClearWarnings();
+    }
+    return true;
+}
+
+bool VerifyIndependentSurfaceUvFallbacks()
+{
+    const SdfPath materialPath("/World/Streams");
+    for (bool baseReadsFirstSet : {false, true})
+    {
+        for (bool differentFallback : {false, true})
+        {
+            HdMaterialNetworkMap map = MakeDivergentUvPrimvarNetwork(baseReadsFirstSet);
+            auto& nodes = map.map[HdMaterialTerminalTokens->surface].nodes;
+            nodes[0].parameters[TfToken("default")] = VtValue(GfVec2f(0.125F, 0.75F));
+            const GfVec2f normalFallback =
+                differentFallback ? GfVec2f(0.5F, 0.25F) : GfVec2f(0.125F, 0.75F);
+            nodes[2].parameters[TfToken("default")] = VtValue(normalFallback);
+
+            TfDiagnosticTrap diagnostics;
+            const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
+            const HdSilkMaterialTexture* base =
+                FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+            const HdSilkMaterialTexture* normal =
+                FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_NORMAL);
+            const char* basePrimvar = baseReadsFirstSet ? "uvSet0" : "uvSet1";
+            const char* normalPrimvar = baseReadsFirstSet ? "uvSet1" : "uvSet0";
+            if (record.textures.size() != 2 || base == nullptr || normal == nullptr ||
+                base->uvPrimvar != basePrimvar || normal->uvPrimvar != normalPrimvar ||
+                !base->hasUvFallback || !normal->hasUvFallback ||
+                base->uvFallback[0] != 0.125F || base->uvFallback[1] != 0.75F ||
+                normal->uvFallback[0] != normalFallback[0] ||
+                normal->uvFallback[1] != normalFallback[1] ||
+                diagnostics.HasErrors() || diagnostics.HasWarnings())
+            {
+                std::cerr << "Independent surface primvars lost their reader fallbacks: baseFirst="
+                          << baseReadsFirstSet << " differentFallback=" << differentFallback << "\n";
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool VerifyIndependentFallbackPublication()
+{
+    const SdfPath materialPath("/World/Streams");
+    HdMaterialNetworkMap network = MakeDivergentUvPrimvarNetwork(true);
+    auto& nodes = network.map[HdMaterialTerminalTokens->surface].nodes;
+    nodes[0].parameters[TfToken("default")] = VtValue(GfVec2f(0.125F, 0.75F));
+    nodes[2].parameters[TfToken("default")] = VtValue(GfVec2f(0.5F, 0.25F));
+
+    HdSilkSceneState state;
+    const auto replaceMaterial = [&]()
+    {
+        state.ReplaceMaterial(HdSilkMaterial::Resolve(materialPath, network));
+    };
+    replaceMaterial();
+    HdSilkMeshRecord mesh = MakeSceneStateRecord(PrimvarMeshPath, 1);
+    mesh.materialPath = materialPath.GetString();
+    ReplaceSingleMesh(state, PrimvarMeshPath, mesh);
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    const auto read = [&]()
+    {
+        const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+        return ParseCommands(bytes.data(), bytes.size());
+    };
+    const auto hasCoordinates = [](const ParsedPage& page, const GfVec2f& first, const GfVec2f& second)
+    {
+        const auto has = [&](const char* name, const GfVec2f& expected)
+        {
+            const auto entry = std::find_if(
+                page.primvar_mesh_attributes.begin(), page.primvar_mesh_attributes.end(),
+                [&](const ParsedAttribute& attribute) { return attribute.name == name; });
+            return entry != page.primvar_mesh_attributes.end() &&
+                entry->semantic == OPENUSD_SILK_ATTRIBUTE_TEXCOORD &&
+                entry->componentCount == 2 && entry->elementCount == 1 &&
+                entry->interpolation == OPENUSD_SILK_INTERPOLATION_CONSTANT &&
+                entry->values == std::vector<float>({expected[0], expected[1]});
+        };
+        return page.found_primvar_mesh && page.primvar_mesh_attributes.size() == 2 &&
+            has("uvSet0", first) && has("uvSet1", second);
+    };
+
+    if (!hasCoordinates(read(), GfVec2f(0.125F, 0.75F), GfVec2f(0.5F, 0.25F)) ||
+        read().mesh_upsert_count != 0)
+    {
+        std::cerr << "Independent missing primvars were not published or were republished unchanged.\n";
+        return false;
+    }
+    nodes[0].parameters[TfToken("default")] = VtValue(GfVec2f(0.875F, 0.625F));
+    replaceMaterial();
+    if (!hasCoordinates(read(), GfVec2f(0.875F, 0.625F), GfVec2f(0.5F, 0.25F)))
+    {
+        std::cerr << "A first-stream fallback edit did not republish both coordinate sets.\n";
+        return false;
+    }
+    nodes[2].parameters[TfToken("default")] = VtValue(GfVec2f(0.25F, 0.875F));
+    replaceMaterial();
+    if (!hasCoordinates(read(), GfVec2f(0.875F, 0.625F), GfVec2f(0.25F, 0.875F)))
+    {
+        std::cerr << "A second-stream fallback edit did not republish both coordinate sets.\n";
+        return false;
+    }
+
+    HdSilkMeshAttribute authored;
+    authored.name = "uvSet0";
+    authored.semantic = OPENUSD_SILK_ATTRIBUTE_TEXCOORD;
+    authored.componentCount = 2;
+    authored.interpolation = OPENUSD_SILK_INTERPOLATION_CONSTANT;
+    authored.data = {0.375F, 0.125F};
+    mesh.attributes.push_back(authored);
+    ReplaceSingleMesh(state, PrimvarMeshPath, mesh);
+    if (!hasCoordinates(read(), GfVec2f(0.375F, 0.125F), GfVec2f(0.25F, 0.875F)))
+    {
+        std::cerr << "An independent fallback overrode authored coordinates.\n";
+        return false;
+    }
+    mesh.attributes.clear();
+    ReplaceSingleMesh(state, PrimvarMeshPath, mesh);
+    if (!hasCoordinates(read(), GfVec2f(0.875F, 0.625F), GfVec2f(0.25F, 0.875F)))
+    {
+        std::cerr << "Removing authored coordinates did not restore their fallback.\n";
+        return false;
+    }
+    state.RemoveMaterial(materialPath.GetString());
+    const ParsedPage removed = read();
+    if (removed.mesh_upsert_count != 1 || !removed.primvar_mesh_attributes.empty())
+    {
+        std::cerr << "Removing a material retained independent coordinate fallbacks.\n";
+        return false;
+    }
+    replaceMaterial();
+    if (!hasCoordinates(read(), GfVec2f(0.875F, 0.625F), GfVec2f(0.25F, 0.875F)))
+    {
+        std::cerr << "Restoring the material did not restore independent fallbacks.\n";
+        return false;
+    }
+
+    nodes[0].parameters[TfToken("default")] = VtValue(GfVec2f(0.625F, 0.375F));
+    replaceMaterial();
+    const std::vector<uint8_t> pending = state.BuildPage(&revision, &count, SIZE_MAX, true);
+    if (!hasCoordinates(
+            ParseCommands(pending.data(), pending.size()),
+            GfVec2f(0.625F, 0.375F), GfVec2f(0.25F, 0.875F)) ||
+        !state.CompletePage(revision, false))
+    {
+        std::cerr << "An independent fallback edit did not retain its unpublished page.\n";
+        return false;
+    }
+    bool refused = false;
+    try
+    {
+        (void)state.BuildPage(&revision, &count, pending.size() - 1);
+    }
+    catch (const std::bad_alloc&)
+    {
+        refused = true;
+    }
+    const std::vector<uint8_t> retry = state.BuildPage(&revision, &count, pending.size());
+    if (!refused || retry != pending || read().mesh_upsert_count != 0)
+    {
+        std::cerr << "Independent fallback page refusal or retry lost an update.\n";
+        return false;
+    }
+    return true;
+}
+
+bool VerifyCompositeUvFallbacks()
+{
+    const SdfPath materialPath("/World/Composite");
+    for (bool conflictingOperand : {false, true})
+    {
+        HdMaterialNetworkMap map = MakeTwoImageCompositeNetwork(
+            TfToken("ND_mix_color3"), TfToken("base_color"), TfToken(), VtValue(0.25F));
+        HdMaterialNetwork& network = map.map[HdMaterialTerminalTokens->surface];
+        network.nodes[0].parameters[TfToken("default")] = VtValue(GfVec2f(0.125F, 0.75F));
+
+        HdMaterialNode roughnessReader;
+        roughnessReader.path = materialPath.AppendChild(TfToken("RoughnessPrimvar"));
+        roughnessReader.identifier = TfToken("ND_geompropvalue_vector2");
+        roughnessReader.parameters[TfToken("geomprop")] = VtValue(std::string("uvSet1"));
+        roughnessReader.parameters[TfToken("default")] = VtValue(GfVec2f(0.5F, 0.25F));
+        HdMaterialNode roughnessImage;
+        roughnessImage.path = materialPath.AppendChild(TfToken("RoughnessImage"));
+        roughnessImage.identifier = TfToken("ND_image_float");
+        roughnessImage.parameters[TfToken("file")] = VtValue(SdfAssetPath("textures/roughness.png"));
+        network.nodes.push_back(roughnessReader);
+        network.nodes.push_back(roughnessImage);
+        network.relationships.push_back(
+            {roughnessReader.path, TfToken("out"), roughnessImage.path, TfToken("texcoord")});
+        network.relationships.push_back(
+            {roughnessImage.path, TfToken("out"),
+                materialPath.AppendChild(TfToken("Surface")), TfToken("specular_roughness")});
+        network.primvars.push_back(TfToken("uvSet1"));
+
+        if (conflictingOperand)
+        {
+            HdMaterialNode secondReader;
+            secondReader.path = materialPath.AppendChild(TfToken("SecondPrimvar"));
+            secondReader.identifier = TfToken("ND_geompropvalue_vector2");
+            secondReader.parameters[TfToken("geomprop")] = VtValue(std::string("uvSet0"));
+            secondReader.parameters[TfToken("default")] = VtValue(GfVec2f(0.75F, 0.25F));
+            const auto connection = std::find_if(
+                network.relationships.begin(), network.relationships.end(),
+                [&](const HdMaterialRelationship& relationship)
+                {
+                    return relationship.outputId == materialPath.AppendChild(TfToken("Second")) &&
+                        relationship.outputName == TfToken("texcoord");
+                });
+            if (connection == network.relationships.end())
+            {
+                std::cerr << "The composite fixture lost its second coordinate connection.\n";
+                return false;
+            }
+            connection->inputId = secondReader.path;
+            network.nodes.push_back(secondReader);
+        }
+
+        TfDiagnosticTrap diagnostics;
+        const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
+        const HdSilkMaterialTexture* roughness =
+            FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_ROUGHNESS);
+        if (roughness == nullptr || roughness->uvPrimvar != "uvSet1" ||
+            !roughness->hasUvFallback || roughness->uvFallback[0] != 0.5F ||
+            roughness->uvFallback[1] != 0.25F || diagnostics.HasErrors())
+        {
+            std::cerr << "An independent roughness fallback did not survive the composite.\n";
+            return false;
+        }
+
+        const auto diffuseCount = std::count_if(
+            record.textures.begin(), record.textures.end(),
+            [](const HdSilkMaterialTexture& texture)
+            {
+                return texture.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR;
+            });
+        if (conflictingOperand)
+        {
+            const auto& warnings = diagnostics.GetWarnings();
+            if (record.textures.size() != 1 || diffuseCount != 0 || warnings.size() != 1 ||
+                warnings[0].GetCommentary().find(
+                    "parameter " + std::to_string(OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR)) ==
+                    std::string::npos ||
+                warnings[0].GetCommentary().find("fallback") == std::string::npos)
+            {
+                std::cerr << "A conflicting composite was not rejected as one input.\n";
+                return false;
+            }
+            diagnostics.ClearWarnings();
+            continue;
+        }
+
+        const auto composite = std::find_if(
+            record.textures.begin(), record.textures.end(),
+            [](const HdSilkMaterialTexture& texture)
+            {
+                return texture.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR &&
+                    texture.compositeOp == OPENUSD_SILK_COMPOSITE_MIX;
+            });
+        if (record.textures.size() != 3 || diffuseCount != 2 ||
+            composite == record.textures.end() || composite->compositeFactor != 0.25F ||
+            diagnostics.HasWarnings() ||
+            std::any_of(record.textures.begin(), record.textures.end(),
+                [](const HdSilkMaterialTexture& texture)
+                {
+                    return texture.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR &&
+                        (texture.uvPrimvar != "uvSet0" || !texture.hasUvFallback ||
+                            texture.uvFallback[0] != 0.125F || texture.uvFallback[1] != 0.75F);
+                }))
+        {
+            std::cerr << "A compatible composite lost its shared fallback or independent roughness.\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 /// Builds a MaterialX surface-shader network with the supplied nodedef and
 /// constant inputs, and optionally one image driving one input.
 ///
@@ -9125,14 +9618,11 @@ bool VerifySurfaceModelProjection()
         return false;
     }
 
-    // The single-coordinate-stream invariant is unchanged by the broader table:
-    // an OpenPBR image still publishes exactly one texture with the material's
-    // one primvar, and no second stream appears.
+    // This OpenPBR image publishes one texture with its authored primvar.
     if (weightedImage.textures.size() != 1 ||
         weightedImage.textures[0].uvPrimvar != "uvSet0")
     {
-        std::cerr << "The OpenPBR image projection did not keep one texture on "
-                     "the material's single coordinate stream: textures="
+        std::cerr << "The OpenPBR image projection did not retain its uvSet0 texture: textures="
                   << weightedImage.textures.size() << "\n";
         return false;
     }
@@ -11998,6 +12488,26 @@ int main(int argc, char** argv)
     {
         return VerifyMissingPrimvarFallback() ? 0 : 1;
     }
+    if (argc == 2 && std::string(argv[1]) == "--displacement-uv")
+    {
+        return VerifyDisplacementUvReconciliation() ? 0 : 1;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--surface-uv-fallback")
+    {
+        return VerifySurfaceUvFallbackDiagnostic() ? 0 : 1;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--independent-uv-fallback")
+    {
+        return VerifyIndependentSurfaceUvFallbacks() ? 0 : 1;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--composite-uv-fallback")
+    {
+        return VerifyCompositeUvFallbacks() ? 0 : 1;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--independent-fallback-publication")
+    {
+        return VerifyIndependentFallbackPublication() ? 0 : 1;
+    }
     if (argc == 2 && std::string(argv[1]) == "--texture-metadata")
     {
         return VerifyTextureStringMetadata() ? 0 : 1;
@@ -12028,6 +12538,31 @@ int main(int argc, char** argv)
     if (!VerifyDisplacementTerminal())
     {
         std::cerr << "hdSilk displacement terminal resolution check failed.\n";
+        return 4;
+    }
+    if (!VerifyDisplacementUvReconciliation())
+    {
+        std::cerr << "hdSilk displacement UV reconciliation check failed.\n";
+        return 4;
+    }
+    if (!VerifySurfaceUvFallbackDiagnostic())
+    {
+        std::cerr << "hdSilk surface UV fallback diagnostic check failed.\n";
+        return 4;
+    }
+    if (!VerifyIndependentSurfaceUvFallbacks())
+    {
+        std::cerr << "hdSilk independent surface UV fallback check failed.\n";
+        return 4;
+    }
+    if (!VerifyCompositeUvFallbacks())
+    {
+        std::cerr << "hdSilk composite UV fallback check failed.\n";
+        return 4;
+    }
+    if (!VerifyIndependentFallbackPublication())
+    {
+        std::cerr << "hdSilk independent fallback publication check failed.\n";
         return 4;
     }
     if (!VerifyTextureStringMetadata()) { return 4; }

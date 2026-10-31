@@ -30,6 +30,32 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkShadowAtlasRetentionTests
 {
     [Test]
+    public async Task PerspectiveDisplacementPaddingExpandsFrustumAndDepthRange()
+    {
+        SilkShadowDescriptor descriptor = CreatePerspectiveDescriptor(near: 1, far: 10);
+        SilkShadowDescriptor expanded =
+            SilkShadowMapCache.ExpandPerspectiveDescriptor(descriptor, displacementPadding: 0.5);
+
+        await Assert.That(expanded.Projection[0]).IsEqualTo(1d / 3d);
+        await Assert.That(expanded.Projection[5]).IsEqualTo(1d / 3d);
+        await Assert.That(expanded.Projection[10]).IsEqualTo(-1.1d);
+        await Assert.That(expanded.Projection[14]).IsEqualTo(-1.05d);
+        await Assert.That(expanded.NormalBias).IsEqualTo((float)(3 * 10.5 * 3 / 1024));
+        await Assert.That(expanded.View.SequenceEqual(descriptor.View)).IsTrue();
+        await Assert.That(descriptor.Projection[0]).IsEqualTo(1d);
+    }
+
+    [Test]
+    public async Task PerspectiveDisplacementPaddingRejectsNearPlaneCrossing()
+    {
+        SilkShadowDescriptor descriptor = CreatePerspectiveDescriptor(near: 1, far: 10);
+
+        await Assert.That(() =>
+                SilkShadowMapCache.ExpandPerspectiveDescriptor(descriptor, displacementPadding: 1))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
     [Arguments(false, false, false)]
     [Arguments(true, false, false)]
     [Arguments(false, true, false)]
@@ -63,7 +89,7 @@ public sealed class SilkShadowAtlasRetentionTests
         }
         ShadowTexture candidate;
         using (SilkShadowMapCache.PreparedCapacity prepared = fixture.Cache.PrepareCapacity(
-            fixture.Scene, prepareRendering: true)!)
+            fixture.Scene, fixture.Resources, prepareRendering: true)!)
         {
             prepared.Render(fixture.Scene, fixture.Resources, (_, _) =>
                 throw new InvalidOperationException("This shadow fixture contains no casters."));
@@ -585,6 +611,33 @@ public sealed class SilkShadowAtlasRetentionTests
         await Assert.That(replacementSampler.IsDisposed).IsFalse();
         await Assert.That(fixture.Device.CreatedStandInTextureCount).IsEqualTo(2);
         await Assert.That(fixture.Device.CreatedSamplers.Count).IsEqualTo(2);
+    }
+
+    private static SilkShadowDescriptor CreatePerspectiveDescriptor(double near, double far)
+    {
+        double[] projection = new double[16];
+        projection[0] = 1;
+        projection[5] = 1;
+        projection[10] = -(far + near) / (far - near);
+        projection[11] = -1;
+        projection[14] = -(2 * far * near) / (far - near);
+        double[] view = new double[16];
+        view[0] = 1;
+        view[5] = 1;
+        view[10] = 1;
+        view[15] = 1;
+        return new SilkShadowDescriptor(
+            LightIndex: 0,
+            MapIndex: 0,
+            Resolution: 1024,
+            Flags: SilkShadowDescriptorOptions.None,
+            DepthBias: 0,
+            NormalBias: 0.005f,
+            PcfRadius: 1)
+        {
+            View = view,
+            Projection = projection,
+        };
     }
 
     private sealed class ShadowFixture : IDisposable

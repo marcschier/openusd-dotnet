@@ -498,8 +498,13 @@ void AppendLightShaping(
     HdSilkCommandPayload& payload,
     const HdSilkLightRecord* record)
 {
+    const bool zeroRadiusSpot = record != nullptr &&
+        record->type == OPENUSD_SILK_LIGHT_SPHERE &&
+        record->radius == 0.0f;
     const bool shaped = record != nullptr &&
-        (record->type == OPENUSD_SILK_LIGHT_RECT || record->type == OPENUSD_SILK_LIGHT_DISK);
+        (record->type == OPENUSD_SILK_LIGHT_RECT ||
+            record->type == OPENUSD_SILK_LIGHT_DISK ||
+            (zeroRadiusSpot && record->shapingConeAngle < 180.0f));
     AppendF32(
         payload,
         record == nullptr ? 0.0f :
@@ -2613,6 +2618,78 @@ void BuildOrthographicShadowProjection(
     outProjection[15] = 1.0;
 }
 
+/// Builds the row-major, row-vector view of a shaped sphere light. Its local
+/// +Z axis points from the receiver toward the light, so the emitter looks back
+/// along -Z. The published caster sphere must lie wholly in front of the eye.
+bool BuildPerspectiveSpotShadowView(
+    const GfVec3d& direction,
+    const GfVec3d& eye,
+    const GfVec3d& center,
+    double radius,
+    double (&outView)[16],
+    double* outNearPlane,
+    double* outFarPlane)
+{
+    const GfVec3d zAxis = direction.GetNormalized();
+    const GfVec3d up =
+        std::abs(zAxis[1]) > 0.99 ? GfVec3d(1.0, 0.0, 0.0) : GfVec3d(0.0, 1.0, 0.0);
+    const GfVec3d xAxis = GfCross(up, zAxis).GetNormalized();
+    const GfVec3d yAxis = GfCross(zAxis, xAxis).GetNormalized();
+
+    outView[0] = xAxis[0];
+    outView[1] = yAxis[0];
+    outView[2] = zAxis[0];
+    outView[3] = 0.0;
+    outView[4] = xAxis[1];
+    outView[5] = yAxis[1];
+    outView[6] = zAxis[1];
+    outView[7] = 0.0;
+    outView[8] = xAxis[2];
+    outView[9] = yAxis[2];
+    outView[10] = zAxis[2];
+    outView[11] = 0.0;
+    outView[12] = -GfDot(eye, xAxis);
+    outView[13] = -GfDot(eye, yAxis);
+    outView[14] = -GfDot(eye, zAxis);
+    outView[15] = 1.0;
+
+    const double centerDepth = -GfDot(center - eye, zAxis);
+    *outNearPlane = centerDepth - radius;
+    *outFarPlane = centerDepth + radius;
+    return std::isfinite(*outNearPlane) && std::isfinite(*outFarPlane) &&
+        *outNearPlane > 1e-6 && *outFarPlane > *outNearPlane;
+}
+
+/// Builds an OpenGL [-w, +w] depth perspective projection. UsdLux's cone angle
+/// is the half-angle around the emitter's -Z axis.
+bool BuildPerspectiveSpotShadowProjection(
+    double nearPlane,
+    double farPlane,
+    double coneHalfAngleDegrees,
+    double (&outProjection)[16])
+{
+    constexpr double pi = 3.14159265358979323846;
+    const double tangent = std::tan(coneHalfAngleDegrees * (pi / 180.0));
+    if (!std::isfinite(tangent) || tangent <= 0.0)
+    {
+        return false;
+    }
+
+    const double focal = 1.0 / tangent;
+    for (int index = 0; index < 16; ++index)
+    {
+        outProjection[index] = 0.0;
+    }
+    outProjection[0] = focal;
+    outProjection[5] = focal;
+    outProjection[10] = -(farPlane + nearPlane) / (farPlane - nearPlane);
+    outProjection[11] = -1.0;
+    outProjection[14] = -(2.0 * farPlane * nearPlane) / (farPlane - nearPlane);
+    return std::all_of(
+        outProjection, outProjection + 16,
+        [](double value) { return std::isfinite(value); });
+}
+
 /// Resolves the masks one prim's categories produce against the ordered direct
 /// light table and the bounded dome table of the page being built. A light with
 /// an empty link identity links to everything, which is what UsdImaging reserves
@@ -3127,13 +3204,15 @@ HdSilkSceneState::_ResolveShadowTable(
         {
             continue;
         }
-        if (light.type != OPENUSD_SILK_LIGHT_DISTANT)
+        const float coneHalfAngle = std::clamp(light.shapingConeAngle, 0.0f, 180.0f);
+        const bool distant = light.type == OPENUSD_SILK_LIGHT_DISTANT;
+        const bool spot = light.type == OPENUSD_SILK_LIGHT_SPHERE &&
+            light.radius == 0.0f && coneHalfAngle > 0.0f && coneHalfAngle < 90.0f;
+        if (!distant && !spot)
         {
-            // Only a distant light has an exact light-space projection here. A
-            // sphere, rect, disk or cylinder light needs a cube or perspective
-            // projection this producer has not derived, so it is named instead
-            // of being approximated by a directional map that would shadow the
-            // wrong geometry.
+            // A zero-radius sphere with a cone half-angle below 90 degrees fits
+            // one perspective map. Wider cones, omnidirectional points, finite
+            // spheres and area lights need another projection or more maps.
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
             continue;
         }
@@ -3152,9 +3231,10 @@ HdSilkSceneState::_ResolveShadowTable(
             light.transform[8],
             light.transform[9],
             light.transform[10]);
-        if (GfDot(direction, direction) <= 1e-12)
+        const double directionLengthSquared = GfDot(direction, direction);
+        if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1e-12)
         {
-            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS;
+            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
             continue;
         }
 
@@ -3163,21 +3243,49 @@ HdSilkSceneState::_ResolveShadowTable(
         descriptor.mapIndex =
             static_cast<uint32_t>(table.descriptors.size());
         descriptor.resolution = OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION;
-        descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC;
-        double eyeDistance = 0.0;
-        BuildDirectionalShadowView(
-            direction,
-            center,
-            radius,
-            descriptor.view,
-            &eyeDistance);
-        BuildOrthographicShadowProjection(
-            radius,
-            eyeDistance,
-            descriptor.projection);
-
-        const double texelWorldSize =
-            (2.0 * radius) / static_cast<double>(descriptor.resolution);
+        double texelWorldSize = 0.0;
+        if (distant)
+        {
+            descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC;
+            double eyeDistance = 0.0;
+            BuildDirectionalShadowView(
+                direction,
+                center,
+                radius,
+                descriptor.view,
+                &eyeDistance);
+            BuildOrthographicShadowProjection(
+                radius,
+                eyeDistance,
+                descriptor.projection);
+            texelWorldSize = (2.0 * radius) / static_cast<double>(descriptor.resolution);
+        }
+        else
+        {
+            const GfVec3d eye(
+                light.transform[12],
+                light.transform[13],
+                light.transform[14]);
+            double nearPlane = 0.0;
+            double farPlane = 0.0;
+            if (!BuildPerspectiveSpotShadowView(
+                    direction, eye, center, radius, descriptor.view, &nearPlane, &farPlane) ||
+                !BuildPerspectiveSpotShadowProjection(
+                    nearPlane, farPlane, coneHalfAngle, descriptor.projection))
+            {
+                flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                continue;
+            }
+            constexpr double pi = 3.14159265358979323846;
+            texelWorldSize = (2.0 * farPlane *
+                std::tan(static_cast<double>(coneHalfAngle) * (pi / 180.0))) /
+                static_cast<double>(descriptor.resolution);
+        }
+        if (!std::isfinite(texelWorldSize) || texelWorldSize <= 0.0)
+        {
+            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+            continue;
+        }
         // The depth bias is expressed in the map's own normalized depth so a
         // consumer never has to know the world extent it was derived from; the
         // normal bias stays in world units because the receiver it offsets is.

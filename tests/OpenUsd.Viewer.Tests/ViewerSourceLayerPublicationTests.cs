@@ -42,7 +42,7 @@ public sealed class ViewerSourceLayerPublicationTests
 
         await Assert.That(async () => await ViewerSourceLayerPublication.BeginAsync(
             files.SourcePath, Fingerprint(sourceBytes), CancellationToken.None))
-            .Throws<NotSupportedException>();
+            .ThrowsExactly<NotSupportedException>();
 
         await Assert.That((await File.ReadAllBytesAsync(files.SourcePath)).SequenceEqual(sourceBytes)).IsTrue();
         await Assert.That(OwnedStagingFiles(files.DirectoryPath)).IsEmpty();
@@ -355,6 +355,11 @@ public sealed class ViewerSourceLayerPublicationTests
         internal static async Task<SourceFiles> CreateAsync(
             string sourceFileName = "source.usda", byte[]? sourceBytes = null)
         {
+            if (!OperatingSystem.IsWindows())
+            {
+                Skip.Test("Guarded source-layer publication currently requires Windows.");
+            }
+
             // Windows resolves the machine temp directory through a junction on some
             // hosts. The publication guard intentionally rejects path aliases, so
             // keep fixtures under the already-resolved test output directory.

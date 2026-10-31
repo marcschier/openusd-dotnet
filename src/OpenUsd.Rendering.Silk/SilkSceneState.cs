@@ -2055,15 +2055,17 @@ internal static class SilkFrameUniformWriter
     /// Writes one light's ShapingAPI cone as (cos cutoff, focus, shaped, 0), or zero when unshaped.
     /// </summary>
     /// <remarks>
-    /// Storm applies the cone only when the angle is below 180 degrees, so a
-    /// 180-degree cone and a frame without the shaping table both write an
-    /// unshaped slot. The cosine is computed here once rather than per fragment.
+    /// Storm applies the cone to rect and disk lights, and to zero-radius sphere
+    /// lights when the angle is below 180 degrees. A 180-degree cone and a frame
+    /// without the shaping table both write an unshaped slot. The cosine is
+    /// computed here once rather than per fragment.
     /// </remarks>
     private static void WriteShaping(Span<byte> destination, int offset, SilkFrameLight light)
     {
         float cone = Math.Clamp(light.ShapingConeAngle, 0, 180);
         float focus = MathF.Max(light.ShapingFocus, 0);
-        bool shaped = (light.Type == 3 || light.Type == 4) && cone < 180;
+        bool shaped = (light.Type == 3 || light.Type == 4 ||
+            (light.Type == 2 && light.Radius == 0)) && cone < 180;
         WriteVector4(
             destination,
             offset,
@@ -4123,7 +4125,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             string reason = !deviceSupportsShadows
                 ? $"the {_device.Backend} device cannot record a depth-only pass, so no " +
                     "shadow map is allocated or rendered"
-                : DescribeMissingShadow(light.Type, shadows.UnsupportedFeatures);
+                : DescribeMissingShadow(light, shadows.UnsupportedFeatures);
             AddDiagnostic(
                 SilkRenderDiagnosticCodes.ShadowUnsupported,
                 $"light[{index}]",
@@ -4135,13 +4137,26 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     }
 
     private static string DescribeMissingShadow(
-        uint lightType,
+        SilkFrameLight light,
         SilkShadowUnsupportedFeatures unsupported)
     {
-        if (lightType != 1)
+        if (light.Type == 2)
         {
-            return "only a distant light has an exact light-space projection here, and " +
-                "no sphere, rect, disk or cylinder projection is derived";
+            if (light.Radius != 0)
+            {
+                return "a finite-radius sphere requires a cubemap shadow projection";
+            }
+            if (light.ShapingConeAngle <= 0 || light.ShapingConeAngle >= 90)
+            {
+                return "a single perspective map requires a zero-radius sphere cone half-angle " +
+                    "greater than 0 and less than 90 degrees; wider cones require multiple maps";
+            }
+            return "the zero-radius sphere spot cannot be fitted to a finite perspective frustum";
+        }
+        if (light.Type != 1)
+        {
+            return "only distant lights and zero-radius sphere spots with a cone half-angle " +
+                "below 90 degrees have a derived light-space projection";
         }
         if ((unsupported & SilkShadowUnsupportedFeatures.NoCasters) != 0)
         {
@@ -5894,7 +5909,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     internal ISilkGraphicsBuffer RequireSurfaceBuffer(
         SilkSceneState scene,
         SilkMeshData mesh,
-        RenderHeadlight light)
+        RenderHeadlight light,
+        bool useSceneMaterials = true)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(scene);
@@ -5925,7 +5941,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 "authored collection:lightLink.");
         }
         SilkMaterialData? material = null;
-        string path = mesh.MaterialPath;
+        string path = useSceneMaterials ? mesh.MaterialPath : string.Empty;
         if (!string.IsNullOrEmpty(path))
         {
             _ = scene.Materials.TryGetValue(path, out material);

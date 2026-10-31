@@ -198,9 +198,8 @@ public sealed class SilkShadowDiagnosticTests
     [Test]
     public async Task AnUnsupportedLightTypeIsNamedByTheProjectionItWouldNeed()
     {
-        // A shadow-capable device with a sphere light that got no descriptor: only
-        // a distant light has an exact light-space projection, and saying so is
-        // what tells an author the difference between "not yet" and "not here".
+        // This legacy-length frame has no shaping table, so its zero-radius
+        // sphere remains omnidirectional and needs the unimplemented cubemap path.
         using var device = new ShadowDiagnosticGraphicsDevice(supportsRasterShadows: true);
         using var resources = new SilkSceneGpuResources(
             device,
@@ -212,7 +211,7 @@ public sealed class SilkShadowDiagnosticTests
         RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
             entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
         await Assert.That(diagnostic.Message).Contains("sphere");
-        await Assert.That(diagnostic.Message).Contains("only a distant light");
+        await Assert.That(diagnostic.Message).Contains("cone half-angle");
     }
 
     /// <summary>Builds an ABI v19 shadow table with one orthographic descriptor.</summary>

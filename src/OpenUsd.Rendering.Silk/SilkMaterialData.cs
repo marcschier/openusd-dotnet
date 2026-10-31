@@ -115,15 +115,17 @@ public sealed class SilkMaterialTexture
     public string Asset { get; }
 
     /// <summary>
-    /// Gets the primvar supplying texture coordinates, empty when the texture has
-    /// no resolvable reader connection.
+    /// Gets the texture-coordinate primvar, or the encoded dimensions for a
+    /// <see cref="SilkMaterialParameter.VolumeDensity"/> texture.
     /// </summary>
     /// <remarks>
-    /// Every texture of one material reports the same primvar in practice: the
-    /// renderer builds one coordinate stream per material and takes its name from
-    /// the first entry that names one, so hdSilk reconciles this across a
-    /// material's textures and drops an entry whose primvar diverges rather than
-    /// publishing one that would be sampled through another entry's coordinates.
+    /// hdSilk uses <c>st</c> when a surface texture has no coordinate connection.
+    /// A material can publish up to two surface coordinate sets; an unnamed
+    /// surface texture uses the primary set when one exists. hdSilk drops a
+    /// surface input with a diagnostic when it requests a third set or its
+    /// composite operands require different sets. Displacement samples its own
+    /// coordinate set per vertex. A volume-density entry stores its width,
+    /// height and depth as a comma-separated string.
     /// </remarks>
     public string UvPrimvar { get; }
 }

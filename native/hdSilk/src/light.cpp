@@ -119,18 +119,19 @@ uint32_t _ReadDomeTextureFormat(const VtValue& value)
     return OPENUSD_SILK_DOME_TEXTURE_AUTOMATIC;
 }
 
-/// Reads UsdLux ShapingAPI the way Storm's area-light approximation does: the
-/// cone angle defaults to 90 degrees, which leaves a rect or disk light lit only
-/// on its -Z side even without the API, and a negative focus counts as zero.
+/// Reads UsdLux ShapingAPI the way Storm's direct-light approximation does. Area
+/// lights default to a 90-degree half-angle; a sphere defaults to 180 degrees
+/// so an absent API remains omnidirectional. A negative focus counts as zero.
 /// Cone softness and IES profiles are not read; Storm ignores them too.
 void _ReadShaping(
     HdSceneDelegate* sceneDelegate,
     const SdfPath& id,
-    HdSilkLightRecord& record)
+    HdSilkLightRecord& record,
+    float defaultConeAngle = 90.0f)
 {
     record.shapingConeAngle = _ReadFloat(
         sceneDelegate->GetLightParamValue(id, HdLightTokens->shapingConeAngle),
-        90.0f);
+        defaultConeAngle);
     record.shapingFocus = _ReadFloat(
         sceneDelegate->GetLightParamValue(id, HdLightTokens->shapingFocus),
         0.0f);
@@ -177,6 +178,7 @@ HdSilkLight::Sync(
     else if (_typeId == HdPrimTypeTokens->sphereLight)
     {
         record.type = OPENUSD_SILK_LIGHT_SPHERE;
+        _ReadShaping(sceneDelegate, GetId(), record, 180.0f);
     }
     else if (_typeId == HdPrimTypeTokens->rectLight)
     {
