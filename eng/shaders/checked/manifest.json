@@ -39,7 +39,7 @@
     },
     {
       "path": ".github/workflows/native.yml",
-      "sha256": "b96d8bedc3e1f17c475d8585e423b75a1b100fef850499bc325f6cae21283f63"
+      "sha256": "2818d29e9aff2d334604ca911214072b674a73ae0c853d2216523a94c38ec0a8"
     },
     {
       "path": ".github/workflows/package.yml",
@@ -55,7 +55,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "1cbcafb7e5097b2682016679d11b7f69e77693cd6c7296006a698de189bb9bb9"
+      "sha256": "4cc4db6ee58aed0be8d478f8ff575526a4eb4de848b259848b85efc21a6d27ed"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -387,7 +387,7 @@
     },
     {
       "path": "native/hdSilk/CMakeLists.txt",
-      "sha256": "becee8a09c9d4b5616d41556bd3f020bf644b9992982c23f7283e890dab65972"
+      "sha256": "312f9a37afd221c6d644794d41118125708d01b75af9b04d9b09e11b814f4f57"
     },
     {
       "path": "native/hdSilk/src/materialXBridge.cpp",
@@ -463,7 +463,7 @@
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
-      "sha256": "aec4226e625bde7ecde65864cc097aaf1e02b91c3a633edb44408626c449dbcf"
+      "sha256": "880fea27d334d639258ffeda3e00653c133a6eb2437a8ff6606f380217e15384"
     }
   ],
   "programs": [
