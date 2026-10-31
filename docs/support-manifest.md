@@ -662,13 +662,13 @@ metalness, specular_roughness, specular_IOR, coat, coat_roughness, monochrome co
 ND_open_pbr_surface (base_color scaled by base_weight, emission_color scaled by emission_luminance, base_metalness,
 specular_roughness, specular_ior, coat_weight, coat_roughness, geometry_opacity, geometry_normal) projected onto the
 same PreviewSurface-compatible material record; constant, direct image, arithmetic fold, at most two reconciled
-texture-coordinate streams per material sharing one folded place2d/UsdTransform2d transform, constant affine arithmetic
+texture-coordinate streams and two folded place2d/UsdTransform2d transforms per material, constant affine arithmetic
 over exactly one image folded into that texture's scale and bias, one two-image multiply/add/subtract/mix composite per
 material evaluated per pixel in the shader, and MaterialX image sampling read from uaddressmode/vaddressmode and default
 rather than the UsdUVTexture names. Explicitly not supported: generated OpenPBR shader code, transmission, subsurface,
 sheen/fuzz, thin film, anisotropy, coat tint/coat IOR/coat normal, MaterialX specular_color as a specular workflow,
 per-channel or connected colour-typed standard_surface opacity, connected (per-pixel) nodedef weights, more than two
-texture-coordinate sets per material, and per-image UV transforms
+texture-coordinate sets or UV transforms per material, and composite operands with different streams or transforms
 
 ### `mdl-only-material-reporting`
 

@@ -3552,9 +3552,10 @@ Everything outside that is refused with a diagnostic:
 
 ### Texture-coordinate chains
 
-hdSilk walks the `st`/`texcoord` connection of every texture it publishes and folds the chain into one constant affine,
-published as page ABI v14's `uv_transform` and applied once per fragment before every texture sample. This is shared by
-the MaterialX projection and the UsdPreviewSurface path, because both reach the same texture table.
+hdSilk walks the `st`/`texcoord` connection of every texture it publishes and folds each supported chain into a
+constant affine. Page ABI 30 carries a primary transform and, when needed, an alternate transform per material;
+each surface parameter selects one before its texture samples. The MaterialX projection and UsdPreviewSurface
+path share this reconciliation because both reach the same texture table.
 
 - `ND_place2d_vector2` is reproduced exactly from `NG_place2d_vector2`: `pivot`, `scale`, `rotate`, `offset`, and both
   `operationorder` values (`SRT` and `TRS`), including `rotate2d`'s clockwise matrix for a positive angle in degrees.
@@ -5113,11 +5114,11 @@ streams per material for the *surface* textures, and reconciles them before publ
 are sampled together by one fragment shader. Displacement is not part of that reconciliation: it is sampled per
 vertex, on the CPU, from whatever primvar it authors, so a material shading through `st` and displacing
 through `st2` is exactly representable and publishes both -- neither is dropped, and neither is
-rewritten into the other. The displacement keeps its own folded affine as well: it adopts one freely
-when no surface texture states one, and is refused by name only when a surface transform is already
-published and the displacement's diverges from it, which is the one case the single published
-transform genuinely cannot represent. `VerifyDisplacementStageProbe` gates this against a composed
-stage, not a hand-built map.
+rewritten into the other. With no surface texture, the displacement's folded affine becomes the
+material's primary transform. Otherwise, a different affine or a different missing-coordinate fallback
+for the same primvar leaves displacement unpublished with a diagnostic. Displacement cannot select
+the alternate surface transform. `VerifyDisplacementStageProbe` gates this against a composed stage,
+not a hand-built map.
 
 The rules are gated against a real stage as well as against hand-built networks:
 `test-assets/displacement-terminal-stage.usda` is composed by UsdImaging and read through
@@ -5136,7 +5137,7 @@ amount along the normal it is shaded with:
   the schema default: nothing moves, nothing is reported, and the prim shares the retained geometry of
   a material that authors no displacement at all.
 - A `displacement` connected to a `UsdUVTexture` is sampled per vertex from that texture's authored
-  coordinate set. The material's single folded affine transforms the coordinate, the authored
+  coordinate set. The material's primary folded affine transforms the coordinate, the authored
   `wrapS`/`wrapT` address the result, and the texels are filtered bilinearly at the base level. Base
   level only: a vertex has no screen-space derivative, so there is no defensible level of detail to
   select and reading a mip would silently low-pass the height field.
