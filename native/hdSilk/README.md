@@ -153,6 +153,36 @@ excluded from production builds. The C probe covers reconstruction, render and
 page-publication failures, while managed pixel cases cover hidden primvars,
 normals, topology, ancestor transforms, deletion/redefinition and instancing.
 
+## Linear basis curves
+
+hdSilk emits linear segmented, nonperiodic, periodic and pinned curves as
+`LINE_LIST` geometry. Nonperiodic and pinned curves connect consecutive
+control points; periodic curves also connect the last point to the first.
+Each curve in a periodic batch closes independently. Indexed topologies
+select both positions and vertex widths through the resolved point index.
+Invisible curves and points do not renumber the remaining segment identities.
+
+Nonperiodic and pinned curves require at least two control points, and
+periodic curves require at least three. Invalid topology removes the retained
+curve and emits a native warning; a later valid edit republishes it. Cubic
+curves remain unsupported. The optional bounded mesh-preparation profile
+continues to refuse all curve Rprims.
+
+Constant widths remain one attribute value; uniform, varying and vertex
+widths are expanded onto the emitted line vertices. The renderer does not
+widen the one-pixel lines from those values.
+The native topology probe covers indices, visibility and width expansion;
+the managed conformance cases compare animated curves with independent
+segmented geometry on D3D12 WARP and Vulkan SwiftShader.
+
+## Preview Surface connections
+
+A Preview Surface input connected to a known unsupported node stays at the
+renderer default and emits a native warning naming the material, input and
+node. An authored constant behind that connection is not treated as an
+unconnected value. This includes `HwPtexTexture_1`: Ptex sampling remains
+unsupported, and the warning is not a managed material diagnostic.
+
 ## Wire format
 
 Named `UsdPrimvarReader_float2` fallbacks and MaterialX `geompropvalue_vector2` defaults

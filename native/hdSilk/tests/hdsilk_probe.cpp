@@ -6191,6 +6191,161 @@ bool VerifyMediumComplexityInterpolatesWidths(const ParsedPage& page)
         NearlyEqual(normals->values, expectedNormals);
 }
 
+bool VerifyLinearCurveTopology()
+{
+    VtVec3fArray points(7);
+    for (size_t index = 0; index < points.size(); ++index)
+    {
+        points[index] = GfVec3f(static_cast<float>(index), 0.0F, 0.0F);
+    }
+    HdSilkCurveWidths widths;
+    widths.interpolation = HdSilkCurveWidthInterpolation::Vertex;
+    widths.values = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F};
+
+    const auto verify = [&](const HdBasisCurvesTopology& topology,
+                            const std::vector<int>& expectedPoints,
+                            const std::vector<uint32_t>& expectedSegments)
+    {
+        HdSilkMeshRecord record;
+        if (!HdSilkBuildLinearCurveLines(
+                topology, points, widths, &record) ||
+            record.points.size() != expectedPoints.size() * 3 ||
+            record.indices.size() != expectedPoints.size() ||
+            record.triangleSubprims.size() != expectedSegments.size() ||
+            !std::equal(
+                record.triangleSubprims.begin(),
+                record.triangleSubprims.end(),
+                expectedSegments.begin()))
+        {
+            std::cerr << "Unexpected linear curve geometry for wrap '"
+                << topology.GetCurveWrap() << "'.\n";
+            return false;
+        }
+        const auto attribute = std::find_if(
+            record.attributes.begin(),
+            record.attributes.end(),
+            [](const HdSilkMeshAttribute& entry)
+            {
+                return entry.name == HdTokens->widths.GetString();
+            });
+        if (attribute == record.attributes.end() ||
+            attribute->interpolation != OPENUSD_SILK_INTERPOLATION_VERTEX ||
+            attribute->data.size() != expectedPoints.size())
+        {
+            std::cerr << "Linear curve widths were not published per endpoint.\n";
+            return false;
+        }
+        for (size_t index = 0; index < expectedPoints.size(); ++index)
+        {
+            const size_t point = static_cast<size_t>(expectedPoints[index]);
+            if (record.indices[index] != index ||
+                record.points[index * 3] != points[point][0] ||
+                record.points[index * 3 + 1] != points[point][1] ||
+                record.points[index * 3 + 2] != points[point][2] ||
+                attribute->data[index] != widths.values[point])
+            {
+                std::cerr << "Linear curve endpoint mismatch at " << index << ".\n";
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const VtIntArray counts({3, 4});
+    const VtIntArray noIndices;
+    const HdBasisCurvesTopology nonperiodic(
+        HdTokens->linear, HdTokens->bezier, HdTokens->nonperiodic, counts, noIndices);
+    const HdBasisCurvesTopology nonperiodicTwo(
+        HdTokens->linear, HdTokens->bezier, HdTokens->nonperiodic,
+        VtIntArray({2}), noIndices);
+    const HdBasisCurvesTopology pinned(
+        HdTokens->linear, HdTokens->bezier, HdTokens->pinned, counts, noIndices);
+    const HdBasisCurvesTopology periodic(
+        HdTokens->linear, HdTokens->bezier, HdTokens->periodic, counts, noIndices);
+    const HdBasisCurvesTopology indexed(
+        HdTokens->linear, HdTokens->bezier, HdTokens->periodic, counts,
+        VtIntArray({6, 5, 4, 3, 2, 1, 0}));
+    const HdBasisCurvesTopology segmented(
+        HdTokens->linear, HdTokens->bezier, HdTokens->segmented,
+        VtIntArray({4, 2}), noIndices);
+    HdBasisCurvesTopology hidden(periodic);
+    hidden.SetInvisibleCurves(VtIntArray({0}));
+    hidden.SetInvisiblePoints(VtIntArray({4}));
+
+    if (!verify(nonperiodicTwo, {0, 1}, {0}) ||
+        !verify(nonperiodic, {0, 1, 1, 2, 3, 4, 4, 5, 5, 6}, {0, 1, 2, 3, 4}) ||
+        !verify(pinned, {0, 1, 1, 2, 3, 4, 4, 5, 5, 6}, {0, 1, 2, 3, 4}) ||
+        !verify(periodic, {0, 1, 1, 2, 2, 0, 3, 4, 4, 5, 5, 6, 6, 3},
+            {0, 1, 2, 3, 4, 5, 6}) ||
+        !verify(indexed, {6, 5, 5, 4, 4, 6, 3, 2, 2, 1, 1, 0, 0, 3},
+            {0, 1, 2, 3, 4, 5, 6}) ||
+        !verify(segmented, {0, 1, 2, 3, 4, 5}, {0, 1, 2}) ||
+        !verify(hidden, {5, 6, 6, 3}, {5, 6}))
+    {
+        return false;
+    }
+
+    HdSilkCurveWidths uniform;
+    uniform.interpolation = HdSilkCurveWidthInterpolation::Uniform;
+    uniform.values = {0.25F, 0.75F};
+    HdSilkMeshRecord uniformRecord;
+    if (!HdSilkBuildLinearCurveLines(nonperiodic, points, uniform, &uniformRecord))
+    {
+        return false;
+    }
+    const auto uniformAttribute = std::find_if(
+        uniformRecord.attributes.begin(),
+        uniformRecord.attributes.end(),
+        [](const HdSilkMeshAttribute& entry)
+        {
+            return entry.name == HdTokens->widths.GetString();
+        });
+    const std::vector<float> expectedUniformWidths{
+        0.25F, 0.25F, 0.25F, 0.25F,
+        0.75F, 0.75F, 0.75F, 0.75F, 0.75F, 0.75F};
+    if (uniformAttribute == uniformRecord.attributes.end() ||
+        uniformAttribute->data != expectedUniformWidths)
+    {
+        std::cerr << "Uniform widths were not expanded across each curve.\n";
+        return false;
+    }
+
+    const auto rejected = [&](const HdBasisCurvesTopology& topology)
+    {
+        HdSilkMeshRecord record;
+        return !HdSilkBuildLinearCurveLines(
+            topology, points, widths, &record);
+    };
+    const HdBasisCurvesTopology cubic(
+        HdTokens->cubic, HdTokens->bezier, HdTokens->nonperiodic, counts, noIndices);
+    const HdBasisCurvesTopology unknownWrap(
+        HdTokens->linear, HdTokens->bezier, TfToken("unknown"), counts, noIndices);
+    const HdBasisCurvesTopology shortPeriodic(
+        HdTokens->linear, HdTokens->bezier, HdTokens->periodic,
+        VtIntArray({2}), noIndices);
+    const HdBasisCurvesTopology shortNonperiodic(
+        HdTokens->linear, HdTokens->bezier, HdTokens->nonperiodic,
+        VtIntArray({1}), noIndices);
+    const HdBasisCurvesTopology badIndices(
+        HdTokens->linear, HdTokens->bezier, HdTokens->periodic,
+        VtIntArray({3}), VtIntArray({0, 1}));
+    const HdBasisCurvesTopology outOfRangeIndex(
+        HdTokens->linear, HdTokens->bezier, HdTokens->periodic,
+        VtIntArray({3}), VtIntArray({0, 1, 7}));
+    const HdBasisCurvesTopology negativeCount(
+        HdTokens->linear, HdTokens->bezier, HdTokens->nonperiodic,
+        VtIntArray({-1}), noIndices);
+    if (!rejected(cubic) || !rejected(unknownWrap) ||
+        !rejected(shortPeriodic) || !rejected(shortNonperiodic) ||
+        !rejected(badIndices) || !rejected(outOfRangeIndex) ||
+        !rejected(negativeCount))
+    {
+        std::cerr << "Invalid or unsupported linear curve topology was accepted.\n";
+        return false;
+    }
+    return true;
+}
+
 /// Direct coverage of the width resolver and the line builder, without a render
 /// index. UsdImaging never authors HdBasisCurvesTopology curve indices, so an
 /// indexed topology cannot be reached from a stage; it is still a topology Hydra
@@ -6234,7 +6389,7 @@ bool VerifyCurveWidthResolution()
         return false;
     }
     HdSilkMeshRecord indexedRecord;
-    if (!HdSilkBuildLinearSegmentedCurveLines(
+    if (!HdSilkBuildLinearCurveLines(
             indexed, points, indexedWidths, &indexedRecord))
     {
         return false;
@@ -6319,7 +6474,7 @@ bool VerifyCurveWidthResolution()
         return false;
     }
     HdSilkMeshRecord trailingRecord;
-    if (!HdSilkBuildLinearSegmentedCurveLines(
+    if (!HdSilkBuildLinearCurveLines(
             plain, longPoints, trailing, &trailingRecord))
     {
         return false;
@@ -8333,6 +8488,120 @@ bool ParameterIsAbsent(
         std::cerr << what << " reached parameter " << parameter
                   << " even though the projection cannot carry it.\n";
         return false;
+    }
+    return true;
+}
+
+bool VerifyPreviewSurfaceUnsupportedInput()
+{
+    const SdfPath materialPath("/World/PreviewUnsupported");
+    const auto makeNetwork =
+        [](const char* identifier, bool includeNode, bool connected, bool authored)
+    {
+        HdMaterialNode surface;
+        surface.path = SdfPath("/World/PreviewUnsupported/Surface");
+        surface.identifier = TfToken("UsdPreviewSurface");
+        surface.parameters[TfToken("roughness")] = VtValue(0.25F);
+        if (authored)
+        {
+            surface.parameters[TfToken("diffuseColor")] =
+                VtValue(GfVec3f(0.7F, 0.6F, 0.5F));
+        }
+
+        HdMaterialNode source;
+        source.path = SdfPath("/World/PreviewUnsupported/Source");
+        source.identifier = TfToken(identifier);
+        source.parameters[TfToken("file")] =
+            VtValue(SdfAssetPath("textures/probe-albedo.png"));
+
+        HdMaterialNetwork network;
+        network.nodes.push_back(surface);
+        if (includeNode)
+        {
+            network.nodes.push_back(source);
+        }
+        if (connected)
+        {
+            network.relationships.push_back(
+                {source.path, TfToken("rgb"), surface.path, TfToken("diffuseColor")});
+        }
+
+        HdMaterialNetworkMap map;
+        map.map[HdMaterialTerminalTokens->surface] = std::move(network);
+        return map;
+    };
+
+    for (const char* identifier : {"HwPtexTexture_1", "UsdPrimvarReader_float3"})
+    {
+        for (const bool authored : {false, true})
+        {
+            TfDiagnosticTrap diagnostics;
+            const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(
+                materialPath, makeNetwork(identifier, true, true, authored));
+            const auto& warnings = diagnostics.GetWarnings();
+            const bool warned = warnings.size() == 1 &&
+                warnings[0].GetCommentary().find(materialPath.GetString()) !=
+                    std::string::npos &&
+                warnings[0].GetCommentary().find("diffuseColor") != std::string::npos &&
+                warnings[0].GetCommentary().find(identifier) != std::string::npos &&
+                warnings[0].GetCommentary().find("unsupported node") != std::string::npos;
+            diagnostics.ClearWarnings();
+            if (!warned ||
+                !ParameterIsAbsent(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, identifier) ||
+                !ScalarIs(record, OPENUSD_SILK_MATERIAL_ROUGHNESS, 0.25F, "Roughness"))
+            {
+                std::cerr << "An unsupported Preview Surface connection was not "
+                             "rejected and diagnosed: "
+                          << identifier << ", authored=" << authored << "\n";
+                return false;
+            }
+        }
+    }
+
+    {
+        TfDiagnosticTrap diagnostics;
+        const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(
+            materialPath, makeNetwork("Missing", false, true, true));
+        const auto& warnings = diagnostics.GetWarnings();
+        const bool warned = warnings.size() == 1 &&
+            warnings[0].GetCommentary().find("network does not contain") !=
+                std::string::npos;
+        diagnostics.ClearWarnings();
+        if (!warned ||
+            !ParameterIsAbsent(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, "Missing node") ||
+            !ScalarIs(record, OPENUSD_SILK_MATERIAL_ROUGHNESS, 0.25F, "Roughness"))
+        {
+            return false;
+        }
+    }
+
+    {
+        TfDiagnosticTrap diagnostics;
+        const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(
+            materialPath, makeNetwork("", false, false, true));
+        const HdSilkMaterialScalar* diffuse =
+            FindMaterialScalar(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+        if (!diagnostics.IsClean() || diffuse == nullptr ||
+            !ScalarMatches(*diffuse, {0.7F, 0.6F, 0.5F}) ||
+            !ScalarIs(record, OPENUSD_SILK_MATERIAL_ROUGHNESS, 0.25F, "Roughness"))
+        {
+            std::cerr << "An unconnected Preview Surface constant changed.\n";
+            return false;
+        }
+    }
+
+    {
+        TfDiagnosticTrap diagnostics;
+        const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(
+            materialPath, makeNetwork("UsdUVTexture", true, true, true));
+        if (!diagnostics.IsClean() ||
+            FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR) == nullptr ||
+            FindMaterialScalar(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR) != nullptr ||
+            !ScalarIs(record, OPENUSD_SILK_MATERIAL_ROUGHNESS, 0.25F, "Roughness"))
+        {
+            std::cerr << "A supported Preview Surface texture changed.\n";
+            return false;
+        }
     }
     return true;
 }
@@ -12492,6 +12761,14 @@ int main(int argc, char** argv)
     {
         return VerifyDisplacementUvReconciliation() ? 0 : 1;
     }
+    if (argc == 2 && std::string(argv[1]) == "--preview-unsupported-input")
+    {
+        return VerifyPreviewSurfaceUnsupportedInput() ? 0 : 1;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--linear-curve-topology")
+    {
+        return VerifyLinearCurveTopology() ? 0 : 1;
+    }
     if (argc == 2 && std::string(argv[1]) == "--surface-uv-fallback")
     {
         return VerifySurfaceUvFallbackDiagnostic() ? 0 : 1;
@@ -12831,6 +13108,7 @@ int main(int argc, char** argv)
         !VerifyUniformWidthCurves(initial) ||
         !VerifyOrientationWinding(initial) ||
         !VerifyStrayPointsAreNotPickTargets(initial) ||
+        !VerifyLinearCurveTopology() ||
         !VerifyCurveWidthResolution() ||
         !std::is_sorted(
             initial.upsert_paths.begin(),

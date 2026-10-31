@@ -4763,7 +4763,13 @@ parity frame; with constant width `0.0001` in `parity-points-asymmetric.usda`, S
 Vulkan SwiftShader all rasterize exactly one pixel per point. hdSilk currently supports that measured
 one-pixel point-list subset and does not implement wide point splats.
 
-Linear segmented basis curves use `LINE_LIST` topology and now carry their authored widths through the
+Linear segmented, nonperiodic, periodic and pinned basis curves use `LINE_LIST` topology. Periodic
+curves close each curve independently; nonperiodic and pinned curves connect consecutive control
+points. Invalid topology removes the retained curve until a valid edit republishes it. Cubic curves
+and curves in the bounded mesh-preparation profile remain unsupported. The added wrap modes have
+native topology and D3D12 WARP/Vulkan SwiftShader reference tests, but no Storm or Metal parity claim.
+
+Linear curves carry their authored widths through the
 same attribute table, under the name `widths` with semantic `OPENUSD_SILK_ATTRIBUTE_WIDTH` and one
 component. Constant, uniform, varying, and vertex interpolations are all resolved: a constant width
 publishes one `CONSTANT` element, and the other three publish one `VERTEX` element per emitted line

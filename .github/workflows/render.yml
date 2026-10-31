@@ -565,6 +565,23 @@ jobs:
           name: render-disk-output-contracts-win-x64-${{ github.run_id }}
           path: artifacts/disk-output-contracts/*
           if-no-files-found: error
+      - name: Execute native linear curve conformance
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_REQUIRE_SWIFTSHADER: '1'
+        run: |
+          $runtime = Join-Path $PWD 'artifacts/parity-capture/win-x64/runtime'
+          $env:OPENUSD_PARITY_RUNTIME_ROOT = $runtime
+          $env:OPENUSD_TEST_PLUGIN_PATH = Join-Path $runtime 'plugin/usd'
+          $env:PATH = "$(Join-Path $runtime 'bin');$(Join-Path $runtime 'lib');$env:PATH"
+          ./eng/run-managed-tests.ps1 `
+            -Project 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj' `
+            -Framework net10.0 `
+            -Configuration Release `
+            -MinimumExpectedTests 8 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkLinearCurveNativeTests/*')
       - name: Execute sampled OpenVDB volume conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

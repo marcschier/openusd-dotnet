@@ -246,7 +246,18 @@ HdSilkResolveCurveWidths(
 }
 
 bool
-HdSilkBuildLinearSegmentedCurveLines(
+HdSilkSupportsLinearCurveTopology(const HdBasisCurvesTopology& topology)
+{
+    const TfToken wrap = topology.GetCurveWrap();
+    return topology.GetCurveType() == HdTokens->linear &&
+        (wrap == HdTokens->segmented ||
+            wrap == HdTokens->nonperiodic ||
+            wrap == HdTokens->periodic ||
+            wrap == HdTokens->pinned);
+}
+
+bool
+HdSilkBuildLinearCurveLines(
     const HdBasisCurvesTopology& topology,
     const VtVec3fArray& points,
     const HdSilkCurveWidths& widths,
@@ -256,23 +267,28 @@ HdSilkBuildLinearSegmentedCurveLines(
     const VtIntArray& indices = topology.GetCurveIndices();
     const VtIntArray& invisibleCurves = topology.GetInvisibleCurves();
     const VtIntArray& invisiblePoints = topology.GetInvisiblePoints();
+    const TfToken wrap = topology.GetCurveWrap();
+    const bool segmented = wrap == HdTokens->segmented;
+    const bool periodic = wrap == HdTokens->periodic;
     std::vector<float> emittedWidths;
 
-    // Uniform widths are indexed by curve, so a topology with more curves than
-    // authored values would read out of range. Reject it here rather than in
-    // the emit loop: the record must be discarded whole either way.
-    if (widths.interpolation == HdSilkCurveWidthInterpolation::Uniform &&
-        widths.values.size() < counts.size())
+    if (!HdSilkSupportsLinearCurveTopology(topology) ||
+        widths.values.empty() ||
+        counts.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+        (widths.interpolation == HdSilkCurveWidthInterpolation::Uniform &&
+            widths.values.size() < counts.size()))
     {
         return false;
     }
 
     size_t vertexCursor = 0;
-    uint32_t segmentIndex = 0;
+    size_t segmentIndex = 0;
     for (size_t curveIndex = 0; curveIndex < counts.size(); ++curveIndex)
     {
         const int count = counts[curveIndex];
-        if (count < 0 || (count % 2) != 0)
+        if (count < 0 ||
+            (segmented && (count % 2) != 0) ||
+            (!segmented && count < (periodic ? 3 : 2)))
         {
             return false;
         }
@@ -282,18 +298,29 @@ HdSilkBuildLinearSegmentedCurveLines(
         {
             return false;
         }
+        const size_t segmentCount = segmented
+            ? static_cast<size_t>(count / 2)
+            : static_cast<size_t>(periodic ? count : count - 1);
+        if (segmentCount >
+            static_cast<size_t>(std::numeric_limits<int>::max()) - segmentIndex)
+        {
+            return false;
+        }
         if (IsInvisible(invisibleCurves, static_cast<int>(curveIndex)))
         {
             vertexCursor += static_cast<size_t>(count);
-            segmentIndex += static_cast<uint32_t>(count / 2);
+            segmentIndex += segmentCount;
             continue;
         }
 
-        for (int local = 0; local < count; local += 2)
+        for (size_t local = 0; local < segmentCount; ++local)
         {
-            const size_t firstVertex = vertexCursor + static_cast<size_t>(local);
-            const size_t secondVertex = firstVertex + 1;
-            if (topology.HasIndices() && secondVertex >= indices.size())
+            const size_t firstVertex = vertexCursor + (segmented ? local * 2 : local);
+            const size_t secondVertex = periodic && local + 1 == segmentCount
+                ? vertexCursor
+                : firstVertex + 1;
+            if (topology.HasIndices() &&
+                (firstVertex >= indices.size() || secondVertex >= indices.size()))
             {
                 return false;
             }
@@ -351,7 +378,7 @@ HdSilkBuildLinearSegmentedCurveLines(
             emittedWidths.push_back(
                 ResolveWidthAt(
                     widths, curveIndex, static_cast<size_t>(secondIndex)));
-            record->triangleSubprims.push_back(segmentIndex);
+            record->triangleSubprims.push_back(static_cast<uint32_t>(segmentIndex));
             ++segmentIndex;
         }
         vertexCursor += static_cast<size_t>(count);

@@ -183,8 +183,7 @@ HdSilkBasisCurves::Sync(
     if (topologyRefreshed)
     {
         _topology = GetBasisCurvesTopology(sceneDelegate);
-        _topologySupported = _topology.GetCurveType() == HdTokens->linear &&
-            _topology.GetCurveWrap() == HdTokens->segmented;
+        _topologySupported = HdSilkSupportsLinearCurveTopology(_topology);
         if (_topologySupported)
         {
             if (_topologyRevision == std::numeric_limits<uint64_t>::max())
@@ -197,7 +196,7 @@ HdSilkBasisCurves::Sync(
         else
         {
             TF_WARN(
-                "hdSilk skipped basisCurves '%s': unsupported topology type='%s' wrap='%s' (only linear segmented is supported)",
+                "hdSilk skipped basisCurves '%s': unsupported topology type='%s' wrap='%s'",
                 id.GetText(),
                 _topology.GetCurveType().GetText(),
                 _topology.GetCurveWrap().GetText());
@@ -287,11 +286,11 @@ HdSilkBasisCurves::Sync(
         // per-vertex widths Hydra resolved. Before this resolution existed a
         // non-constant width array deleted the whole prim, which is the one
         // case where widths did change what was drawn: nothing at all.
-        if (!HdSilkBuildLinearSegmentedCurveLines(
+        if (!HdSilkBuildLinearCurveLines(
                 _topology, _points, _widths, &record))
         {
             TF_WARN(
-                "hdSilk skipped basisCurves '%s': invalid or empty linear segmented topology",
+                "hdSilk skipped basisCurves '%s': invalid or empty linear topology",
                 id.GetText());
             silkRenderParam->GetSceneState().RemoveMesh(id.GetString());
             *dirtyBits = HdChangeTracker::Clean;

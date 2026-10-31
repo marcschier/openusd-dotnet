@@ -3538,6 +3538,7 @@ HdSilkMaterial::Resolve(
         // constant, if any, is only a fallback the texture entry already
         // carries, so it must not also appear as a scalar.
         const HdMaterialNode* texture = nullptr;
+        const HdMaterialNode* unsupported = nullptr;
         TfToken outputName;
         bool danglingConnection = false;
         for (const HdMaterialRelationship& relationship : network.relationships)
@@ -3558,6 +3559,10 @@ HdSilkMaterial::Resolve(
                 // authored statement of which channel of the file drives it.
                 outputName = relationship.inputName;
             }
+            else if (upstream != nullptr)
+            {
+                unsupported = upstream;
+            }
             break;
         }
 
@@ -3571,6 +3576,17 @@ HdSilkMaterial::Resolve(
                 "network does not contain; leaving the input at its default.",
                 record.path.c_str(),
                 input.name.GetText());
+            continue;
+        }
+
+        if (unsupported != nullptr)
+        {
+            TF_WARN(
+                "hdSilk material '%s' input '%s' is connected to unsupported "
+                "node '%s'; leaving the input at its default.",
+                record.path.c_str(),
+                input.name.GetText(),
+                unsupported->identifier.GetText());
             continue;
         }
 

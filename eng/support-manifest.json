@@ -1170,6 +1170,20 @@
           "evidencePlatforms": ["win-x64", "linux-x64", "osx-arm64"]
         },
         {
+          "id": "basis-curve-linear-wraps",
+          "description": "hdSilk expands linear segmented, nonperiodic, periodic, and pinned basis curves into line lists, preserving resolved point widths, invisible-segment identities, and independent closure of periodic curves. Invalid topology removes the retained curve until a valid edit republishes it. Cubic curves and curves in the bounded mesh-preparation profile remain unsupported. Windows tests compare animated output with independently authored segmented geometry on D3D12 WARP and Vulkan SwiftShader; Storm and Metal parity are not claimed.",
+          "status": "pending-hosted-proof",
+          "evidenceWorkflows": ["render.yml"],
+          "evidenceWorkflowJobs": {
+            "render.yml": ["windows-wgl"]
+          },
+          "evidenceTests": [
+            "native/hdSilk/tests/hdsilk_probe.cpp",
+            "tests/OpenUsd.Rendering.ConformanceTests/SilkLinearCurveNativeTests.cs"
+          ],
+          "evidencePlatforms": ["win-x64"]
+        },
+        {
           "id": "point-instancer-instance-identity",
           "description": "hdSilk publishes each point-instanced record with the instance's own index inside its instancer -- the index into the PointInstancer protoIndices and positions arrays that UsdImaging decodes back to a scene instance -- rather than the ordinal of the instance in the resolved array, so a prototype that owns only part of an instancer publishes a sparse index set, changing protoIndices retires and republishes identities instead of renumbering the survivors, and invisibleIds leaves the surviving indices alone. The ABI v8 prototype payload therefore rides the lowest index a path publishes and is resolved that way by the retained scene rather than by index zero, for triangle-list, line-list, and point-list prototypes alike, records of one path are serialized atomically so a rejected payload cannot leave orphan instance references on the wire, and an empty mesh is retired rather than published because an empty record is indistinguishable on the wire from an instance reference. Every record is validated as published, before the draw-mode and complexity transforms index into its points and vertex attributes, so a malformed index is rejected rather than dereferenced. Nested instancers have no USD instance index, so hdSilk composes parent_index * inner_instance_count + inner_index against the inner instancer's own authoritative instance count and never a per-prototype radix, dropping with a diagnostic any index that count cannot explain; that composition is an hdSilk encoding rather than an index USD can decode. This is a page-level identity claim only: there is no Storm parity scene, because Storm publishes no per-instance page to compare against, and instanced shadows remain ungated",
           "status": "workflow-gated",

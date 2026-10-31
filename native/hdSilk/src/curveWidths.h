@@ -16,7 +16,7 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-/// Authored width interpolations hdSilk resolves for linear segmented curves.
+/// Authored width interpolations hdSilk resolves for linear curves.
 /// USD gives varying and vertex the same element count on linear curves -- one
 /// value per control point -- so both resolve to Vertex.
 enum class HdSilkCurveWidthInterpolation
@@ -78,11 +78,13 @@ bool HdSilkResolveCurveWidths(
     HdSilkCurveWidthInterpolation declaredInterpolation,
     HdSilkCurveWidths* out);
 
-/// Emits linear segmented curves as a line list with eye-facing normals and the
+bool HdSilkSupportsLinearCurveTopology(const HdBasisCurvesTopology& topology);
+
+/// Emits linear curves as a line list with eye-facing normals and the
 /// resolved widths already placed on the emitted vertices. Returns false for a
 /// topology this delegate cannot express as independent segments, leaving
 /// "record" partially populated for the caller to discard.
-bool HdSilkBuildLinearSegmentedCurveLines(
+bool HdSilkBuildLinearCurveLines(
     const HdBasisCurvesTopology& topology,
     const VtVec3fArray& points,
     const HdSilkCurveWidths& widths,

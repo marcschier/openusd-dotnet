@@ -558,6 +558,7 @@ Storm and hdSilk rendering paths, shader features, and hosted execution limits.
 | `usdvol-density` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `cpu-skinning` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `basis-curve-width-interpolation` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
+| `basis-curve-linear-wraps` | Pending hosted proof | `win-x64` |
 | `point-instancer-instance-identity` | Workflow-gated | `win-x64`, `linux-x64`, `osx-arm64` |
 | `managed-material-pixel-admission` | Implemented | `win-x64` |
 | `source-identity-batches` | Implemented | `win-x64` |
@@ -800,6 +801,14 @@ hdSilk linear segmented basis curves resolve constant, uniform, varying, and ver
 line vertices and publish them as an OPENUSD_SILK_ATTRIBUTE_WIDTH vertex attribute, interpolated along each segment at
 higher complexity; the widths do not change the rasterized one-pixel lines, which is what Storm draws at the harness
 refinement
+
+### `basis-curve-linear-wraps`
+
+hdSilk expands linear segmented, nonperiodic, periodic, and pinned basis curves into line lists, preserving resolved
+point widths, invisible-segment identities, and independent closure of periodic curves. Invalid topology removes the
+retained curve until a valid edit republishes it. Cubic curves and curves in the bounded mesh-preparation profile remain
+unsupported. Windows tests compare animated output with independently authored segmented geometry on D3D12 WARP and
+Vulkan SwiftShader; Storm and Metal parity are not claimed.
 
 ### `point-instancer-instance-identity`
 
