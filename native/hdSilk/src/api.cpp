@@ -892,28 +892,26 @@ bool ResolveDensityField(
         return false;
     }
 
-    TfToken fieldName;
-    if (asset.GetFieldNameAttr().Get(&fieldName) &&
-        !fieldName.IsEmpty() &&
-        fieldName != densityToken)
-    {
-        return false;
-    }
-
     *fieldPath = iterator->second;
     *assetPath = filePath;
     return true;
 }
 
-float ReadVolumeDensity(const UsdPrim& prim)
+float ReadVolumeDensity(const UsdPrim& prim, UsdTimeCode time)
 {
     float density = 1.0f;
     const UsdAttribute attribute = prim.GetAttribute(TfToken("hdsilk:density"));
-    if (attribute && attribute.Get(&density) && std::isfinite(density))
+    if (attribute && attribute.Get(&density, time))
     {
+        if (!std::isfinite(density))
+        {
+            throw std::invalid_argument(
+                "hdSilk volume '" + prim.GetPath().GetString() +
+                "' has non-finite hdsilk:density.");
+        }
         return std::max(0.0f, density);
     }
-    return density;
+    return 1.0f;
 }
 
 std::string SanitizeCacheName(const std::string& value)
@@ -986,16 +984,17 @@ bool TryReadVolumeWithHio(
 
 bool TryCreateVolumeTexture(
     const UsdStageRefPtr& stage,
+    const UsdPrim& volumePrim,
     const SdfPath& fieldPath,
     const SdfAssetPath& assetPath,
+    UsdTimeCode time,
     HdSilkMaterialTexture* texture)
 {
     const UsdPrim fieldPrim = stage->GetPrimAtPath(fieldPath);
-    const UsdPrim volumePrim = fieldPrim.GetParent();
     bool sampleDensity = true;
     const UsdAttribute sampleAttribute =
         volumePrim.GetAttribute(TfToken("hdsilk:sampleDensity"));
-    if (sampleAttribute && sampleAttribute.Get(&sampleDensity) && !sampleDensity)
+    if (sampleAttribute && sampleAttribute.Get(&sampleDensity, time) && !sampleDensity)
     {
         return false;
     }
@@ -1011,6 +1010,10 @@ bool TryCreateVolumeTexture(
     }
     if (!std::filesystem::exists(resolvedPath))
     {
+        TF_WARN(
+            "hdSilk volume '%s' uses uniform density: OpenVDB asset '%s' is missing.",
+            volumePrim.GetPath().GetText(),
+            resolvedPath.c_str());
         return false;
     }
 
@@ -1021,8 +1024,10 @@ bool TryCreateVolumeTexture(
     if (!TryReadVolumeWithHio(resolvedPath, fieldName.GetString(), &field))
     {
         TF_WARN(
-            "hdSilk skipped sampled volume '%s': OpenVDB density grid could not be read.",
-            fieldPath.GetText());
+            "hdSilk volume '%s' uses uniform density: OpenVDB grid '%s' in '%s' could not be read.",
+            volumePrim.GetPath().GetText(),
+            fieldName.GetText(),
+            resolvedPath.c_str());
         return false;
     }
 
@@ -1060,13 +1065,22 @@ bool TryCreateVolumeTexture(
     std::ofstream output(cachePath, std::ios::binary | std::ios::trunc);
     if (!output)
     {
+        TF_WARN(
+            "hdSilk volume '%s' uses uniform density: could not create cache '%s'.",
+            volumePrim.GetPath().GetText(),
+            cachePath.string().c_str());
         return false;
     }
     output.write(
         reinterpret_cast<const char*>(field.values.data()),
         static_cast<std::streamsize>(byteCount));
+    output.close();
     if (!output)
     {
+        TF_WARN(
+            "hdSilk volume '%s' uses uniform density: could not write cache '%s'.",
+            volumePrim.GetPath().GetText(),
+            cachePath.string().c_str());
         return false;
     }
 
@@ -1092,6 +1106,7 @@ void PublishVolumeProxy(
     const SdfPath& fieldPath,
     const SdfAssetPath& assetPath,
     const GfMatrix4d& transform,
+    UsdTimeCode time,
     float density)
 {
     const std::string path = prim.GetPath().GetString();
@@ -1114,7 +1129,8 @@ void PublishVolumeProxy(
     material.scalars.push_back(color);
     material.scalars.push_back(densityScalar);
     HdSilkMaterialTexture volumeTexture;
-    if (TryCreateVolumeTexture(state->stage, fieldPath, assetPath, &volumeTexture))
+    if (TryCreateVolumeTexture(
+            state->stage, prim, fieldPath, assetPath, time, &volumeTexture))
     {
         material.textures.push_back(std::move(volumeTexture));
     }
@@ -1180,7 +1196,7 @@ void PublishVolumes(
         if (!ResolveDensityField(state->stage, volume, &fieldPath, &assetPath))
         {
             TF_WARN(
-                "hdSilk skipped volume '%s': no density OpenVDBAsset field.",
+                "hdSilk skipped volume '%s': no usable density OpenVDBAsset field or file path.",
                 prim.GetPath().GetText());
             continue;
         }
@@ -1191,7 +1207,8 @@ void PublishVolumes(
             fieldPath,
             assetPath,
             xformCache.GetLocalToWorldTransform(prim),
-            ReadVolumeDensity(prim));
+            time,
+            ReadVolumeDensity(prim, time));
     }
 }
 

@@ -325,10 +325,10 @@ D3D12 legs from the `macos-arm64` render job. That job stages the runtime with `
 run `33931868184`, attempt 1, recorded `status=executed` without wiring failures or capability skips. Uniform and
 sampled Metal cases are now required without `-AllowCapabilitySkip`, and osx-arm64 is included in that subset's
 evidence platforms. The separate thin-depth and impossible-material-combination gates remain D3D12/Vulkan claims;
-Metal density evidence does not promote shadows, GPU deformation, GPU OCIO or component picking. Multi-field volumes,
-non-density field
-roles such as temperature or velocity, Field3D rendering, and `UsdVolVolume` prims with several field relationships
-remain outside the rendering support claim. The field's own transform is likewise not yet honored: the grid is
+Metal density evidence does not promote shadows, GPU deformation, GPU OCIO or component picking. A density
+relationship may target an external `UsdVolOpenVDBAsset` whose grid name differs from `density`; other relationships
+are not shaded. General multi-field shading, non-density roles such as temperature or velocity, and Field3D rendering
+remain outside the support claim. The field's own transform is likewise not yet honored: the grid is
 stretched to fill the proxy rather than placed by the `UsdVolOpenVDBAsset` prim transform and the VDB's own
 index-to-world transform, so only the density values are transported, not the grid's placement.
 

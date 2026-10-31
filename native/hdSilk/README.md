@@ -112,6 +112,22 @@ retired geometry cache, partial source fingerprint or bounds-based reconstructio
 Material networks use the existing full resolver, and excluded volumes are
 filtered before field loading.
 
+## Volume density
+
+The `field:density` relationship selects one `UsdVolOpenVDBAsset`; its target
+can be outside the volume, and its `fieldName` selects the grid inside the VDB.
+Other field relationships do not add shading. The volume's `hdsilk:density`
+and `hdsilk:sampleDensity` attributes are read at the requested sync time.
+Finite negative density clamps to zero, and non-finite density rejects the sync.
+The defaults are density one and sampling enabled.
+
+An unavailable VDB or unreadable grid uses uniform density with a native warning;
+a later sync retries sampling. A missing usable density field or file path skips
+the volume with a warning. The file path and grid name are still read at default
+time. Decoded cache files are mutable and can be shared by stages in one
+directory, so deferred pages must not assume that a cache path retains its
+original contents across later syncs.
+
 ## Bounded direct lighting
 
 Page ABI 24 admits all of a frame's effective direct lights up to 128, after
