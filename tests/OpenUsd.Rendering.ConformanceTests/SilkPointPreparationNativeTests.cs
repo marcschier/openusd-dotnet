@@ -200,6 +200,119 @@ public sealed class SilkPointPreparationNativeTests
     }
 
     [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, true)]
+    [Arguments(SilkGraphicsBackend.D3D12, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false)]
+    public async Task NativePointComponentOutlineChangesVisiblePixels(
+        SilkGraphicsBackend backend, bool visibleOnly)
+    {
+        using var fixture = new Fixture("""
+            def Points "Points" {
+                point3f[] points = [(0, 0.5, 0)]
+            }
+            """);
+        using OpenUsdSilkSession session = fixture.Open();
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(64, 64));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(64, 64));
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0, 0, 3), Vector3.Zero, Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+
+        SilkPickFrameBinding binding = RenderPoints(session, renderer, color, depth, camera, 1);
+        byte[] before = ReadColor(color);
+        await Assert.That(RegionHasForeground(before, 32, 16)).IsTrue();
+        renderer.UpdateSelection(
+            new SelectionState([new SelectionItem("/Points", null, null, 0, SelectionElementKind.Point)]),
+            new SilkSelectionOutlineSettings(true, new SilkColor(1, 0.55f, 0, 1), 2, visibleOnly));
+        _ = renderer.Render(color, depth, binding);
+        byte[] after = ReadColor(color);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.Status).IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.ResolvedMeshCount).IsEqualTo(1);
+        await Assert.That(RegionChanged(before, after, 32, 16)).IsTrue();
+        await Assert.That(RegionChanged(before, after, 32, 48)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task SparsePointInstanceSelectionSurvivesEditsRemovalAndRestoration(
+        SilkGraphicsBackend backend)
+    {
+        using var fixture = new Fixture(InstancedPoints);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(64, 64));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(64, 64));
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0, 0, 3), Vector3.Zero, Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+
+        SilkPickFrameBinding binding = RenderPoints(session, renderer, color, depth, camera, 1);
+        _ = await AssertPointHit(session, renderer, color, depth, binding, 16, 32, 0, 0);
+        _ = await AssertPointHit(session, renderer, color, depth, binding, 48, 32, 2, 0);
+        _ = await AssertPointHit(session, renderer, color, depth, binding, 16, 16, 0, 1);
+        SelectionItem selected = await AssertPointHit(session, renderer, color, depth, binding, 48, 16, 2, 1);
+        byte[] beforeSelection = ReadColor(color);
+        renderer.UpdateSelection(
+            new SelectionState([selected]),
+            new SilkSelectionOutlineSettings(true, new SilkColor(1, 0.55f, 0, 1), 2, true));
+        _ = renderer.Render(color, depth, binding);
+        byte[] selectedPixels = ReadColor(color);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.Status).IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.ResolvedMeshCount).IsEqualTo(1);
+        await Assert.That(RegionChanged(beforeSelection, selectedPixels, 48, 16)).IsTrue();
+        await Assert.That(RegionChanged(beforeSelection, selectedPixels, 16, 16)).IsFalse();
+        await Assert.That(RegionChanged(beforeSelection, selectedPixels, 48, 32)).IsFalse();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Instances/Points").SetVec3fArray(
+            "points", [new(0, 0, 0), new(0, 0.25f, 0)]));
+        binding = RenderPoints(session, renderer, color, depth, camera, 2);
+        SelectionItem moved = await AssertPointHit(session, renderer, color, depth, binding, 48, 24, 2, 1);
+        await Assert.That(moved).IsEqualTo(selected);
+        await Assert.That((await PickNear(renderer, color, depth, binding, 48, 16)).Status)
+            .IsEqualTo(RenderPickStatus.Miss);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.Status).IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.ResolvedMeshCount).IsEqualTo(1);
+        await AssertSelectionPixels(renderer, color, depth, binding, 48, 24, true, (16, 24), (48, 16));
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Instances").SetInt32Array("protoIndices", [0, 1, 1]));
+        binding = RenderPoints(session, renderer, color, depth, camera, 3);
+        await Assert.That((await PickNear(renderer, color, depth, binding, 48, 24)).Status)
+            .IsEqualTo(RenderPickStatus.Miss);
+        _ = await AssertPointHit(session, renderer, color, depth, binding, 16, 24, 0, 1);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.Status)
+            .IsEqualTo(SilkSelectionOutlineStatus.NoMatchingMeshes);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.ResolvedMeshCount).IsEqualTo(0);
+        await AssertSelectionPixels(renderer, color, depth, binding, 48, 24, false);
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            stage.GetPrim("/Instances/Points").SetVec3fArray("points", [new(0, 0, 0), new(0, 0.5f, 0)]);
+            stage.GetPrim("/Instances").SetInt32Array("protoIndices", [0, 1, 0]);
+        });
+        binding = RenderPoints(session, renderer, color, depth, camera, 4);
+        SelectionItem restored = await AssertPointHit(session, renderer, color, depth, binding, 48, 16, 2, 1);
+        await Assert.That(restored).IsEqualTo(selected);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.Status).IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.ResolvedMeshCount).IsEqualTo(1);
+        await AssertSelectionPixels(renderer, color, depth, binding, 48, 16, true, (16, 16), (48, 32));
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + InstancedPoints);
+
+        renderer.Dispose();
+        color.Dispose();
+        depth.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task BoundedAndLegacyRenderingMatchWithVisiblePoints(SilkGraphicsBackend backend)
@@ -243,6 +356,159 @@ public sealed class SilkPointPreparationNativeTests
         await Assert.That(actual.Transform.Span.SequenceEqual(expected.Transform.Span)).IsTrue();
         await Assert.That(actual.SubprimIdentity).IsEqualTo(expected.SubprimIdentity);
         await Assert.That(actual.SubprimUnsupported).IsEqualTo(expected.SubprimUnsupported);
+    }
+
+    private static SilkPickFrameBinding RenderPoints(
+        OpenUsdSilkSession session,
+        SilkMeshRenderer renderer,
+        ISilkGraphicsTexture color,
+        ISilkGraphicsTexture depth,
+        CameraState camera,
+        ulong stateRevision)
+    {
+        using OpenUsdSilkPage page = session.Sync(64, 64, Options(4096), camera: camera);
+        var binding = new SilkPickFrameBinding(stateRevision, page.Revision);
+        _ = renderer.ApplyAndRender(page, color, depth, binding);
+        return binding;
+    }
+
+    private static async Task<SelectionItem> AssertPointHit(
+        OpenUsdSilkSession session,
+        SilkMeshRenderer renderer,
+        ISilkGraphicsTexture color,
+        ISilkGraphicsTexture depth,
+        SilkPickFrameBinding binding,
+        int x,
+        int y,
+        int instance,
+        int point)
+    {
+        RenderPickResult hit = await PickNear(renderer, color, depth, binding, x, y);
+        await Assert.That(hit.Status).IsEqualTo(RenderPickStatus.Hit);
+        await Assert.That(hit.PrimPath.StartsWith("/Instances/Points/", StringComparison.Ordinal)).IsTrue();
+        await Assert.That(hit.InstancerPath).IsEqualTo("/Instances");
+        await Assert.That(hit.InstanceIndex).IsEqualTo(instance);
+        await Assert.That(hit.ElementIndex).IsEqualTo(point);
+        await Assert.That(hit.Item).IsNotNull();
+        SelectionItem item = hit.Item!.Value;
+        await Assert.That(item.ElementKind).IsEqualTo(SelectionElementKind.Point);
+        await Assert.That(item.InstancerContext.Count).IsEqualTo(1);
+        await Assert.That(item.InstancerContext[0].InstancerPath).IsEqualTo("/Instances");
+        await Assert.That(item.InstancerContext[0].InstanceIndex).IsEqualTo(instance);
+        IReadOnlyList<SelectionItem> source = session.ResolveSourceIdentities(
+            binding.SceneRevision ?? throw new InvalidOperationException("The synchronized page has no revision."),
+            [(hit.PrimPath, instance)]);
+        await Assert.That(source.Count).IsEqualTo(1);
+        await Assert.That(source[0].PrimPath).IsEqualTo("/Instances/Points");
+        await Assert.That(source[0].InstancerContext.Count).IsEqualTo(1);
+        await Assert.That(source[0].InstancerPath).IsEqualTo("/Instances");
+        await Assert.That(source[0].InstanceIndex).IsEqualTo(instance);
+        return item;
+    }
+
+    private static async Task<RenderPickResult> PickNear(
+        SilkMeshRenderer renderer,
+        ISilkGraphicsTexture color,
+        ISilkGraphicsTexture depth,
+        SilkPickFrameBinding binding,
+        int x,
+        int y)
+    {
+        RenderPickResult result = default;
+        for (int row = y - 1; row <= y + 1; row++)
+        {
+            for (int column = x - 1; column <= x + 1; column++)
+            {
+                var request = new RenderPickRequest(
+                    column, row, new ViewportDimensions(64, 64),
+                    binding.StateRevision, binding.SceneRevision, RenderPickTarget.Point);
+                Task<RenderPickResult> pending = renderer.PickAsync(request).AsTask();
+                for (int frame = 0; frame < 100 && !pending.IsCompleted; frame++)
+                {
+                    _ = renderer.Render(color, depth, binding);
+                    await Task.Yield();
+                }
+                if (!pending.IsCompleted)
+                {
+                    throw new TimeoutException("The point pick did not complete.");
+                }
+                result = await pending;
+                if (result.Status == RenderPickStatus.Hit)
+                {
+                    return result;
+                }
+                await Assert.That(result.Status).IsEqualTo(RenderPickStatus.Miss);
+            }
+        }
+        return result;
+    }
+
+    private static byte[] ReadColor(ISilkGraphicsTexture color)
+    {
+        var pixels = new byte[64 * 64 * 4];
+        color.ReadbackForTesting(pixels);
+        return pixels;
+    }
+
+    private static async Task AssertSelectionPixels(
+        SilkMeshRenderer renderer,
+        ISilkGraphicsTexture color,
+        ISilkGraphicsTexture depth,
+        SilkPickFrameBinding binding,
+        int x,
+        int y,
+        bool outlined,
+        params (int X, int Y)[] unchanged)
+    {
+        byte[] selected = ReadColor(color);
+        SelectionState selection = renderer.Selection;
+        renderer.UpdateSelection(SelectionState.Empty);
+        _ = renderer.Render(color, depth, binding);
+        byte[] baseline = ReadColor(color);
+        renderer.UpdateSelection(selection);
+        _ = renderer.Render(color, depth, binding);
+        if (!outlined)
+        {
+            await Assert.That(selected.SequenceEqual(baseline)).IsTrue();
+            return;
+        }
+        await Assert.That(RegionChanged(baseline, selected, x, y)).IsTrue();
+        foreach ((int otherX, int otherY) in unchanged)
+        {
+            await Assert.That(RegionChanged(baseline, selected, otherX, otherY)).IsFalse();
+        }
+    }
+
+    private static bool RegionChanged(byte[] before, byte[] after, int x, int y)
+    {
+        for (int row = y - 4; row <= y + 4; row++)
+        {
+            for (int column = x - 4; column <= x + 4; column++)
+            {
+                int offset = ((row * 64) + column) * 4;
+                if (!before.AsSpan(offset, 4).SequenceEqual(after.AsSpan(offset, 4)))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static bool RegionHasForeground(byte[] pixels, int x, int y)
+    {
+        for (int row = y - 4; row <= y + 4; row++)
+        {
+            for (int column = x - 4; column <= x + 4; column++)
+            {
+                int offset = ((row * 64) + column) * 4;
+                if (!pixels.AsSpan(offset, 4).SequenceEqual(pixels.AsSpan(0, 4)))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static byte[] Capture(
@@ -290,6 +556,20 @@ public sealed class SilkPointPreparationNativeTests
     private const string Points = """
         def Points "Points" {
             point3f[] points = [(-0.5,-0.5,0), (0.5,-0.5,0), (0,0.5,0)]
+        }
+        """;
+
+    private const string InstancedPoints = """
+        def PointInstancer "Instances" {
+            rel prototypes = [</Instances/Points>, </Instances/Other>]
+            int[] protoIndices = [0, 1, 0]
+            point3f[] positions = [(-0.5, 0, 0), (0, 5, 0), (0.5, 0, 0)]
+            def Points "Points" {
+                point3f[] points = [(0, 0, 0), (0, 0.5, 0)]
+            }
+            def Points "Other" {
+                point3f[] points = [(0, 2, 0)]
+            }
         }
         """;
 }

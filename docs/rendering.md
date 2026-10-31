@@ -1659,11 +1659,10 @@ hdSilk normalizes both clip-space conventions in renderer-neutral scene constant
 `objectToClip` matrix drives every geometry pass on every RHI. Depth is converted from the OpenGL `[-1, 1]` range the
 Storm and Viewer cameras produce to the `[0, 1]` range D3D12, Vulkan, and Metal expect. Clip-space Y is mirrored when
 `ISilkGraphicsDevice.ClipSpaceYPointsDown` is set, which only the Vulkan backend reports, because Vulkan's framebuffer
-origin is top-left while D3D12 and Metal are bottom-left. Mirroring in the scene constants rather than through a
-negative-height viewport keeps fullscreen composite passes such as the selection outline upright: those share the
-backend's generic command-list viewport but never use `objectToClip`. `SilkCrossBackendParityTests` renders a
-vertically asymmetric scene and separately proves that scene compares unequal to its own vertical mirror, so a
-regression in either convention cannot pass the gate vacuously.
+origin is top-left while D3D12 and Metal are bottom-left. The scene-constant correction applies to geometry passes.
+Fullscreen passes do not use `objectToClip`, so they correct their framebuffer sampling orientation separately.
+`SilkCrossBackendParityTests` renders a vertically asymmetric scene and separately proves that scene compares unequal
+to its own vertical mirror, so a regression in either convention cannot pass the gate vacuously.
 
 ### hdSilk material texture table capability
 
@@ -2962,7 +2961,9 @@ invalidate pipelines and bindings before reuse.
 On Vulkan, sampled masks and depth targets include `VK_IMAGE_USAGE_SAMPLED_BIT`. The mask pass uses
 `DEPTH_STENCIL_READ_ONLY_OPTIMAL`; the composite samples the mask in
 `SHADER_READ_ONLY_OPTIMAL`, preserves the loaded visible color attachment, and returns it to the
-existing transfer-read layout.
+existing transfer-read layout. The mask uses the scene's positive-height viewport. The fullscreen
+composite uses a negative-height viewport so mask and depth samples align with the color target
+instead of its vertical mirror.
 
 Both selection render passes use `AttachmentLoadOp.Load` on their color attachment, and a load is a
 read of whatever an earlier *color-attachment write* stored, so both declare that dependency

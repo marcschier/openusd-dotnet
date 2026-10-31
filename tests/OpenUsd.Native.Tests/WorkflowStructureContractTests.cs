@@ -1056,14 +1056,24 @@ public sealed class WorkflowStructureContractTests
 
         string adapterAbsent = ReadRunCommand(
             ReadStep(ReadJob(native, "build"), "Run Windows native CTest"));
+        const string buildRootAssignment = "$buildRoot = 'native\\build\\shim\\win-x64'";
+        const string defaultCTestRun = "./eng/run-windows-native-tests.ps1 -BuildRoot $buildRoot";
         await Assert.That(adapterAbsent)
-            .Contains("./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64",
-                StringComparison.Ordinal)
+            .Contains(buildRootAssignment, StringComparison.Ordinal)
+            .Because("the default native build tree is the adapter-absent configuration");
+        await Assert.That(Regex.Count(adapterAbsent, @"(?m)^\s*\$buildRoot\s*="))
+            .IsEqualTo(1)
+            .Because("discovery and the unfiltered CTest run must use the same build root");
+        await Assert.That(adapterAbsent)
+            .Contains(defaultCTestRun, StringComparison.Ordinal)
             .Because(
                 "the adapter-absent half is the default build tree's own CTest run: " +
                 "eng/run-silk-probe.ps1 publishes and runs the managed Silk probe and " +
                 "invokes no CTest at all, so it never executes hdsilk_probe and cannot " +
                 "be cited as this evidence");
+        await Assert.That(adapterAbsent.IndexOf(buildRootAssignment, StringComparison.Ordinal))
+            .IsLessThan(adapterAbsent.IndexOf(defaultCTestRun, StringComparison.Ordinal))
+            .Because("the default build root must be assigned before the CTest runner uses it");
         await Assert.That(adapterAbsent).DoesNotContain("-TestFilter", StringComparison.Ordinal);
         string runner = await File.ReadAllTextAsync(Path.Combine(root, "eng", "run-windows-native-tests.ps1"));
         await Assert.That(runner).Contains("'--test-dir', $build", StringComparison.Ordinal);

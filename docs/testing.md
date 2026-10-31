@@ -1641,8 +1641,12 @@ Use `OPENUSD_MESH_PREPARATION_REQUIRED=1` with the matching native runtime.
 point and mesh Rprims at both roomy and exact limits, then checks changed-record refusal
 and retry. `SilkPointPreparationNativeTests` covers point boundaries, identities,
 visibility, removal, restoration and shared prototypes; its D3D12 WARP and Vulkan
-SwiftShader captures compare bounded and legacy pixels against an empty scene. The
-Windows render workflow requires at least seven successful cases and no skips.
+SwiftShader captures compare bounded and legacy pixels against an empty scene. They also
+pick an authored point through a sparse instance, resolve its retained Hydra identity to
+its authored source, and check component outlines across an edit, prototype removal and
+restoration. An asymmetric single-point capture checks visible-only and X-ray outline
+placement on both backends.
+The Windows render workflow requires at least 13 successful cases and no skips.
 
 The clean-feed `ImagingPackagesExecuteNativeAotHdSilkGpuUpload` consumer also requires actual
 mesh, curve and point preparation and version-2 page admission, refusal and exact-limit recovery;

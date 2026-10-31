@@ -117,6 +117,7 @@ public sealed class VulkanSelectionOutlineTests
         byte[] outlinePixels = ReadPixels(color);
         await Assert.That(CountWhitePixels(maskPixels)).IsGreaterThan(0);
         await Assert.That(CountOutlinePixels(outlinePixels)).IsGreaterThan(0);
+        await Assert.That(OutlinePixelsFollowMask(maskPixels, outlinePixels, (int)size)).IsTrue();
     }
 
     /// <summary>
@@ -498,6 +499,50 @@ public sealed class VulkanSelectionOutlineTests
             }
         }
         return count;
+    }
+
+    private static bool OutlinePixelsFollowMask(
+        ReadOnlySpan<byte> mask,
+        ReadOnlySpan<byte> outline,
+        int size)
+    {
+        for (int row = 0; row < size; row++)
+        {
+            for (int column = 0; column < size; column++)
+            {
+                int offset = ((row * size) + column) * 4;
+                if (outline[offset] <= 150 ||
+                    outline[offset] <= outline[offset + 1] + 25 ||
+                    outline[offset + 1] <= outline[offset + 2])
+                {
+                    continue;
+                }
+                if (mask[offset] > 200)
+                {
+                    return false;
+                }
+                bool neighbor = false;
+                for (int dy = -2; dy <= 2 && !neighbor; dy++)
+                {
+                    for (int dx = -2; dx <= 2; dx++)
+                    {
+                        int y = row + dy;
+                        int x = column + dx;
+                        if ((uint)x < (uint)size && (uint)y < (uint)size &&
+                            (dx * dx) + (dy * dy) <= 4 && mask[((y * size) + x) * 4] > 200)
+                        {
+                            neighbor = true;
+                            break;
+                        }
+                    }
+                }
+                if (!neighbor)
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static int CountWhitePixels(ReadOnlySpan<byte> pixels)

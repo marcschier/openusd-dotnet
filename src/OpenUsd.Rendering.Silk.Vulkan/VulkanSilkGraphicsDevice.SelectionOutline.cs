@@ -268,7 +268,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             commands,
             PipelineBindPoint.Graphics,
             pipeline.Pipeline);
-        SetSelectionViewportAndScissor(commands, viewport, scissor);
+        SetSelectionViewportAndScissor(commands, viewport, scissor, flipVertically: false);
         global::Silk.NET.Vulkan.Buffer nativeVertexBuffer = vertexBuffer.Buffer;
         ulong vertexOffset = 0;
         _api.CmdBindVertexBuffers(
@@ -319,7 +319,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             commands,
             PipelineBindPoint.Graphics,
             pipeline.Pipeline);
-        SetSelectionViewportAndScissor(commands, viewport, scissor);
+        // The fullscreen shader's texture coordinates use the opposite Y direction
+        // from Vulkan's positive-height viewport. The mask pass must not be flipped.
+        SetSelectionViewportAndScissor(commands, viewport, scissor, flipVertically: true);
         DescriptorSet descriptorSet = binding.DescriptorSet;
         _api.CmdBindDescriptorSets(
             commands,
@@ -337,13 +339,14 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     private void SetSelectionViewportAndScissor(
         CommandBuffer commands,
         SilkViewport viewport,
-        SilkScissor scissor)
+        SilkScissor scissor,
+        bool flipVertically)
     {
         var nativeViewport = new global::Silk.NET.Vulkan.Viewport(
             viewport.X,
-            viewport.Y,
+            flipVertically ? viewport.Y + viewport.Height : viewport.Y,
             viewport.Width,
-            viewport.Height,
+            flipVertically ? -viewport.Height : viewport.Height,
             viewport.MinDepth,
             viewport.MaxDepth);
         _api.CmdSetViewport(commands, 0, 1, &nativeViewport);
