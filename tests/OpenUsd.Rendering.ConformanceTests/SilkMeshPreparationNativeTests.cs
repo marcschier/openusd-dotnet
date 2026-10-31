@@ -197,20 +197,20 @@ public sealed class SilkMeshPreparationNativeTests
         string mesh = Mesh.Replace("def Mesh \"Mesh\" {",
             "def Mesh \"Mesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\nrel material:binding = </Material>",
             StringComparison.Ordinal);
-        static string AddCoordinates(string sourceMesh, string declarations) =>
+        static string addCoordinates(string sourceMesh, string declarations) =>
             sourceMesh.Replace("uniform token subdivisionScheme",
                 declarations + "\nuniform token subdivisionScheme", StringComparison.Ordinal);
 
         string actualMesh = authoredPrimvar switch
         {
             "none" => mesh,
-            "uvEmission" => AddCoordinates(mesh, authoredEmissionCoordinates),
-            "uvOpacity" => AddCoordinates(mesh, authoredOpacityCoordinates),
+            "uvEmission" => addCoordinates(mesh, authoredEmissionCoordinates),
+            "uvOpacity" => addCoordinates(mesh, authoredOpacityCoordinates),
             _ => throw new ArgumentOutOfRangeException(nameof(authoredPrimvar))
         };
         string expectedEmission = authoredPrimvar == "uvEmission" ? authoredEmissionCoordinates : emissionCoordinates;
         string expectedOpacity = authoredPrimvar == "uvOpacity" ? authoredOpacityCoordinates : opacityCoordinates;
-        string explicitMesh = AddCoordinates(mesh, expectedEmission + "\n" + expectedOpacity);
+        string explicitMesh = addCoordinates(mesh, expectedEmission + "\n" + expectedOpacity);
         string referenceMaterial = material.Replace(opacitySamples, emissionSamples, StringComparison.Ordinal);
         await Assert.That(referenceMaterial).IsNotEqualTo(material);
         using Fixture actualFixture = Create(material + "\n" + actualMesh);
