@@ -3917,6 +3917,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("PACKAGE_IMAGING_EXECUTION_OK");
             await Assert.That(result.Output).Contains("MESH_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("CURVE_PREPARATION_ADMISSION=true");
+            await Assert.That(result.Output).Contains("POINT_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("COMMAND_PAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("SESSION_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("PAGE_COPY_ACKNOWLEDGEMENT=true");
@@ -7521,6 +7522,48 @@ public sealed partial class RuntimePackageTests
                                 "The native package ignored or leaked linear curve reservations.");
                         }
                         Console.WriteLine("CURVE_PREPARATION_ADMISSION=true");
+                    }
+
+                    string pointPath = Path.Combine(AppContext.BaseDirectory, "points.usda");
+                    File.WriteAllText(pointPath,
+                        "#usda 1.0\n" +
+                        "def Points \"Points\" {\n" +
+                        "point3f[] points = [(-0.5,-0.5,0),(0.5,-0.5,0),(0,0.5,0)]\n" +
+                        "}\n");
+                    using (var pointSession = OpenUsdSilkRuntime.Create(pluginPath, pointPath))
+                    {
+                        bool pointRefused = false;
+                        try
+                        {
+                            using OpenUsdSilkPage rejected = pointSession.Sync(16, 16,
+                                new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 143));
+                        }
+                        catch (OpenUsdSilkException error) when (
+                            error.Message.Contains("hdSilk mesh preparation refused", StringComparison.Ordinal))
+                        {
+                            pointRefused = true;
+                        }
+                        using OpenUsdSilkPage points = pointSession.Sync(16, 16,
+                            new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 144));
+                        bool pointGeometry = false;
+                        using (SilkCommandEnumerator commands = points.GetEnumerator())
+                        {
+                            while (commands.MoveNext())
+                            {
+                                if (commands.Current.Type == SilkCommandType.MeshUpsert)
+                                {
+                                    SilkMeshUpsertCommand mesh = commands.Current.AsMeshUpsert();
+                                    pointGeometry |= mesh.TopologyKind == SilkTopologyKind.PointList &&
+                                        mesh.PointCount == 3 && mesh.AuthoredPointCount == 3;
+                                }
+                            }
+                        }
+                        if (!pointRefused || points.MeshPreparationUsage?.ReservedBytes != 144 || !pointGeometry)
+                        {
+                            throw new InvalidOperationException(
+                                "The native package ignored, leaked or omitted point preparation.");
+                        }
+                        Console.WriteLine("POINT_PREPARATION_ADMISSION=true");
                     }
 
                     using (var preparationSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))

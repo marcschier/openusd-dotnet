@@ -219,12 +219,13 @@ session-6/page-24 calls retain their unbounded behavior. The three-argument mana
 `maximumMeshPreparationReservationBytes`, and successful pages expose `MeshPreparationUsage`.
 
 The profile admits coarse, smooth-shaded mesh Rprims with resolved numeric points
-and the existing supported numeric attributes. It also admits linear basis curves with
-segmented, nonperiodic, periodic or pinned wraps and float3 or double3 points. It refuses
-refinement, other draw modes, Skel/computed geometry, point Rprims, cubic or unsupported
-curve topologies and volumes, rather than silently ignoring their cost. Point-instancer
-references share the prototype reservation; their transform/identity metadata is not
-a numeric buffer reservation.
+and the existing supported numeric attributes. It also admits point Rprims and linear
+basis curves with segmented, nonperiodic, periodic or pinned wraps. Points and curves
+require resolved float3 or double3 points. The profile refuses refinement, other draw
+modes, Skel/computed geometry, cubic or unsupported curve topologies and volumes,
+rather than silently ignoring their cost. Point-instancer references share the
+prototype reservation; their transform/identity metadata is not a numeric buffer
+reservation.
 
 The metric is **conservative logical buffer reservation bytes**, not actual allocation,
 private memory or RSS. For `P` source points, `T` upper-bound triangles (sum of `max(faceSize-2,0)`),
@@ -241,6 +242,12 @@ upper-bound segment count from the authored topology. The charge covers point an
 conversion, emitted positions and normals, indices, overlapping emitted widths and segment
 identities. It counts the complete float, double or half width array even if its shape is
 later rejected, and does not discount invisible curves or points.
+
+For a point Rprim, the charge is `48P` bytes for `P` source points. It covers point
+conversion, emitted positions and normals, indices, primitive identities and point
+origins, including when the separate identity budget refuses the origin table. Empty
+point arrays cost zero; counts beyond the 32-bit index range are refused. The existing
+renderer draws one-pixel points and does not use authored widths.
 
 A producer and its retained record share one reservation lease. A replacement reserves
 new work while the old lease remains live; failed partial preparation retains both until

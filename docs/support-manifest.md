@@ -1017,20 +1017,20 @@ pixels use SwiftShader; hardware Vulkan, Linux/Metal and a complete warehouse im
 
 ### `coarse-mesh-preparation-admission`
 
-Opt-in version-1 native admission before coarse mesh triangulation, supported linear-curve expansion, point conversion
-and supported attribute expansion. A positive caller limit bounds conservative logical numeric-buffer reservation
+Opt-in version-1 native admission before coarse-mesh triangulation, point-Rprim conversion, supported linear-curve
+expansion and attribute expansion. A positive caller limit bounds conservative logical numeric-buffer reservation
 charges, with one lease shared by a producer and its records and overlapping old/new reservations during updates. Worker
 refusals are latched and returned after the Hydra barrier instead of escaping the worker pool or publishing partial
 pages. The existing scene-ingestion options gain an explicit limit overload and successful pages report retained and
 peak charges. Old native libraries explicitly refuse the missing extension. Native limit/overflow/concurrency contracts,
-real Hydra boundary/instancing/retry cases, D3D12/Vulkan capture recovery and an actual clean-feed NativeAOT consumer
-cover the initial profile; hosted proof for the linear-curve extension is pending.
+real Hydra boundary/instancing/retry cases, D3D12/Vulkan capture recovery and a clean-feed NativeAOT consumer cover the
+profile; hosted proof for the curve and point extensions is pending.
 
 **Limits:** The metric is not actual allocation or process memory. Source/SDK materialization and caches, allocator
 capacity/overhead, maps/strings, materials, instance metadata, serialized pages, textures and GPU resources are
-excluded. Version 1 refuses refinement, alternate draw modes, Skel/computed geometry, point Rprims, cubic or unsupported
-curves and volumes. Legacy defaults remain unchanged. Vulkan fixture pixels use SwiftShader; Linux/Metal and complete
-warehouse admission or rendering are not claimed.
+excluded. Version 1 refuses refinement, alternate draw modes, Skel/computed geometry, cubic or unsupported curves and
+volumes. Points retain one-pixel rendering without authored-width support. Legacy defaults remain unchanged. Vulkan
+fixture pixels use SwiftShader; Linux/Metal and complete warehouse admission or rendering are not claimed.
 
 ### `bounded-128-direct-lights`
 

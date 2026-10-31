@@ -13,9 +13,9 @@ namespace OpenUsd.Rendering.Silk;
 /// Source/SDK/material caches, metadata, textures and GPU resources are not covered.
 /// With CommandStorage enabled, the page ceiling additionally bounds each stored command;
 /// the separate storage policy bounds whole updates and live files.
-/// The profile requires Low complexity and SmoothShaded draw mode. It admits coarse meshes
-/// and supported linear basis curves.
-/// Skel, computed geometry, points, cubic or unsupported curves and volumes are refused.
+/// The profile requires Low complexity and SmoothShaded draw mode. It admits coarse meshes,
+/// point Rprims and supported linear basis curves.
+/// Skel, computed geometry, cubic or unsupported curves and volumes are refused.
 /// </remarks>
 public sealed class SilkPreparationLimits
 {

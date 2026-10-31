@@ -164,8 +164,8 @@ the page ceiling must fit `Int32`. Neither has an implicit default.
 The same immutable policy reaches D3D12/Vulkan/Metal session creation, including separate
 authored-product captures and later backend recreation. Storm is refused while it cannot
 enforce the policy, so fallback cannot bypass it. Legacy purpose/material choices remain
-unchanged. The preparation profile admits supported linear basis curves as well as coarse meshes.
-It refuses refinement, alternate draw modes, Skel/computed geometry, point Rprims, cubic or
+unchanged. The preparation profile admits point Rprims and supported linear basis curves as well
+as coarse meshes. It refuses refinement, alternate draw modes, Skel/computed geometry, cubic or
 unsupported curves and volumes rather than omitting their costs.
 The native runtime must implement the session-admission extension.
 

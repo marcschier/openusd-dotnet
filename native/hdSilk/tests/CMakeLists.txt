@@ -22,6 +22,17 @@ endif()
 add_test(NAME hdsilk_mesh_preparation COMMAND hdsilk_mesh_preparation_probe)
 set_tests_properties(hdsilk_mesh_preparation PROPERTIES TIMEOUT 60)
 
+add_executable(hdsilk_point_preparation_probe hdsilk_point_preparation_probe.cpp)
+target_compile_features(hdsilk_point_preparation_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_point_preparation_probe PRIVATE Threads::Threads)
+if(MSVC)
+    target_compile_options(hdsilk_point_preparation_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(hdsilk_point_preparation_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_point_preparation COMMAND hdsilk_point_preparation_probe)
+set_tests_properties(hdsilk_point_preparation PROPERTIES TIMEOUT 60)
+
 add_executable(
     hdsilk_probe
     hdsilk_probe.cpp
@@ -240,6 +251,7 @@ add_test(NAME hdsilk_displacement_uv COMMAND hdsilk_probe --displacement-uv)
 add_test(NAME hdsilk_preview_unsupported_input COMMAND hdsilk_probe --preview-unsupported-input)
 add_test(NAME hdsilk_linear_curve_topology COMMAND hdsilk_probe --linear-curve-topology)
 add_test(NAME hdsilk_curve_non_geometry_sync COMMAND hdsilk_probe --curve-non-geometry-sync)
+add_test(NAME hdsilk_geometry_non_geometry_sync COMMAND hdsilk_probe --geometry-non-geometry-sync)
 add_test(NAME hdsilk_surface_uv_fallback COMMAND hdsilk_probe --surface-uv-fallback)
 add_test(NAME hdsilk_independent_uv_fallback COMMAND hdsilk_probe --independent-uv-fallback)
 add_test(NAME hdsilk_composite_uv_fallback COMMAND hdsilk_probe --composite-uv-fallback)
@@ -266,7 +278,7 @@ add_test(NAME hdsilk_source_identity_transform_stack COMMAND hdsilk_probe --deco
     /World/A/Mesh /World/B/Mesh)
 set_tests_properties(hdsilk_probe hdsilk_vertex_layout hdsilk_texture_metadata hdsilk_uv_fallback
     hdsilk_displacement_uv hdsilk_preview_unsupported_input hdsilk_linear_curve_topology
-    hdsilk_curve_non_geometry_sync hdsilk_surface_uv_fallback
+    hdsilk_curve_non_geometry_sync hdsilk_geometry_non_geometry_sync hdsilk_surface_uv_fallback
     hdsilk_independent_uv_fallback
     hdsilk_composite_uv_fallback hdsilk_independent_fallback_publication hdsilk_mdl_identifiers
     hdsilk_source_identity_ordinary hdsilk_source_identity_nested hdsilk_source_identity_nested_masked

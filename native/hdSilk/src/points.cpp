@@ -5,6 +5,7 @@
 #include "openusd_hdsilk.h"
 
 #include "instancer.h"
+#include "pointPreparation.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
 
@@ -122,34 +123,44 @@ HdSilkPoints::_InitRepr(TfToken const& reprToken, HdDirtyBits* /*dirtyBits*/)
 }
 
 void
-HdSilkPoints::Sync(
+HdSilkPoints::_Sync(
     HdSceneDelegate* sceneDelegate,
     HdRenderParam* renderParam,
-    HdDirtyBits* dirtyBits,
-    TfToken const& /*reprToken*/)
+    HdDirtyBits* dirtyBits)
 {
-    const auto& budget = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState().MeshPreparationBudget();
-    if (budget->Enabled())
-    {
-        budget->Refuse("The bounded hdSilk mesh preparation profile does not admit point Rprims.");
-        *dirtyBits = HdChangeTracker::Clean;
-        return;
-    }
     SdfPath const& id = GetId();
-
+    const auto& budget = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState().MeshPreparationBudget();
     const bool visibilityDirty =
         HdChangeTracker::IsVisibilityDirty(*dirtyBits, id);
-    if (visibilityDirty)
-    {
-        _UpdateVisibility(sceneDelegate, dirtyBits);
-    }
-
     const bool pointsDirty =
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points);
     const bool displayColorDirty =
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->displayColor);
     const bool primvarsDirty = (*dirtyBits & HdChangeTracker::DirtyPrimvar) != 0;
     const bool transformDirty = HdChangeTracker::IsTransformDirty(*dirtyBits, id);
+    const bool instancerDirty =
+        HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
+        HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
+    const bool recordDirty =
+        pointsDirty || transformDirty || visibilityDirty || displayColorDirty ||
+        primvarsDirty || instancerDirty;
+
+    std::shared_ptr<HdSilkMeshPreparationLease> preparation;
+    if (budget->Enabled() && (recordDirty || !_preparationLease))
+    {
+        preparation = budget->Acquire(_PlanPreparation(sceneDelegate, id));
+        preparation->RetainPrevious(_preparationLease);
+        _preparationLease = preparation;
+    }
+    else if (!budget->Enabled())
+    {
+        _preparationLease.reset();
+    }
+
+    if (visibilityDirty)
+    {
+        _UpdateVisibility(sceneDelegate, dirtyBits);
+    }
 
     if (pointsDirty)
     {
@@ -175,31 +186,29 @@ HdSilkPoints::Sync(
         sceneDelegate->GetRenderIndex(),
         GetInstancerId());
 
-    const bool instancerDirty =
-        HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
-        HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
-
     HdSilkRenderParam* silkRenderParam =
         static_cast<HdSilkRenderParam*>(renderParam);
     if (!IsVisible())
     {
         silkRenderParam->GetSceneState().RemoveMesh(id.GetString());
+        if (preparation) { preparation->Complete(); }
         *dirtyBits = HdChangeTracker::Clean;
         return;
     }
 
-    if (pointsDirty || transformDirty || visibilityDirty || displayColorDirty ||
-        primvarsDirty || instancerDirty)
+    if (recordDirty)
     {
         if (_points.empty())
         {
             TF_WARN("hdSilk skipped points '%s': empty points array", id.GetText());
             silkRenderParam->GetSceneState().RemoveMesh(id.GetString());
+            if (preparation) { preparation->Complete(); }
             *dirtyBits = HdChangeTracker::Clean;
             return;
         }
 
         HdSilkMeshRecord record;
+        record.preparationLease = preparation;
         record.path = id.GetString();
         record.primId = GetPrimId();
         record.topologyKind = OPENUSD_SILK_TOPOLOGY_POINT_LIST;
@@ -276,6 +285,61 @@ HdSilkPoints::Sync(
             std::move(records));
     }
 
+    if (preparation) { preparation->Complete(); }
+    *dirtyBits = HdChangeTracker::Clean;
+}
+
+uint64_t
+HdSilkPoints::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) const
+{
+    for (size_t interpolation = 0; interpolation < HdInterpolationCount; ++interpolation)
+    {
+        if (!sceneDelegate->GetExtComputationPrimvarDescriptors(
+                id, static_cast<HdInterpolation>(interpolation)).empty())
+        {
+            throw std::invalid_argument(
+                "The bounded hdSilk points preparation profile does not admit computed primvars.");
+        }
+    }
+
+    const VtValue points = sceneDelegate->Get(id, HdTokens->points);
+    if (points.IsHolding<VtVec3fArray>())
+    {
+        return HdSilkPointPreparationPlan(points.UncheckedGet<VtVec3fArray>().size()).bytes;
+    }
+    if (points.IsHolding<VtVec3dArray>())
+    {
+        return HdSilkPointPreparationPlan(points.UncheckedGet<VtVec3dArray>().size()).bytes;
+    }
+    throw std::invalid_argument(
+        "The bounded hdSilk points preparation profile requires resolved float3 or double3 points.");
+}
+
+void
+HdSilkPoints::Sync(
+    HdSceneDelegate* sceneDelegate,
+    HdRenderParam* renderParam,
+    HdDirtyBits* dirtyBits,
+    TfToken const& /*reprToken*/)
+{
+    const auto& budget = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState().MeshPreparationBudget();
+    if (!budget->Enabled())
+    {
+        _Sync(sceneDelegate, renderParam, dirtyBits);
+        return;
+    }
+    if (!budget->Refused())
+    {
+        try
+        {
+            _Sync(sceneDelegate, renderParam, dirtyBits);
+            return;
+        }
+        catch (const std::exception& error)
+        {
+            budget->Refuse(error.what());
+        }
+    }
     *dirtyBits = HdChangeTracker::Clean;
 }
 

@@ -1311,7 +1311,6 @@ public sealed class SilkMeshPreparationNativeTests
     }
 
     [Test]
-    [Arguments("Points")]
     [Arguments("CubicBasisCurves")]
     [Arguments("Volume")]
     [Arguments("SkelRoot")]
@@ -1319,7 +1318,6 @@ public sealed class SilkMeshPreparationNativeTests
     {
         string geometry = type switch
         {
-            "Points" => "def Points \"Other\" {\npoint3f[] points = [(0,0,0)]\n}",
             "CubicBasisCurves" => """
                 def BasisCurves "Other" {
                     point3f[] points = [(0,0,0),(1,0,0),(1,1,0),(0,1,0)]

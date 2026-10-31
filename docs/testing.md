@@ -1635,9 +1635,18 @@ through the same static dispatch seam as production; it requires release without
 acknowledgement after failure and acknowledgement only after a successful managed copy.
 An acknowledgement error disposes the new managed owner and preserves the original error.
 Use `OPENUSD_MESH_PREPARATION_REQUIRED=1` with the matching native runtime.
+
+`hdsilk_point_preparation` checks the 48-byte-per-point charge and overflow refusal.
+`hdsilk_geometry_non_geometry_sync` sends non-publishing dirty notifications to real
+point and mesh Rprims at both roomy and exact limits, then checks changed-record refusal
+and retry. `SilkPointPreparationNativeTests` covers point boundaries, identities,
+visibility, removal, restoration and shared prototypes; its D3D12 WARP and Vulkan
+SwiftShader captures compare bounded and legacy pixels against an empty scene. The
+Windows render workflow requires at least seven successful cases and no skips.
+
 The clean-feed `ImagingPackagesExecuteNativeAotHdSilkGpuUpload` consumer also requires actual
-preparation and version-2 page admission, refusal and exact-limit recovery; compilation
-or an old library is not a pass. `CommandPageBoundaryRefusesTheWholeUpdateAndPreservesExactRetryValues`
+mesh, curve and point preparation and version-2 page admission, refusal and exact-limit recovery;
+compilation or an old library is not a pass. `CommandPageBoundaryRefusesTheWholeUpdateAndPreservesExactRetryValues`
 checks dirty real-Hydra data against an independent session, old-page lifetime and quiet
 geometry after a page-only limit change. Empty scenes must still fit their frame command.
 Managed copy tests refuse oversized native lengths before invoking the copier and reject

@@ -137,7 +137,7 @@ without `openusd_silk_session_sync_with_mesh_preparation` fail explicitly, rathe
 without enforcing the requested limit.
 
 This profile reserves conservative logical numeric-buffer charges before hdSilk triangulates,
-converts or expands mesh and supported linear-curve data. `OpenUsdSilkPage.MeshPreparationUsage`
+converts or expands mesh, point-Rprim and supported linear-curve data. `OpenUsdSilkPage.MeshPreparationUsage`
 reports the configured, retained and peak concurrent reservations after a successful sync.
 Shared prototype/record owners count once; old/new preparation generations overlap until completion or recovery.
 Unsupported geometry/profile choices fail the entire request, and a refused update publishes
@@ -156,9 +156,11 @@ per-fragment RNM. The checked surface block was 272 bytes at that ABI; page ABI 
 304 bytes. Normal-only bindings reuse registers absent from those permutations, without adding a
 sampled-volume collision.
 
-Version 1 admits Low-complexity, SmoothShaded meshes and linear basis curves with segmented,
-nonperiodic, periodic or pinned wraps. It refuses Skel/external computations, points, cubic
-or unsupported curves and volumes. Its numeric buffer metric excludes source/SDK materialization,
+Version 1 admits Low-complexity, SmoothShaded meshes, point Rprims and linear basis curves
+with segmented, nonperiodic, periodic or pinned wraps. It refuses Skel/external computations,
+cubic or unsupported curves and volumes. Point Rprims reserve 48 logical bytes per source
+point; this does not change their one-pixel rendering or add authored-width support.
+The numeric buffer metric excludes source/SDK materialization,
 allocator capacity/overhead, material/instance metadata, pages, texture caches and GPU storage.
 It is not a total-process memory guarantee. The exact charge formula and ownership contract
 are in [the native hdSilk guide](../native/hdSilk/README.md#optional-mesh-preparation-admission).

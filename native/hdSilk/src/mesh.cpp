@@ -1773,21 +1773,8 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
     SdfPath const& id = GetId();
     const auto& preparationBudget = static_cast<HdSilkRenderParam*>(renderParam)
         ->GetSceneState().MeshPreparationBudget();
-    std::shared_ptr<HdSilkMeshPreparationLease> preparation;
-    if (preparationBudget->Enabled())
-    {
-        preparation = preparationBudget->Acquire(_PlanPreparation(sceneDelegate, id).bytes);
-        preparation->RetainPrevious(_preparationLease);
-    }
-    _preparationLease = preparation;
-
     const bool visibilityDirty =
         HdChangeTracker::IsVisibilityDirty(*dirtyBits, id);
-    if (visibilityDirty)
-    {
-        _UpdateVisibility(sceneDelegate, dirtyBits);
-    }
-
     const bool topologyDirty = HdChangeTracker::IsTopologyDirty(*dirtyBits, id);
     const bool pointsDirty =
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points);
@@ -1810,6 +1797,37 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
     const bool cullDirty =
         (*dirtyBits & (HdChangeTracker::DirtyDoubleSided |
                       HdChangeTracker::DirtyCullStyle)) != 0;
+    const bool topologyRefreshed = topologyDirty || _topologyRevision == 0;
+    const int requestedRefineLevel = std::min(
+        std::max(GetDisplayStyle(sceneDelegate).refineLevel, 0),
+        HdSilkMaxMeshRefineLevel);
+    const bool subdivisionRefreshed =
+        topologyRefreshed || subdivTagsDirty || primvarsDirty ||
+        requestedRefineLevel != _refineLevel;
+    const bool instancerDirty =
+        HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
+        HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
+    const bool recordDirty =
+        topologyRefreshed || pointsDirty || transformDirty || visibilityDirty ||
+        displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
+        materialDirty || cullDirty || subdivisionRefreshed;
+
+    std::shared_ptr<HdSilkMeshPreparationLease> preparation;
+    if (preparationBudget->Enabled() && (recordDirty || !_preparationLease))
+    {
+        preparation = preparationBudget->Acquire(_PlanPreparation(sceneDelegate, id).bytes);
+        preparation->RetainPrevious(_preparationLease);
+        _preparationLease = preparation;
+    }
+    else if (!preparationBudget->Enabled())
+    {
+        _preparationLease.reset();
+    }
+
+    if (visibilityDirty)
+    {
+        _UpdateVisibility(sceneDelegate, dirtyBits);
+    }
     if (materialDirty)
     {
         // Hydra resolves the binding for us; the path is the only identity the
@@ -1818,7 +1836,6 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         _materialBindingGeneration = materialBindingGeneration;
     }
 
-    const bool topologyRefreshed = topologyDirty || _topologyRevision == 0;
     if (topologyRefreshed)
     {
         _topology = HdMeshTopology(GetMeshTopology(sceneDelegate));
@@ -1917,12 +1934,6 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
     // is what decides whether this mesh is refined. Complexity Low resolves to
     // level 0, which is the historical coarse HdMeshUtil path unchanged, so an
     // unrefined session keeps publishing exactly the bytes it always did.
-    const int requestedRefineLevel = std::min(
-        std::max(GetDisplayStyle(sceneDelegate).refineLevel, 0),
-        HdSilkMaxMeshRefineLevel);
-    const bool subdivisionRefreshed =
-        topologyRefreshed || subdivTagsDirty || primvarsDirty ||
-        requestedRefineLevel != _refineLevel;
     if (subdivisionRefreshed)
     {
         _RefreshSubdivision(sceneDelegate, id, requestedRefineLevel);
@@ -2103,10 +2114,6 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         sceneDelegate->GetRenderIndex(),
         GetInstancerId());
 
-    const bool instancerDirty =
-        HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
-        HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
-
     if (!IsVisible())
     {
         static_cast<HdSilkRenderParam*>(renderParam)
@@ -2117,9 +2124,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         return;
     }
 
-    if (topologyRefreshed || pointsDirty || transformDirty || visibilityDirty ||
-        displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
-        materialDirty || cullDirty || subdivisionRefreshed)
+    if (recordDirty)
     {
         const VtVec3fArray& emittedPoints = _EmittedPoints();
         const VtArray<uint32_t>& triangleIndices = _EmittedTriangleIndices();

@@ -1543,13 +1543,13 @@ typedef struct openusd_silk_command_storage_usage
     uint64_t peak_live_bytes;
 } openusd_silk_command_storage_usage;
 
-/// Optional v1 admission of coarse meshes and supported linear curves at Low complexity
-/// and SmoothShaded draw mode. The limit is a conservative logical buffer-reservation
+/// Optional v1 admission of coarse meshes, point Rprims and supported linear curves at
+/// Low complexity and SmoothShaded draw mode. The limit is a conservative logical buffer-reservation
 /// charge, not process memory or actual allocator bytes. Charges cover old/new geometry
 /// owners and worst-case numeric preparation buffers; shared record/producer leases
 /// are counted once. USD/Hydra source materialization, allocator/container overhead,
 /// materials, instance metadata, page copies and GPU storage are outside this metric.
-/// Skel/computed geometry, points, cubic or unsupported curves, volumes and refinement are refused.
+/// Skel/computed geometry, cubic or unsupported curves, volumes and refinement are refused.
 /// maximum_reserved_bytes must be positive. Both packets are 16/32 bytes on every RID.
 typedef struct openusd_silk_mesh_preparation_limits
 {

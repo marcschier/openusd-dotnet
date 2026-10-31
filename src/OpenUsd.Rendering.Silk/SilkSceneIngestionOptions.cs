@@ -38,8 +38,8 @@ public sealed class SilkSceneIngestionOptions
     /// <remarks>
     /// The limit counts conservative logical buffer reservations, not process memory, allocator overhead,
     /// source materialization, materials, instance metadata, command pages or GPU storage.
-    /// Low complexity and SmoothShaded draw mode admit coarse meshes and supported linear basis curves.
-    /// Skel, computed geometry, points, cubic or unsupported curves and volumes are refused.
+    /// Low complexity and SmoothShaded draw mode admit coarse meshes, point Rprims and supported linear
+    /// basis curves. Skel, computed geometry, cubic or unsupported curves and volumes are refused.
     /// Changing the limit rebuilds native imaging. Older native libraries must reject this extension.
     /// </remarks>
     public SilkSceneIngestionOptions(

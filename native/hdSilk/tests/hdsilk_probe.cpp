@@ -12475,6 +12475,31 @@ bool VerifyDeformationInvalidation(
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string(argv[1]) == "--geometry-non-geometry-sync")
+    {
+        bool valid = true;
+        for (int32_t geometryKind = 0; geometryKind < 2; ++geometryKind)
+        {
+            for (int32_t dirtyKind = 0; dirtyKind < 2; ++dirtyKind)
+            {
+                for (int32_t exactLimit = 0; exactLimit < 2; ++exactLimit)
+                {
+                    const int32_t result = geometryKind == 0
+                        ? openusd_hdsilk_test_point_non_geometry_dirty(dirtyKind, exactLimit)
+                        : openusd_hdsilk_test_mesh_non_geometry_dirty(dirtyKind, exactLimit);
+                    if (result != 0)
+                    {
+                        std::cerr << "Geometry non-geometry sync failed: geometry kind "
+                                  << geometryKind << ", dirty kind " << dirtyKind
+                                  << ", exact limit " << exactLimit << ", result "
+                                  << result << ".\n";
+                        valid = false;
+                    }
+                }
+            }
+        }
+        return valid ? 0 : 1;
+    }
     if (argc == 2 && std::string(argv[1]) == "--curve-non-geometry-sync")
     {
         bool valid = true;

@@ -15,6 +15,12 @@ openusd_hdsilk_test_external_delegate_does_not_publish(void);
 OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_curve_non_geometry_dirty(int32_t dirtyKind, int32_t exactLimit);
 
+OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_point_non_geometry_dirty(int32_t dirtyKind, int32_t exactLimit);
+
+OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_mesh_non_geometry_dirty(int32_t dirtyKind, int32_t exactLimit);
+
 OPENUSD_HDSILK_API size_t
 openusd_hdsilk_test_get_session_in_flight(openusd_silk_session* session);
 
