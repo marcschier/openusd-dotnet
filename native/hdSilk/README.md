@@ -183,6 +183,14 @@ node. An authored constant behind that connection is not treated as an
 unconnected value. This includes `HwPtexTexture_1`: Ptex sampling remains
 unsupported, and the warning is not a managed material diagnostic.
 
+The subdivision module can derive default Ptex face IDs and local triangle
+coordinates for refined Catmull-Clark, bilinear and Loop meshes. A non-quad
+control face has one Ptex face per corner, not one per authored face.
+The caller supplies separate output and scratch buffers and must discard their
+contents when mapping fails. Unrefined meshes and authored Ptex face remapping
+are outside this helper. The renderer does not yet publish these coordinates
+or sample Ptex textures.
+
 ## Wire format
 
 Named `UsdPrimvarReader_float2` fallbacks and MaterialX `geompropvalue_vector2` defaults

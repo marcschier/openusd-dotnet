@@ -476,6 +476,326 @@ HdSilkMeshSubdivision::GetRefinedFaceVaryingValueCount(int channel) const
     return _impl->refinedFaceVaryingValues[static_cast<size_t>(channel)];
 }
 
+namespace
+{
+struct PtexCoordinate
+{
+    float u;
+    float v;
+};
+
+int FindFaceVertex(OsdFar::ConstIndexArray vertices, OsdFar::Index vertex)
+{
+    for (int corner = 0; corner < vertices.size(); ++corner)
+    {
+        if (vertices[corner] == vertex)
+        {
+            return corner;
+        }
+    }
+    return -1;
+}
+
+bool MapPtexChildCoordinates(
+    const OsdFar::TopologyLevel& parent,
+    OsdFar::Index parentFace,
+    const OsdFar::TopologyLevel& child,
+    OsdFar::Index childFace,
+    const std::array<PtexCoordinate, 4>& parentCoordinates,
+    std::array<PtexCoordinate, 4>* childCoordinates)
+{
+    const OsdFar::ConstIndexArray parentVertices =
+        parent.GetFaceVertices(parentFace);
+    const OsdFar::ConstIndexArray parentEdges =
+        parent.GetFaceEdges(parentFace);
+    const OsdFar::ConstIndexArray childVertices =
+        child.GetFaceVertices(childFace);
+    if ((parentVertices.size() != 3 && parentVertices.size() != 4) ||
+        parentEdges.size() != parentVertices.size() ||
+        childVertices.size() != parentVertices.size())
+    {
+        return false;
+    }
+
+    for (int corner = 0; corner < childVertices.size(); ++corner)
+    {
+        const OsdFar::Index vertex = childVertices[corner];
+        bool found = false;
+        PtexCoordinate coordinate{};
+        for (int parentCorner = 0;
+             parentCorner < parentVertices.size();
+             ++parentCorner)
+        {
+            if (parent.GetVertexChildVertex(parentVertices[parentCorner]) == vertex)
+            {
+                if (found)
+                {
+                    return false;
+                }
+                coordinate = parentCoordinates[static_cast<size_t>(parentCorner)];
+                found = true;
+            }
+
+            if (parent.GetEdgeChildVertex(parentEdges[parentCorner]) == vertex)
+            {
+                const OsdFar::ConstIndexArray endpoints =
+                    parent.GetEdgeVertices(parentEdges[parentCorner]);
+                if (endpoints.size() != 2 || found)
+                {
+                    return false;
+                }
+                const int first = FindFaceVertex(parentVertices, endpoints[0]);
+                const int second = FindFaceVertex(parentVertices, endpoints[1]);
+                if (first < 0 || second < 0)
+                {
+                    return false;
+                }
+                const PtexCoordinate a = parentCoordinates[static_cast<size_t>(first)];
+                const PtexCoordinate b = parentCoordinates[static_cast<size_t>(second)];
+                coordinate = {(a.u + b.u) * 0.5F, (a.v + b.v) * 0.5F};
+                found = true;
+            }
+        }
+
+        if (parentVertices.size() == 4 &&
+            parent.GetFaceChildVertex(parentFace) == vertex)
+        {
+            if (found)
+            {
+                return false;
+            }
+            coordinate = {};
+            for (int parentCorner = 0; parentCorner < 4; ++parentCorner)
+            {
+                coordinate.u += parentCoordinates[static_cast<size_t>(parentCorner)].u;
+                coordinate.v += parentCoordinates[static_cast<size_t>(parentCorner)].v;
+            }
+            coordinate.u *= 0.25F;
+            coordinate.v *= 0.25F;
+            found = true;
+        }
+        if (!found)
+        {
+            return false;
+        }
+        (*childCoordinates)[static_cast<size_t>(corner)] = coordinate;
+    }
+    return true;
+}
+}
+
+size_t
+HdSilkMeshSubdivision::GetPtexScratchCount() const
+{
+    if (!IsRefined() || !_impl->refiner)
+    {
+        return 0;
+    }
+    return static_cast<size_t>(_impl->refiner->GetLevel(0).GetNumFaces()) +
+        static_cast<size_t>(_impl->refiner->GetLevel(1).GetNumFaces());
+}
+
+HdSilkPtexMappingStatus
+HdSilkMeshSubdivision::WriteDefaultPtexTriangles(
+    HdSilkPtexTriangle* triangles,
+    size_t triangleCapacity,
+    uint32_t* scratch,
+    size_t scratchCapacity) const
+{
+    if (!IsRefined() || !_impl->refiner)
+    {
+        return HdSilkPtexMappingStatus::RefinerUnavailable;
+    }
+
+    const OsdFar::TopologyRefiner& refiner = *_impl->refiner;
+    const OsdFar::TopologyLevel& coarse = refiner.GetLevel(0);
+    const OsdFar::TopologyLevel& first = refiner.GetLevel(1);
+    const OsdFar::TopologyLevel& last = refiner.GetLevel(_refineLevel);
+    const size_t coarseFaceCount = static_cast<size_t>(coarse.GetNumFaces());
+    const size_t firstFaceCount = static_cast<size_t>(first.GetNumFaces());
+    if (triangles == nullptr || scratch == nullptr ||
+        triangleCapacity < _triangleSubprims.size() ||
+        scratchCapacity < coarseFaceCount + firstFaceCount)
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+    if (_refineLevel < 1 || _refineLevel > HdSilkMaxMeshRefineLevel ||
+        _triangleIndices.size() != _triangleSubprims.size() * 3)
+    {
+        return HdSilkPtexMappingStatus::UnsupportedTopology;
+    }
+
+    const std::uintptr_t triangleBegin = reinterpret_cast<std::uintptr_t>(triangles);
+    const std::uintptr_t scratchBegin = reinterpret_cast<std::uintptr_t>(scratch);
+    const size_t triangleBytes =
+        _triangleSubprims.size() * sizeof(HdSilkPtexTriangle);
+    const size_t scratchBytes =
+        (coarseFaceCount + firstFaceCount) * sizeof(uint32_t);
+    if (triangleBegin > std::numeric_limits<std::uintptr_t>::max() - triangleBytes ||
+        scratchBegin > std::numeric_limits<std::uintptr_t>::max() - scratchBytes ||
+        (triangleBegin < scratchBegin + scratchBytes &&
+            scratchBegin < triangleBegin + triangleBytes))
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+
+    const bool loop = refiner.GetSchemeType() == OsdSdc::SCHEME_LOOP;
+    uint32_t* const faceOffsets = scratch;
+    uint32_t* const childOrdinals = scratch + coarseFaceCount;
+    std::fill_n(childOrdinals, firstFaceCount, std::numeric_limits<uint32_t>::max());
+    uint64_t nextFaceId = 0;
+    for (int face = 0; face < coarse.GetNumFaces(); ++face)
+    {
+        const int cornerCount = coarse.GetFaceVertices(face).size();
+        if (cornerCount < 3 || (loop && cornerCount != 3))
+        {
+            return HdSilkPtexMappingStatus::UnsupportedTopology;
+        }
+        const uint64_t faceCount = loop || cornerCount == 4
+            ? 1u
+            : static_cast<uint64_t>(cornerCount);
+        if (nextFaceId + faceCount >
+            static_cast<uint64_t>(std::numeric_limits<int>::max()))
+        {
+            return HdSilkPtexMappingStatus::FaceIndexOverflow;
+        }
+        faceOffsets[static_cast<size_t>(face)] =
+            static_cast<uint32_t>(nextFaceId);
+        nextFaceId += faceCount;
+        const OsdFar::ConstIndexArray children = coarse.GetFaceChildFaces(face);
+        for (int child = 0; child < children.size(); ++child)
+        {
+            const OsdFar::Index childFace = children[child];
+            if (childFace < 0 || static_cast<size_t>(childFace) >= firstFaceCount ||
+                childOrdinals[static_cast<size_t>(childFace)] !=
+                    std::numeric_limits<uint32_t>::max())
+            {
+                return HdSilkPtexMappingStatus::UnsupportedTopology;
+            }
+            childOrdinals[static_cast<size_t>(childFace)] =
+                static_cast<uint32_t>(child);
+        }
+    }
+
+    size_t triangleIndex = 0;
+    for (int face = 0; face < last.GetNumFaces(); ++face)
+    {
+        if (last.IsFaceHole(face))
+        {
+            continue;
+        }
+
+        std::array<OsdFar::Index, HdSilkMaxMeshRefineLevel + 1> facePath{};
+        facePath[static_cast<size_t>(_refineLevel)] = face;
+        for (int level = _refineLevel; level > 0; --level)
+        {
+            const OsdFar::Index parent = refiner.GetLevel(level).GetFaceParentFace(
+                facePath[static_cast<size_t>(level)]);
+            if (parent < 0)
+            {
+                return HdSilkPtexMappingStatus::UnsupportedTopology;
+            }
+            facePath[static_cast<size_t>(level - 1)] = parent;
+        }
+
+        const OsdFar::Index coarseFace = facePath[0];
+        const OsdFar::ConstIndexArray coarseVertices =
+            coarse.GetFaceVertices(coarseFace);
+        uint32_t ptexFace = faceOffsets[static_cast<size_t>(coarseFace)];
+        std::array<PtexCoordinate, 4> coordinates{{
+            {0.0F, 0.0F}, {1.0F, 0.0F}, {1.0F, 1.0F}, {0.0F, 1.0F}}};
+        int firstLevel = 0;
+        if (loop)
+        {
+            coordinates[2] = {0.0F, 1.0F};
+        }
+        else if (coarseVertices.size() != 4)
+        {
+            const OsdFar::ConstIndexArray children =
+                coarse.GetFaceChildFaces(coarseFace);
+            const OsdFar::ConstIndexArray edges =
+                coarse.GetFaceEdges(coarseFace);
+            const OsdFar::Index firstFace = facePath[1];
+            if (firstFace < 0 || static_cast<size_t>(firstFace) >= firstFaceCount ||
+                childOrdinals[static_cast<size_t>(firstFace)] >=
+                    static_cast<uint32_t>(children.size()) ||
+                children.size() != coarseVertices.size() ||
+                edges.size() != coarseVertices.size())
+            {
+                return HdSilkPtexMappingStatus::UnsupportedTopology;
+            }
+            const int childIndex =
+                static_cast<int>(childOrdinals[static_cast<size_t>(firstFace)]);
+            if (children[childIndex] != firstFace)
+            {
+                return HdSilkPtexMappingStatus::UnsupportedTopology;
+            }
+            const OsdFar::ConstIndexArray childVertices =
+                refiner.GetLevel(1).GetFaceVertices(facePath[1]);
+            const int previous =
+                (childIndex + coarseVertices.size() - 1) % coarseVertices.size();
+            if (childVertices.size() != 4 ||
+                childVertices[0] !=
+                    coarse.GetVertexChildVertex(coarseVertices[childIndex]) ||
+                childVertices[1] != coarse.GetEdgeChildVertex(edges[childIndex]) ||
+                childVertices[2] != coarse.GetFaceChildVertex(coarseFace) ||
+                childVertices[3] != coarse.GetEdgeChildVertex(edges[previous]))
+            {
+                return HdSilkPtexMappingStatus::UnsupportedTopology;
+            }
+            ptexFace += static_cast<uint32_t>(childIndex);
+            firstLevel = 1;
+        }
+
+        for (int level = firstLevel + 1; level <= _refineLevel; ++level)
+        {
+            std::array<PtexCoordinate, 4> childCoordinates{};
+            if (!MapPtexChildCoordinates(
+                    refiner.GetLevel(level - 1),
+                    facePath[static_cast<size_t>(level - 1)],
+                    refiner.GetLevel(level),
+                    facePath[static_cast<size_t>(level)],
+                    coordinates,
+                    &childCoordinates))
+            {
+                return HdSilkPtexMappingStatus::UnsupportedTopology;
+            }
+            coordinates = childCoordinates;
+        }
+
+        const OsdFar::ConstIndexArray corners = last.GetFaceVertices(face);
+        if (corners.size() != 3 && corners.size() != 4)
+        {
+            return HdSilkPtexMappingStatus::UnsupportedTopology;
+        }
+        for (int corner = 1; corner + 1 < corners.size(); ++corner)
+        {
+            if (triangleIndex >= _triangleSubprims.size() ||
+                _triangleSubprims[triangleIndex] !=
+                    static_cast<uint32_t>(coarseFace) ||
+                _triangleIndices[triangleIndex * 3] !=
+                    static_cast<uint32_t>(corners[0]) ||
+                _triangleIndices[triangleIndex * 3 + 1] !=
+                    static_cast<uint32_t>(corners[corner]) ||
+                _triangleIndices[triangleIndex * 3 + 2] !=
+                    static_cast<uint32_t>(corners[corner + 1]))
+            {
+                return HdSilkPtexMappingStatus::TriangleMismatch;
+            }
+            const PtexCoordinate a = coordinates[0];
+            const PtexCoordinate b = coordinates[static_cast<size_t>(corner)];
+            const PtexCoordinate c = coordinates[static_cast<size_t>(corner + 1)];
+            triangles[triangleIndex] = {
+                ptexFace, {a.u, a.v, b.u, b.v, c.u, c.v}};
+            ++triangleIndex;
+        }
+    }
+
+    return triangleIndex == _triangleSubprims.size()
+        ? HdSilkPtexMappingStatus::Mapped
+        : HdSilkPtexMappingStatus::TriangleMismatch;
+}
+
 HdSilkSubdivisionStatus
 HdSilkMeshSubdivision::Rebuild(
     HdMeshTopology const& topology,
@@ -1028,6 +1348,27 @@ HdSilkMeshSubdivision::RefineFaceVaryingPrimvarOntoCorners(
             lastLevel + offset + componentCount);
     }
     return true;
+}
+
+const char*
+HdSilkPtexMappingStatusName(HdSilkPtexMappingStatus status)
+{
+    switch (status)
+    {
+    case HdSilkPtexMappingStatus::Mapped:
+        return "mapped";
+    case HdSilkPtexMappingStatus::RefinerUnavailable:
+        return "refiner-unavailable";
+    case HdSilkPtexMappingStatus::InvalidBuffers:
+        return "invalid-buffers";
+    case HdSilkPtexMappingStatus::FaceIndexOverflow:
+        return "face-index-overflow";
+    case HdSilkPtexMappingStatus::UnsupportedTopology:
+        return "unsupported-topology";
+    case HdSilkPtexMappingStatus::TriangleMismatch:
+        return "triangle-mismatch";
+    }
+    return "unknown";
 }
 
 const char*

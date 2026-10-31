@@ -22,6 +22,7 @@
 #include "pxr/base/vt/array.h"
 #include "pxr/imaging/hd/meshTopology.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -101,6 +102,22 @@ struct HdSilkSubdivisionChannel
     std::string unsupportedReason;
 };
 
+struct HdSilkPtexTriangle
+{
+    uint32_t faceIndex = 0;
+    std::array<float, 6> cornerCoordinates{};
+};
+
+enum class HdSilkPtexMappingStatus : uint32_t
+{
+    Mapped = 0,
+    RefinerUnavailable = 1,
+    InvalidBuffers = 2,
+    FaceIndexOverflow = 3,
+    UnsupportedTopology = 4,
+    TriangleMismatch = 5,
+};
+
 /// The refined topology of one mesh, plus the refiner needed to interpolate its
 /// primvars. Rebuilt only when the control cage, its tags, its face-varying
 /// topologies, or the requested level change.
@@ -153,6 +170,25 @@ public:
 
     size_t GetCoarseVertexCount() const { return _coarseVertexCount; }
     size_t GetRefinedVertexCount() const { return _refinedVertexCount; }
+
+    /// Scratch entries required by WriteDefaultPtexTriangles(). The caller
+    /// owns and admits this storage and the triangle output before calling.
+    size_t GetPtexScratchCount() const;
+
+    /// Writes the default OpenSubdiv Ptex face ID and three local coordinates
+    /// for each emitted triangle. Face IDs stay integer-valued; they are not
+    /// authored coarse face indices on non-quad Catmull-Clark cages.
+    ///
+    /// The output has GetTriangleSubprims().size() entries. The scratch buffer
+    /// has GetPtexScratchCount() entries. The buffers must not overlap. Neither
+    /// buffer is allocated here.
+    /// On any status other than Mapped, buffer contents must not be published.
+    /// Authored Ptex face remapping and unrefined meshes are not handled here.
+    HdSilkPtexMappingStatus WriteDefaultPtexTriangles(
+        HdSilkPtexTriangle* triangles,
+        size_t triangleCapacity,
+        uint32_t* scratch,
+        size_t scratchCapacity) const;
 
     /// The index of the face-varying channel bound under "name", or -1.
     int FindChannel(const TfToken& name) const;
@@ -230,6 +266,7 @@ private:
 
 /// A stable one-line reason for a status, for diagnostics and probes.
 const char* HdSilkSubdivisionStatusName(HdSilkSubdivisionStatus status);
+const char* HdSilkPtexMappingStatusName(HdSilkPtexMappingStatus status);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

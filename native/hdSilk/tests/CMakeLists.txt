@@ -317,6 +317,25 @@ add_test(NAME hdsilk_subdivision_probe
 set_tests_properties(hdsilk_subdivision_probe
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
 
+add_executable(
+    hdsilk_ptex_topology_probe
+    hdsilk_ptex_topology_probe.cpp
+    ../src/subdivision.cpp)
+target_compile_features(hdsilk_ptex_topology_probe PRIVATE cxx_std_17)
+target_link_libraries(
+    hdsilk_ptex_topology_probe PRIVATE usd_m ${OPENUSD_OPENSUBDIV_CPU_LIBRARY})
+target_include_directories(hdsilk_ptex_topology_probe PRIVATE ../src)
+target_include_directories(hdsilk_ptex_topology_probe SYSTEM PRIVATE "${pxr_DIR}/include")
+if(MSVC)
+    target_compile_options(hdsilk_ptex_topology_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_ptex_topology_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_ptex_topology COMMAND hdsilk_ptex_topology_probe)
+set_tests_properties(hdsilk_ptex_topology
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
+
 add_executable(hdsilk_scene_ingestion_probe hdsilk_scene_ingestion_probe.cpp)
 target_compile_features(hdsilk_scene_ingestion_probe PRIVATE cxx_std_17)
 target_link_libraries(
