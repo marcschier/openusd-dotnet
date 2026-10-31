@@ -18,7 +18,8 @@ enum class SdkMaterialKind
 {
     Unspecified,
     OmniPbr,
-    OmniGlass
+    OmniGlass,
+    OmniSurface
 };
 
 /// One parameter value the MDL SDK resolved out of a compiled module. It is a

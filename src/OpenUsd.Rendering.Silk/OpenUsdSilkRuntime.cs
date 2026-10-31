@@ -93,6 +93,10 @@ public static unsafe partial class OpenUsdSilkRuntime
                 ConfigurePreparation(session, preparationLimits);
             }
             EnablePageAcknowledgement(session);
+            if (preparationLimits?.CommandStorage is { } storageLimits)
+            {
+                ConfigureCommandStorage(session, storageLimits);
+            }
             return new OpenUsdSilkSession(session, lease, preparationLimits);
         }
         catch

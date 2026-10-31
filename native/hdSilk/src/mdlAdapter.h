@@ -63,6 +63,7 @@ struct HdSilkMdlDistilledTexture
     uint32_t wrapS = 0;
     uint32_t wrapT = 0;
     uint32_t colorSpace = 0;
+    uint32_t compositeOperator = 0;
     float scale[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float bias[4] = {0.0F, 0.0F, 0.0F, 0.0F};
     std::string asset;
@@ -78,6 +79,7 @@ struct HdSilkMdlDistillation
     std::vector<HdSilkMdlDistilledScalar> scalars;
     std::vector<HdSilkMdlDistilledTexture> textures;
     std::vector<std::string> unsupportedParameters;
+    float uvTransform[6] = {1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
 };
 
 /// One authored MDL shader input as hdSilk read it out of the Hydra material

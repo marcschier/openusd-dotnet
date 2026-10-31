@@ -33,6 +33,43 @@ public sealed class ViewerRenderSequenceTests
     }
 
     [Test]
+    [Arguments(2)]
+    [Arguments(1)]
+    [Arguments(0)]
+    public async Task FiniteRangeSamplesSurviveSpanOverflowWithoutChangingTheirRequestedStep(int decrements)
+    {
+        double bound = Math.ScaleB(1, 1023);
+        double end = bound;
+        for (int index = 0; index < decrements; index++)
+        {
+            end = Math.BitDecrement(end);
+        }
+        double step = Math.ScaleB(3, 1021);
+        var range = new ViewerRenderSequenceRange(-bound, end, step);
+        await Assert.That(range.Times.SequenceEqual([-bound, -bound / 4, bound / 2])).IsTrue();
+        await Assert.That(range.Times.All(double.IsFinite)).IsTrue();
+        await Assert.That(range.Times[^1]).IsLessThan(end);
+    }
+
+    [Test]
+    public async Task WidestFiniteRangeRetainsBothEndpointsAndItsZeroSample()
+    {
+        var range = new ViewerRenderSequenceRange(-double.MaxValue, double.MaxValue, double.MaxValue);
+        await Assert.That(range.Times.SequenceEqual([-double.MaxValue, 0d, double.MaxValue])).IsTrue();
+        await Assert.That(BitConverter.DoubleToInt64Bits(range.Times[1])).IsEqualTo(0L);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task OverflowingSpansStillRefuseTooManyFramesRatherThanTruncating(bool subnormalStep)
+    {
+        double bound = Math.ScaleB(1, 1023);
+        double step = subnormalStep ? double.Epsilon : Math.ScaleB(1, 1012);
+        await Assert.That(() => new ViewerRenderSequenceRange(-bound, bound, step)).Throws<ArgumentException>();
+    }
+
+    [Test]
     public async Task RangeAdmitsExactly4096FramesWithoutTruncation()
     {
         var range = new ViewerRenderSequenceRange(1, 4096, 1);

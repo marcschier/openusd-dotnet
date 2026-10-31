@@ -23,6 +23,7 @@ public sealed partial class MainWindow
     private bool _closeDecisionPending;
     private bool _documentRefreshRequested;
     private bool _documentSnapshotRefreshBusy;
+    private bool _canEditReviewPrim;
     private Task _documentRefreshTask = Task.CompletedTask;
 
     private void WireDocumentCommands()
@@ -33,16 +34,21 @@ public sealed partial class MainWindow
         ExportReviewDeltaMenuItem.Click += async (_, _) => await ExportReviewDeltaAsync();
         SaveReviewMenuItem.Click += async (_, _) => await SaveReviewAsync(saveAs: false);
         SaveReviewAsMenuItem.Click += async (_, _) => await SaveReviewAsync(saveAs: true);
+        SaveSourceMenuItem.Click += async (_, _) => await SaveSourceLayerAsync();
         OpenReviewMenuItem.Click += async (_, _) => await ChooseReviewDocumentAsync();
+        AdoptReviewMenuItem.Click += async (_, _) => await AdoptReviewAsync();
         RevertReviewMenuItem.Click += async (_, _) => await RevertReviewAsync();
         ToolTip.SetTip(ExportReviewDeltaMenuItem,
             "Exports a bounded review-only USDA delta to an unused path. This is not a portable review document.");
         ToolTip.SetTip(SaveReviewMenuItem, DocumentChangesWindow.SaveRestriction);
         ToolTip.SetTip(SaveReviewAsMenuItem, DocumentChangesWindow.SaveRestriction);
         ToolTip.SetTip(SaveSourceMenuItem,
-            "Source layers are capture-only in the bounded native editing API. Source saving is disabled.");
+            "Publish only the verified, changed root layer after explicit source-edit confirmation.");
         ToolTip.SetTip(RevertReviewMenuItem,
             "No portable saved review baseline is available. Undo individual review edits instead.");
+        ToolTip.SetTip(AdoptReviewMenuItem,
+            "Verify the current text-USD source, move compatible session opinions into a new review layer, " +
+            "and start fresh Undo/Redo history. Source files are not written.");
         UpdateDocumentCommands();
     }
 
@@ -75,6 +81,8 @@ public sealed partial class MainWindow
             !editor.IsSuspended && !_shutdownStarted;
         OpenReviewMenuItem.IsEnabled = OperatingSystem.IsWindows() &&
             !_documentBusy && !_documentEditBusy && !_shutdownStarted;
+        AdoptReviewMenuItem.IsEnabled = OperatingSystem.IsWindows() && ready &&
+            editor is { CanAdoptReview: true };
         EditUndoMenuItem.IsEnabled = ready && editor is { CanUndo: true };
         EditRedoMenuItem.IsEnabled = ready && editor is { CanRedo: true };
         if (editor is not null)
@@ -85,6 +93,17 @@ public sealed partial class MainWindow
         ExportReviewDeltaMenuItem.IsEnabled = ready && _documentObservation?.State.Review is not null;
         SaveReviewMenuItem.IsEnabled = ready && editor is { CanSaveReview: true };
         SaveReviewAsMenuItem.IsEnabled = SaveReviewMenuItem.IsEnabled;
+        ViewerDocumentSaveDecision sourceSave = ViewerDocumentSavePolicy.Plan(
+            _documentObservation?.State is { } sourceState && editor is { CanSaveSource: true }
+                ? sourceState with { SourceEditOptIn = true }
+                : null,
+            ViewerDocumentSaveAction.SaveSource);
+        SaveSourceMenuItem.IsEnabled = OperatingSystem.IsWindows() && ready && sourceSave.IsAllowed;
+        ToolTip.SetTip(SaveSourceMenuItem, editor is { CanSaveSource: true }
+            ? sourceSave.IsAllowed
+                ? "Publish the changed verified root layer. Confirmation enables source saving for this document."
+                : sourceSave.Message
+            : "Source publication requires a verified source origin.");
         RevertReviewMenuItem.IsEnabled = ready && editor is { CanSaveReview: true, SavedReviewPath: not null } &&
             _documentObservation?.State is { Source.HasChanges: false, HasOtherLayerChanges: false };
         ToolTip.SetTip(RevertReviewMenuItem,
@@ -98,10 +117,12 @@ public sealed partial class MainWindow
             ? $"_Undo {editor.UndoDescription.Replace("_", "__", StringComparison.Ordinal)}" : "_Undo";
         EditRedoMenuItem.Header = editor is { CanRedo: true }
             ? $"_Redo {editor.RedoDescription.Replace("_", "__", StringComparison.Ordinal)}" : "_Redo";
-        EditPropertyMenuItem.IsEnabled = ready && !_inspectorPropertiesLoading && _currentInspector is
+        _canEditReviewPrim = ready && !_inspectorPropertiesLoading && _currentInspector is
         {
             IsPrototype: false, IsInPrototype: false
-        } inspector && PropertyEditorAttributes(inspector).Any(
+        };
+        EditPropertyMenuItem.IsEnabled = _canEditReviewPrim && _currentInspector is { } inspector &&
+            PropertyEditorAttributes(inspector).Any(
             static attribute => ViewerPropertyEditParser.Supports(attribute.TypeName));
         UpdateInspectorPropertyControls();
         UpdateHierarchyNavigation();
@@ -127,7 +148,7 @@ public sealed partial class MainWindow
         UpdateSavedViewsContext();
     }
 
-    private void ShowPropertyEditor(string? selectedName = null)
+    private void ShowPropertyEditor(string? selectedName = null, ViewerRelationshipSnapshot? binding = null)
     {
         if (_propertyEditor is { } existing)
         {
@@ -135,7 +156,7 @@ public sealed partial class MainWindow
             return;
         }
         if (_documentEditor is not { } editor || _currentInspector is not { } inspector ||
-            !EditPropertyMenuItem.IsEnabled)
+            (binding is null ? !EditPropertyMenuItem.IsEnabled : !_canEditReviewPrim))
         {
             ShowError(
                 "Select a prim with supported local typed properties before editing its review layer.");
@@ -144,15 +165,17 @@ public sealed partial class MainWindow
         try
         {
             WorkspaceFocus focus = CaptureWorkspaceFocus();
-            var window = new PropertyEditWindow(
-                editor, inspector.Path, PropertyEditorAttributes(inspector), _currentTimeCode,
-                selectedName, _assetFilePicker);
+            var window = binding is null
+                ? new PropertyEditWindow(
+                    editor, inspector.Path, PropertyEditorAttributes(inspector), _currentTimeCode,
+                    selectedName, _assetFilePicker)
+                : new PropertyEditWindow(editor, inspector.Path, binding);
             _propertyEditor = window;
             window.Closed += (_, _) =>
             {
                 _propertyEditor = null;
-                RestoreWorkspaceFocus(focus);
             };
+            RestoreWorkspaceFocusWhenClosed(window, focus);
             window.Show(this);
         }
         catch (Exception exception) when (exception is NotSupportedException or ArgumentException)
@@ -363,6 +386,13 @@ public sealed partial class MainWindow
             transition, () => observed.State,
             async (_, action, token) =>
             {
+                if (action == ViewerDocumentTransition.Close && IsAutomatedViewerRun())
+                {
+                    // Diagnostics mutate disposable fixtures; still revalidate and retire through the lifecycle.
+                    token.ThrowIfCancellationRequested();
+                    ViewerStartupOptions.WriteStatus("Viewer diagnostic close: discarding unsaved fixture edits.");
+                    return ViewerDocumentUnsavedChoice.Discard;
+                }
                 var prompt = new DocumentChangesWindow(
                     original, action, editor.CanSaveReview && action != ViewerDocumentTransition.RevertReview,
                     action == ViewerDocumentTransition.RevertReview

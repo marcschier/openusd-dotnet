@@ -15,6 +15,7 @@ public sealed partial class MainWindow
 
     private bool WorkspaceOwnsKeyboard =>
         _commandPalette is { IsActive: true } || _captureComparison is { IsActive: true } ||
+        _completedJobHistoryWindow is { IsActive: true } ||
         _propertyEditor is { IsActive: true } || _documentChanges is { IsActive: true } ||
         _documentAction is { IsActive: true } || _renderSequenceWindow is { IsActive: true } ||
         _authoredRenderProductWindow is { IsActive: true };
@@ -32,7 +33,9 @@ public sealed partial class MainWindow
         WorkspaceMenu.SubmenuOpened += (_, _) => SyncWorkspaceMenu();
         CommandPaletteMenuItem.Click += (_, _) => ShowCommandPalette();
         CompareCapturesMenuItem.Click += (_, _) => ShowCaptureComparison();
+        CompletedJobsMenuItem.Click += (_, _) => ShowCompletedJobs();
         RenderImageSequenceMenuItem.Click += (_, _) => ShowRenderImageSequence();
+        PhysicsRecordSequenceMenuItem.Click += (_, _) => ShowRenderImageSequence(recordPhysics: true);
         RenderAuthoredProductMenuItem.Click += (_, _) => ShowAuthoredRenderProduct();
         FindPrimMenuItem.Click += (_, _) =>
         {
@@ -201,8 +204,8 @@ public sealed partial class MainWindow
         palette.Closed += (_, _) =>
         {
             _commandPalette = null;
-            RestoreWorkspaceFocus(previousFocus);
         };
+        RestoreWorkspaceFocusWhenClosed(palette, previousFocus);
         palette.Show(this);
     }
 
@@ -219,8 +222,8 @@ public sealed partial class MainWindow
         comparison.Closed += (_, _) =>
         {
             _captureComparison = null;
-            RestoreWorkspaceFocus(previousFocus);
         };
+        RestoreWorkspaceFocusWhenClosed(comparison, previousFocus);
         comparison.Show(this);
     }
 
@@ -231,13 +234,20 @@ public sealed partial class MainWindow
         return new WorkspaceFocus(FocusManager?.GetFocusedElement(), nativeFocused ? source : null);
     }
 
-    private void RestoreWorkspaceFocus(WorkspaceFocus previousFocus)
+    private void RestoreWorkspaceFocusWhenClosed(Window dialog, WorkspaceFocus previousFocus)
+    {
+        bool restoreFocus = false;
+        dialog.Closing += (_, _) => restoreFocus = dialog.IsKeyboardFocusWithin;
+        dialog.Closed += (_, _) => RestoreWorkspaceFocus(previousFocus, restoreFocus);
+    }
+
+    private void RestoreWorkspaceFocus(WorkspaceFocus previousFocus, bool restoreFocus)
     {
         _cameraShortcutRepeat.Reset();
         _physicsShortcutRepeat.Reset();
         _stormNavigationInput.Reset();
         _stormPickInput.Reset();
-        if (!_shutdownStarted)
+        if (restoreFocus && !_shutdownStarted)
         {
             Activate();
             if (previousFocus.NativeViewport is { } native &&

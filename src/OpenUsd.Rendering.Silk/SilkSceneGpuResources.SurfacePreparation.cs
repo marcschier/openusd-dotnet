@@ -32,10 +32,15 @@ public sealed partial class SilkSceneGpuResources
         private readonly Dictionary<SurfaceBufferKey, SurfaceBuffer> _previous;
         private readonly HashSet<SilkLightLinkMasks> _masks;
         private readonly ulong _linkRevision;
+        private readonly ISilkGraphicsBuffer? _previousFrame;
+        private readonly ISilkGraphicsBuffer? _previousFrameSpare;
         private readonly HashSet<ISilkGraphicsBuffer> _created = new(ReferenceEqualityComparer.Instance);
         private readonly HashSet<ISilkGraphicsBuffer> _retired = new(ReferenceEqualityComparer.Instance);
         private ISilkGraphicsBuffer? _createdFrame;
+        private ISilkGraphicsBuffer? _createdFrameSpare;
+        private readonly List<(SilkMeshGpuResource Mesh, ISilkGraphicsBuffer Buffer)> _uniforms = [];
         private bool _committed;
+        private bool _activated;
         private bool _disposed;
 
         internal PreparedSurfaceUpdate(SilkSceneGpuResources owner)
@@ -48,6 +53,8 @@ public sealed partial class SilkSceneGpuResources
             _previous = new(owner._surfaceBuffers);
             _masks = new(owner._liveLinkMasks);
             _linkRevision = owner._surfaceLinkRevision;
+            _previousFrame = owner._frameBuffer;
+            _previousFrameSpare = owner._frameSpare;
             _retired.EnsureCapacity(_previous.Count);
             owner._surfacePreparation = this;
         }
@@ -55,7 +62,7 @@ public sealed partial class SilkSceneGpuResources
         internal void Retire(ISilkGraphicsBuffer buffer) => _retired.Add(buffer);
         internal void Track(ISilkGraphicsBuffer buffer) => _created.Add(buffer);
 
-        internal void Prepare(SilkSceneState scene, SilkSceneDelta delta)
+        internal void Prepare(SilkSceneState scene, SilkSceneDelta delta, bool prepareUniformCapacity)
         {
             foreach (string path in delta.ChangedMaterialPaths.Span)
             {
@@ -71,10 +78,49 @@ public sealed partial class SilkSceneGpuResources
                 _createdFrame = _owner.CreateTrackedBuffer(
                     SilkFrameUniformWriter.ByteSize, SilkBufferUsage.Storage | SilkBufferUsage.Upload);
             }
+            if (prepareUniformCapacity)
+            {
+                if (_owner._frameSpare is null)
+                {
+                    _createdFrameSpare = _owner.CreateTrackedBuffer(
+                        SilkFrameUniformWriter.ByteSize, SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+                }
+                _uniforms.EnsureCapacity(scene.Meshes.Count);
+                foreach (ulong id in scene.Meshes.Keys)
+                {
+                    SilkMeshGpuResource mesh = _owner.GetPreparedMesh(id);
+                    if (!mesh.HasUniformSpare)
+                    {
+                        _uniforms.Add((mesh, _owner.CreateUniformBuffer()));
+                    }
+                }
+            }
             foreach (SilkMeshData mesh in scene.Meshes.Values)
             {
                 _owner.RequireSurfaceBuffer(scene, mesh, RenderHeadlight.Deterministic);
             }
+        }
+
+        internal void Activate()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_activated)
+            {
+                return;
+            }
+            if (_createdFrame is not null)
+            {
+                _owner._frameBuffer = _createdFrame;
+            }
+            if (_createdFrameSpare is not null)
+            {
+                _owner._frameSpare = _createdFrameSpare;
+            }
+            foreach ((SilkMeshGpuResource mesh, ISilkGraphicsBuffer buffer) in _uniforms)
+            {
+                mesh.AdoptUniformSpare(buffer);
+            }
+            _activated = true;
         }
 
         internal void Commit()
@@ -84,11 +130,9 @@ public sealed partial class SilkSceneGpuResources
             {
                 throw new InvalidOperationException("Surface constants were already committed.");
             }
-            if (_createdFrame is not null)
-            {
-                _owner._frameBuffer = _createdFrame;
-                _createdFrame = null;
-            }
+            Activate();
+            _createdFrame = null;
+            _createdFrameSpare = null;
             _owner._surfacePreparation = null;
             _committed = true;
         }
@@ -102,6 +146,28 @@ public sealed partial class SilkSceneGpuResources
             _disposed = true;
             _owner._surfacePreparation = null;
             List<Exception>? errors = null;
+            if (_activated && !_committed)
+            {
+                if (_createdFrame is not null)
+                {
+                    _owner._frameBuffer = _previousFrame;
+                }
+                if (_createdFrameSpare is not null)
+                {
+                    _owner._frameSpare = _previousFrameSpare;
+                }
+                foreach ((SilkMeshGpuResource mesh, ISilkGraphicsBuffer buffer) in _uniforms)
+                {
+                    try
+                    {
+                        mesh.UndoUniformSpareAdoption(buffer);
+                    }
+                    catch (Exception error)
+                    {
+                        (errors ??= []).Add(error);
+                    }
+                }
+            }
             foreach (ISilkGraphicsBuffer buffer in _committed ? _retired : _created)
             {
                 try
@@ -121,8 +187,27 @@ public sealed partial class SilkSceneGpuResources
             {
                 (errors ??= []).Add(error);
             }
+            try
+            {
+                _createdFrameSpare?.Dispose();
+            }
+            catch (Exception error)
+            {
+                (errors ??= []).Add(error);
+            }
             if (!_committed)
             {
+                foreach ((_, ISilkGraphicsBuffer buffer) in _uniforms)
+                {
+                    try
+                    {
+                        buffer.Dispose();
+                    }
+                    catch (Exception error)
+                    {
+                        (errors ??= []).Add(error);
+                    }
+                }
                 _owner._surfaceBuffers.Clear();
                 foreach (var pair in _previous)
                 {

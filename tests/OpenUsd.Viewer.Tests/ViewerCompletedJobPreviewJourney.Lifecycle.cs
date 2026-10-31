@@ -118,7 +118,8 @@ internal static partial class ViewerCompletedJobPreviewJourney
                 _ => Task.FromResult(second)
             };
         }
-        Window window = CreateCaller(product, renderJobAsync);
+        var history = new ViewerCompletedJobHistory();
+        Window window = CreateCaller(product, renderJobAsync, history.Publish);
         string prefix = product ? "Product" : "Sequence";
         string action = prefix + "ViewResultsButton";
         Button render = Required<Button>(window, prefix + "RenderButton");
@@ -134,6 +135,8 @@ internal static partial class ViewerCompletedJobPreviewJourney
             await Assert.That(resultsAction.IsEnabled).IsFalse();
             render.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => resultsAction.IsEnabled);
+            await Assert.That(history.Snapshot().Count).IsEqualTo(1);
+            await Assert.That(history.Snapshot()[0].Job).IsSameReferenceAs(first);
             resultsAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             CompletedRenderJobWindow old = window.OwnedWindows.OfType<CompletedRenderJobWindow>().Single();
             await Assert.That(renders).IsEqualTo(1).Because("viewing completed files must not invoke rendering");
@@ -170,6 +173,14 @@ internal static partial class ViewerCompletedJobPreviewJourney
                 Key = Key.Tab,
                 KeyModifiers = KeyModifiers.Shift
             });
+            ScrollViewer statusScroll = Required<ScrollViewer>(current, "ResultsStatusScroll");
+            await WaitUntilAsync(() => statusScroll.IsKeyboardFocusWithin);
+            statusScroll.RaiseEvent(new KeyEventArgs
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Key = Key.Tab,
+                KeyModifiers = KeyModifiers.Shift
+            });
             await WaitUntilAsync(() => list.IsKeyboardFocusWithin);
             Control firstTile = list.ContainerFromIndex(0) ??
                 throw new InvalidOperationException("The first completed frame must have a keyboard container.");
@@ -190,6 +201,8 @@ internal static partial class ViewerCompletedJobPreviewJourney
             await Assert.That(resultsAction.IsEnabled).IsFalse();
             await Assert.That(output.Text).IsNullOrEmpty();
             await Assert.That(Required<TextBlock>(window, prefix + "Status").Text).StartsWith("Cancelled.");
+            await Assert.That(history.Snapshot().Count).IsEqualTo(2);
+            await Assert.That(history.Snapshot()[0].Job).IsSameReferenceAs(second);
 
             render.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => resultsAction.IsEnabled);
@@ -200,6 +213,8 @@ internal static partial class ViewerCompletedJobPreviewJourney
             await Assert.That(window.IsVisible).IsFalse();
             await Assert.That(closing.IsVisible).IsFalse();
             await Assert.That(Required<ListBox>(closing, "ResultsFrames").ItemCount).IsEqualTo(0);
+            await Assert.That(history.Snapshot().Count).IsEqualTo(3);
+            await Assert.That(history.Snapshot()[0].Job).IsSameReferenceAs(second);
         }
         finally
         {
@@ -209,15 +224,16 @@ internal static partial class ViewerCompletedJobPreviewJourney
         }
     }
 
-    private static Window CreateCaller(bool product, Func<CancellationToken, Task<RenderDiskJobResult>> render) =>
+    private static Window CreateCaller(bool product, Func<CancellationToken, Task<RenderDiskJobResult>> render,
+        Action<RenderDiskJobResult, string>? completed = null) =>
         product
             ? new AuthoredRenderProductWindow(0, 1, "Completed fixture",
                 static (_, _, _) => ValueTask.FromResult(new ViewerAuthoredRenderProductSnapshot("/Settings",
                     [new ViewerAuthoredRenderProductItem("/Product", "Product", "/Camera",
                         new ViewportDimensions(2, 1), "color", null, null)], null)),
-                (_, _, token) => render(token))
+                (_, _, token) => render(token), completed: completed)
             : new RenderImageSequenceWindow(0, 1, "Completed fixture", static _ => null,
-                (_, _, _, _, token) => render(token));
+                (_, _, _, _, token) => render(token), completed: completed);
 
     private static async Task InlineJobCloseDrainsBeforeDisposalAsync(
         Window owner, RenderDiskJobResult job, string root, bool product)

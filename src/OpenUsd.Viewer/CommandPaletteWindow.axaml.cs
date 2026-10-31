@@ -52,6 +52,12 @@ internal sealed partial class CommandPaletteWindow : Window
             return;
         }
         string? previous = (CommandResults.SelectedItem as ListBoxItem)?.Tag as string;
+        bool restoreResultsFocus = CommandResults.IsKeyboardFocusWithin;
+        bool restoreRunFocus = RunCommandButton.IsKeyboardFocusWithin;
+        if (restoreResultsFocus || restoreRunFocus)
+        {
+            CommandSearch.Focus();
+        }
         _results = results;
         ListBoxItem[] items = [.. results.Select(CreateResult)];
         CommandResults.ItemsSource = items;
@@ -61,6 +67,22 @@ internal sealed partial class CommandPaletteWindow : Window
             ? "No matching commands. Try a menu name such as View, Camera or Render."
             : $"{results.Count} matches (up to 64). Unavailable actions stay visible but cannot run.";
         UpdateRunAvailability();
+        if (restoreResultsFocus)
+        {
+            CommandResults.UpdateLayout();
+        }
+        if (IsVisible && CommandSearch.IsKeyboardFocusWithin &&
+            CommandResults.SelectedItem is ListBoxItem { IsEnabled: true } selected)
+        {
+            if (restoreResultsFocus)
+            {
+                selected.Focus();
+            }
+            else if (restoreRunFocus)
+            {
+                RunCommandButton.Focus();
+            }
+        }
     }
 
     private static ListBoxItem CreateResult(ViewerCommandState state)
@@ -97,7 +119,8 @@ internal sealed partial class CommandPaletteWindow : Window
             e.Handled = true;
             Close();
         }
-        else if (!CommandSearch.IsKeyboardFocusWithin && !CommandResults.IsKeyboardFocusWithin)
+        else if (e.KeyModifiers != KeyModifiers.None ||
+            (!CommandSearch.IsKeyboardFocusWithin && !CommandResults.IsKeyboardFocusWithin))
         {
             return;
         }

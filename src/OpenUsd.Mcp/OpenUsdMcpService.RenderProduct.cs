@@ -8,14 +8,27 @@ namespace OpenUsd.Mcp;
 internal sealed partial class OpenUsdMcpService
 {
     public async ValueTask<McpRenderSequenceResultDto> RenderProductAsync(
-        RenderProductCaptureRequest request, CancellationToken cancellationToken)
+        RenderProductCaptureRequest request, CancellationToken cancellationToken, Action<int, int>? frameEncoded = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.FrameCount is < 1 or > 4096 || !double.IsFinite(request.StartTimeCode) ||
             !double.IsFinite(request.TimeStep) || request.TimeStep == 0 ||
-            !double.IsFinite(request.StartTimeCode + (request.FrameCount - 1) * request.TimeStep))
+            !double.IsFinite(SequenceTimeCode(request.StartTimeCode, request.TimeStep, request.FrameCount - 1)))
         {
             throw new ArgumentOutOfRangeException(nameof(request), "Product frame count or time samples are invalid.");
+        }
+        if (request.Width.HasValue != request.Height.HasValue ||
+            request.Width is < 1 or > 4096 || request.Height is < 1 or > 4096)
+        {
+            throw new ArgumentException(
+                "Product raster width and height must be supplied together, each within 1-4096 pixels.",
+                nameof(request));
+        }
+        if (request.DataWindowNdc is { Length: not 4 })
+        {
+            throw new ArgumentException(
+                "Product data window must contain four NDC bounds: minX, minY, maxX, maxY.",
+                nameof(request));
         }
         foreach (string? path in new[] { request.SettingsPath, request.ProductPath, request.CameraPath })
         {
@@ -36,10 +49,20 @@ internal sealed partial class OpenUsdMcpService
             throw new OpenUsdMcpFailureException(OpenUsdMcpErrorCodes.RenderFailure,
                 "EXR output currently requires Windows x64.");
         }
+        var rasterOverrides = new RenderProductOverrides(
+            cameraPath: request.CameraPath,
+            resolution: request.Width is { } width && request.Height is { } height
+                ? new ViewportDimensions(width, height)
+                : null,
+            pixelAspectRatio: request.PixelAspectRatio,
+            aspectRatioConformPolicy: request.AspectRatioConformPolicy,
+            dataWindowNdc: request.DataWindowNdc is { } dataWindow
+                ? new UsdVec4f(dataWindow[0], dataWindow[1], dataWindow[2], dataWindow[3])
+                : null);
         var times = new double[request.FrameCount];
         for (int index = 0; index < times.Length; index++)
         {
-            times[index] = request.StartTimeCode + index * request.TimeStep;
+            times[index] = SequenceTimeCode(request.StartTimeCode, request.TimeStep, index);
         }
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -53,7 +76,7 @@ internal sealed partial class OpenUsdMcpService
             {
                 plan = await workspace.PrepareRenderProductAsync(
                     revision, times, request.SettingsPath, request.ProductPath,
-                    new RenderProductOverrides(cameraPath: request.CameraPath),
+                    rasterOverrides,
                     cancellationToken).ConfigureAwait(false);
             }
             catch (NotSupportedException exception)
@@ -67,7 +90,8 @@ internal sealed partial class OpenUsdMcpService
             try
             {
                 job = plan.CreateJob(Path.Combine(parent, id), format,
-                    new RenderDiskJobLimits(maximumTotalBytes: MaximumDiskJobBytes - _publishedDiskBytes));
+                    new RenderDiskJobLimits(maximumTotalBytes: MaximumDiskJobBytes - _publishedDiskBytes),
+                    frameEncoded);
             }
             catch (NotSupportedException exception)
             {
@@ -88,7 +112,10 @@ internal sealed partial class OpenUsdMcpService
                 throw new OpenUsdMcpFailureException(OpenUsdMcpErrorCodes.RenderFailure,
                     "Authored-product rendering failed.", exception);
             }
-            return RegisterCompletedSequence(revision, id, result, ToAuthoredProduct(plan));
+            return RegisterCompletedSequence(revision, id, result, ToAuthoredProduct(plan),
+                productFrames: new OwnedReadOnlyList<CompletedProductFrame>(
+                    plan.Frames.Select(static frame => new CompletedProductFrame(
+                        McpProductRasterDto.From(frame), McpProductCameraDto.From(frame))).ToArray()));
         }
         finally
         {
@@ -101,5 +128,16 @@ internal sealed partial class OpenUsdMcpService
         "raw-raster-split-planes-v1", plan.MaterialBindingPurpose,
         new OwnedReadOnlyList<McpProductVariableDto>(plan.Outputs.Select(static output => new McpProductVariableDto(
             output.Variable.Path, output.Variable.SourceName, output.Variable.DataType,
-            output.Plane == RenderProductPlane.HdrColor ? "hdrColor" : "deviceDepth")).ToArray()));
+            output.Plane switch
+            {
+                RenderProductPlane.HdrColor => "hdrColor",
+                RenderProductPlane.DeviceDepth => "deviceDepth",
+                RenderProductPlane.PrimId => "primId",
+                RenderProductPlane.InstanceId => "instanceId",
+                RenderProductPlane.Normal => "normal",
+                RenderProductPlane.ElementId => "elementId",
+                _ => throw new InvalidDataException("A product output names an unknown plane.")
+            })).ToArray()));
+
+    private readonly record struct CompletedProductFrame(McpProductRasterDto Raster, McpProductCameraDto Camera);
 }

@@ -44,6 +44,8 @@ internal static class Program
                 ProbeD3D12SelectionOutline(d3d12);
                 ProbeD3D12Picking(d3d12);
                 await ProbeD3D12Presentation(d3d12);
+                using D3D12SilkGraphicsDevice admitted = D3D12SilkGraphicsDevice.Create(useWarp: true);
+                ProbeAdmittedRendererPicking(admitted);
             }
 
             VulkanSilkGraphicsDevice? vulkan = null;
@@ -60,6 +62,11 @@ internal static class Program
                 Console.WriteLine("Vulkan device teardown: begin");
                 vulkan?.Dispose();
                 Console.WriteLine("Vulkan device teardown: complete");
+            }
+            using (VulkanSilkGraphicsDevice admitted = VulkanSilkGraphicsDevice.Create())
+            {
+                RequireExpectedVulkanRuntime(admitted);
+                ProbeAdmittedRendererPicking(admitted);
             }
 
             int presentationIterations = GetVulkanPresentationIterations();
@@ -380,6 +387,29 @@ internal static class Program
             return;
         }
 
+        ProbeRendererPicking(device);
+    }
+
+    private static void ProbeAdmittedRendererPicking(ISilkGraphicsDevice device)
+    {
+        var buffers = new SilkGpuBufferBudget(67_108_864);
+        var textures = new SilkGpuTextureBudget(67_108_864);
+        var staging = new SilkGpuStagingBudget(67_108_864);
+        var cpu = new SilkCpuTextureBudget(67_108_864);
+        var textureBudgets = new SilkTexturePreparationBudgets(cpu, textures, staging);
+        buffers.ConfigureDevice(device);
+        textureBudgets.ConfigureDevice(device);
+        ProbeRendererPicking(device);
+        if (buffers.Usage.ReservedBytes != 0 || textures.Usage.ReservedBytes != 0 ||
+            staging.Usage.ReservedBytes != 0 || cpu.Usage.ReservedBytes != 0)
+        {
+            throw new InvalidOperationException("Admitted NativeAOT picking did not release every owned reservation.");
+        }
+        Console.WriteLine($"{device.Backend} admitted NativeAOT frame/pick publication: passed");
+    }
+
+    private static void ProbeRendererPicking(ISilkGraphicsDevice device)
+    {
         const uint size = 16;
         using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(
@@ -398,7 +428,7 @@ internal static class Program
                 out SilkPickTokenRange range))
         {
             throw new InvalidOperationException(
-                "The Vulkan NativeAOT pick identity was not retained.");
+                "The NativeAOT pick identity was not retained.");
         }
 
         var request = new RenderPickRequest(
@@ -421,23 +451,29 @@ internal static class Program
         if (!pending.IsCompleted)
         {
             throw new TimeoutException(
-                "The Vulkan NativeAOT ID readback did not complete.");
+                "The NativeAOT ID readback did not complete.");
         }
         RenderPickResult result = pending.GetAwaiter().GetResult();
+        RenderBackendKind expectedBackend = device.Backend switch
+        {
+            SilkGraphicsBackend.D3D12 => RenderBackendKind.D3D12,
+            SilkGraphicsBackend.Vulkan => RenderBackendKind.Vulkan,
+            _ => throw new NotSupportedException($"The probe does not select {device.Backend} picking.")
+        };
         if (result.Status != RenderPickStatus.Hit ||
             result.PrimPath != "/NativeAotVulkanPick" ||
             result.ElementIndex != 42 ||
-            result.BackendKind != RenderBackendKind.Vulkan ||
+            result.BackendKind != expectedBackend ||
             result.BackendToken != range.FirstToken ||
             result.WorldPosition is not null ||
             result.WorldNormal is not null ||
             result.NormalizedDepth is not null)
         {
             throw new InvalidOperationException(
-                "The Vulkan NativeAOT pick did not resolve the ID token with nullable geometry.");
+                "The NativeAOT pick did not resolve the ID token with nullable geometry.");
         }
         Console.WriteLine(
-            $"Vulkan NativeAOT pick: {result.PrimPath}[{result.ElementIndex}], " +
+            $"{device.Backend} NativeAOT pick: {result.PrimPath}[{result.ElementIndex}], " +
             $"token={result.BackendToken}");
     }
 
@@ -785,6 +821,7 @@ internal static class Program
         texture.ReadbackForTesting(readback);
         ValidateGreenClear(readback);
         ProbeDepthTarget(device);
+        ProbeRenderTargetCopy(device);
         ProbeTextureUpload(device);
         ProbeSubmissionLifetime(device);
         SilkShaderBinaryFormat shaderFormat = expectedBackend switch
@@ -814,6 +851,35 @@ internal static class Program
             $"{device.Backend}: {device.Capabilities.DeviceName}; " +
             $"API {device.Capabilities.ApiVersion}; " +
             $"software={device.Capabilities.IsSoftware}");
+    }
+
+    private static void ProbeRenderTargetCopy(ISilkGraphicsDevice device)
+    {
+        using ISilkGraphicsTexture source = device.CreateTexture2D(new SilkTextureDescriptor(
+            2, 2, SilkTextureFormat.Rgba16Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopyDestination));
+        using ISilkGraphicsTexture destination = device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(2, 2));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(2, 2));
+        using ISilkGraphicsTexture copiedDepth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(2, 2));
+        float[] values = [0, 1, 2, 1, -1, 4, 0, 1, 0.5f, 8, 0, 1, 1, 2, 3, 0.5f];
+        byte[] expected = MemoryMarshal.AsBytes<Half>(values.Select(value => (Half)value).ToArray()).ToArray();
+        using ISilkGraphicsCommandList commands = device.CreateCommandList();
+        commands.UploadTexture(source, expected);
+        commands.ClearDepth(depth, 0.375f);
+        var copies = (ISilkTextureCopyGraphicsCommandList)commands;
+        copies.CopyRenderTarget(source, destination);
+        copies.CopyRenderTarget(depth, copiedDepth);
+        using ISilkGraphicsSubmission submission = device.Submit(commands);
+        submission.Wait();
+        byte[] actual = new byte[expected.Length];
+        destination.ReadbackForTesting(actual);
+        float[] actualDepth = new float[4];
+        copiedDepth.ReadbackForTesting(actualDepth);
+        if (!actual.AsSpan().SequenceEqual(expected) || actualDepth.Any(value => value != 0.375f))
+        {
+            throw new InvalidOperationException("Render-target copies did not preserve exact HDR and depth values.");
+        }
+        Console.WriteLine($"{device.Backend} exact HDR/depth copy: passed");
     }
 
     private static void ProbeTextureUpload(ISilkGraphicsDevice device)
@@ -1220,11 +1286,12 @@ internal static class Program
     /// stopped short of them left the shader reading an all-zero affine, which
     /// collapses every texture coordinate onto one texel. The ABI 18 light-link
     /// masks now follow the float prefix as two integer uint4 values, with every
-    /// bit set because a zero mask means "linked to no light".
+    /// bit set because a zero mask means "linked to no light". The ABI 30
+    /// alternate UV transform closes the block, also written as the identity.
     /// </remarks>
     private static ISilkGraphicsBuffer CreateSurfaceConstants(ISilkGraphicsDevice device)
     {
-        const int surfaceConstantsByteSize = 240;
+        const int surfaceConstantsByteSize = 304;
         ISilkGraphicsBuffer buffer = device.CreateBuffer(
             surfaceConstantsByteSize,
             SilkBufferUsage.Storage | SilkBufferUsage.Upload);
@@ -1247,6 +1314,8 @@ internal static class Program
         ]).CopyTo(values);
         BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(208, 16), UInt128.MaxValue);
         BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(224, 16), UInt128.MaxValue);
+        MemoryMarshal.AsBytes<float>([1, 0, 0, 0, 0, 1, 0, 0]).CopyTo(values.AsSpan(240));
+        MemoryMarshal.AsBytes<float>([1, 0, 0, 0, 0, 1, 0, 0]).CopyTo(values.AsSpan(272));
         buffer.Write(values);
         return buffer;
     }
@@ -1256,7 +1325,7 @@ internal static class Program
     /// <c>FrameParameters</c> in <c>eng/shaders/sources/mesh.slang</c>. It grew
     /// when per-frame lighting and area-light bases moved <c>eyeToWorld</c>.
     /// </summary>
-    private const int FrameConstantsByteSize = 15296;
+    private const int FrameConstantsByteSize = 17344;
 
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {

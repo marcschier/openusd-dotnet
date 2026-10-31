@@ -59,6 +59,10 @@ internal static class ViewerDocumentSavePolicy
         {
             return Refuse(role, "Open a document before saving a layer.");
         }
+        if (document.DocumentId == Guid.Empty)
+        {
+            return Refuse(role, "A document identity is required before saving a layer.");
+        }
         if (document.IsBusy)
         {
             return Refuse(role, "Wait for the current document operation or cancel it before saving.");
@@ -66,6 +70,10 @@ internal static class ViewerDocumentSavePolicy
         if (role == ViewerDocumentLayerRole.Source && !document.SourceEditOptIn)
         {
             return Refuse(role, "Source-layer saving requires explicit source-edit opt-in.");
+        }
+        if (role == ViewerDocumentLayerRole.Source && document.HasOtherLayerChanges)
+        {
+            return Refuse(role, "Resolve changes in other layers before publishing the source layer.");
         }
         ViewerDocumentLayerState? target = role == ViewerDocumentLayerRole.Source
             ? document.Source : document.Review;
@@ -76,6 +84,10 @@ internal static class ViewerDocumentSavePolicy
         if (!target.IsWritable)
         {
             return Refuse(role, "The requested layer is read-only.");
+        }
+        if (role == ViewerDocumentLayerRole.Source && !target.HasChanges)
+        {
+            return Refuse(role, "The source layer has no unsaved changes.");
         }
         if (target.FilePath is { } path && !Path.IsPathFullyQualified(path))
         {

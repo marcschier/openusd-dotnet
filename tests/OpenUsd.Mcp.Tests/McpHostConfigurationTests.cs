@@ -1,10 +1,190 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using Microsoft.Extensions.Configuration.Json;
+using Microsoft.Extensions.DependencyInjection;
+
 namespace OpenUsd.Mcp.Tests;
 
 [NotInParallel]
 public sealed class McpHostConfigurationTests
 {
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task HostDoesNotWatchTheWorkingTreeUnlessExplicitlyRequested(bool watch)
+    {
+        const string variable = "DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, watch ? "true" : null);
+            using var files = new WorkspaceTestFiles();
+            await File.WriteAllTextAsync(Path.Combine(files.SourceRoot, "appsettings.json"),
+                """{"McpProbe":{"Entry":"original"}}""");
+            var builder = McpHostConfiguration.CreateHostBuilder(["--contentRoot", files.SourceRoot]);
+            using var host = builder.Build();
+            var configuration = builder.Configuration;
+            JsonConfigurationSource[] sources = configuration.Sources.OfType<JsonConfigurationSource>().ToArray();
+            await Assert.That(sources).IsNotEmpty();
+            await Assert.That(configuration["hostBuilder:reloadConfigOnChange"])
+                .IsEqualTo(watch ? "true" : "false");
+            await Assert.That(sources.All(source => source.ReloadOnChange == watch)).IsTrue()
+                .Because(string.Join(", ", sources.Select(source => $"{source.Path}: {source.ReloadOnChange}")));
+            await Assert.That(configuration["McpProbe:Entry"]).IsEqualTo("original");
+            await Assert.That(builder.Environment.ContentRootPath).IsEqualTo(files.SourceRoot);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
+    [Test]
+    public async Task GpuUploadConfigurationRequiresExplicitHardwareAndBufferAdmission()
+    {
+        string[] variables = ["OPENUSD_D3D12_GPU_UPLOAD_HEAPS", "OPENUSD_MCP_USE_WARP",
+            "OPENUSD_SILK_GPU_BUFFER_BYTES"];
+        string?[] previous = variables.Select(Environment.GetEnvironmentVariable).ToArray();
+        try
+        {
+            foreach (string variable in variables)
+            {
+                Environment.SetEnvironmentVariable(variable, null);
+            }
+            await Assert.That(McpHostConfiguration.LoadOptions().Graphics!.D3D12GpuUploadHeaps).IsFalse();
+            Environment.SetEnvironmentVariable(variables[0], "true");
+            OpenUsdMcpApplicationOptions options = McpHostConfiguration.LoadOptions();
+            await Assert.That(options.Graphics!.D3D12GpuUploadHeaps).IsTrue();
+            await Assert.That(() => new ServiceCollection().AddOpenUsdMcpServices(options))
+                .Throws<ArgumentException>();
+            Environment.SetEnvironmentVariable(variables[1], "false");
+            options = McpHostConfiguration.LoadOptions();
+            await Assert.That(() => new ServiceCollection().AddOpenUsdMcpServices(options))
+                .Throws<ArgumentException>();
+            Environment.SetEnvironmentVariable(variables[2], "1048576");
+            options = McpHostConfiguration.LoadOptions();
+            if (OperatingSystem.IsWindows())
+            {
+                var services = new ServiceCollection();
+                await Assert.That(services.AddOpenUsdMcpServices(options)).IsSameReferenceAs(services);
+            }
+            else
+            {
+                await Assert.That(() => new ServiceCollection().AddOpenUsdMcpServices(options))
+                    .Throws<ArgumentException>();
+            }
+            Environment.SetEnvironmentVariable(variables[0], "false");
+            await Assert.That(McpHostConfiguration.LoadOptions().Graphics!.D3D12GpuUploadHeaps).IsFalse();
+            Environment.SetEnvironmentVariable(variables[0], "invalid");
+            await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+        }
+        finally
+        {
+            for (int index = 0; index < variables.Length; index++)
+            {
+                Environment.SetEnvironmentVariable(variables[index], previous[index]);
+            }
+        }
+    }
+
+    [Test]
+    public async Task StreamingConfigurationIsExplicitAndServicesRejectMissingBufferAdmission()
+    {
+        const string variable = "OPENUSD_SILK_STREAM_MATERIAL_TEXTURES";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+            await Assert.That(McpHostConfiguration.LoadOptions().StreamMaterialTextures).IsFalse();
+            Environment.SetEnvironmentVariable(variable, "true");
+            OpenUsdMcpApplicationOptions options = McpHostConfiguration.LoadOptions();
+            await Assert.That(options.StreamMaterialTextures).IsTrue();
+            await Assert.That(() => new ServiceCollection().AddOpenUsdMcpServices(
+                options with { GpuBufferBudget = null })).Throws<ArgumentException>();
+            Environment.SetEnvironmentVariable(variable, "false");
+            await Assert.That(McpHostConfiguration.LoadOptions().StreamMaterialTextures).IsFalse();
+            Environment.SetEnvironmentVariable(variable, "invalid");
+            await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
+    [Test]
+    public async Task StoredCommandPolicyRequiresPreparationAndPreservesAllCeilings()
+    {
+        string[] variables = ["OPENUSD_SILK_MESH_RESERVATION_BYTES", "OPENUSD_SILK_MAX_PAGE_BYTES",
+            "OPENUSD_SILK_STORAGE_LIVE_BYTES", "OPENUSD_SILK_STORAGE_UPDATE_BYTES",
+            "OPENUSD_SILK_STORAGE_COMMAND_BYTES", "OPENUSD_SILK_STORAGE_TRANSFER_BYTES"];
+        string?[] before = variables.Select(Environment.GetEnvironmentVariable).ToArray();
+        string[] values = ["1000000", "65536", "6000000000", "5000000000", "32768", "4096"];
+        try
+        {
+            for (int index = 0; index < variables.Length; index++)
+            {
+                Environment.SetEnvironmentVariable(variables[index], values[index]);
+            }
+            var storage = McpHostConfiguration.LoadOptions().PreparationLimits!.CommandStorage!;
+            await Assert.That(storage.MaximumLiveBytes).IsEqualTo(6000000000ul);
+            await Assert.That(storage.MaximumUpdateBytes).IsEqualTo(5000000000ul);
+            await Assert.That(storage.MaximumCommandBytes).IsEqualTo(32768);
+            await Assert.That(storage.TransferBufferBytes).IsEqualTo(4096);
+            Environment.SetEnvironmentVariable(variables[5], null);
+            await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+            Environment.SetEnvironmentVariable(variables[5], values[5]);
+            Environment.SetEnvironmentVariable(variables[0], null);
+            Environment.SetEnvironmentVariable(variables[1], null);
+            await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+        }
+        finally
+        {
+            for (int index = 0; index < variables.Length; index++)
+            {
+                Environment.SetEnvironmentVariable(variables[index], before[index]);
+            }
+        }
+    }
+
+    [Test]
+    public async Task TexturePolicyDomainsAreIndependentOptionalAndStrict()
+    {
+        string[] variables =
+            ["OPENUSD_SILK_CPU_TEXTURE_BYTES", "OPENUSD_SILK_GPU_TEXTURE_BYTES", "OPENUSD_SILK_GPU_STAGING_BYTES"];
+        string?[] previous = variables.Select(Environment.GetEnvironmentVariable).ToArray();
+        try
+        {
+            foreach (string variable in variables)
+            {
+                Environment.SetEnvironmentVariable(variable, null);
+            }
+            await Assert.That(McpHostConfiguration.LoadOptions().TexturePreparationBudgets).IsNull();
+            for (int domain = 0; domain < variables.Length; domain++)
+            {
+                Environment.SetEnvironmentVariable(variables[domain], "5000");
+                OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets budgets =
+                    McpHostConfiguration.LoadOptions().TexturePreparationBudgets!;
+                await Assert.That(budgets.CpuTextureBudget?.MaximumBytes)
+                    .IsEqualTo(domain == 0 ? 5000ul : (ulong?)null);
+                await Assert.That(budgets.GpuTextureBudget?.MaximumBytes)
+                    .IsEqualTo(domain == 1 ? 5000ul : (ulong?)null);
+                await Assert.That(budgets.GpuStagingBudget?.MaximumBytes)
+                    .IsEqualTo(domain == 2 ? 5000ul : (ulong?)null);
+                Environment.SetEnvironmentVariable(variables[domain], "0");
+                await Assert.That(McpHostConfiguration.LoadOptions).Throws<ArgumentException>();
+                Environment.SetEnvironmentVariable(variables[domain], null);
+            }
+        }
+        finally
+        {
+            for (int index = 0; index < variables.Length; index++)
+            {
+                Environment.SetEnvironmentVariable(variables[index], previous[index]);
+            }
+        }
+    }
+
     [Test]
     public async Task GpuBufferBudgetIsIndependentOptionalAndStrictlyValidated()
     {

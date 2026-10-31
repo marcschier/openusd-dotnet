@@ -56,7 +56,11 @@ public static class SilkSubprimPickGeometry
     public static bool TryResolveEdges(
         SilkMeshData mesh,
         out int[] authoredEdges,
-        out uint[] lineIndices)
+        out uint[] lineIndices) =>
+        TryResolveEdges(mesh, out authoredEdges, out lineIndices, includeDrawIndices: true);
+
+    internal static bool TryResolveEdges(
+        SilkMeshData mesh, out int[] authoredEdges, out uint[] lineIndices, bool includeDrawIndices)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         int cornersPerPrimitive = CornersPerPrimitive(mesh.TopologyKind);
@@ -120,12 +124,15 @@ public static class SilkSubprimPickGeometry
 
         drawn.Sort(static (left, right) => left.CompareTo(right));
         authoredEdges = new int[drawn.Count];
-        lineIndices = new uint[drawn.Count * 2];
+        lineIndices = includeDrawIndices ? new uint[drawn.Count * 2] : [];
         for (int index = 0; index < drawn.Count; index++)
         {
             authoredEdges[index] = drawn[index].Authored;
-            lineIndices[index * 2] = drawn[index].First;
-            lineIndices[(index * 2) + 1] = drawn[index].Second;
+            if (includeDrawIndices)
+            {
+                lineIndices[index * 2] = drawn[index].First;
+                lineIndices[(index * 2) + 1] = drawn[index].Second;
+            }
         }
         return true;
     }
@@ -156,7 +163,11 @@ public static class SilkSubprimPickGeometry
     public static bool TryResolvePoints(
         SilkMeshData mesh,
         out int[] authoredPoints,
-        out uint[] pointIndices)
+        out uint[] pointIndices) =>
+        TryResolvePoints(mesh, out authoredPoints, out pointIndices, includeDrawIndices: true);
+
+    internal static bool TryResolvePoints(
+        SilkMeshData mesh, out int[] authoredPoints, out uint[] pointIndices, bool includeDrawIndices)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         ReadOnlySpan<int> origins = mesh.PointOrigins.Span;
@@ -185,7 +196,7 @@ public static class SilkSubprimPickGeometry
         }
 
         authoredPoints = new int[drawnCount];
-        pointIndices = new uint[drawnCount];
+        pointIndices = includeDrawIndices ? new uint[drawnCount] : [];
         int drawn = 0;
         for (int vertex = 0; vertex < origins.Length; vertex++)
         {
@@ -194,7 +205,10 @@ public static class SilkSubprimPickGeometry
                 continue;
             }
             authoredPoints[drawn] = origins[vertex];
-            pointIndices[drawn] = checked((uint)vertex);
+            if (includeDrawIndices)
+            {
+                pointIndices[drawn] = checked((uint)vertex);
+            }
             drawn++;
         }
         return true;
@@ -233,7 +247,7 @@ public static class SilkSubprimPickGeometry
 }
 
 /// <summary>
-/// The derived edge and point draw tables of one prototype's emitted topology.
+/// The authored identities of one prototype's emitted edge and point primitives.
 /// </summary>
 /// <remarks>
 /// The tables are a pure function of the emitted topology and the ABI v22
@@ -248,30 +262,23 @@ internal sealed class SilkSubprimTables
     internal SilkSubprimTables(
         bool hasEdges,
         int[] authoredEdges,
-        uint[] lineIndices,
         bool hasPoints,
-        int[] authoredPoints,
-        uint[] pointIndices)
+        int[] authoredPoints)
     {
         HasEdges = hasEdges;
         AuthoredEdges = authoredEdges;
-        LineIndices = lineIndices;
         HasPoints = hasPoints;
         AuthoredPoints = authoredPoints;
-        PointIndices = pointIndices;
     }
 
     internal bool HasEdges { get; }
 
     internal int[] AuthoredEdges { get; }
 
-    internal uint[] LineIndices { get; }
-
     internal bool HasPoints { get; }
 
     internal int[] AuthoredPoints { get; }
 
-    internal uint[] PointIndices { get; }
 }
 
 /// <summary>
@@ -280,8 +287,8 @@ internal sealed class SilkSubprimTables
 /// </summary>
 /// <remarks>
 /// The cache object, not the derived result, is what an instance shares, so the
-/// derivation is still lazy: a scene whose pick target never reaches the edge or
-/// point tables never pays for them at all.
+/// identity derivation is shared. Draw indices are not retained here: only a
+/// requested edge/point pass needs those separate geometry buffers.
 /// </remarks>
 internal sealed class SilkSubprimTableCache
 {
@@ -303,18 +310,16 @@ internal sealed class SilkSubprimTableCache
         bool hasEdges = SilkSubprimPickGeometry.TryResolveEdges(
             mesh,
             out int[] authoredEdges,
-            out uint[] lineIndices);
+            out _, includeDrawIndices: false);
         bool hasPoints = SilkSubprimPickGeometry.TryResolvePoints(
             mesh,
             out int[] authoredPoints,
-            out uint[] pointIndices);
+            out _, includeDrawIndices: false);
         tables = new SilkSubprimTables(
             hasEdges,
             authoredEdges,
-            lineIndices,
             hasPoints,
-            authoredPoints,
-            pointIndices);
+            authoredPoints);
         _tables = tables;
         return tables;
     }

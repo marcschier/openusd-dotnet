@@ -145,6 +145,10 @@ public sealed class SilkCommandParserTests
         SilkMeshData computedMesh = ReadSingleMesh(CreateMeshCommand());
 
         await Assert.That(authoredMesh.AuthoredNormals.Length).IsEqualTo(9);
+        await Assert.That(authoredMesh.AuthoredNormals.Equals(
+            authoredMesh.Attributes.Single(static attribute =>
+                attribute.Semantic == SilkAttributeSemantic.Normal).Data))
+            .IsTrue();
         await Assert.That(computedMesh.AuthoredNormals.Length).IsEqualTo(0);
 
         float[] authoredVertices = SilkMeshGeometryBuilder.Build(authoredMesh).Vertices;
@@ -164,6 +168,9 @@ public sealed class SilkCommandParserTests
             constantNormals: true));
 
         await Assert.That(mesh.AuthoredNormals.Length).IsEqualTo(9);
+        await Assert.That(mesh.AuthoredNormals.Equals(
+            mesh.Attributes.Single(static attribute => attribute.Semantic == SilkAttributeSemantic.Normal).Data))
+            .IsFalse();
         float[] vertices = SilkMeshGeometryBuilder.Build(mesh).Vertices;
         for (int vertex = 0; vertex < 3; vertex++)
         {

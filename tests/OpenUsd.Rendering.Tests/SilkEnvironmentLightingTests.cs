@@ -1367,7 +1367,7 @@ public sealed class SilkEnvironmentLightingTests
 
     internal static byte[] ReadFrameConstants(ISilkGraphicsBuffer buffer)
     {
-        byte[] constants = new byte[15296];
+        byte[] constants = new byte[17344];
         buffer.ReadbackForTesting(constants);
         return constants;
     }

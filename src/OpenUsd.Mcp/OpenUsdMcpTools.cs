@@ -3,6 +3,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using OpenUsd.Interop;
@@ -15,6 +16,8 @@ internal static class OpenUsdMcpDescriptions
         "Open a USD file beneath the configured read-only source root and create the single " +
         "isolated overlay session. " +
         "Preconditions: no session is active; sourcePath is a relative .usd, .usda, .usdc, or .usdz path. " +
+        "Optional stageSettings explicitly authors all seven root units/axis/timeline fields; " +
+        "omitting it preserves source-sublayer behavior without implicit metadata inheritance. " +
         "Effects: creates an overlay, manifest, journal, and output directory; never modifies the source. " +
         "Result bounds: one structured session object and one text summary of at most 2048 characters. " +
         "Errors: invalid_argument for malformed input or a second session; path_denied for " +
@@ -118,8 +121,13 @@ internal static class OpenUsdMcpDescriptions
         "ranges and cross-field rules. " +
         "Effects: read-only; replaces the prior proposal set and binds every new proposal to " +
         "this generation and stageRevision. " +
-        "Result bounds: at most 128 deterministically ordered proposal objects and one text " +
+        "proposalOffset defaults to 0; follow nextProposalOffset with identical observations " +
+        "and revision to read all findings. Offsets beyond totalProposalCount are rejected. " +
+        "Result bounds: at most 128 deterministically ordered proposal objects with exact recommendation " +
+        "arguments, evidence and metric targets (at most 16 each), advisory and renderer identity, and one text " +
         "summary of at most 2048 characters. " +
+        "Evidence derives from submitted observations, not independently verified measurements; " +
+        "metric targets are not achieved improvements. Diagnostic recommendations remain non-executable. " +
         "Errors: invalid_argument, no_session, stale_session, stale_revision, or native_failure. " +
         "Example arguments: {\"request\":{\"sessionId\":\"<id>\",\"generation\":0,\"stageRevi" +
         "sion\":1,\"observations\":{\"rendererId\":\"silk\",\"qualityPreset\":\"balanced\"}}}" +
@@ -148,18 +156,43 @@ internal static class OpenUsdMcpDescriptions
         "Example arguments: {\"request\":{\"sessionId\":\"<id>\",\"generation\":0,\"stageRevision\":1," +
         "\"width\":512,\"height\":512,\"frameCount\":48,\"startTimeCode\":0,\"timeStep\":1}}.";
 
+    internal const string ListSequenceJobs =
+        "List the original completed disk-job descriptors retained by this MCP process. " +
+        "Preconditions: none; no active scene or revision is required. " +
+        "Effects: read-only metadata access; does not render, open USD or read output files. " +
+        "Includes render_sequence, render_product and render_physics_sequence jobs from closed scenes. " +
+        "Result bounds: one structured object containing at most eight original descriptors in ordinal " +
+        "job-ID order and one text summary of at most 2048 characters. " +
+        "Captured revisions, relative output paths and original product/simulation metadata remain historical. " +
+        "Listing does not verify files; read_sequence_frame/read_sequence_sheet verify selected output bytes. " +
+        "It consumes no render-job or artifact quota and does not discover jobs from earlier process runs. " +
+        "Errors: request cancellation propagates without publishing a list. Example arguments: {}.";
+
     internal const string ReadSequenceFrame =
         "Expose one completed disk-sequence PNG through the bounded immutable artifact store. " +
-        "Preconditions: jobId came from render_sequence or render_product in this process and frameIndex is " +
+        "Preconditions: jobId came from render_sequence, render_product or render_physics_sequence in this " +
+            "process and frameIndex is " +
         "within that job. " +
         "A completed historical job remains readable after scene edits; returned revision is the captured revision. " +
         "Effects: verifies this frame's generated files against recorded lengths and SHA256, then atomically " +
         "registers all uncached planes; failures do not charge a partial frame. " +
         "Arbitrary paths and changed output files are refused; existing cached resources remain immutable. " +
-        "Result bounds: one structured frame descriptor, one text summary and up to three resource-link blocks: " +
+        "Result bounds: one structured frame descriptor, one text summary and up to eight resource-link blocks: " +
         "PNG, optional top-down little-endian normalized device-depth float32 (clear/far=1), " +
         "and optional raw RGBA binary16 or lossless half EXR before exposure/display, with stored alpha " +
         "and unnamed primaries; hdrColorFormat and resource MIME identify the container. " +
+        "Products with a primId variable add a top-down little-endian int32 primId plane (-1 background) " +
+        "and its JSON primIdTable of visible prim paths and instance indices. " +
+        "Products with an instanceId variable add a top-down little-endian int32 instanceId plane holding the " +
+        "visible instance index within its innermost instancer (-1 background and non-instanced prims). " +
+        "Products with a normal variable add a top-down little-endian float32 x, y, z normal plane holding the " +
+        "world-space unit shading normal of the front-most surface ((0,0,0) background). " +
+        "Products with an elementId variable add a top-down little-endian int32 elementId plane holding the " +
+        "authored face index of the front-most surface (-1 background and surfaces without face identity). " +
+        "Recorded simulation context includes its optional original host-provided review identity, " +
+        "an attestation rather than independent source verification. " +
+        "cameraRequest retains the original submitted mode, row-major view/projection and view-space clip planes, " +
+        "not effective backend state; automatic mode has null matrices, not an invented renderer camera. " +
         "The existing artifact count/byte/read quotas apply; the full sequence is never loaded into memory. " +
         "Errors: invalid_argument, artifact_not_found, artifact_integrity_error, path_denied or quota_exceeded. " +
         "Example arguments: {\"request\":{\"jobId\":\"<render_sequence jobId>\",\"frameIndex\":0}}.";
@@ -168,14 +201,21 @@ internal static class OpenUsdMcpDescriptions
         "Render one admitted authored UsdRender product into a bounded generated split-plane job. " +
         "Preconditions: exact active sessionId/generation/stageRevision; finite time samples, 1-4096 frames; " +
         "optional settingsPath selects authored settings, and productPath is required unless there is one product. " +
-        "The initial profile accepts raw half4 color and/or float normalized depth, one material-binding purpose, " +
-        "standard scene purposes, unit camera exposure and no active motion blur or depth of field. " +
+        "Optional width and height override the full raster before cropping; supply both within 1-4096 pixels, " +
+        "or omit both to retain authored resolution. " +
+        "The initial profile accepts raw half4 color, float normalized depth, int primId, int instanceId, " +
+        "int elementId and/or normal3f normal, " +
+        "one material-binding purpose, standard scene purposes and no active motion blur or depth of field. " +
+        "primId, instanceId and elementId share one hdSilk pick pass and are refused when the capture device is not " +
+            "pick-capable. " +
+        "normal runs a separate hdSilk world-space normal pass. " +
+        "Authored camera exposure scales the HDR plane and adds its stops to the PNG display exposure. " +
         "Unsupported variables, named rendering color spaces and unevaluated settings are refused, " +
         "never replaced by beauty. " +
         "Effects: samples the camera in bounded scheduler batches and applies exact admitted scene filters; " +
         "writes generated raw or supported Windows EXR data planes, a display-companion PNG and manifest atomically. " +
         "No source opinions, authored product filename authority or RenderPass commands are used. " +
-        "Result bounds: one job descriptor and at most two variable bindings; " +
+        "Result bounds: one job descriptor and at most five variable bindings; " +
         "read_sequence_frame exposes selected planes. " +
         "Shares the 8-job/4-GiB process quota and 64-MiB per-frame policy with render_sequence. " +
         "Errors: invalid_argument, no_session, stale_session, stale_revision, quota_exceeded, " +
@@ -185,7 +225,7 @@ internal static class OpenUsdMcpDescriptions
         "\"frameCount\":3,\"startTimeCode\":0,\"timeStep\":1}}.";
 
     internal const string ReadSequenceSheet =
-        "Create a contact-sheet PNG from completed render_sequence or render_product files " +
+        "Create a contact-sheet PNG from completed render_sequence, render_product or render_physics_sequence files " +
         "without rendering the scene. " +
         "Preconditions: jobId belongs to this process; optional frameIndices contains 1-16 unique valid indices, " +
         "or omit it to sample at most 16 evenly spaced frames including endpoints. Width/height are 4-1024 pixels. " +
@@ -194,6 +234,12 @@ internal static class OpenUsdMcpDescriptions
         "Effects: registers one new bounded PNG resource under existing artifact quotas; repeated calls consume " +
         "new resource capacity but never a render-job slot, and do not touch USD or require an active scene. " +
         "Result bounds: one artifact link, captured job revision and up to 16 ordered cell/index/time records. " +
+        "Authored-product jobs retain their captured settings/product/camera paths, profile, binding purpose " +
+        "and requested variables; ordinary viewport jobs have no authoredProduct. " +
+        "Per-frame simulation context retains the optional original host-provided review identity, " +
+        "an attestation rather than independent source verification. " +
+        "Each tile's cameraRequest is the source frame's original submitted camera, not a resized-cell camera " +
+        "or effective backend state; automatic mode has null matrices. " +
         "Only original display PNGs are used, not HDR/depth conversions. " +
         "Errors: invalid_argument, artifact_not_found, artifact_integrity_error, path_denied or quota_exceeded. " +
         "Example arguments: {\"request\":{\"jobId\":\"<job>\",\"frameIndices\":[0,12,24]," +
@@ -221,11 +267,11 @@ internal static class OpenUsdMcpDescriptions
         "session. Preview artifacts are optional; missing previews are recorded as partial " +
         "failures rather than invented. " +
         "Effects: writes only inside the session output directory and keeps the session active. " +
-        "Result bounds: at most three report-resource descriptors, at most 16 bounded " +
+        "Result bounds: at most three report-resource descriptors, at most 23 bounded " +
         "failure messages, at most 16 additional content blocks, and one text summary of at " +
         "most 2048 characters. " +
         "Errors: invalid_argument, no_session, stale_session, stale_revision, or " +
-        "native_failure. Per-artifact export or publication failures may instead return " +
+        "native_failure. Per-artifact preview read, export or publication failures may instead return " +
         "partial=true with bounded failures. " +
         "Example arguments: {\"request\":{\"sessionId\":\"<id>\",\"generation\":1,\"stageRevision\":2}}.";
 
@@ -401,8 +447,10 @@ internal sealed class OpenUsdMcpTools(
         [Description(
             "Exact optimistic revision, capture mode, bounded dimensions, and 1-16 ordered views.")]
         RenderPreviewRequest request,
-        CancellationToken cancellationToken) =>
-        InvokeAsync(token => service.RenderPreviewAsync(request, token), cancellationToken);
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null) =>
+        InvokeRenderAsync((progress, token) => service.RenderPreviewAsync(request, token, progress),
+            context, cancellationToken, "views captured; artifact registration not confirmed.");
 
     [McpServerTool(
         Name = "render_sequence",
@@ -417,8 +465,41 @@ internal sealed class OpenUsdMcpTools(
     public ValueTask<CallToolResult> RenderSequenceAsync(
         [Description("Exact scene revision, finite time range and bounded disk-sequence dimensions.")]
         RenderSequenceRequest request,
-        CancellationToken cancellationToken) =>
-        InvokeAsync(token => service.RenderSequenceAsync(request, token), cancellationToken);
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null) =>
+        InvokeRenderAsync((progress, token) => service.RenderSequenceAsync(request, token, progress),
+            context, cancellationToken);
+
+    [McpServerTool(
+        Name = "render_physics_sequence",
+        Title = "Record OpenUSD Physics Sequence",
+        Destructive = false,
+        Idempotent = false,
+        OpenWorld = false,
+        ReadOnly = false,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpRenderSequenceResultDto))]
+    [Description(
+        "Build a fresh bounded CPU rigid-body/joint world, advance fixed steps and record complete captures. " +
+        "Preconditions: exact open-scene revision, explicitly checked workspace meters-per-unit and up axis, " +
+        "complete noninstanced extraction, resolvable mesh bindings and a physics-capable Silk source. " +
+        "Source-sublayer root metadata is not inherited by the workspace root; use open_scene stageSettings " +
+        "for explicit root units/axis/timeline. Source layers are not authored. " +
+        "Result bounds: 1-4096 PNG frames with optional HDR/depth, 1-8 steps per frame; existing 8-job/4-GiB " +
+        "process quota and 64-MiB per-frame policy. Extraction admits 4096 objects, 1048576 points and " +
+        "3145728 indices. Returns a job ID for read_sequence_frame/read_sequence_sheet and exact step metadata. " +
+        "Errors: invalid_argument, stale_revision, quota_exceeded, native_failure or render_failure; " +
+        "truncation, unsupported domains and partial captures never publish a partial job. " +
+        "Example arguments: {\"request\":{\"sessionId\":\"<open_scene sessionId>\",\"generation\":1," +
+        "\"stageRevision\":1,\"scenarioIdentity\":\"rigid-test\",\"expectedMetersPerUnit\":0.01," +
+        "\"expectedUpAxis\":\"Y\",\"frameCount\":3,\"stepsPerFrame\":4,\"width\":256,\"height\":256}}.")]
+    public ValueTask<CallToolResult> RenderPhysicsSequenceAsync(
+        [Description("Exact scene revision, scenario identity, fixed-step count and bounded output dimensions.")]
+        RenderPhysicsSequenceRequest request,
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null) =>
+        InvokeRenderAsync((progress, token) => service.RenderPhysicsSequenceAsync(request, token, progress),
+            context, cancellationToken);
 
     [McpServerTool(
         Name = "render_product",
@@ -431,10 +512,25 @@ internal sealed class OpenUsdMcpTools(
         OutputSchemaType = typeof(McpRenderSequenceResultDto))]
     [Description(OpenUsdMcpDescriptions.RenderProduct)]
     public ValueTask<CallToolResult> RenderProductAsync(
-        [Description("Exact revision, authored settings/product selection, time samples and explicit output encoding.")]
+        [Description("Exact revision, authored settings/product, optional raster size, time samples and encoding.")]
         RenderProductCaptureRequest request,
-        CancellationToken cancellationToken) =>
-        InvokeAsync(token => service.RenderProductAsync(request, token), cancellationToken);
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null) =>
+        InvokeRenderAsync((progress, token) => service.RenderProductAsync(request, token, progress),
+            context, cancellationToken);
+
+    [McpServerTool(
+        Name = "list_sequence_jobs",
+        Title = "List Completed OpenUSD Sequence Jobs",
+        Destructive = false,
+        Idempotent = true,
+        OpenWorld = false,
+        ReadOnly = true,
+        UseStructuredContent = true,
+        OutputSchemaType = typeof(McpSequenceJobsResultDto))]
+    [Description(OpenUsdMcpDescriptions.ListSequenceJobs)]
+    public ValueTask<CallToolResult> ListSequenceJobsAsync(CancellationToken cancellationToken) =>
+        InvokeAsync(service.ListSequenceJobsAsync, cancellationToken);
 
     [McpServerTool(
         Name = "read_sequence_frame",
@@ -534,13 +630,42 @@ internal sealed class OpenUsdMcpTools(
         CancellationToken cancellationToken) =>
         InvokeAsync(token => service.PresentSceneAsync(request, token), cancellationToken);
 
+    private ValueTask<CallToolResult> InvokeRenderAsync<T>(
+        Func<Action<int, int>?, CancellationToken, ValueTask<T>> operation,
+        RequestContext<CallToolRequestParams>? context, CancellationToken cancellationToken,
+        string progressDescription = "frames encoded in staging; publication not confirmed.")
+        where T : IOpenUsdMcpOutput
+        => InvokeAsync(token => context?.Params.ProgressToken is { } progressToken
+            ? McpRenderProgress.RunAsync(
+                (progress, innerToken) => operation(progress, innerToken),
+                async (completed, total, innerToken) =>
+                    await context.Server.NotifyProgressAsync(progressToken, new ProgressNotificationValue
+                    {
+                        Progress = (float)completed / (total + 1),
+                        Total = 1,
+                        Message = $"{completed}/{total} {progressDescription}"
+                    }, cancellationToken: innerToken).ConfigureAwait(false),
+                token)
+            : operation(null, token), cancellationToken, context);
+
     private async ValueTask<CallToolResult> InvokeAsync<T>(
         Func<CancellationToken, ValueTask<T>> operation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        RequestContext<CallToolRequestParams>? context = null)
         where T : IOpenUsdMcpOutput
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (context?.Params.ProgressToken is { } startToken)
+            {
+                await context.Server.NotifyProgressAsync(startToken, new ProgressNotificationValue
+                {
+                    Progress = 0,
+                    Total = 1,
+                    Message = "Request started; admission and revision checks pending."
+                }, cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
             T output = await operation(cancellationToken).ConfigureAwait(false);
             JsonElement structured = JsonSerializer.SerializeToElement(output, JsonOptions);
             var content = new List<ContentBlock>
@@ -555,12 +680,19 @@ internal sealed class OpenUsdMcpTools(
                 AddArtifactBlocks(content, artifacts.ArtifactResources);
             }
 
-            return new CallToolResult
+            var result = new CallToolResult
             {
                 Content = content,
                 StructuredContent = structured,
                 IsError = false,
             };
+            if (context?.Params.ProgressToken is { } endToken)
+            {
+                await context.Server.NotifyProgressAsync(endToken,
+                    new ProgressNotificationValue { Progress = 1, Total = 1, Message = "Result ready." },
+                    cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            }
+            return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

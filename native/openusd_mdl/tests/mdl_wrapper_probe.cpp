@@ -9,6 +9,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -194,12 +195,15 @@ void Texture(
     const fs::path& expected,
     uint32_t channel,
     uint32_t colorSpace,
-    uint32_t origin = OPENUSD_MDL_ORIGIN_MODULE_DEFAULT)
+    uint32_t origin = OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+    std::initializer_list<float> expected_scale = {},
+    std::initializer_list<float> expected_bias = {},
+    uint32_t composite = OPENUSD_MDL_COMPOSITE_NONE)
 {
     const openusd_mdl_distilled_texture* found = nullptr;
     for (uint32_t index = 0; index < value.texture_count; ++index)
     {
-        if (value.textures[index].surface_input == input)
+        if (value.textures[index].surface_input == input && value.textures[index].composite_operator == composite)
         {
             Require(found == nullptr, "duplicate texture input " + std::to_string(input));
             found = &value.textures[index];
@@ -217,8 +221,29 @@ void Texture(
         "wrong texture channel/shape/color space/origin/wrap for " + expected.u8string());
     for (size_t component = 0; component < 4; ++component)
     {
-        Require(found->scale[component] == 1.0F && found->bias[component] == 0.0F,
+        const float scale = expected_scale.size() == 4 ? *(expected_scale.begin() + component)
+            : input == OPENUSD_MDL_SURFACE_NORMAL && component == 1 ? -1.0F : 1.0F;
+        const float bias = expected_bias.size() == 4 ? *(expected_bias.begin() + component)
+            : input == OPENUSD_MDL_SURFACE_NORMAL && component == 1 ? 1.0F : 0.0F;
+        Require((expected_scale.size() == 0 || expected_scale.size() == 4) &&
+            (expected_bias.size() == 0 || expected_bias.size() == 4) &&
+            std::fabs(found->scale[component] - scale) < 0.00001F &&
+            std::fabs(found->bias[component] - bias) < 0.00001F,
             "unexpected texture scale/bias");
+    }
+}
+
+void UvTransform(const openusd_mdl_distilled_material& result, std::initializer_list<float> expected,
+    uint32_t origin = OPENUSD_MDL_ORIGIN_MODULE_DEFAULT)
+{
+    Require(result.has_uv_transform == 1 && expected.size() == 6 && result.uv_transform_origin == origin,
+        "missing UV transform or wrong provenance");
+    size_t index = 0;
+    for (float value : expected)
+    {
+        Require(std::isfinite(result.uv_transform[index]) &&
+            std::fabs(result.uv_transform[index] - value) < 0.00001F, "wrong UV affine value");
+        ++index;
     }
 }
 
@@ -229,6 +254,15 @@ openusd_mdl_parameter Number(const char* name, float value)
     result.kind = OPENUSD_MDL_VALUE_FLOAT;
     result.component_count = 1;
     result.value[0] = value;
+    return result;
+}
+
+openusd_mdl_parameter Pair(const char* name, float x, float y)
+{
+    auto result = Number(name, x);
+    result.kind = OPENUSD_MDL_VALUE_FLOAT2;
+    result.component_count = 2;
+    result.value[1] = y;
     return result;
 }
 
@@ -304,6 +338,19 @@ struct Probe
 void Rejections(Probe& probe, const fs::path& fixtures)
 {
     auto adapter = Create({fixtures.u8string()});
+    probe.Run("ExactSdkMaterialSignatureResolvesWithoutDiscardingTypes", [&] {
+        auto value = Distill(adapter.get(), "rejections.mdl", "unrelated(color,float)");
+        const auto& result = Success(value);
+        Scalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.9F, 0.8F, 0.7F});
+        Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.15F});
+    });
+    for (const char* name : {"unrelated(color,int)", "unrelated(color)", "unrelated(color,float)extra"})
+    {
+        probe.Run(name, [&] {
+            auto value = Distill(adapter.get(), "rejections.mdl", name);
+            Failure(value, OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL, "declares no material");
+        });
+    }
     probe.Run("UnknownVariantRootIsRefused", [&] {
         auto value = Distill(adapter.get(), "rejections.mdl", "unknown_root");
         Failure(value, OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED, "unrelated");
@@ -398,7 +445,8 @@ void Synthetic(
         Scalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.12F, 0.34F, 0.56F});
         Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.21F});
         Scalar(result, OPENUSD_MDL_SURFACE_METALLIC, {0.84F});
-        Require(result.scalar_count == 3 && result.texture_count == 0,
+        Scalar(result, OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.5F});
+        Require(result.scalar_count == 4 && result.texture_count == 0,
             "PBR variant gained unrelated glass/surface outputs");
     });
     probe.Run("AuthoredInputsOverrideVariantDefaults", [&] {
@@ -416,7 +464,7 @@ void Synthetic(
         Scalar(Success(repeated), OPENUSD_MDL_SURFACE_ROUGHNESS, {0.21F});
     });
     probe.Run("LocalTextureOrmNormalAndGamma", [&] {
-        auto value = Distill(adapter.get(), variants, "textured");
+        auto value = Distill(adapter.get(), variants, "textured", {Number("ao_to_diffuse", 1.0F)});
         const auto& result = Success(value);
         Require(result.texture_count == 5, "expected diffuse, three ORM channels, and normal");
         Texture(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
@@ -438,6 +486,109 @@ void Synthetic(
         Texture(result, OPENUSD_MDL_SURFACE_NORMAL, textures / "normal.ppm",
             OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW);
     });
+    probe.Run("DetailOnlyNormalUsesItsOwnStrengthAndPreservesMetadata", [&] {
+        auto value = Distill(adapter.get(), variants, "detail_only");
+        const auto& result = Success(value);
+        Texture(result, OPENUSD_MDL_SURFACE_NORMAL, textures / "normal.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0.3F, -0.3F, 1, 1}, {0.35F, 0.65F, 0, 0});
+        Require(!Reported(result, "detail_normalmap_texture") && !Reported(result, "detail_bump_factor"),
+            "an exact neutral-base detail normal was reported as dropped");
+    });
+    probe.Run("ZeroStrengthBaseDoesNotDiscardItsActiveDetail", [&] {
+        auto value = Distill(adapter.get(), variants, "detail_on_zero_base");
+        Texture(Success(value), OPENUSD_MDL_SURFACE_NORMAL, textures / "normal.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0.3F, -0.3F, 1, 1}, {0.35F, 0.65F, 0, 0});
+    });
+    probe.Run("DetailOnlyIndependentUvIsExactWhenNoOtherMapUsesTheAffine", [&] {
+        auto value = Distill(adapter.get(), variants, "detail_only",
+            {Pair("detail_texture_scale", 2, 3), Number("detail_texture_rotate", 90),
+             Pair("detail_texture_translate", 0.2F, -0.4F)});
+        const auto& result = Success(value);
+        Require(result.texture_count == 1, "detail map was lost");
+        UvTransform(result, {0, 2, -3, 0, 0.2F, -0.4F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+    });
+    probe.Run("CompatibleDiffuseAndDetailPreserveBothMapsAndSharedUv", [&] {
+        auto value = Distill(adapter.get(), variants, "detail_with_diffuse",
+            {Pair("texture_scale", 2, 3), Pair("detail_texture_scale", 2, 3)});
+        const auto& result = Success(value);
+        Require(result.texture_count == 2 && !Reported(result, "detail_normalmap_texture"),
+            "a compatible detail normal displaced or lost the existing diffuse map");
+        Texture(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW);
+        Texture(result, OPENUSD_MDL_SURFACE_NORMAL, textures / "normal.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0.3F, -0.3F, 1, 1}, {0.35F, 0.65F, 0, 0});
+        UvTransform(result, {2, 0, 0, 3, 0, 0}, OPENUSD_MDL_ORIGIN_AUTHORED);
+    });
+    probe.Run("ActiveBaseAndIndependentDetailUvsPreserveEveryMap", [&] {
+        auto active = Distill(adapter.get(), variants, "detail_on_active_base");
+        Texture(Success(active), OPENUSD_MDL_SURFACE_NORMAL, textures / "normal.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0.6F, -0.6F, 1, 1}, {0.2F, 0.8F, 0, 0});
+        Texture(Success(active), OPENUSD_MDL_SURFACE_DETAIL_NORMAL, textures / "normal.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0.3F, -0.3F, 1, 1}, {0.35F, 0.65F, 0, 0});
+        auto divergent = Distill(adapter.get(), variants, "detail_with_diffuse",
+            {Pair("detail_texture_scale", 3, 2)});
+        const auto& result = Success(divergent);
+        Require(result.texture_count == 2 && !Reported(result, "detail_normalmap_texture") &&
+            !Reported(result, "detail_bump_factor"),
+            "independent detail coordinates lost a material input");
+        Scalar(result, OPENUSD_MDL_SURFACE_DETAIL_UV_ROW0, {3, 0, 0}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Scalar(result, OPENUSD_MDL_SURFACE_DETAIL_UV_ROW1, {0, 2, 0}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        UvTransform(result, {1, 0, 0, 1, 0, 0});
+    });
+    probe.Run("TwoActiveNormalsKeepSeparateTextures", [&] {
+        auto value = Distill(adapter.get(), variants, "detail_on_active_base");
+        const auto& result = Success(value);
+        Require(result.texture_count == 2,
+            "two active normal maps must both reach the renderer");
+        Require(!Reported(result, "detail_normalmap_texture") &&
+            !Reported(result, "detail_bump_factor"),
+            "a supported detail normal must not remain a dropped input");
+        Texture(result, OPENUSD_MDL_SURFACE_NORMAL, textures / "normal.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0.6F, -0.6F, 1, 1}, {0.2F, 0.8F, 0, 0});
+        Texture(result, OPENUSD_MDL_SURFACE_DETAIL_NORMAL, textures / "normal.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0.3F, -0.3F, 1, 1}, {0.35F, 0.65F, 0, 0});
+        Scalar(result, OPENUSD_MDL_SURFACE_DETAIL_UV_ROW0, {1, 0, 0});
+        Scalar(result, OPENUSD_MDL_SURFACE_DETAIL_UV_ROW1, {0, 1, 0});
+        for (uint32_t index = 0; index < result.texture_count; ++index)
+        {
+            Require(result.textures[index].composite_operator == OPENUSD_MDL_COMPOSITE_NONE,
+                "detail normals must not consume the emission composite slot");
+        }
+    });
+    probe.Run("NeutralBaseDetailValidatesStrengthAndKeepsZeroNeutral", [&] {
+        auto zero = Distill(adapter.get(), variants, "detail_only", {Number("detail_bump_factor", 0)});
+        Require(Success(zero).texture_count == 0, "zero detail strength introduced a normal map");
+        auto invalid = Distill(adapter.get(), variants, "detail_only",
+            {Number("detail_bump_factor", std::numeric_limits<float>::infinity())});
+        Require(Success(invalid).texture_count == 0 && Reported(Success(invalid), "detail_bump_factor"),
+            "invalid detail strength was accepted or silently defaulted");
+    });
+    probe.Run("NeutralBaseDetailKeepsSignedStrengthAndTangentFlips", [&] {
+        auto value = Distill(adapter.get(), variants, "detail_only",
+            {Number("detail_bump_factor", -2.0F),
+             Boolean("flip_tangent_u", true), Boolean("flip_tangent_v", false)});
+        Texture(Success(value), OPENUSD_MDL_SURFACE_NORMAL, textures / "normal.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {2, -2, 1, 1}, {-0.5F, 1.5F, 0, 0});
+    });
+    probe.Run("UnresolvedBaseAndUnsupportedCoordinatesCannotBecomeDetailOnly", [&] {
+        auto unresolved = Distill(adapter.get(), variants, "detail_on_unresolved_base");
+        Require(Success(unresolved).texture_count == 0 &&
+            Reported(Success(unresolved), "detail_normalmap_texture"),
+            "an unresolved base was treated as a proven neutral normal");
+        auto projected = Distill(adapter.get(), variants, "detail_only", {Boolean("project_uvw", true)});
+        Require(Success(projected).texture_count == 0 &&
+            Reported(Success(projected), "project_uvw") &&
+            Reported(Success(projected), "detail_normalmap_texture"),
+            "projected coordinates silently became authored UVs");
+    });
     probe.Run("AuthoredTextureAndGateOriginsStaySeparate", [&] {
         const std::string asset = (textures / "albedo.ppm").u8string();
         auto value = Distill(adapter.get(), variants, "influenced",
@@ -452,8 +603,343 @@ void Synthetic(
             Boolean("enable_emission", true), Color("emissive_color", 0.24F, 0.35F, 0.46F)});
         const auto& gateResult = Success(gates);
         Scalar(gateResult, OPENUSD_MDL_SURFACE_OPACITY, {0.44F}, OPENUSD_MDL_ORIGIN_AUTHORED);
-        Scalar(gateResult, OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, {0.24F, 0.35F, 0.46F},
+        constexpr float inversePi = 0.31830988618379067154F;
+        Scalar(gateResult, OPENUSD_MDL_SURFACE_EMISSIVE_COLOR,
+            {0.24F * 40 * inversePi, 0.35F * 40 * inversePi, 0.46F * 40 * inversePi},
             OPENUSD_MDL_ORIGIN_AUTHORED);
+    });
+    probe.Run("ProvenDiffuseEmissionProjectsRadianceAndExplicitMaskMultiplication", [&] {
+        constexpr float inversePi = 0.31830988618379067154F;
+        auto constant = Distill(adapter.get(), variants, "emission");
+        Scalar(Success(constant), OPENUSD_MDL_SURFACE_EMISSIVE_COLOR,
+            {inversePi, 2 * inversePi, 4 * inversePi}, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT);
+        Require(!Reported(Success(constant), "emissive_intensity"), "proven exitance was not projected to radiance");
+        auto authored = Distill(adapter.get(), variants, "emission", {Number("emissive_intensity", 8)});
+        Scalar(Success(authored), OPENUSD_MDL_SURFACE_EMISSIVE_COLOR,
+            {2 * inversePi, 4 * inversePi, 8 * inversePi}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        auto image = Distill(adapter.get(), variants, "emission_texture");
+        Texture(Success(image), OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, textures / "albedo.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {4 * inversePi, 4 * inversePi, 4 * inversePi, 1});
+        auto mask = Distill(adapter.get(), variants, "emission_mask");
+        Texture(Success(mask), OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, textures / "orm.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {inversePi, 2 * inversePi, 4 * inversePi, 1});
+        auto both = Distill(adapter.get(), variants, "emission_both");
+        Require(Success(both).texture_count == 2, "emission masking did not retain both owned operands");
+        Texture(Success(both), OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, textures / "albedo.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {4 * inversePi, 4 * inversePi, 4 * inversePi, 1});
+        Texture(Success(both), OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, textures / "orm.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {}, {}, OPENUSD_MDL_COMPOSITE_MULTIPLY);
+        auto off = Distill(adapter.get(), variants, "emission_both", {Boolean("enable_emission", false)});
+        Require(Success(off).texture_count == 0, "disabled emission allocated images");
+        auto zero = Distill(adapter.get(), variants, "emission_both", {Number("emissive_intensity", 0)});
+        Scalar(Success(zero), OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, {0, 0, 0}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Require(Success(zero).texture_count == 0, "zero emission retained inactive images");
+        for (float invalid : {-0.1F, std::numeric_limits<float>::infinity(),
+            std::numeric_limits<float>::quiet_NaN()})
+        {
+            auto refused = Distill(adapter.get(), variants, "emission", {Number("emissive_intensity", invalid)});
+            Require(Reported(Success(refused), "emissive_intensity"), "invalid emission intensity was hidden");
+        }
+        auto overflow = Distill(adapter.get(), variants, "emission",
+            {Color("emissive_color", std::numeric_limits<float>::max(), 1, 1)});
+        Require(Reported(Success(overflow), "emissive_color"), "overflowed exitance was silently projected");
+    });
+    probe.Run("OpacityModeDefaultsAndAuthoredEnumsPreserveChannelsAndGates", [&] {
+        const uint32_t channels[] = {OPENUSD_MDL_CHANNEL_A, OPENUSD_MDL_CHANNEL_AVERAGE_RGB,
+            OPENUSD_MDL_CHANNEL_LUMINANCE_RGB, OPENUSD_MDL_CHANNEL_MAXIMUM_RGB};
+        auto defaults = Distill(adapter.get(), variants, "opacity_modes");
+        Texture(Success(defaults), OPENUSD_MDL_SURFACE_OPACITY, textures / "albedo.ppm",
+            OPENUSD_MDL_CHANNEL_AVERAGE_RGB, OPENUSD_MDL_COLOR_SPACE_RAW);
+        for (int index = 0; index < 4; ++index)
+        {
+            auto mode = Number("opacity_mode", 0);
+            mode.kind = OPENUSD_MDL_VALUE_INT;
+            mode.integer_value = index;
+            auto projected = Distill(adapter.get(), variants, "opacity_modes",
+                {mode, Number("opacity_threshold", 0.5F)});
+            Texture(Success(projected), OPENUSD_MDL_SURFACE_OPACITY, textures / "albedo.ppm",
+                channels[index], OPENUSD_MDL_COLOR_SPACE_RAW);
+            Scalar(Success(projected), OPENUSD_MDL_SURFACE_OPACITY_THRESHOLD, {0.5F},
+                OPENUSD_MDL_ORIGIN_AUTHORED);
+            Require(!Reported(Success(projected), "opacity_mode"), "known opacity mode was refused");
+        }
+        for (const char* gate : {"enable_opacity", "enable_opacity_texture"})
+        {
+            auto disabled = Distill(adapter.get(), variants, "opacity_modes", {Boolean(gate, false)});
+            Require(Success(disabled).texture_count == 0, "an inactive opacity map was published");
+        }
+        for (int invalid : {-1, 4})
+        {
+            auto mode = Number("opacity_mode", 0);
+            mode.kind = OPENUSD_MDL_VALUE_INT;
+            mode.integer_value = invalid;
+            auto refused = Distill(adapter.get(), variants, "opacity_modes", {mode});
+            Require(Reported(Success(refused), "opacity_mode") && Success(refused).texture_count == 0,
+                "an invalid enum was guessed as a known opacity mode");
+        }
+        auto malformed = Distill(adapter.get(), variants, "opacity_modes", {Number("opacity_mode", 1.5F)});
+        Require(Reported(Success(malformed), "opacity_mode"), "fractional opacity enum was narrowed");
+        auto missing = Distill(adapter.get(), variants, "constants",
+            {Boolean("enable_opacity", true), Boolean("enable_opacity_texture", true)});
+        Require(Reported(Success(missing), "opacity_texture") && Success(missing).texture_count == 0,
+            "an enabled unavailable opacity map silently became a constant");
+        for (const char* control : {"opacity_constant", "opacity_threshold"})
+        {
+            for (float invalid : {-0.1F, 1.1F, std::numeric_limits<float>::quiet_NaN()})
+            {
+                auto refused = Distill(adapter.get(), variants, "opacity_modes", {Number(control, invalid)});
+                Require(Reported(Success(refused), control), "invalid opacity control was silently applied");
+            }
+        }
+    });
+    probe.Run("ScalarTextureInfluencePreservesZeroFractionalFullAndOrmPriority", [&] {
+        auto fractional = Distill(adapter.get(), variants, "influenced", {
+            Number("reflection_roughness_constant", 0.2F),
+            Number("reflection_roughness_texture_influence", 0.25F),
+            Number("metallic_constant", 0.8F), Number("metallic_texture_influence", 0.5F)});
+        const auto& direct = Success(fractional);
+        Require(direct.texture_count == 2, "fractional maps were dropped");
+        Texture(direct, OPENUSD_MDL_SURFACE_ROUGHNESS, textures / "orm.ppm",
+            OPENUSD_MDL_CHANNEL_R, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0.25F, 1, 1, 1}, {0.15F, 0, 0, 0});
+        Texture(direct, OPENUSD_MDL_SURFACE_METALLIC, textures / "orm.ppm",
+            OPENUSD_MDL_CHANNEL_R, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0.5F, 1, 1, 1}, {0.4F, 0, 0, 0});
+        Require(!Reported(direct, "reflection_roughness_texture_influence") &&
+            !Reported(direct, "metallic_texture_influence"), "supported fractional controls were reported as lost");
+        auto off = Distill(adapter.get(), variants, "influenced", {
+            Number("reflection_roughness_texture_influence", 0), Number("metallic_texture_influence", 0)});
+        Require(Success(off).texture_count == 0, "zero influence published a texture instead of its constant");
+        Scalar(Success(off), OPENUSD_MDL_SURFACE_ROUGHNESS, {0.5F});
+        Scalar(Success(off), OPENUSD_MDL_SURFACE_METALLIC, {0});
+        const std::string orm_asset = (textures / "orm.ppm").u8string();
+        auto packed = Distill(adapter.get(), variants, "influenced", {
+            Boolean("enable_ORM_texture", true), Asset("ORM_texture", orm_asset),
+            Number("ao_to_diffuse", 1.0F),
+            Number("reflection_roughness_constant", 0.2F),
+            Number("reflection_roughness_texture_influence", 0.25F),
+            Number("metallic_constant", 0.8F), Number("metallic_texture_influence", 0.5F)});
+        const auto& orm = Success(packed);
+        Require(orm.texture_count == 3, "ORM and standalone maps were both published or an ORM channel was dropped");
+        Texture(orm, OPENUSD_MDL_SURFACE_OCCLUSION, textures / "orm.ppm",
+            OPENUSD_MDL_CHANNEL_R, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Texture(orm, OPENUSD_MDL_SURFACE_ROUGHNESS, textures / "orm.ppm",
+            OPENUSD_MDL_CHANNEL_G, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_AUTHORED,
+            {1, 0.25F, 1, 1}, {0, 0.15F, 0, 0});
+        Texture(orm, OPENUSD_MDL_SURFACE_METALLIC, textures / "orm.ppm",
+            OPENUSD_MDL_CHANNEL_B, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_AUTHORED,
+            {1, 1, 0.5F, 1}, {0, 0, 0.4F, 0});
+        for (float outside : {-0.1F, 1.1F,
+            std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()})
+        {
+            auto invalid = Distill(adapter.get(), variants, "influenced", {
+                Number("reflection_roughness_texture_influence", outside),
+                Number("metallic_texture_influence", outside)});
+            const auto& refused = Success(invalid);
+            Require(refused.texture_count == 0 && Reported(refused, "reflection_roughness_texture_influence") &&
+                Reported(refused, "metallic_texture_influence"), "invalid texture influence was silently clamped");
+        }
+    });
+    probe.Run("ZeroAoWeightOmitsOnlyTheOrmOcclusionChannel", [&] {
+        const std::string orm_asset = (textures / "orm.ppm").u8string();
+        auto disabled = Distill(adapter.get(), variants, "influenced", {
+            Boolean("enable_ORM_texture", true), Asset("ORM_texture", orm_asset),
+            Number("ao_to_diffuse", 0.0F)});
+        const auto& result = Success(disabled);
+        Require(result.texture_count == 2, "zero AO weight still published occlusion or removed another ORM channel");
+        Texture(result, OPENUSD_MDL_SURFACE_ROUGHNESS, textures / "orm.ppm",
+            OPENUSD_MDL_CHANNEL_G, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Texture(result, OPENUSD_MDL_SURFACE_METALLIC, textures / "orm.ppm",
+            OPENUSD_MDL_CHANNEL_B, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Require(!Reported(result, "ao_to_diffuse"), "zero AO weight was reported unsupported");
+        auto inheritedZero = Distill(adapter.get(), variants, "influenced", {
+            Boolean("enable_ORM_texture", true), Asset("ORM_texture", orm_asset)});
+        Require(Success(inheritedZero).texture_count == 2 && !Reported(Success(inheritedZero), "ao_to_diffuse"),
+            "the SDK-proven zero AO default did not suppress the unused occlusion channel");
+        for (float weight : {0.25F, 1.0F})
+        {
+            auto partial = Distill(adapter.get(), variants, "influenced", {
+                Boolean("enable_ORM_texture", true), Asset("ORM_texture", orm_asset),
+                Number("ao_to_diffuse", weight)});
+            Require(Success(partial).texture_count == 3 && Reported(Success(partial), "ao_to_diffuse"),
+                "nonzero AO weight was silently claimed as exact diffuse multiplication");
+        }
+    });
+    probe.Run("DiffuseTintMultipliesConstantsAndTextureRgbWithoutChangingAlphaOrAssetOrigin", [&] {
+        auto value = Distill(adapter.get(), variants, "constants",
+            {Color("diffuse_tint", 0.5F, 0.25F, 1.5F)});
+        const auto& constant = Success(value);
+        Scalar(constant, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.06F, 0.085F, 0.84F},
+            OPENUSD_MDL_ORIGIN_AUTHORED);
+        Require(!Reported(constant, "diffuse_tint"), "supported constant tint was reported as dropped");
+        auto textured = Distill(adapter.get(), variants, "textured",
+            {Color("diffuse_tint", 0.5F, 0.25F, 0.75F)});
+        const auto& texture = Success(textured);
+        Scalar(texture, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.1F, 0.05F, 0.15F},
+            OPENUSD_MDL_ORIGIN_AUTHORED);
+        Texture(texture, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW,
+            OPENUSD_MDL_ORIGIN_MODULE_DEFAULT, {0.5F, 0.25F, 0.75F, 1});
+        Require(!Reported(texture, "diffuse_tint"), "supported texture tint was reported as dropped");
+        auto zero = Distill(adapter.get(), variants, "constants", {Color("diffuse_tint", 0, 0, 0)});
+        Scalar(Success(zero), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0, 0, 0}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        auto scalar_tint = Distill(adapter.get(), variants, "constants", {Number("diffuse_tint", 0.5F)});
+        Scalar(Success(scalar_tint), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR,
+            {0.06F, 0.17F, 0.28F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        auto invalid = Distill(adapter.get(), variants, "constants", {Boolean("diffuse_tint", true)});
+        Require(Reported(Success(invalid), "diffuse_tint"), "a malformed tint was silently accepted");
+        Scalar(Success(invalid), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.12F, 0.34F, 0.56F});
+        const float maximum = std::numeric_limits<float>::max();
+        auto overflow = Distill(adapter.get(), variants, "constants",
+            {Color("diffuse_color_constant", maximum, maximum, maximum), Color("diffuse_tint", 2, 2, 2)});
+        Require(Reported(Success(overflow), "diffuse_tint"), "overflowed tint was not diagnosed");
+        Scalar(Success(overflow), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR,
+            {maximum, maximum, maximum}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        for (float outside : {-0.1F, 1.1F})
+        {
+            auto extended = Distill(adapter.get(), variants, "textured",
+                {Color("diffuse_tint", outside, 0.5F, 0.5F)});
+            Require(!Reported(Success(extended), "diffuse_tint"), "finite float-texture tint was refused");
+            Texture(Success(extended), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
+                OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW,
+                OPENUSD_MDL_ORIGIN_MODULE_DEFAULT, {outside, 0.5F, 0.5F, 1});
+        }
+        for (float outside : {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()})
+        {
+            auto clipped = Distill(adapter.get(), variants, "textured",
+                {Color("diffuse_tint", outside, 0.5F, 0.5F)});
+            Require(Reported(Success(clipped), "diffuse_tint"), "nonfinite texture tint was silently accepted");
+            Texture(Success(clipped), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
+                OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW);
+        }
+    });
+    probe.Run("AlbedoGradingAppliesBeforeTintOnlyToTexturesAndPreservesAlpha", [&] {
+        auto graded = Distill(adapter.get(), variants, "graded");
+        Texture(Success(graded), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {1, 0.5F, 3, 1}, {-0.125F, -0.0625F, -0.375F, 0});
+        Require(!Reported(Success(graded), "albedo_add") && !Reported(Success(graded), "albedo_brightness"),
+            "finite texture grading was reported as dropped");
+        auto authored = Distill(adapter.get(), variants, "graded",
+            {Number("albedo_brightness", -0.5F), Number("albedo_add", 0.125F)});
+        Texture(Success(authored), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {-0.25F, -0.125F, -0.75F, 1}, {0.0625F, 0.03125F, 0.1875F, 0});
+        auto constant = Distill(adapter.get(), variants, "constants",
+            {Number("albedo_brightness", 3), Number("albedo_add", -0.5F), Color("diffuse_tint", 2, 2, 2)});
+        Scalar(Success(constant), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR,
+            {0.24F, 0.68F, 1.12F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Require(!Reported(Success(constant), "albedo_add") && !Reported(Success(constant), "albedo_brightness"),
+            "inactive constant grading was reported as dropped");
+        auto zero = Distill(adapter.get(), variants, "graded", {Number("albedo_brightness", 0)});
+        Texture(Success(zero), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {0, 0, 0, 1}, {-0.125F, -0.0625F, -0.375F, 0});
+        for (const char* name : {"albedo_brightness", "albedo_add"})
+        {
+            for (float invalid : {std::numeric_limits<float>::infinity(),
+                std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::max()})
+            {
+                auto refused = Distill(adapter.get(), variants, "graded", {Number(name, invalid)});
+                Require(Reported(Success(refused), "albedo_brightness") && Reported(Success(refused), "albedo_add"),
+                    "nonfinite or overflowing grading was silently applied");
+                Texture(Success(refused), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
+                    OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+                    {0.5F, 0.25F, 1.5F, 1});
+            }
+            auto malformed = Distill(adapter.get(), variants, "graded", {Pair(name, 1, 2)});
+            Require(Reported(Success(malformed), name), "malformed grading was silently accepted");
+        }
+        auto desaturated = Distill(adapter.get(), variants, "graded", {Number("albedo_desaturation", 0.5F)});
+        Scalar(Success(desaturated), OPENUSD_MDL_SURFACE_DIFFUSE_TEXTURE_LUMINANCE_MIX,
+            {0.212671F, 0.715160F, 0.072169F, 0.5F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Require(!Reported(Success(desaturated), "albedo_desaturation"),
+            "supported desaturation was reported as dropped");
+    });
+    probe.Run("DesaturationMixRetainsLuminanceWeightsAndRejectsNonfiniteValues", [&] {
+        for (float amount : {-0.3F, 0.25F, 1.0F, 1.3F})
+        {
+            auto mixed = Distill(adapter.get(), variants, "textured", {Number("albedo_desaturation", amount)});
+            Scalar(Success(mixed), OPENUSD_MDL_SURFACE_DIFFUSE_TEXTURE_LUMINANCE_MIX,
+                {0.212671F, 0.715160F, 0.072169F, amount}, OPENUSD_MDL_ORIGIN_AUTHORED);
+            Texture(Success(mixed), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "albedo.ppm",
+                OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW);
+        }
+        for (const char* variant : {"constants", "textured"})
+        {
+            auto inactive = Distill(adapter.get(), variants, variant, {Number("albedo_desaturation", 0)});
+            const auto& result = Success(inactive);
+            for (uint32_t index = 0; index < result.scalar_count; ++index)
+            {
+                Require(result.scalars[index].surface_input != OPENUSD_MDL_SURFACE_DIFFUSE_TEXTURE_LUMINANCE_MIX,
+                    "inactive desaturation unnecessarily changes texture storage");
+            }
+        }
+        auto constant = Distill(adapter.get(), variants, "constants", {Number("albedo_desaturation", 1)});
+        Scalar(Success(constant), OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.12F, 0.34F, 0.56F});
+        Require(!Reported(Success(constant), "albedo_desaturation"), "inactive constant desaturation was reported");
+        for (float invalid : {std::numeric_limits<float>::infinity(),
+            std::numeric_limits<float>::quiet_NaN()})
+        {
+            auto refused = Distill(adapter.get(), variants, "textured", {Number("albedo_desaturation", invalid)});
+            Require(Reported(Success(refused), "albedo_desaturation"), "invalid desaturation was silently applied");
+        }
+        auto malformed = Distill(adapter.get(), variants, "textured", {Pair("albedo_desaturation", 1, 2)});
+        Require(Reported(Success(malformed), "albedo_desaturation"), "nonscalar desaturation was silently applied");
+    });
+    probe.Run("AuthoredUvAffinePreservesScaleClockwiseRotationTranslationAndModeRefusal", [&] {
+        auto identity = Distill(adapter.get(), variants, "constants");
+        UvTransform(Success(identity), {1, 0, 0, 1, 0, 0});
+        auto transformed = Distill(adapter.get(), variants, "textured", {
+            Pair("texture_scale", 2, 3), Number("texture_rotate", 90), Pair("texture_translate", 0.25F, -0.5F)});
+        const auto& result = Success(transformed);
+        UvTransform(result, {0, 2, -3, 0, 0.25F, -0.5F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Require(!Reported(result, "texture_scale") && !Reported(result, "texture_rotate") &&
+            !Reported(result, "texture_translate"), "supported UV transform was reported as dropped");
+        auto mirrored = Distill(adapter.get(), variants, "constants",
+            {Pair("texture_scale", -2, 0), Number("texture_rotate", 360)});
+        UvTransform(Success(mirrored), {-2, 0, 0, 0, 0, 0}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        auto projected = Distill(adapter.get(), variants, "textured",
+            {Boolean("project_uvw", true), Pair("texture_scale", 2, 3)});
+        Require(Success(projected).has_uv_transform == 0 && Reported(Success(projected), "project_uvw") &&
+            Reported(Success(projected), "texture_scale"), "unimplemented projected UVs were treated as authored st");
+        auto alternate = Number("uv_space_index", 1);
+        alternate.kind = OPENUSD_MDL_VALUE_INT;
+        alternate.integer_value = 1;
+        auto wrong_space = Distill(adapter.get(), variants, "textured", {alternate});
+        Require(Success(wrong_space).has_uv_transform == 0 && Reported(Success(wrong_space), "uv_space_index"),
+            "alternate UV set silently used set zero");
+        auto malformed = Distill(adapter.get(), variants, "textured",
+            {Pair("texture_scale", std::numeric_limits<float>::infinity(), 1), Number("texture_rotate", 45)});
+        Require(Success(malformed).has_uv_transform == 0 && Reported(Success(malformed), "texture_scale") &&
+            Reported(Success(malformed), "texture_rotate"), "partial invalid UV transform was applied");
+    });
+    probe.Run("NormalStrengthAndTangentFlipsPreserveSignedUnclippedAffine", [&] {
+        for (float strength : {0.25F, 1.0F, 3.0F, -2.0F})
+        {
+            auto value = Distill(adapter.get(), variants, "textured", {
+                Number("bump_factor", strength), Boolean("flip_tangent_u", true),
+                Boolean("flip_tangent_v", false)});
+            const auto& result = Success(value);
+            Texture(result, OPENUSD_MDL_SURFACE_NORMAL, textures / "normal.ppm",
+                OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+                {-strength, strength, 1, 1}, {0.5F + 0.5F * strength, 0.5F - 0.5F * strength, 0, 0});
+            Require(!Reported(result, "bump_factor") && !Reported(result, "flip_tangent_u") &&
+                !Reported(result, "flip_tangent_v"), "supported normal controls were reported as lost");
+        }
+        auto disabled = Distill(adapter.get(), variants, "textured", {Number("bump_factor", 0)});
+        for (uint32_t index = 0; index < Success(disabled).texture_count; ++index)
+        {
+            Require(Success(disabled).textures[index].surface_input != OPENUSD_MDL_SURFACE_NORMAL,
+                "zero normal strength still published a normal map");
+        }
+        auto invalid = Distill(adapter.get(), variants, "textured",
+            {Number("bump_factor", std::numeric_limits<float>::infinity())});
+        Require(Reported(Success(invalid), "bump_factor"), "nonfinite normal strength was silently accepted");
     });
     probe.Run("AuthoredTextureColorSpaceWins", [&] {
         const std::string asset = (textures / "normal.ppm").u8string();
@@ -486,6 +972,55 @@ void Synthetic(
         Require(result.texture_count == 0 && Reported(result, "diffuse_texture") &&
             Text(result.diagnostic).find("absent-on-purpose.png") != std::string::npos,
             "an unresolved nonempty texture was silently treated as an empty default");
+    });
+    probe.Run("EmptyScalarMapsKeepZeroInfluenceNeutralAndNonzeroInfluenceDiagnosed", [&] {
+        for (bool ormEnabled : {false, true})
+        {
+            for (float factor : {0.0F, 0.35F, 1.0F})
+            {
+               auto value = Distill(adapter.get(), variants, "constants", {
+                   Boolean("enable_ORM_texture", ormEnabled),
+                   Number("reflection_roughness_texture_influence", factor),
+                   Number("metallic_texture_influence", factor)});
+               const auto& result = Success(value);
+               Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.21F});
+               Scalar(result, OPENUSD_MDL_SURFACE_METALLIC, {0.84F});
+               Require(result.texture_count == 0 &&
+                   Reported(result, "reflection_roughness_texture_influence") == (factor != 0) &&
+                   Reported(result, "metallic_texture_influence") == (factor != 0),
+                   "empty SDK defaults changed constants or hid nonzero lookup influence");
+               for (const char* name : {"reflectionroughness_texture", "metallic_texture", "ORM_texture"})
+               {
+                   Require(!Reported(result, name), std::string("an empty default became a missing map: ") + name);
+               }
+            }
+        }
+        auto inherited = Distill(adapter.get(), variants, "constants");
+        Require(!Reported(Success(inherited), "reflection_roughness_texture_influence") &&
+            !Reported(Success(inherited), "metallic_texture_influence"),
+            "resolved zero module defaults were reported as unprojected");
+    });
+    probe.Run("ZeroInfluenceDoesNotHideUnresolvedScalarResources", [&] {
+        for (bool ormEnabled : {false, true})
+        {
+            auto value = Distill(adapter.get(), "wrappers\\missing_texture.mdl", "missing_scalar_textures", {
+               Boolean("enable_ORM_texture", ormEnabled),
+               Number("reflection_roughness_texture_influence", 0),
+               Number("metallic_texture_influence", 0)});
+            const auto& result = Success(value);
+            Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.5F});
+            Scalar(result, OPENUSD_MDL_SURFACE_METALLIC, {0});
+            Require(result.texture_count == 0 &&
+               !Reported(result, "reflection_roughness_texture_influence") &&
+               !Reported(result, "metallic_texture_influence"),
+               "zero influence changed the scalar-only projection");
+            for (const char* name : {"reflectionroughness_texture", "metallic_texture", "ORM_texture"})
+            {
+               Require(Reported(result, name), std::string("zero influence hid an unresolved resource: ") + name);
+            }
+            Require(Text(result.diagnostic).find("absent-") != std::string::npos,
+               "the SDK resource-resolution diagnostic lost the missing filename");
+        }
     });
     probe.Run("AbsoluteUrisAndSpacesDoNotCrossPollute", [&] {
         const std::string first = (fixtures / "wrappers" / "Asset One" / "paint wrapper.mdl").u8string();
@@ -526,7 +1061,8 @@ void Synthetic(
         Require(Reported(result, "reflection_roughness_constant") &&
             Text(result.diagnostic).find("math::abs") != std::string::npos,
             "unsupported SDK call was not named");
-        Require(result.scalar_count == 2, "unevaluated roughness was replaced by a base default");
+        Scalar(result, OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.5F});
+        Require(result.scalar_count == 3, "unevaluated roughness was replaced by a base default");
         auto overridden = Distill(adapter.get(), variants, "unsupported_call",
             {Number("reflection_roughness_constant", 0.92F)});
         const auto& replacement = Success(overridden);
@@ -536,8 +1072,10 @@ void Synthetic(
             "overridden expression was still reported as dropped");
         auto modifier = Distill(adapter.get(), variants, "unsupported_modifier");
         const auto& partial = Success(modifier);
-        Require(Reported(partial, "diffuse_tint") && Reported(partial, "texture_scale"),
-            "unmapped named root arguments silently vanished");
+        Scalar(partial, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.08F, 0.1F, 0.12F});
+        UvTransform(partial, {2, 0, 0, 3, 0, 0});
+        Require(!Reported(partial, "diffuse_tint") && !Reported(partial, "texture_scale"),
+            "supported tint and UV controls were reported as lost");
         auto body = Distill(adapter.get(), variants, "unproven_body");
         Failure(body, OPENUSD_MDL_STATUS_EXPRESSION_UNSUPPORTED, "unproven_body");
     });
@@ -593,6 +1131,62 @@ void Synthetic(
         fs::remove(a.parent_path());
         fs::remove(b.parent_path());
     });
+    probe.Run("RejectedSdkConfigurationDoesNotPoisonThePreviousAdapter", [&] {
+        const fs::path cold = work / "configuration-recovery" / "cold.mdl";
+        Write(cold, MutableVariant("0.37"));
+        auto valid = Create({core.u8string(), cold.parent_path().u8string()}, 201);
+        auto warm = Distill(valid.get(), (core / "OmniPBR.mdl").u8string(), "OmniPBR");
+        Scalar(Success(warm), OPENUSD_MDL_SURFACE_ROUGHNESS, {0.5F});
+        const fs::path missing = work / "absent-configuration-root";
+        Require(!fs::exists(missing), "the rejection fixture directory unexpectedly exists");
+        auto invalid = Create({missing.u8string()}, 201);
+        Failure(Distill(invalid.get(), cold.u8string(), "mutable_variant"),
+            OPENUSD_MDL_STATUS_INVALID_ARGUMENT, "rejected the module search path");
+        auto recovered = Distill(valid.get(), cold.u8string(), "mutable_variant");
+        Scalar(Success(recovered), OPENUSD_MDL_SURFACE_ROUGHNESS, {0.37F});
+        Require(fs::remove(cold), "the recovery fixture was not removed");
+        fs::remove(cold.parent_path());
+    });
+}
+
+void SpecularLevel(Probe& probe, const fs::path& core)
+{
+    auto adapter = Create({core.u8string()});
+    probe.Run("ExactOmniPbrSignatureKeepsSdkProvenProfile", [&] {
+        auto value = Distill(adapter.get(), "OmniPBR.mdl",
+            "OmniPBR(color,texture_2d,float,float,float,color,float,float,texture_2d,"
+            "float,float,texture_2d,float,bool,texture_2d,float,texture_2d,bool,color,"
+            "texture_2d,texture_2d,float,bool,texture_2d,float,bool,::base::mono_mode,"
+            "float,float,float,texture_2d,float,texture_2d,bool,bool,bool,bool,int,"
+            "float2,float,float2,float2,float,float2,float,float,bool)");
+        Scalar(Success(value), OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.5F});
+    });
+    probe.Run("SpecularLevelDefaultKeepsBothDielectricFresnelEndpoints", [&] {
+        auto value = Distill(adapter.get(), "OmniPBR.mdl", "OmniPBR");
+        Scalar(Success(value), OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.5F});
+        Require(!Reported(Success(value), "specular_level"), "the supported default was reported as dropped");
+    });
+    for (float level : {0.0F, 0.25F, 0.5F, 1.0F})
+    {
+        probe.Run(("AuthoredSpecularLevel_" + std::to_string(level)).c_str(), [&] {
+            auto value = Distill(adapter.get(), "OmniPBR.mdl", "OmniPBR", {Number("specular_level", level)});
+            Scalar(Success(value), OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {level}, OPENUSD_MDL_ORIGIN_AUTHORED);
+            Require(!Reported(Success(value), "specular_level"), "authored curve weight was reported as dropped");
+        });
+    }
+    for (float level : {-0.1F, 1.1F})
+    {
+        probe.Run(("UnboundedSpecularLevelIsReported_" + std::to_string(level)).c_str(), [&] {
+            auto value = Distill(adapter.get(), "OmniPBR.mdl", "OmniPBR", {Number("specular_level", level)});
+            const auto& result = Success(value);
+            Require(Reported(result, "specular_level"), "an unsupported weight was silently clamped");
+            for (uint32_t index = 0; index < result.scalar_count; ++index)
+            {
+                Require(result.scalars[index].surface_input != OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL,
+                    "an unsupported curve weight reached the surface");
+            }
+        });
+    }
 }
 
 void Warehouse(Probe& probe, const fs::path& core, const fs::path& source)
@@ -604,22 +1198,23 @@ void Warehouse(Probe& probe, const fs::path& core, const fs::path& source)
         const std::string name = "opaque__metal__painted_gray_matte_a";
         auto value = Distill(adapter.get(), (directory / (name + ".mdl")).u8string(), name);
         const auto& result = Success(value);
-        Scalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.2F, 0.2F, 0.2F});
+        Scalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.2F, 0.199998F, 0.199998F});
         Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.19F});
         Scalar(result, OPENUSD_MDL_SURFACE_METALLIC, {0.0F});
         const fs::path textures = directory.parent_path() / "Textures";
-        Require(result.texture_count == 5, "actual named MDL texture overrides were lost");
+        Require(result.texture_count == 4, "actual enabled MDL texture overrides were lost");
         Texture(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "T_MetalPainted_Gray_Worn_Albedo.png",
-            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_SRGB);
-        Texture(result, OPENUSD_MDL_SURFACE_OCCLUSION, textures / "T_metalpainted_gray_metallic_a_ORM.png",
-            OPENUSD_MDL_CHANNEL_R, OPENUSD_MDL_COLOR_SPACE_RAW);
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_SRGB,
+            OPENUSD_MDL_ORIGIN_MODULE_DEFAULT, {1, 0.99999F, 0.99999F, 1});
         Texture(result, OPENUSD_MDL_SURFACE_ROUGHNESS, textures / "T_metalpainted_gray_metallic_a_ORM.png",
-            OPENUSD_MDL_CHANNEL_G, OPENUSD_MDL_COLOR_SPACE_RAW);
+            OPENUSD_MDL_CHANNEL_G, OPENUSD_MDL_COLOR_SPACE_RAW, OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+            {1, 0.45F, 1, 1}, {0, 0.1045F, 0, 0});
         Texture(result, OPENUSD_MDL_SURFACE_METALLIC, textures / "T_metalpainted_gray_metallic_a_ORM.png",
             OPENUSD_MDL_CHANNEL_B, OPENUSD_MDL_COLOR_SPACE_RAW);
         Texture(result, OPENUSD_MDL_SURFACE_NORMAL, textures / "T_Aluminium_Raw_A_Normal.png",
             OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW);
-        Require(Reported(result, "texture_scale") && Reported(result, "diffuse_tint"),
+        UvTransform(result, {4, 0, 0, 4, 0, 0});
+        Require(!Reported(result, "texture_scale") && !Reported(result, "diffuse_tint"),
             "actual unsupported root modifiers were not named");
         ReportWrapper(name, result);
     });
@@ -631,7 +1226,8 @@ void Warehouse(Probe& probe, const fs::path& core, const fs::path& source)
         Scalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.2F, 0.2F, 0.2F});
         Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.5F});
         const fs::path textures = directory / "textures" / "Metal_Glossy_A";
-        Require(result.scalar_count == 3 && result.texture_count == 5,
+        Scalar(result, OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.5F});
+        Require(result.scalar_count == 4 && result.texture_count == 4,
             "actual OmniPBR wrapper gained unrelated outputs or lost textures");
         Texture(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, textures / "T_Metal_Glossy_A_Albedo_1.png",
             OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_SRGB);
@@ -639,9 +1235,247 @@ void Warehouse(Probe& probe, const fs::path& core, const fs::path& source)
             OPENUSD_MDL_CHANNEL_G, OPENUSD_MDL_COLOR_SPACE_RAW);
         Texture(result, OPENUSD_MDL_SURFACE_NORMAL, textures / "T_Metal_Glossy_A_Normal_1.png",
             OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_RAW);
-        Require(Reported(result, "texture_scale"), "actual UV scale was silently ignored");
+        UvTransform(result, {2, 0, 0, 2, 0, 0});
+        Require(!Reported(result, "texture_scale"), "supported actual UV scale was reported as lost");
         ReportWrapper("Metal_Glossy_A", result);
     });
+}
+
+void OmniSurface(Probe& probe, const fs::path& modules, const fs::path& source)
+{
+    auto adapter = Create({modules.u8string(), source.u8string()});
+    const std::string wrapper = (source / "Props" / "general" /
+        "SM_ClosedHeadPail_A01_Natural_01" / "materials" / "Natural_Plastic_E.mdl").u8string();
+    probe.Run("RealOmniSurfaceVariantKeepsConstantsAndNamesUnsupportedLobes", [&] {
+        auto value = Distill(adapter.get(), wrapper, "Natural_Plastic_Translucent_A");
+        const auto& result = Success(value);
+        Scalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {1.0F, 1.0F, 1.0F});
+        Scalar(result, OPENUSD_MDL_SURFACE_METALLIC, {0.05F});
+        Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.3F});
+        Scalar(result, OPENUSD_MDL_SURFACE_IOR, {2.0F});
+        Require(Reported(result, "specular_reflection_weight") &&
+            Reported(result, "specular_transmission_weight") &&
+            Reported(result, "subsurface_weight"),
+            "partial OmniSurface projection hid unsupported reflection/transmission/subsurface controls");
+        for (uint32_t index = 0; index < result.scalar_count; ++index)
+        {
+            Require(result.scalars[index].surface_input != OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL,
+                "an OmniSurface variant acquired the unrelated OmniPBR dielectric curve");
+        }
+        ReportWrapper("Natural_Plastic_Translucent_A", result);
+    });
+    probe.Run("RealOmniSurfaceVariantAuthoredInputsOverrideDefaults", [&] {
+        auto value = Distill(adapter.get(), wrapper, "Natural_Plastic_Translucent_A",
+            {Color("diffuse_reflection_color", 0.2F, 0.4F, 0.6F),
+             Number("diffuse_reflection_weight", 0.25F),
+             Number("specular_reflection_roughness", 0.7F)});
+        const auto& result = Success(value);
+        Scalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.05F, 0.1F, 0.15F},
+            OPENUSD_MDL_ORIGIN_AUTHORED);
+        Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.7F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Scalar(result, OPENUSD_MDL_SURFACE_METALLIC, {0.05F});
+        Require(Reported(result, "specular_transmission_weight"),
+            "authored basic inputs hid unrepresented transmission");
+    });
+    probe.Run("RealOmniSurfaceWrongSignatureStillRefusesWithoutShading", [&] {
+        Failure(Distill(adapter.get(), wrapper, "Natural_Plastic_Translucent_A(float)"),
+            OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL, "Natural_Plastic_Translucent_A(float)");
+    });
+}
+
+const std::string& LegacyPbrSignature()
+{
+    static const std::string signature =
+        "OmniPBR(color,texture_2d,float,float,float,color,float,float,texture_2d,float,float,"
+        "texture_2d,float,bool,texture_2d,float,texture_2d,bool,color,texture_2d,texture_2d,"
+        "float,bool,bool,float,texture_2d,::base::mono_mode,float,float,texture_2d,float,"
+        "texture_2d,bool,bool,bool,bool,int,float2,float,float2,float2,float,float2)";
+    return signature;
+}
+
+void LegacyPbr(Probe& probe, const fs::path& legacy, const fs::path& current)
+{
+    const std::string& signature = LegacyPbrSignature();
+    auto legacyAdapter = Create({legacy.u8string()});
+    auto currentAdapter = Create({current.u8string()});
+    const std::string legacyModule = (legacy / "OmniPBR.mdl").u8string();
+    const std::string currentModule = (current / "OmniPBR.mdl").u8string();
+    probe.Run("ExactLegacyPbrInterfaceResolvesWithoutSignatureRewriting", [&] {
+        auto value = Distill(legacyAdapter.get(), legacyModule, signature);
+        const auto& result = Success(value);
+        Scalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.2F, 0.2F, 0.2F});
+        Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.5F});
+        Scalar(result, OPENUSD_MDL_SURFACE_METALLIC, {0.0F});
+        Scalar(result, OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.5F});
+    });
+    probe.Run("ExactLegacyPbrAuthoredControlsRemainTyped", [&] {
+        auto value = Distill(legacyAdapter.get(), legacyModule, signature,
+            {Color("diffuse_color_constant", 0.2F, 0.4F, 0.6F),
+             Color("diffuse_tint", 0.5F, 0.25F, 0.75F),
+             Number("reflection_roughness_constant", 0.7F), Number("specular_level", 0.0F)});
+        const auto& result = Success(value);
+        Scalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, {0.1F, 0.1F, 0.45F},
+            OPENUSD_MDL_ORIGIN_AUTHORED);
+        Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.7F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Scalar(result, OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.0F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+    });
+    probe.Run("LegacyAndCurrentModuleContextsDoNotLeakAcrossAdapters", [&] {
+        Failure(Distill(currentAdapter.get(), currentModule, signature),
+            OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL, "the SDK declares");
+        Success(Distill(legacyAdapter.get(), legacyModule, signature));
+        Failure(Distill(currentAdapter.get(), currentModule, signature),
+            OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL, "the SDK declares");
+        Success(Distill(legacyAdapter.get(), legacyModule, signature));
+    });
+    probe.Run("LegacyPbrStillRejectsMalformedSignatures", [&] {
+        Failure(Distill(legacyAdapter.get(), legacyModule, signature + "suffix"),
+            OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL, signature + "suffix");
+    });
+}
+
+void LegacyRouting(Probe& probe, const fs::path& current, bool invalidConfiguration)
+{
+    auto adapter = Create({current.u8string()});
+    const std::string module = (current / "OmniPBR.mdl").u8string();
+    const std::string& signature = LegacyPbrSignature();
+    probe.Run("SuccessfulCurrentRequestsNeverUseCompatibilityRouting", [&] {
+        auto value = Distill(adapter.get(), module, "OmniPBR");
+        const auto& result = Success(value);
+        Scalar(result, OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.5F});
+        Require(Text(result.diagnostic).find("compatibility") == std::string::npos,
+            "a successful current material was routed to another module");
+    });
+    if (invalidConfiguration)
+    {
+        probe.Run("InvalidCompatibilityConfigurationIsAnExplicitRefusal", [&] {
+            Failure(Distill(adapter.get(), module, signature),
+                OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL, "OPENUSD_MDL_LEGACY_PBR_ROOT");
+        });
+        return;
+    }
+    probe.Run("ConfiguredLegacyRootResolvesOnlyTheExactMissingSignature", [&] {
+        auto value = Distill(adapter.get(), module, signature,
+            {Number("specular_level", 0.0F), Number("reflection_roughness_constant", 0.7F)});
+        const auto& result = Success(value);
+        Scalar(result, OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.0F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Scalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS, {0.7F}, OPENUSD_MDL_ORIGIN_AUTHORED);
+        Require(Text(result.diagnostic).find("exact-signature compatibility") != std::string::npos,
+            "legacy module selection was not disclosed");
+        auto currentAgain = Distill(adapter.get(), module, "OmniPBR");
+        const auto& restored = Success(currentAgain);
+        Scalar(restored, OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, {0.5F});
+        Require(Text(restored.diagnostic).find("compatibility") == std::string::npos,
+            "compatibility lookup contaminated the following current request");
+    });
+    probe.Run("CompatibilityCannotMakeAnInvalidSignatureSucceed", [&] {
+        Failure(Distill(adapter.get(), module, "OmniPBR(float)"),
+            OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL, "compatibility");
+        Failure(Distill(adapter.get(), module, signature + "suffix"),
+            OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL, signature + "suffix");
+    });
+    probe.Run("UnqualifiedNamesRemainStrict", [&] {
+        auto value = Distill(adapter.get(), module, "MissingMaterial");
+        Failure(value, OPENUSD_MDL_STATUS_UNSUPPORTED_MATERIAL, "MissingMaterial");
+        Require(Text(value.result->diagnostic).find("compatibility") == std::string::npos,
+            "an unqualified missing name triggered version substitution");
+    });
+    probe.Run("MissingPrimaryModulesAreNotReplacedByCompatibility", [&] {
+        Failure(Distill(adapter.get(), (current / "not-present" / "OmniPBR.mdl").u8string(), signature),
+            OPENUSD_MDL_STATUS_MODULE_NOT_FOUND, "not-present");
+    });
+}
+
+void Udim(Probe& probe, const fs::path& core, const fs::path& work)
+{
+    const fs::path directory = work / "udim";
+    const fs::path module = directory / "udim_probe.mdl";
+    Write(directory / "tiles" / "color.1001.ppm", "P3\n1 1\n255\n255 0 0\n");
+    Write(directory / "tiles" / "color.1002.ppm", "P3\n1 1\n255\n0 255 0\n");
+    Write(directory / "tiles" / "sparse.1001.ppm", "P3\n1 1\n255\n255 0 0\n");
+    Write(directory / "tiles" / "sparse.1999.ppm", "P3\n1 1\n255\n0 255 0\n");
+    std::vector<fs::path> boundedTiles;
+    for (int index = 0; index < 257; ++index)
+    {
+        const int number = 1001 + index % 8 + 10 * (index / 8);
+        for (const char* prefix : {"grid", "overcount"})
+        {
+            if (index == 256 && std::strcmp(prefix, "grid") == 0) { continue; }
+            const fs::path tile = directory / "tiles" / (std::string(prefix) + "." + std::to_string(number) + ".ppm");
+            Write(tile, "P3\n1 1\n255\n255 0 0\n");
+            boundedTiles.push_back(tile);
+        }
+    }
+    Write(module, R"(mdl 1.7;
+using ::OmniPBR import OmniPBR;
+import ::tex::*;
+export material tiled(*) = OmniPBR(
+    diffuse_texture: texture_2d("./tiles/color.<UDIM>.ppm", ::tex::gamma_linear));
+export material inherited(*) = tiled(diffuse_tint: color(0.5, 0.25, 1.0));
+export material sparse(*) = OmniPBR(
+    diffuse_texture: texture_2d("./tiles/sparse.<UDIM>.ppm", ::tex::gamma_linear));
+export material missing(*) = OmniPBR(
+    diffuse_texture: texture_2d("./tiles/missing.<UDIM>.ppm", ::tex::gamma_linear));
+export material grid(*) = OmniPBR(
+    diffuse_texture: texture_2d("./tiles/grid.<UDIM>.ppm", ::tex::gamma_linear));
+export material overcount(*) = OmniPBR(
+    diffuse_texture: texture_2d("./tiles/overcount.<UDIM>.ppm", ::tex::gamma_linear));
+)");
+    auto adapter = Create({core.u8string(), directory.u8string()});
+    for (const char* name : {"tiled", "inherited"})
+    {
+        probe.Run(name, [&] {
+            auto value = Distill(adapter.get(), module.u8string(), name);
+            const auto& result = Success(value);
+            Require(result.texture_count == 1 && !Reported(result, "diffuse_texture"),
+                "a resolved UDIM set was dropped instead of retaining its full mask: " +
+                    Text(result.diagnostic));
+            const auto& texture = result.textures[0];
+            Require(fs::u8path(Text(texture.asset)) == fs::absolute(directory / "tiles" / "color.<UDIM>.ppm"),
+                "the UDIM mask lost its declaring module directory");
+            Require(texture.surface_input == OPENUSD_MDL_SURFACE_DIFFUSE_COLOR &&
+                texture.output_channel == OPENUSD_MDL_CHANNEL_RGB &&
+                texture.color_space == OPENUSD_MDL_COLOR_SPACE_RAW &&
+                texture.origin == OPENUSD_MDL_ORIGIN_MODULE_DEFAULT,
+                "UDIM texture metadata changed");
+            const float red = std::strcmp(name, "inherited") == 0 ? 0.5F : 1.0F;
+            Require(std::fabs(texture.scale[0] - red) < 1e-5F,
+                "an inherited UDIM texture lost its tint");
+        });
+    }
+    probe.Run("exact_256_tile_and_cell_limit", [&] {
+        auto value = Distill(adapter.get(), module.u8string(), "grid");
+        const auto& result = Success(value);
+        Require(result.texture_count == 1 && !Reported(result, "diffuse_texture"),
+            "the exact 256-tile/cell boundary was rejected: " + Text(result.diagnostic));
+    });
+    probe.Run("authored_single_tile_overrides_udim_default", [&] {
+        const std::string asset = (directory / "tiles" / "color.1002.ppm").u8string();
+        auto value = Distill(adapter.get(), module.u8string(), "tiled", {Asset("diffuse_texture", asset)});
+        const auto& result = Success(value);
+        Texture(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, fs::u8path(asset),
+            OPENUSD_MDL_CHANNEL_RGB, OPENUSD_MDL_COLOR_SPACE_SRGB, OPENUSD_MDL_ORIGIN_AUTHORED);
+    });
+    for (const char* name : {"missing", "sparse", "overcount"})
+    {
+        probe.Run(name, [&] {
+            auto value = Distill(adapter.get(), module.u8string(), name);
+            const auto& result = Success(value);
+            Require(result.texture_count == 0 && Reported(result, "diffuse_texture") &&
+                !Text(result.diagnostic).empty(),
+                "an unresolved or oversized UDIM set silently published a partial texture");
+        });
+    }
+    for (const auto& tile : boundedTiles)
+    {
+        Require(fs::remove(tile), "probe-owned bounded UDIM tile was not removed");
+    }
+    for (const char* name : {"color.1001.ppm", "color.1002.ppm", "sparse.1001.ppm", "sparse.1999.ppm"})
+    {
+        Require(fs::remove(directory / "tiles" / name), "probe-owned UDIM tile was not removed");
+    }
+    Require(fs::remove(module), "probe-owned UDIM module was not removed");
+    fs::remove(directory / "tiles");
+    fs::remove(directory);
 }
 }
 
@@ -650,7 +1484,8 @@ int main(int argc, char** argv)
     if (argc < 3)
     {
         std::cerr << "Usage: mdl_wrapper_probe --rejections <fixtures> | "
-            "--synthetic <fixtures> <real-core> <work> | --warehouse <real-core> <source>\n";
+            "--synthetic <fixtures> <real-core> <work> | --warehouse <real-core> <source> | "
+            "--omnisurface <surface-modules> <source> | --legacy-pbr <legacy-core> <current-core>\n";
         return 2;
     }
     if (openusd_mdl_abi_version() != OPENUSD_MDL_ABI_VERSION ||
@@ -674,6 +1509,26 @@ int main(int argc, char** argv)
         else if (mode == "--warehouse" && argc == 4)
         {
             Warehouse(probe, fs::u8path(argv[2]), fs::u8path(argv[3]));
+        }
+        else if (mode == "--specular" && argc == 3)
+        {
+            SpecularLevel(probe, fs::u8path(argv[2]));
+        }
+        else if (mode == "--omnisurface" && argc == 4)
+        {
+            OmniSurface(probe, fs::u8path(argv[2]), fs::u8path(argv[3]));
+        }
+        else if (mode == "--legacy-pbr" && argc == 4)
+        {
+            LegacyPbr(probe, fs::u8path(argv[2]), fs::u8path(argv[3]));
+        }
+        else if ((mode == "--legacy-routing" || mode == "--legacy-routing-invalid") && argc == 3)
+        {
+            LegacyRouting(probe, fs::u8path(argv[2]), mode == "--legacy-routing-invalid");
+        }
+        else if (mode == "--udim" && argc == 4)
+        {
+            Udim(probe, fs::u8path(argv[2]), fs::u8path(argv[3]));
         }
         else
         {

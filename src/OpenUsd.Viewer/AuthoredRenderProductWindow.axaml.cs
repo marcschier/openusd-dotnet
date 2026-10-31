@@ -30,6 +30,7 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
     private bool _requestValid;
     private bool _updatingSettingsPath;
     private bool _refreshing;
+    private bool _restoreOperationFocus;
     private ViewerAuthoredRenderProductSnapshot _snapshot =
         ViewerAuthoredRenderProductSnapshot.Empty("Render products have not been queried.");
 
@@ -40,7 +41,8 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         Func<string?, string?, CancellationToken, ValueTask<ViewerAuthoredRenderProductSnapshot>> query,
         Func<ViewerAuthoredRenderProductRequest, Action<ViewerAuthoredRenderProductProgress>,
             CancellationToken, Task<RenderDiskJobResult>> render,
-        Func<string?>? getBackendUnsupportedReason = null)
+        Func<string?>? getBackendUnsupportedReason = null,
+        Action<RenderDiskJobResult, string>? completed = null)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(render);
@@ -49,7 +51,7 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         _getBackendUnsupportedReason = getBackendUnsupportedReason ?? (static () => null);
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
-        _results = new ViewerCompletedJobResults(this, ProductViewResultsButton);
+        _results = new ViewerCompletedJobResults(this, ProductViewResultsButton, completed);
         ProductRenderer.Text = renderer;
         ProductStartTime.Text = ViewerTimelineMath.Format(start);
         ProductEndTime.Text = ViewerTimelineMath.Format(end);
@@ -73,6 +75,12 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         ProductStep.TextChanged += (_, _) => ValidateRequest();
         ProductOutputFolder.TextChanged += (_, _) => ValidateRequest();
         ProductHdrFormat.SelectionChanged += (_, _) => ValidateRequest();
+        ProductOverrideCamera.TextChanged += (_, _) => ValidateRequest();
+        ProductOverrideWidth.TextChanged += (_, _) => ValidateRequest();
+        ProductOverrideHeight.TextChanged += (_, _) => ValidateRequest();
+        ProductOverridePixelAspect.TextChanged += (_, _) => ValidateRequest();
+        ProductOverrideConform.SelectionChanged += (_, _) => ValidateRequest();
+        ProductOverrideDataWindow.TextChanged += (_, _) => ValidateRequest();
         ProductRefreshButton.Click += async (_, _) =>
         {
             await StartRefreshProductsAsync();
@@ -107,9 +115,11 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         ProductCloseButton.Click += (_, _) => Close();
         Opened += async (_, _) =>
         {
+            ProductBodyScroll.Focus();
             _refreshTask = StartRefreshProductsAsync();
             await _refreshTask;
-            if (!_closing && !_closed.Task.IsCompleted)
+            if (!_closing && !_closed.Task.IsCompleted && ProductBodyScroll.IsFocused &&
+                (IsActive || IsKeyboardFocusWithin))
             {
                 ProductSelector.Focus();
             }
@@ -175,9 +185,14 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         _refreshCancellation?.Dispose();
         _refreshCancellation = CancellationTokenSource.CreateLinkedTokenSource(_windowLifetime.Token);
         CancellationToken token = _refreshCancellation.Token;
+        bool restoreRefreshFocus = ProductRefreshButton.IsKeyboardFocusWithin;
         _refreshing = true;
         ProductStatus.Text = "Reading authored render settings...";
         SetRunningControls();
+        if (restoreRefreshFocus)
+        {
+            ProductBodyScroll.Focus();
+        }
         try
         {
             ViewerAuthoredRenderProductSnapshot snapshot =
@@ -224,6 +239,10 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
             if (!_closing)
             {
                 ValidateRequest();
+                if (restoreRefreshFocus && ProductBodyScroll.IsFocused && (IsActive || IsKeyboardFocusWithin))
+                {
+                    ProductRefreshButton.Focus();
+                }
             }
         }
     }
@@ -251,8 +270,19 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
             ProductOutputFolder.Text ?? string.Empty,
             ReadSettingsPath(),
             product.Path,
-            ReadHdrFormat());
+            ReadHdrFormat(),
+            ReadOverrides());
     }
+
+    private RenderProductOverrides ReadOverrides() => ViewerAuthoredRenderProductOverrides.Parse(
+        ProductOverrideCamera.Text,
+        ProductOverrideWidth.Text,
+        ProductOverrideHeight.Text,
+        ProductOverridePixelAspect.Text,
+        ProductOverrideConform.SelectedIndex > 0
+            ? ViewerAuthoredRenderProductOverrides.ConformPolicies[ProductOverrideConform.SelectedIndex - 1]
+            : null,
+        ProductOverrideDataWindow.Text);
 
     private static ViewerAuthoredRenderProductItem? FirstProduct(
         IReadOnlyList<ViewerAuthoredRenderProductItem> products,
@@ -304,6 +334,16 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         {
             ViewerRenderSequenceRange range = ReadRange();
             ProductFrameCount.Text = $"{range.Times.Count} frame(s)";
+            RenderProductOverrides? overrides = null;
+            string? overrideError = null;
+            try
+            {
+                overrides = ReadOverrides();
+            }
+            catch (ArgumentException exception)
+            {
+                overrideError = exception.Message;
+            }
             ProductOutputScope.Text = "PNG display companion + authored raw planes; " +
                 (ReadHdrFormat() == RenderHdrColorFormat.Exr
                     ? "HDR color encoded as EXR when the product has a color variable"
@@ -328,17 +368,27 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
             {
                 status = "Choose one authored render product.";
             }
-            else
+            else if (overrides is null)
             {
                 ProductDetails.Text =
                     $"Camera {item.CameraPath}; raster {item.Dimensions.Width} x {item.Dimensions.Height}; " +
                     $"variables {item.VariableSummary}.";
+                status = overrideError!;
+            }
+            else
+            {
+                ProductDetails.Text =
+                    $"Camera {item.CameraPath}; raster {item.Dimensions.Width} x {item.Dimensions.Height}; " +
+                    $"variables {item.VariableSummary}; overrides " +
+                    $"{ViewerAuthoredRenderProductOverrides.Describe(overrides)}.";
                 if (item.UnsupportedReason is { } unsupported)
                 {
                     status = unsupported;
                 }
                 else if (ReadHdrFormat() == RenderHdrColorFormat.Exr &&
-                    item.ExrUnsupportedReason is { } exrUnsupported)
+                    (overrides.PixelAspectRatio is { } aspect
+                        ? ViewerAuthoredRenderProductSelection.GetExrUnsupportedReason(aspect)
+                        : item.ExrUnsupportedReason) is { } exrUnsupported)
                 {
                     status = exrUnsupported;
                 }
@@ -375,11 +425,17 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
     private async Task RunAsync()
     {
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_windowLifetime.Token);
+        Control? operationFocus = IsKeyboardFocusWithin ? FocusManager?.GetFocusedElement() as Control : null;
+        _restoreOperationFocus = false;
         _cancellation = cancellation;
         ProductOutputLocation.Text = string.Empty;
         ProductStatus.Text = "Preparing authored product...";
         ProductStatus.Classes.Set("viewer-warning", false);
         SetRunningControls();
+        if (operationFocus is not null)
+        {
+            ProductCancelButton.Focus();
+        }
         try
         {
             await _results.ClearAsync();
@@ -421,11 +477,19 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         }
         finally
         {
+            bool restoreFocus = (ProductCancelButton.IsKeyboardFocusWithin ||
+                (_restoreOperationFocus && ProductCloseButton.IsKeyboardFocusWithin)) &&
+                (IsActive || IsKeyboardFocusWithin);
+            _restoreOperationFocus = false;
             _cancellation = null;
             if (!_closing)
             {
                 ValidateRequest(preserveStatus: true);
                 SetRunningControls();
+                if (restoreFocus && operationFocus is { IsEnabled: true, IsVisible: true })
+                {
+                    operationFocus.Focus();
+                }
             }
         }
     }
@@ -444,6 +508,7 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         ProductRefreshButton.IsEnabled = ready;
         ProductSelector.IsEnabled = ready;
         ProductRangeControls.IsEnabled = ready;
+        ProductOverrideControls.IsEnabled = ready;
         ProductOutputControls.IsEnabled = ready;
         ProductOutputFolder.IsEnabled = ready;
         ProductBrowseButton.IsEnabled = ready;
@@ -493,8 +558,14 @@ internal sealed partial class AuthoredRenderProductWindow : Window, IAsyncDispos
         _cancellation?.Cancel();
         if (IsRunning)
         {
+            bool ownsFocus = ProductCancelButton.IsKeyboardFocusWithin;
+            _restoreOperationFocus |= ownsFocus;
             ProductStatus.Text = "Cancelling... waiting for the in-flight product frame and Viewer restoration.";
             ProductCancelButton.IsEnabled = false;
+            if (ownsFocus)
+            {
+                ProductCloseButton.Focus();
+            }
         }
     }
 

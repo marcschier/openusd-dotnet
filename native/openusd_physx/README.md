@@ -1,6 +1,6 @@
 # openusd_physx
 
-`openusd_physx` is the native physics shim. It exposes two C ABIs:
+`openusd_physx` is the native physics shim. It exposes three C interfaces:
 
 - **`include/openusd_physx.h`** - the original stage simulation ABI. A caller
   opens a USD stage, the shim translates `UsdPhysics` prims into a PhysX scene,
@@ -9,9 +9,47 @@
 - **`include/openusd_physx_world.h`** - the retained world ABI described below.
   It owns a long lived world that is built once from a pointer free page and
   then driven with batched commands, batched results, and batched queries.
+- **`include/openusd_physx_mesh.h`** - bounded, cancellable CPU preparation of
+  convex hulls and multi-hull convex decompositions in batches, without exposing
+  PhysX or decomposition-library types.
 
-Both ABIs share one process wide PhysX runtime, one set of translation helpers,
-and one set of exception guards, so a process may use either or both.
+The interfaces share one process wide PhysX runtime, translation helpers and
+exception guards.
+
+## CPU mesh preparation
+
+The retained world contract is ABI **8** and requires mesh preparation interface
+version **1**. The world page layout is unchanged; the version advances because
+current composition requires the new exports. Older runtimes fail negotiation.
+Preparation admits at most 64 meshes, 4194304 points and 12582912 indices per
+batch. Input buffers remain caller-owned. Cancellation and failure expose no
+partial hull set, and an undersized copy writes neither output buffer.
+
+Convex hulls use the existing PhysX cooker. Convex decomposition uses the
+hash-locked BSD-3-Clause V-HACD 4.1.0 source, statically linked with threading
+disabled. This archived upstream was selected for its small dependency closure
+and synchronous, cancellable implementation; it is not described as maintained.
+The default decomposition profile is 64 hulls, 64 vertices per hull, 400000
+voxels and 1% volume error, with shrink wrapping. These are algorithm bounds,
+not a total process-memory guarantee or a promise of bitwise equivalence to
+another application's decomposition implementation.
+
+Run `eng/fetch-vhacd.ps1` before a direct CMake configure; the normal
+`eng/build-physx-shim.ps1` entry point does this automatically. Configure verifies
+the source and license hashes again. The installed V-HACD license is included in
+the physics runtime packages. No new dynamic native dependency is introduced.
+
+## Actual rigid-shape inspection
+
+`openusd_physx_world_copy_shape_identities` uses snapshot interface version **1** to
+enumerate shapes attached to actual SDK rigid actors, not merely the declared build
+page. Its 24-byte info record reports actor/shape counts and retained convex/triangle
+resource counts; each 16-byte identity record carries its actor and shape IDs.
+A size query reports the full required count. Short buffers return
+`BUFFER_TOO_SMALL` without writing any identity, and the fixed result capacity applies
+before output access. Worlds containing articulations, controllers or vehicles are
+explicitly outside this inspection profile. `openusd_physx_world_probe` checks
+identity correspondence, exact/short capacities, version and argument refusals.
 
 ## Layout
 
@@ -97,7 +135,7 @@ and one set of exception guards, so a process may use either or both.
 
 | Item | Value |
 | --- | --- |
-| `OPENUSD_PHYSX_WORLD_ABI_VERSION` | `7` (exact match, no compatibility window) |
+| `OPENUSD_PHYSX_WORLD_ABI_VERSION` | `8` (exact match, no compatibility window) |
 | `OPENUSD_PHYSX_PAGE_MAGIC` | `0x5853594850445355` |
 | Page alignment | 8 bytes |
 | Maximum page size | 1 GiB |
@@ -115,7 +153,7 @@ and one set of exception guards, so a process may use either or both.
 | Particle neighbourhood budget | 8 to 1024 |
 | Maximum particle collision group | 1048575 |
 
-Every caller must ask for version `7` exactly. A different version is rejected
+Every caller must ask for version `8` exactly. A different version is rejected
 with `OPENUSD_PHYSX_STATUS_VERSION_MISMATCH`; there is no downgrade path and no
 silent fallback.
 

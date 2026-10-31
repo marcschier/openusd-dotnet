@@ -59,7 +59,16 @@ internal static partial class UsdPhysicsExtractionComposer
     /// <param name="builder">The builder to stage into.</param>
     /// <returns>The composition report.</returns>
     internal static UsdPhysicsCompositionReport Compose(
-        UsdPhysicsExtractionPage page, PhysxPageBuilder builder)
+        UsdPhysicsExtractionPage page, PhysxPageBuilder builder) =>
+        ComposeCore(page, builder, null);
+
+    internal static UsdPhysicsCompositionReport ComposePrepared(
+        UsdPhysicsExtractionPage page, PhysxPageBuilder builder, CancellationToken cancellationToken) =>
+        ComposeCore(page, builder, PrepareMeshes(page, cancellationToken));
+
+    private static UsdPhysicsCompositionReport ComposeCore(
+        UsdPhysicsExtractionPage page, PhysxPageBuilder builder,
+        IReadOnlyDictionary<int, PreparedCollider>? prepared)
     {
         ArgumentNullException.ThrowIfNull(page);
         ArgumentNullException.ThrowIfNull(builder);
@@ -69,7 +78,7 @@ internal static partial class UsdPhysicsExtractionComposer
 
         int[] sceneIndices = ComposeScenes(page, builder, skipped);
         int[] materialIndices = ComposeMaterials(page, builder, skipped);
-        int[] shapeIndices = ComposeShapes(page, builder, materialIndices, skipped);
+        ComposedShapeRange[] shapeIndices = ComposeShapes(page, builder, materialIndices, skipped, prepared);
 
         // A body an articulation claims is simulated as a reduced coordinate link, so it must
         // not also reach the actor section and its inbound joint must not also reach the joint
@@ -317,13 +326,20 @@ internal static partial class UsdPhysicsExtractionComposer
         return indices;
     }
 
-    private static int[] ComposeShapes(
+    private readonly record struct ComposedShapeRange(int Start, int Count);
+
+    private static ComposedShapeRange[] ComposeShapes(
         UsdPhysicsExtractionPage page,
         PhysxPageBuilder builder,
         int[] materialIndices,
-        ImmutableArray<string>.Builder skipped)
+        ImmutableArray<string>.Builder skipped,
+        IReadOnlyDictionary<int, PreparedCollider>? prepared)
     {
-        int[] indices = CreateMap(page.ObjectCount);
+        var indices = new ComposedShapeRange[page.ObjectCount];
+        var decoded = new Dictionary<(int Start, int Count), PreparedCollider>();
+        var staged = new Dictionary<PreparedCollider, uint[]>(ReferenceEqualityComparer.Instance);
+        var stagedRaw = new Dictionary<(int, int, int, int, PhysxShapeType),
+            (uint PointOffset, uint PointCount, uint IndexOffset, uint IndexCount)>();
         for (int index = 0; index < page.ObjectCount; index++)
         {
             UsdPhysicsExtractionObject item = page.GetObject(index);
@@ -332,10 +348,48 @@ internal static partial class UsdPhysicsExtractionComposer
                 continue;
             }
 
+            PreparedCollider? preparedCollider = prepared?.GetValueOrDefault(index);
+            if (preparedCollider is null && item.HullCount != 0)
+            {
+                if (!decoded.TryGetValue((item.HullStart, item.HullCount), out preparedCollider))
+                {
+                    preparedCollider = ReadPreparedCollider(page, item);
+                    decoded.Add((item.HullStart, item.HullCount), preparedCollider);
+                }
+            }
+            if (preparedCollider?.Failure is { } failure)
+            {
+                skipped.Add($"{item.Path} {failure}.");
+                continue;
+            }
+            if (item.Geometry is UsdPhysicsExtractionGeometryKind.Mesh or UsdPhysicsExtractionGeometryKind.ConvexMesh)
+            {
+                if (TryFind(page, item, UsdPhysicsExtractionKey.CollisionApproximation,
+                        out UsdPhysicsExtractionProperty approximationProperty) &&
+                    (!IsUsableProperty(approximationProperty) || !approximationProperty.IsText ||
+                        approximationProperty.ValueCount != 1))
+                {
+                    skipped.Add($"{item.Path} declares an invalid collision approximation.");
+                    continue;
+                }
+                string approximation = ReadToken(page, item, UsdPhysicsExtractionKey.CollisionApproximation, "none");
+                if (approximation is not ("none" or "convexHull") &&
+                    !(approximation == "convexDecomposition" && preparedCollider is not null))
+                {
+                    skipped.Add($"{item.Path} requires unsupported collision approximation '{approximation}'; " +
+                        "it was not replaced with a single convex hull or triangle mesh.");
+                    continue;
+                }
+            }
+
             if (!TryMapGeometry(item.Geometry, out PhysxShapeType type))
             {
                 skipped.Add($"{item.Path} uses the unsupported collision geometry {item.Geometry}.");
                 continue;
+            }
+            if (preparedCollider is not null)
+            {
+                type = PhysxShapeType.ConvexMesh;
             }
 
             PhysxShapeDesc shape = DescribeShape(page, builder, item, type, materialIndices, skipped);
@@ -345,16 +399,52 @@ internal static partial class UsdPhysicsExtractionComposer
                 continue;
             }
 
+            if (preparedCollider is not null)
+            {
+                int first = builder.ShapeCount;
+                if (!staged.TryGetValue(preparedCollider, out uint[]? pointOffsets))
+                {
+                    pointOffsets = new uint[preparedCollider.Hulls.Length];
+                    for (int hull = 0; hull < pointOffsets.Length; hull++)
+                    {
+                        pointOffsets[hull] = builder.AddMeshPoints(preparedCollider.Hulls[hull].Span);
+                    }
+                    staged.Add(preparedCollider, pointOffsets);
+                }
+                for (int hull = 0; hull < preparedCollider.Hulls.Length; hull++)
+                {
+                    ReadOnlySpan<PhysxVec3f> points = preparedCollider.Hulls[hull].Span;
+                    shape.Id = builder.DefineIdentity(hull == 0 ? item.Path + ".shape" :
+                        item.Path + ".shape.hull" + hull.ToString(CultureInfo.InvariantCulture));
+                    shape.PointOffset = pointOffsets[hull];
+                    shape.PointCount = (uint)points.Length;
+                    builder.AddShape(in shape);
+                }
+                indices[index] = new ComposedShapeRange(first, preparedCollider.Hulls.Length);
+                continue;
+            }
             if (type is PhysxShapeType.ConvexMesh or PhysxShapeType.TriangleMesh)
             {
-                if (!TryStageMesh(page, builder, item, ref shape, out string reason))
+                var key = (item.PointStart, item.PointCount, item.IndexStart, item.IndexCount, type);
+                if (stagedRaw.TryGetValue(key, out var shared))
+                {
+                    shape.PointOffset = shared.PointOffset;
+                    shape.PointCount = shared.PointCount;
+                    shape.IndexOffset = shared.IndexOffset;
+                    shape.IndexCount = shared.IndexCount;
+                }
+                else if (!TryStageMesh(page, builder, item, ref shape, out string reason))
                 {
                     skipped.Add($"{item.Path} {reason}.");
                     continue;
                 }
+                else
+                {
+                    stagedRaw.Add(key, (shape.PointOffset, shape.PointCount, shape.IndexOffset, shape.IndexCount));
+                }
             }
 
-            indices[index] = builder.AddShape(in shape);
+            indices[index] = new ComposedShapeRange(builder.AddShape(in shape), 1);
         }
 
         return indices;
@@ -468,7 +558,28 @@ internal static partial class UsdPhysicsExtractionComposer
         ref PhysxShapeDesc shape,
         out string reason)
     {
-        int minimumPoints = shape.Type == (uint)PhysxShapeType.ConvexMesh ? 4 : 3;
+        if (!TryReadMeshData(page, item, (PhysxShapeType)shape.Type, out PhysxVec3f[] points,
+                out uint[]? triangles, out reason))
+        {
+            return false;
+        }
+        shape.PointOffset = builder.AddMeshPoints(points);
+        shape.PointCount = (uint)points.Length;
+        if (triangles is not null)
+        {
+            shape.IndexOffset = builder.AddMeshIndices(triangles);
+            shape.IndexCount = (uint)triangles.Length;
+        }
+        return true;
+    }
+
+    private static bool TryReadMeshData(
+        UsdPhysicsExtractionPage page, UsdPhysicsExtractionObject item, PhysxShapeType type,
+        out PhysxVec3f[] points, out uint[]? triangles, out string reason, int minimumPoints = 0)
+    {
+        points = [];
+        triangles = null;
+        minimumPoints = minimumPoints == 0 ? type == PhysxShapeType.ConvexMesh ? 4 : 3 : minimumPoints;
         if (item.PointCount < minimumPoints)
         {
             reason = item.PointCount == 0
@@ -484,7 +595,7 @@ internal static partial class UsdPhysicsExtractionComposer
         // mesh collider would be the only shape on the page whose size depends on the authored
         // metersPerUnit.
         double units = page.MetersPerUnit;
-        var points = new PhysxVec3f[item.PointCount];
+        points = new PhysxVec3f[item.PointCount];
         for (int offset = 0; offset < item.PointCount; offset++)
         {
             (float x, float y, float z) = page.GetPoint(item.PointStart + offset);
@@ -500,8 +611,7 @@ internal static partial class UsdPhysicsExtractionComposer
             points[offset] = point;
         }
 
-        uint[]? triangles = null;
-        if (shape.Type == (uint)PhysxShapeType.TriangleMesh)
+        if (type == PhysxShapeType.TriangleMesh)
         {
             if (item.IndexCount < 3 || item.IndexCount % 3 != 0)
             {
@@ -521,14 +631,6 @@ internal static partial class UsdPhysicsExtractionComposer
             }
         }
 
-        shape.PointOffset = builder.AddMeshPoints(points);
-        shape.PointCount = (uint)points.Length;
-        if (triangles is not null)
-        {
-            shape.IndexOffset = builder.AddMeshIndices(triangles);
-            shape.IndexCount = (uint)triangles.Length;
-        }
-
         reason = string.Empty;
         return true;
     }
@@ -537,7 +639,7 @@ internal static partial class UsdPhysicsExtractionComposer
         UsdPhysicsExtractionPage page,
         PhysxPageBuilder builder,
         int[] sceneIndices,
-        int[] shapeIndices,
+        ComposedShapeRange[] shapeIndices,
         HashSet<int> articulationLinks,
         ImmutableArray<string>.Builder skipped)
     {
@@ -551,7 +653,7 @@ internal static partial class UsdPhysicsExtractionComposer
             bool isLooseCollider =
                 item.Kind == UsdPhysicsExtractionObjectKind.Collider &&
                 item.ParentBodyIndex < 0 &&
-                shapeIndices[index] >= 0;
+                shapeIndices[index].Count != 0;
             if ((!isBody && !isLooseCollider) || !item.IsEnabled)
             {
                 continue;
@@ -563,7 +665,7 @@ internal static partial class UsdPhysicsExtractionComposer
 
             List<int> shapes = isBody
                 ? CollectBodyShapes(page, shapeIndices, index)
-                : [shapeIndices[index]];
+                : Enumerable.Range(shapeIndices[index].Start, shapeIndices[index].Count).ToList();
             if (shapes.Count == 0)
             {
                 skipped.Add($"{item.Path} declares a rigid body with no usable collision shape.");
@@ -572,7 +674,7 @@ internal static partial class UsdPhysicsExtractionComposer
 
             uint type = ActorType(item, isLooseCollider);
             if (type != (uint)PhysxActorType.Static &&
-                shapes.Any(shape => IsMovableIncompatible(page, shapeIndices, shape)))
+                shapes.Any(shape => IsStaticOnlyShape(builder, shape)))
             {
                 skipped.Add($"{item.Path} is movable and uses a plane or triangle mesh shape.");
                 continue;
@@ -1467,7 +1569,7 @@ internal static partial class UsdPhysicsExtractionComposer
         UsdPhysicsExtractionPage page,
         PhysxPageBuilder builder,
         int[] sceneIndices,
-        int[] shapeIndices,
+        ComposedShapeRange[] shapeIndices,
         List<ComposedArticulation> composed,
         HashSet<int> refused,
         ImmutableArray<string>.Builder skipped)
@@ -3402,18 +3504,22 @@ internal static partial class UsdPhysicsExtractionComposer
     }
 
     private static List<int> CollectBodyShapes(
-        UsdPhysicsExtractionPage page, int[] shapeIndices, int bodyIndex)
+        UsdPhysicsExtractionPage page, ComposedShapeRange[] shapeIndices, int bodyIndex)
     {
         var shapes = new List<int>();
         for (int index = 0; index < page.ObjectCount; index++)
         {
-            if (shapeIndices[index] < 0)
+            if (shapeIndices[index].Count == 0)
             {
                 continue;
             }
             if (page.GetObject(index).ParentBodyIndex == bodyIndex)
             {
-                shapes.Add(shapeIndices[index]);
+                ComposedShapeRange range = shapeIndices[index];
+                for (int offset = 0; offset < range.Count; offset++)
+                {
+                    shapes.Add(range.Start + offset);
+                }
             }
         }
         return shapes;
@@ -3423,7 +3529,7 @@ internal static partial class UsdPhysicsExtractionComposer
         UsdPhysicsExtractionPage page,
         PhysxPageBuilder builder,
         int[] sceneIndices,
-        int[] shapeIndices)
+        ComposedShapeRange[] shapeIndices)
     {
         if (page.DefaultSceneIndex >= 0 && sceneIndices[page.DefaultSceneIndex] >= 0)
         {
@@ -3436,7 +3542,7 @@ internal static partial class UsdPhysicsExtractionComposer
             return sceneIndices[authored];
         }
 
-        if (!shapeIndices.Any(static value => value >= 0))
+        if (!shapeIndices.Any(static value => value.Count != 0))
         {
             return -1;
         }
@@ -3462,22 +3568,6 @@ internal static partial class UsdPhysicsExtractionComposer
     {
         var type = (PhysxShapeType)builder.ShapeTypeAt(shapeIndex);
         return type is PhysxShapeType.Plane or PhysxShapeType.TriangleMesh or PhysxShapeType.Heightfield;
-    }
-
-    private static bool IsMovableIncompatible(
-        UsdPhysicsExtractionPage page, int[] shapeIndices, int shapeIndex)
-    {
-        for (int index = 0; index < page.ObjectCount; index++)
-        {
-            if (shapeIndices[index] != shapeIndex)
-            {
-                continue;
-            }
-            UsdPhysicsExtractionGeometryKind geometry = page.GetObject(index).Geometry;
-            return geometry is UsdPhysicsExtractionGeometryKind.Plane
-                or UsdPhysicsExtractionGeometryKind.Mesh;
-        }
-        return false;
     }
 
     private static uint ActorType(UsdPhysicsExtractionObject item, bool isLooseCollider)

@@ -29,7 +29,11 @@ public sealed class RenderDiskJobLimits
     /// <summary>Gets the per-frame raster admission and combined encoded output byte limit.</summary>
     /// <remarks>
     /// Display-only admission charges four bytes per pixel. HDR or device-depth admission conservatively
-    /// charges twenty bytes per pixel, including capture staging and selection upload storage.
+    /// charges twenty bytes per pixel, including capture staging and selection upload storage. A prim
+    /// identity, instance index or element index plane adds eight bytes per pixel for the shared RGBA8 token
+    /// readback and its int32 output; each further requested one adds four more bytes per pixel for its own
+    /// int32 output. A normal
+    /// plane adds twenty-eight bytes per pixel for its RGBA32F readback and float32 x, y, z output.
     /// All encoded planes share this limit separately from raster admission.
     /// Native EXR codec working storage is not covered by either limit.
     /// </remarks>
@@ -47,12 +51,18 @@ public sealed class RenderDiskJobLimits
 public sealed class RenderDiskJobRequest
 {
     internal const int ExpandedCaptureManagedBytesPerPixel = 20;
+    internal const int PrimIdCaptureManagedBytesPerPixel = 8;
+    internal const int SecondPickPlaneManagedBytesPerPixel = 4;
+    internal const int NormalCaptureManagedBytesPerPixel = 28;
+    internal Action<int, int>? FrameEncoded { get; init; }
 
     internal RenderDiskJobRequest(
         string outputDirectory, IReadOnlyList<StageRenderState> frames,
         bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
-        RenderDiskJobLimits? limits, RenderProductJobPlan productPlan)
-        : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, hdrColorFormat, limits)
+        RenderDiskJobLimits? limits, RenderProductJobPlan productPlan, bool includePrimId, bool includeInstanceId,
+        bool includeNormal, bool includeElementId)
+        : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, hdrColorFormat, limits, includePrimId,
+            includeInstanceId, includeNormal, includeElementId)
     {
         ProductPlan = productPlan;
     }
@@ -92,6 +102,16 @@ public sealed class RenderDiskJobRequest
         string outputDirectory, IReadOnlyList<StageRenderState> frames,
         bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
         RenderDiskJobLimits? limits = null)
+        : this(outputDirectory, frames, includeDeviceDepth, includeHdrColor, hdrColorFormat, limits,
+            includePrimId: false, includeInstanceId: false, includeNormal: false, includeElementId: false)
+    {
+    }
+
+    private RenderDiskJobRequest(
+        string outputDirectory, IReadOnlyList<StageRenderState> frames,
+        bool includeDeviceDepth, bool includeHdrColor, RenderHdrColorFormat hdrColorFormat,
+        RenderDiskJobLimits? limits, bool includePrimId, bool includeInstanceId, bool includeNormal,
+        bool includeElementId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
         ArgumentNullException.ThrowIfNull(frames);
@@ -123,7 +143,12 @@ public sealed class RenderDiskJobRequest
         Limits = limits ?? RenderDiskJobLimits.Default;
         IncludeDeviceDepth = includeDeviceDepth;
         IncludeHdrColor = includeHdrColor;
+        IncludePrimId = includePrimId;
+        IncludeInstanceId = includeInstanceId;
+        IncludeNormal = includeNormal;
+        IncludeElementId = includeElementId;
         HdrColorFormat = hdrColorFormat;
+        int pickPlanes = (includePrimId ? 1 : 0) + (includeInstanceId ? 1 : 0) + (includeElementId ? 1 : 0);
         int count = frames.Count;
         if (count < 1 || count > Limits.MaximumFrames)
         {
@@ -143,6 +168,15 @@ public sealed class RenderDiskJobRequest
             int bytes = PngRgba8Writer.GetPixelByteCount(state.Viewport.Width, state.Viewport.Height);
             long charge = includeDeviceDepth || includeHdrColor
                 ? ((long)bytes / 4) * ExpandedCaptureManagedBytesPerPixel : bytes;
+            if (pickPlanes != 0)
+            {
+                charge += ((long)bytes / 4) * PrimIdCaptureManagedBytesPerPixel;
+                charge += ((long)bytes / 4) * SecondPickPlaneManagedBytesPerPixel * (pickPlanes - 1);
+            }
+            if (includeNormal)
+            {
+                charge += ((long)bytes / 4) * NormalCaptureManagedBytesPerPixel;
+            }
             if (charge > Limits.MaximumFrameBytes || state.Viewport.Width > 8192 || state.Viewport.Height > 8192)
             {
                 throw new ArgumentOutOfRangeException(nameof(frames), "Frame dimensions exceed the render-job limit.");
@@ -187,6 +221,23 @@ public sealed class RenderDiskJobRequest
     public bool IncludeDeviceDepth { get; }
     /// <summary>Gets whether each frame must include actual pre-display HDR color; missing HDR is an error.</summary>
     public bool IncludeHdrColor { get; }
+    /// <summary>
+    /// Gets whether each frame must include the visible prim identity plane; only admitted products request it.
+    /// </summary>
+    public bool IncludePrimId { get; }
+    /// <summary>
+    /// Gets whether each frame must include the visible instance index plane; only admitted products request it.
+    /// </summary>
+    public bool IncludeInstanceId { get; }
+    /// <summary>
+    /// Gets whether each frame must include the world-space normal plane; only admitted products request it.
+    /// </summary>
+    public bool IncludeNormal { get; }
+    /// <summary>
+    /// Gets whether each frame must include the visible authored face index plane; only admitted products
+    /// request it.
+    /// </summary>
+    public bool IncludeElementId { get; }
     /// <summary>Gets the HDR container choice; existing overloads retain raw binary16 output.</summary>
     public RenderHdrColorFormat HdrColorFormat { get; }
     /// <summary>
@@ -247,6 +298,20 @@ public sealed class RenderJobImage
     public RenderJobDeviceDepth? DeviceDepth { get; init; }
     /// <summary>Gets or initializes actual pre-display HDR color from the same rendered frame.</summary>
     public RenderJobHdrColor? HdrColor { get; init; }
+    /// <summary>Gets or initializes the visible prim identity plane from the same rendered frame.</summary>
+    public RenderJobPrimId? PrimId { get; init; }
+    /// <summary>Gets or initializes the visible instance index plane from the same rendered frame.</summary>
+    public RenderJobInstanceId? InstanceId { get; init; }
+    /// <summary>Gets or initializes the world-space normal plane from the same rendered frame.</summary>
+    public RenderJobNormal? Normal { get; init; }
+    /// <summary>Gets or initializes the visible authored face index plane from the same rendered frame.</summary>
+    public RenderJobElementId? ElementId { get; init; }
+    /// <summary>Gets or initializes the exact simulation publication represented by all captured planes.</summary>
+    public RenderSimulationFrameIdentity? Simulation { get; init; }
+    /// <summary>
+    /// Gets or initializes the backend that rendered this frame; the manifest records it when present.
+    /// </summary>
+    public RenderBackendIdentity? Backend { get; init; }
 }
 
 /// <summary>Top-down little-endian RGBA binary16 framebuffer color before exposure, display and selection.</summary>
@@ -302,6 +367,200 @@ public sealed class RenderJobDeviceDepth
     public ReadOnlyMemory<float> Values { get; }
 }
 
+/// <summary>Top-down int32 indices of the front-most rendered prim identity, with background minus one.</summary>
+/// <remarks>
+/// Each index refers to <see cref="Identities"/>, the distinct prim path and instance index pairs that
+/// appear in the frame, densely numbered from zero in ordinal path and then instance-index order.
+/// </remarks>
+public sealed class RenderJobPrimId
+{
+    /// <summary>Gets the largest admitted identity table.</summary>
+    public const int MaximumIdentities = 65536;
+
+    /// <summary>Validates dimensions, every index and the bounded identity table, copying only the table.</summary>
+    public RenderJobPrimId(
+        int width, int height, ReadOnlyMemory<int> values, IReadOnlyList<RenderJobPrimIdentity> identities)
+    {
+        ArgumentNullException.ThrowIfNull(identities);
+        if (values.Length != PngRgba8Writer.GetPixelByteCount(width, height) / 4)
+        {
+            throw new ArgumentException("Prim identity storage does not match its dimensions.", nameof(values));
+        }
+        int count = identities.Count;
+        if (count > MaximumIdentities)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(identities), "A frame admits at most 65,536 distinct prim identities.");
+        }
+        var owned = new RenderJobPrimIdentity[count];
+        for (int index = 0; index < count; index++)
+        {
+            owned[index] = identities[index] ??
+                throw new ArgumentException("A prim identity cannot be null.", nameof(identities));
+        }
+        foreach (int value in values.Span)
+        {
+            if (value < -1 || value >= count)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(values), "A prim identity index is outside the identity table.");
+            }
+        }
+        Width = width;
+        Height = height;
+        Values = values;
+        Identities = new OwnedReadOnlyList<RenderJobPrimIdentity>(owned);
+    }
+
+    /// <summary>Gets the width.</summary>
+    public int Width { get; }
+    /// <summary>Gets the height.</summary>
+    public int Height { get; }
+    /// <summary>Gets packed top-down int32 indices, consumed before the next source render.</summary>
+    public ReadOnlyMemory<int> Values { get; }
+    /// <summary>Gets the per-frame identity table addressed by <see cref="Values"/>.</summary>
+    public IReadOnlyList<RenderJobPrimIdentity> Identities { get; }
+}
+
+/// <summary>
+/// Top-down int32 instance indices of the front-most rendered prim, with minus one for the background and
+/// for prims that are not drawn through an instancer.
+/// </summary>
+/// <remarks>
+/// Each value is the instance ordinal within the innermost instancer that drew the pixel, matching
+/// <see cref="RenderJobPrimIdentity.InstanceIndex"/> for the same pixel's prim identity.
+/// </remarks>
+public sealed class RenderJobInstanceId
+{
+    /// <summary>Validates dimensions and that every value is minus one or a non-negative instance index.</summary>
+    public RenderJobInstanceId(int width, int height, ReadOnlyMemory<int> values)
+    {
+        if (values.Length != PngRgba8Writer.GetPixelByteCount(width, height) / 4)
+        {
+            throw new ArgumentException("Instance identity storage does not match its dimensions.", nameof(values));
+        }
+        foreach (int value in values.Span)
+        {
+            if (value < -1)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(values), "An instance index must be minus one or non-negative.");
+            }
+        }
+        Width = width;
+        Height = height;
+        Values = values;
+    }
+
+    /// <summary>Gets the width.</summary>
+    public int Width { get; }
+    /// <summary>Gets the height.</summary>
+    public int Height { get; }
+    /// <summary>Gets packed top-down int32 instance indices, consumed before the next source render.</summary>
+    public ReadOnlyMemory<int> Values { get; }
+}
+
+/// <summary>
+/// Top-down int32 authored face indices of the front-most rendered surface, with minus one for the
+/// background and for surfaces without authored face identity.
+/// </summary>
+/// <remarks>
+/// Each value is the authored mesh face the visible triangle was triangulated from; a refined subdivision
+/// surface reports its coarse authored face, while curves and points report minus one.
+/// </remarks>
+public sealed class RenderJobElementId
+{
+    /// <summary>Validates dimensions and that every value is minus one or a non-negative face index.</summary>
+    public RenderJobElementId(int width, int height, ReadOnlyMemory<int> values)
+    {
+        if (values.Length != PngRgba8Writer.GetPixelByteCount(width, height) / 4)
+        {
+            throw new ArgumentException("Element identity storage does not match its dimensions.", nameof(values));
+        }
+        foreach (int value in values.Span)
+        {
+            if (value < -1)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(values), "An element index must be minus one or non-negative.");
+            }
+        }
+        Width = width;
+        Height = height;
+        Values = values;
+    }
+
+    /// <summary>Gets the width.</summary>
+    public int Width { get; }
+    /// <summary>Gets the height.</summary>
+    public int Height { get; }
+    /// <summary>Gets packed top-down int32 authored face indices, consumed before the next source render.</summary>
+    public ReadOnlyMemory<int> Values { get; }
+}
+
+/// <summary>
+/// Top-down float32 x, y, z world-space unit shading normals of the front-most rendered surface,
+/// with (0, 0, 0) for the background.
+/// </summary>
+/// <remarks>
+/// A back face reports its normal flipped toward the camera. A surface whose interpolated normal
+/// degenerates also reports (0, 0, 0).
+/// </remarks>
+public sealed class RenderJobNormal
+{
+    /// <summary>Validates dimensions and that every component is finite.</summary>
+    public RenderJobNormal(int width, int height, ReadOnlyMemory<float> values)
+    {
+        if (values.Length != (long)(PngRgba8Writer.GetPixelByteCount(width, height) / 4) * 3)
+        {
+            throw new ArgumentException("Normal storage does not match its dimensions.", nameof(values));
+        }
+        foreach (float value in values.Span)
+        {
+            if (!float.IsFinite(value))
+            {
+                throw new ArgumentOutOfRangeException(nameof(values), "A normal component must be finite.");
+            }
+        }
+        Width = width;
+        Height = height;
+        Values = values;
+    }
+
+    /// <summary>Gets the width.</summary>
+    public int Width { get; }
+    /// <summary>Gets the height.</summary>
+    public int Height { get; }
+    /// <summary>Gets packed top-down float32 x, y, z normals, consumed before the next source render.</summary>
+    public ReadOnlyMemory<float> Values { get; }
+}
+
+/// <summary>One rendered prim identity: its path and instance index, or minus one when not instanced.</summary>
+public sealed class RenderJobPrimIdentity
+{
+    /// <summary>Gets the largest admitted path length in UTF-16 code units.</summary>
+    public const int MaximumPathLength = 4096;
+
+    /// <summary>Validates a bounded, non-empty path without control characters.</summary>
+    public RenderJobPrimIdentity(string path, int instanceIndex)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        if (path.Length > MaximumPathLength || path.Any(char.IsControl))
+        {
+            throw new ArgumentException(
+                "A prim identity path must have at most 4096 characters and no control characters.", nameof(path));
+        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(instanceIndex, -1);
+        Path = path;
+        InstanceIndex = instanceIndex;
+    }
+
+    /// <summary>Gets the rendered prim path.</summary>
+    public string Path { get; }
+    /// <summary>Gets the instance index, or minus one for a prim that is not instanced.</summary>
+    public int InstanceIndex { get; }
+}
+
 /// <summary>Describes one published image without retaining its pixel buffer.</summary>
 public sealed class RenderDiskFrameResult
 {
@@ -309,7 +568,8 @@ public sealed class RenderDiskFrameResult
         int index, StageRenderState state, string fileName, long bytes, string sha256,
         string? depthFileName = null, long depthBytes = 0, string? depthSha256 = null,
         string? hdrColorFileName = null, long hdrColorBytes = 0, string? hdrColorSha256 = null,
-        RenderHdrColorFormat hdrColorFormat = RenderHdrColorFormat.RawRgba16Float)
+        RenderHdrColorFormat hdrColorFormat = RenderHdrColorFormat.RawRgba16Float,
+        RenderSimulationFrameIdentity? simulation = null, RenderBackendIdentity? backend = null)
     {
         Index = index;
         State = state;
@@ -323,6 +583,8 @@ public sealed class RenderDiskFrameResult
         HdrColorBytes = hdrColorBytes;
         HdrColorSha256 = hdrColorSha256;
         HdrColorFormat = hdrColorFileName is null ? null : hdrColorFormat;
+        Simulation = simulation;
+        Backend = backend;
     }
 
     /// <summary>Gets the zero-based frame index.</summary>
@@ -349,6 +611,40 @@ public sealed class RenderDiskFrameResult
     public string? HdrColorSha256 { get; }
     /// <summary>Gets the encoded HDR format, or null when no HDR plane was requested.</summary>
     public RenderHdrColorFormat? HdrColorFormat { get; }
+    /// <summary>Gets the optional int32-little-endian prim identity index filename, relative to the job.</summary>
+    public string? PrimIdFileName { get; internal init; }
+    /// <summary>Gets the prim identity index file length, or zero when no prim identity was requested.</summary>
+    public long PrimIdBytes { get; internal init; }
+    /// <summary>Gets the prim identity index file SHA256, or null when no prim identity was requested.</summary>
+    public string? PrimIdSha256 { get; internal init; }
+    /// <summary>Gets the optional UTF-8 JSON prim identity table filename, relative to the job.</summary>
+    public string? PrimIdTableFileName { get; internal init; }
+    /// <summary>Gets the prim identity table file length, or zero when no prim identity was requested.</summary>
+    public long PrimIdTableBytes { get; internal init; }
+    /// <summary>Gets the prim identity table SHA256, or null when no prim identity was requested.</summary>
+    public string? PrimIdTableSha256 { get; internal init; }
+    /// <summary>Gets the optional int32-little-endian instance index filename, relative to the job.</summary>
+    public string? InstanceIdFileName { get; internal init; }
+    /// <summary>Gets the instance index file length, or zero when no instance index was requested.</summary>
+    public long InstanceIdBytes { get; internal init; }
+    /// <summary>Gets the instance index file SHA256, or null when no instance index was requested.</summary>
+    public string? InstanceIdSha256 { get; internal init; }
+    /// <summary>Gets the optional float32x3-little-endian normal filename, relative to the job.</summary>
+    public string? NormalFileName { get; internal init; }
+    /// <summary>Gets the normal file length, or zero when no normal was requested.</summary>
+    public long NormalBytes { get; internal init; }
+    /// <summary>Gets the normal file SHA256, or null when no normal was requested.</summary>
+    public string? NormalSha256 { get; internal init; }
+    /// <summary>Gets the optional int32-little-endian authored face index filename, relative to the job.</summary>
+    public string? ElementIdFileName { get; internal init; }
+    /// <summary>Gets the element index file length, or zero when no element index was requested.</summary>
+    public long ElementIdBytes { get; internal init; }
+    /// <summary>Gets the element index file SHA256, or null when no element index was requested.</summary>
+    public string? ElementIdSha256 { get; internal init; }
+    /// <summary>Gets the exact simulation publication represented by this frame, when recorded.</summary>
+    public RenderSimulationFrameIdentity? Simulation { get; }
+    /// <summary>Gets the backend that rendered this frame, or null when the source did not report one.</summary>
+    public RenderBackendIdentity? Backend { get; }
 }
 
 /// <summary>A completed, atomically published disk job.</summary>

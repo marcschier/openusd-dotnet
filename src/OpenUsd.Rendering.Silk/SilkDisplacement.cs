@@ -233,9 +233,12 @@ internal readonly record struct SilkDisplacementPlan(
 /// <c>useMetadata</c> are a transparent-black border: a texel outside the image
 /// contributes zero <em>sampled</em> value, including its share of a bilinear
 /// blend near an edge, which is what a border-addressed sampler computes. The
-/// fragment stage resolves both to clamp-to-edge because no backend is handed a
-/// border colour; the vertex stage owns its own addressing and has no such
-/// constraint.
+/// fragment sampler uses the same border behavior. MaterialX <c>constant</c> is
+/// a border too, but its border is the authored <c>default</c>, read through the
+/// same channel selection as a texel: outside the image the sampled value is the
+/// default rather than zero. When one axis is <c>black</c> and the other
+/// <c>constant</c>, a coordinate outside the black axis is black, because a
+/// clamp-to-border sampler on that axis decides before the other axis is read.
 /// </para>
 /// <para>
 /// The authored <c>scale</c> and <c>bias</c> are applied to the <em>filtered</em>
@@ -262,6 +265,7 @@ internal sealed class SilkDisplacementField
     private readonly float[] _uvTransform;
     private readonly float _scale;
     private readonly float _bias;
+    private readonly float _border;
 
     private SilkDisplacementField(
         float constantAmount,
@@ -273,6 +277,7 @@ internal sealed class SilkDisplacementField
         float[] uvTransform,
         float scale,
         float bias,
+        float border,
         string uvPrimvar,
         ulong identity)
     {
@@ -285,6 +290,7 @@ internal sealed class SilkDisplacementField
         _uvTransform = uvTransform;
         _scale = scale;
         _bias = bias;
+        _border = border;
         UvPrimvar = uvPrimvar;
         Identity = identity;
     }
@@ -344,6 +350,7 @@ internal sealed class SilkDisplacementField
             [],
             1,
             0,
+            0,
             string.Empty,
             identity);
 
@@ -356,6 +363,10 @@ internal sealed class SilkDisplacementField
     /// <param name="uvTransform">The material's folded coordinate affine.</param>
     /// <param name="scale">The authored multiply, applied after filtering.</param>
     /// <param name="bias">The authored offset, applied after filtering.</param>
+    /// <param name="border">
+    /// The raw sampled value outside the image on a <see cref="SilkTextureWrap.Constant"/>
+    /// axis: the authored default in the selected channel, before the affine.
+    /// </param>
     /// <param name="uvPrimvar">The coordinate set this field is sampled through.</param>
     /// <param name="identity">The identity of everything that can change the amounts.</param>
     internal static SilkDisplacementField Textured(
@@ -367,6 +378,7 @@ internal sealed class SilkDisplacementField
         IReadOnlyList<float> uvTransform,
         float scale,
         float bias,
+        float border,
         string uvPrimvar,
         ulong identity)
     {
@@ -390,6 +402,10 @@ internal sealed class SilkDisplacementField
                 "A displacement affine must be finite.",
                 nameof(scale));
         }
+        if (!float.IsFinite(border))
+        {
+            throw new ArgumentException("A constant displacement border must be finite.", nameof(border));
+        }
         return new SilkDisplacementField(
             0,
             texels,
@@ -400,6 +416,7 @@ internal sealed class SilkDisplacementField
             [.. uvTransform],
             scale,
             bias,
+            border,
             uvPrimvar,
             identity);
     }
@@ -489,9 +506,14 @@ internal sealed class SilkDisplacementField
             // A coordinate this far outside the image cannot be reduced without
             // overflowing. Under a border mode the sample is the border; under a
             // periodic or clamped mode the reduction is unrepresentable, and the
-            // honest answer is the same zero sample. The authored affine still
-            // applies to it, exactly as it applies to any other border sample.
-            return Affine(0);
+            // honest answer is a zero sample. A constant border is its default
+            // only when every overflowing axis is constant. The authored affine
+            // still applies, exactly as it applies to any other border sample.
+            bool overflowS = floorX <= int.MinValue || floorX >= int.MaxValue - 1;
+            bool overflowT = floorY <= int.MinValue || floorY >= int.MaxValue - 1;
+            bool constant = (!overflowS || _wrapS == SilkTextureWrap.Constant) &&
+                (!overflowT || _wrapT == SilkTextureWrap.Constant);
+            return Affine(constant ? _border : 0);
         }
         int x0 = (int)floorX;
         int y0 = (int)floorY;
@@ -524,20 +546,27 @@ internal sealed class SilkDisplacementField
     /// must be able to tell the two apart.
     /// </remarks>
     internal static bool IsBorder(SilkTextureWrap wrap) =>
-        wrap is SilkTextureWrap.Black or SilkTextureWrap.UseMetadata;
+        wrap is SilkTextureWrap.Black or SilkTextureWrap.UseMetadata or SilkTextureWrap.Constant;
 
     /// <summary>
-    /// Reads one texel under the authored addressing, returning the transparent
-    /// black border for a coordinate a border mode places outside the image.
+    /// Reads one texel under the authored addressing, returning the border for a
+    /// coordinate a border mode places outside the image: transparent black for
+    /// a black axis, which takes precedence, and the authored default otherwise.
     /// </summary>
     private float Texel(int x, int y)
     {
-        if (!TryAddress(x, _width, _wrapS, out int column) ||
-            !TryAddress(y, _height, _wrapT, out int row))
+        bool insideS = TryAddress(x, _width, _wrapS, out int column);
+        bool insideT = TryAddress(y, _height, _wrapT, out int row);
+        if (insideS && insideT)
+        {
+            return _texels[(row * _width) + column];
+        }
+        if ((!insideS && _wrapS != SilkTextureWrap.Constant) ||
+            (!insideT && _wrapT != SilkTextureWrap.Constant))
         {
             return 0;
         }
-        return _texels[(row * _width) + column];
+        return _border;
     }
 
     /// <summary>

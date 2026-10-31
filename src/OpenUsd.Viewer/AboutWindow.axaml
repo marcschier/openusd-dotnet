@@ -36,7 +36,8 @@
         HorizontalAlignment="Right"
         MinWidth="88"
         Margin="0,12,0,0" />
-    <ScrollViewer>
+    <ScrollViewer x:Name="CompatibilityScroll" Focusable="True"
+                  AutomationProperties.Name="Viewer compatibility guidance">
       <TextBlock
           x:Name="CompatibilityText"
           TextWrapping="Wrap"

@@ -9,6 +9,46 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class RenderProductRequestTests
 {
     [Test]
+    [Arguments(0.25)]
+    [Arguments(0.5)]
+    [Arguments(0.5000000000000001)]
+    [Arguments(1d)]
+    [Arguments(2d)]
+    public async Task FinitePerspectiveProjectionDoesNotOverflowAtAnExtremeFarPlane(double near)
+    {
+        var request = new RenderProductRequest(CreateSpecification(), 0, new RenderProductOverrides(
+            dataWindowNdc: new UsdVec4f(0, 0, 1, 1)));
+        var optics = new UsdGeomCameraState(
+            UsdGeomCameraProjection.Perspective, -1, 1, -1, 1, near, double.MaxValue,
+            50, 20, 20, 0, 0, 0, 0);
+
+        RenderPreparedFrame frame = request.PrepareFrame(UsdMatrix4d.Identity, optics, 24);
+
+        await Assert.That(frame.Camera.Projection).IsEqualTo(new Matrix4x4(
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, -1, -1,
+            0, 0, (float)(-2 * near), 0));
+        await Assert.That(frame.TimeCode).IsEqualTo(24d);
+        await Assert.That(frame.Request).IsSameReferenceAs(request);
+        await Assert.That(frame.OutputDimensions).IsEqualTo(new ViewportDimensions(4, 4));
+        await Assert.That(optics.ClippingFar).IsEqualTo(double.MaxValue);
+    }
+
+    [Test]
+    public async Task ExtremeFarPlaneDoesNotPermitAnUnrepresentablePerspectiveDepthCoefficient()
+    {
+        var request = new RenderProductRequest(CreateSpecification(), 0, new RenderProductOverrides(
+            dataWindowNdc: new UsdVec4f(0, 0, 1, 1)));
+        var optics = new UsdGeomCameraState(
+            UsdGeomCameraProjection.Perspective, -1, 1, -1, 1, 1e40, double.MaxValue,
+            50, 20, 20, 0, 0, 0, 0);
+
+        await Assert.That(() => request.PrepareFrame(UsdMatrix4d.Identity, optics, 24))
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
     public async Task RequestedOutputsCannotBeReplacedAfterRequestCreation()
     {
         var request = new RenderProductRequest(CreateSpecification(), 0);

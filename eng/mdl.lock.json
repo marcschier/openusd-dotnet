@@ -53,7 +53,7 @@
   ],
   "adapter": {
     "name": "openusd_mdl",
-    "abi": 2,
+    "abi": 7,
     "cmakeOption": "OPENUSD_WITH_MDL",
     "default": "off",
     "shippedInBasePackages": false,
@@ -66,7 +66,7 @@
     "gatedRids": [
       "win-x64"
     ],
-    "gatedRidsNote": "native.yml builds the OPENUSD_WITH_MDL configuration and runs the hdSilk probe against it on Windows only. The adapter is dependency-free C++ and the linux-x64-mdl and osx-arm64-mdl presets build the identical source, but no workflow builds them, so those RIDs are buildable rather than proven and are not claimed as evidence platforms. The SDK-backed sibling is proven on win-x64 only, against the acquisition tree eng/fetch-mdl-sdk.ps1 produces.",
+    "gatedRidsNote": "The gatedRids set records integrated hdSilk qualification: native.yml builds OPENUSD_WITH_MDL and runs the hdSilk probe on Windows only. The standalone mdl-adapter job runs C-ABI checks on all three RIDs. The mdl-sdk-adapter job builds the SDK adapter/probes on all three, but runs module tests on macOS only; Windows/Linux hosted jobs are explicitly compile-only because SDK runtime loading failed there. Neither job qualifies the loader or renderer on the other RIDs. Acquired SDK dependencies are digest-verified and never uploaded or packaged.",
     "linksMdlSdk": false,
     "sdkBacked": false,
     "capability": "authored-value distillation of the accepted OmniPBR/OmniSurface/OmniGlass parameter subset; no .mdl module is opened, parsed, or evaluated",
@@ -147,7 +147,9 @@
     "acquisition": {
       "performed": true,
       "performedFor": [
-        "win-x64"
+        "win-x64",
+        "linux-x64",
+        "osx-arm64"
       ],
       "script": "eng/fetch-mdl-sdk.ps1",
       "verification": "The archive is verified against the SHA-256 recorded above before it is extracted. The digest is compared, never written back from the download: a hash computed from whatever arrived attests to nothing. A mismatch deletes the download and fails.",

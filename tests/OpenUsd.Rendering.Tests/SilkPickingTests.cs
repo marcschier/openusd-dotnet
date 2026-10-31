@@ -36,6 +36,43 @@ public sealed class SilkPickingTests
     }
 
     [Test]
+    public async Task DiscardingOneUnpublishedPickPreservesOtherSubmissionsAndRejectsStaleReservations()
+    {
+        using var device = new TestGraphicsDevice();
+        using var ring = new SilkPickReadbackRing(device, capacity: 2);
+        var context = new SilkPickReadbackContext(
+            CreateRequest(0, 0, 2, 2, stateRevision: 1, sceneRevision: 2),
+            1, 2, 3, device.PickDeviceGeneration, new ViewportDimensions(2, 2));
+        await Assert.That(ring.TryAcquire(out SilkPickReadbackReservation first)).IsTrue();
+        await Assert.That(ring.TryAcquire(out SilkPickReadbackReservation second)).IsTrue();
+        var firstSubmission = new TestSubmission();
+        var secondSubmission = new TestSubmission();
+        ring.Commit(first, firstSubmission, context);
+        ring.Commit(second, secondSubmission, context);
+        ((TestReadbackBuffer)second.Buffer).SetToken(0x44332211);
+        ring.DiscardSubmitted(first);
+        await Assert.That(firstSubmission.IsDisposed).IsTrue();
+        await Assert.That(secondSubmission.IsDisposed).IsFalse();
+        await Assert.That(ring.InFlightCount).IsEqualTo(1);
+        await Assert.That(((TestReadbackBuffer)first.Buffer).DiscardedFrames).IsEqualTo(1);
+        await Assert.That(((TestReadbackBuffer)second.Buffer).DiscardedFrames).IsEqualTo(0);
+        await Assert.That(ring.TryAcquire(out SilkPickReadbackReservation reused)).IsTrue();
+        await Assert.That(reused.Buffer).IsSameReferenceAs(first.Buffer);
+        await Assert.That(() => ring.DiscardSubmitted(first)).Throws<InvalidOperationException>();
+        ring.CancelPrepared(reused);
+        await Assert.That(((TestReadbackBuffer)first.Buffer).DiscardedFrames).IsEqualTo(2);
+        secondSubmission.Complete();
+        await Assert.That(ring.TryReadCompleted(out SilkPickReadbackResult completed)).IsTrue();
+        await Assert.That(completed.SlotIndex).IsEqualTo(second.SlotIndex);
+        await Assert.That(completed.Token).IsEqualTo(0x44332211u);
+        await Assert.That(ring.InFlightCount).IsEqualTo(0);
+        using var other = new SilkPickReadbackRing(device, capacity: 2);
+        await Assert.That(other.TryAcquire(out SilkPickReadbackReservation foreign)).IsTrue();
+        await Assert.That(() => ring.DiscardSubmitted(foreign)).Throws<ArgumentException>();
+        other.Cancel(foreign);
+    }
+
+    [Test]
     public async Task ReadbackRingReusesSlotsAndReturnsSaturation()
     {
         using var device = new TestGraphicsDevice();
@@ -1073,13 +1110,15 @@ public sealed class SilkPickingTests
         }
     }
 
-    private sealed class TestReadbackBuffer : ISilkPickReadbackBuffer
+    private sealed class TestReadbackBuffer : ISilkPickReadbackBuffer, ISilkDiscardedPickReadback
     {
         private readonly byte[] _bytes =
             new byte[SilkPickTokenEncoding.ByteSize];
         private bool _disposed;
 
         public int ByteSize => _bytes.Length;
+        internal int DiscardedFrames { get; private set; }
+        public void ReleaseDiscardedFrameResources() => DiscardedFrames++;
 
         public void ReadRgba8Pixel(Span<byte> destination)
         {

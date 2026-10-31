@@ -83,8 +83,8 @@ public sealed partial class MainWindow
         window.Closed += (_, _) =>
         {
             _cameraBookmarksWindow = null;
-            RestoreWorkspaceFocus(focus);
         };
+        RestoreWorkspaceFocusWhenClosed(window, focus);
         window.Show(this);
     }
 

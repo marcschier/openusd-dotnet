@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Text;
 using OpenUsd.Rendering.Silk;
 
@@ -8,6 +9,307 @@ namespace OpenUsd.Rendering.Tests;
 
 public sealed class SilkPhysicsOverrideTests
 {
+    [Test]
+    public async Task EqualPageGeometrySharesOnlyImmutableArraysAcrossDistinctPrimIdentities()
+    {
+        var scene = new SilkSceneState();
+        byte[] first = CreateMeshCommand(path: "/First", primId: 7);
+        byte[] second = CreateMeshCommand(path: "/Second", primId: 8);
+        _ = scene.Apply([.. first, .. second], 2, 1);
+        SilkMeshData a = scene.Meshes[7];
+        SilkMeshData b = scene.Meshes[8];
+        await Assert.That(a.Path).IsEqualTo("/First");
+        await Assert.That(b.Path).IsEqualTo("/Second");
+        await Assert.That(a.Id).IsNotEqualTo(b.Id);
+        await Assert.That(SameArray(a.Points, b.Points)).IsTrue();
+        await Assert.That(SameArray(a.Indices, b.Indices)).IsTrue();
+        await Assert.That(SameArray(a.TriangleSubprims, b.TriangleSubprims)).IsTrue();
+        Array.Clear(first);
+        Array.Clear(second);
+        await Assert.That(a.Points.ToArray()).IsEquivalentTo(b.Points.ToArray());
+        float[] changed = a.Points.ToArray();
+        changed[0] += 1;
+        SilkMeshData simulated = a.WithSimulatedPoints(changed);
+        await Assert.That(simulated.Points.Span[0]).IsEqualTo(b.Points.Span[0] + 1);
+        await Assert.That(SameArray(simulated.Points, b.Points)).IsFalse();
+    }
+
+    private static bool SameArray<T>(ReadOnlyMemory<T> left, ReadOnlyMemory<T> right) =>
+        MemoryMarshal.TryGetArray(left, out ArraySegment<T> a) &&
+        MemoryMarshal.TryGetArray(right, out ArraySegment<T> b) && ReferenceEquals(a.Array, b.Array);
+
+    [Test]
+    public async Task ImmutableArraySharingPreservesExactFloatBitsAndChangedTopology()
+    {
+        var arrays = new SilkMeshArrayPool();
+        float[] first = [1, 0, float.NaN];
+        float[] identical = [1, 0, float.NaN];
+        float[] negativeZero = [1, BitConverter.Int32BitsToSingle(unchecked((int)0x80000000)), float.NaN];
+        float[] original = arrays.Floats.Share(first);
+        await Assert.That(arrays.Floats.Share(identical)).IsSameReferenceAs(original);
+        await Assert.That(arrays.Floats.Share(negativeZero)).IsSameReferenceAs(negativeZero);
+        uint[] topology = [0, 1, 2];
+        uint[] changed = [0, 2, 1];
+        await Assert.That(arrays.Indices.Share(topology)).IsSameReferenceAs(topology);
+        await Assert.That(arrays.Indices.Share(changed)).IsSameReferenceAs(changed);
+        await Assert.That(arrays.Indices.Share([0, 1, 2])).IsSameReferenceAs(topology);
+    }
+
+    [Test]
+    public async Task SubtreeBodyMotionPreservesEveryChildOffsetAndAuthoredStretch()
+    {
+        var scene = new SilkSceneState();
+        double[] first = (double[])AuthoredTransform.Clone();
+        first[0] = 2;
+        first[1] = 0.25;
+        first[12] = 12;
+        first[13] = first[14] = 0;
+        double[] second = (double[])AuthoredTransform.Clone();
+        second[12] = 8;
+        second[13] = second[14] = 0;
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/First", primId: 7, transform: first), 1, 1);
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/Second", primId: 8, transform: second), 1, 2);
+        _ = scene.Apply(CreateMeshCommand(path: "/BodyAdjacent/Mesh", primId: 9), 1, 3);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBindSubtree(id, "/Body", new UsdVec3d(10, 0, 0), PhysicsRenderOrientation.Identity);
+        var overrides = new SilkPhysicsTransformOverrides(3);
+        var value = new PhysicsRenderTransformOverride(id, new UsdVec3d(20, 0, 0),
+            new PhysicsRenderOrientation(0, 0, Math.Sqrt(0.5), Math.Sqrt(0.5)), true);
+        _ = overrides.Refresh(scene, bindings, new PhysicsRenderOverrideView(new[] { value }, 1));
+        await Assert.That(overrides.Count).IsEqualTo(2);
+        await Assert.That(overrides.ResolvedOverrideCount).IsEqualTo(1);
+        await Assert.That(overrides.Contains(9)).IsFalse();
+        double[] actual = overrides.GetTransform(7).ToArray();
+        await Assert.That(actual[12]).IsEqualTo(20d).Within(1e-10);
+        await Assert.That(actual[13]).IsEqualTo(2d).Within(1e-10);
+        await Assert.That(actual[0]).IsEqualTo(-0.25d).Within(1e-10);
+        await Assert.That(actual[1]).IsEqualTo(2d).Within(1e-10);
+        await Assert.That(overrides.GetTransform(8)[13]).IsEqualTo(-2d).Within(1e-10);
+    }
+
+    [Test]
+    [Arguments(1, 0)]
+    [Arguments(2, 2)]
+    public async Task SubtreeCapacityAppliesToTheWholeBody(int capacity, int expectedMeshes)
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/First", primId: 7), 1, 1);
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/Second", primId: 8), 1, 2);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBindSubtree(id, "/Body", default, PhysicsRenderOrientation.Identity);
+        var overrides = new SilkPhysicsTransformOverrides(capacity);
+        _ = overrides.Refresh(scene, bindings, CreateView(id, 1, 2, 3));
+        await Assert.That(overrides.Count).IsEqualTo(expectedMeshes);
+        await Assert.That(overrides.ResolvedOverrideCount).IsEqualTo(expectedMeshes == 0 ? 0 : 1);
+        await Assert.That(overrides.DroppedOverrides).IsEqualTo(expectedMeshes == 0 ? 1L : 0L);
+    }
+
+    [Test]
+    public async Task SubtreeRejectsInstancedDescendantsWithoutApplyingTheOtherChildren()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/First", primId: 7), 1, 1);
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/Instanced", primId: 8, instanceIndex: 1), 1, 2);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBindSubtree(id, "/Body", default, PhysicsRenderOrientation.Identity);
+        var overrides = new SilkPhysicsTransformOverrides(3);
+        _ = overrides.Refresh(scene, bindings, CreateView(id, 1, 2, 3));
+        await Assert.That(overrides.Count).IsEqualTo(0);
+        await Assert.That(overrides.ResolvedOverrideCount).IsEqualTo(0);
+        await Assert.That(overrides.UnresolvedOverrides).IsEqualTo(1L);
+    }
+
+    [Test]
+    public async Task SubtreeTargetsAreRebuiltAfterRollbackEvenWhenGeometryRevisionIsReused()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/First", primId: 7), 1, 1);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBindSubtree(id, "/Body", default, PhysicsRenderOrientation.Identity);
+        var overrides = new SilkPhysicsTransformOverrides(3);
+        PhysicsRenderOverrideView view = CreateView(id, 1, 2, 3);
+        ulong speculativeRevision;
+        int speculativeCount;
+        using (var page = new OpenUsdSilkPage(30, 2, CreateMeshCommand(path: "/Outside", primId: 8), 1))
+        using (SilkSceneState.PreparedPage transaction = scene.PreparePage(page))
+        {
+            speculativeRevision = scene.GeometryRevision;
+            _ = overrides.Refresh(scene, bindings, view);
+            speculativeCount = overrides.Count;
+        }
+        await Assert.That(speculativeCount).IsEqualTo(1);
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/Second", primId: 8), 1, 2);
+        await Assert.That(scene.GeometryRevision).IsEqualTo(speculativeRevision);
+        _ = overrides.Refresh(scene, bindings, view);
+        await Assert.That(overrides.Count).IsEqualTo(2);
+        await Assert.That(overrides.Contains(8)).IsTrue();
+    }
+
+    [Test]
+    public async Task WarmSubtreeResolutionAllocatesNoManagedStorage()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/First", primId: 7), 1, 1);
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/Second", primId: 8), 1, 2);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBindSubtree(id, "/Body", default, PhysicsRenderOrientation.Identity);
+        var overrides = new SilkPhysicsTransformOverrides(3);
+        PhysicsRenderOverrideView view = CreateView(id, 1, 2, 3);
+        long allocated = MeasureWarmAllocations(() =>
+        {
+            overrides.Stage(bindings, view);
+            _ = overrides.RefreshStaged(scene);
+        });
+        await Assert.That(allocated).IsEqualTo(0L);
+        await Assert.That(overrides.Count).IsEqualTo(2);
+        await Assert.That(overrides.ResolvedOverrideCount).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task ConflictingSubtreeAndDirectBindingsDoNotMoveTheSharedMesh()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(path: "/Body/Mesh", primId: 7), 1, 1);
+        var parent = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var child = new PhysicsRenderObjectId(102, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(2);
+        _ = bindings.TryBindSubtree(parent, "/Body", default, PhysicsRenderOrientation.Identity);
+        _ = bindings.TryBind(child, "/Body/Mesh");
+        var overrides = new SilkPhysicsTransformOverrides(2);
+        _ = overrides.Refresh(scene, bindings, CreateView([(parent, 1, 2, 3), (child, 4, 5, 6)]));
+        await Assert.That(overrides.Count).IsEqualTo(0);
+        await Assert.That(overrides.ResolvedOverrideCount).IsEqualTo(0);
+        await Assert.That(overrides.UnresolvedOverrides).IsEqualTo(2L);
+    }
+
+    [Test]
+    public async Task RefusedStageKeepsThePreviousPendingPublication()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(), 1, 1);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBind(id, "/Triangle");
+        var overrides = new SilkPhysicsTransformOverrides(1);
+        overrides.Stage(bindings, CreateView(id, 5, 6, 7));
+        await Assert.That(() => overrides.Stage(bindings, CreateView([(id, 9, 9, 9), (id, 8, 8, 8)])))
+            .Throws<ArgumentOutOfRangeException>();
+        _ = overrides.RefreshStaged(scene);
+        await Assert.That(overrides.GetTransform(7)[12]).IsEqualTo(5d);
+    }
+
+    [Test]
+    public async Task ChangedStagedBindingsDoNotReplaceResolvedTransforms()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(), 1, 1);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBind(id, "/Triangle");
+        var overrides = new SilkPhysicsTransformOverrides(1);
+        _ = overrides.Refresh(scene, bindings, CreateView(id, 1, 2, 3));
+        overrides.Stage(bindings, CreateView(id, 5, 6, 7));
+        bindings.Clear();
+        await Assert.That(() => overrides.RefreshStaged(scene)).Throws<InvalidOperationException>();
+        await Assert.That(overrides.GetTransform(7)[12]).IsEqualTo(1d);
+    }
+
+    [Test]
+    public async Task WarmStagingAndPostSyncResolutionAllocateNoManagedStorage()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(), 1, 1);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBind(id, "/Triangle");
+        var overrides = new SilkPhysicsTransformOverrides(1);
+        PhysicsRenderOverrideView view = CreateView(id, 5, 6, 7);
+        long allocated = MeasureWarmAllocations(() =>
+        {
+            overrides.Stage(bindings, view);
+            _ = overrides.RefreshStaged(scene);
+        });
+        await Assert.That(allocated).IsEqualTo(0L);
+    }
+
+    /// <summary>
+    /// Measures 1,000 calls of a hot path after it stops allocating.
+    /// </summary>
+    /// <remarks>
+    /// A fixed warm-up count cannot absorb tier-1 promotion, which compiles asynchronously after
+    /// about thirty calls and can land inside the measured loop on a contended runner.
+    /// <c>WarmSubtreeResolutionAllocatesNoManagedStorage</c> reported 3,048 bytes on hosted
+    /// Windows that way. Waiting for four consecutive quiet blocks, and measuring a second time
+    /// when the first measurement allocates, keeps the assertion at exactly zero: a path that
+    /// really allocates allocates in both measurements.
+    /// </remarks>
+    private static long MeasureWarmAllocations(Action action)
+    {
+        long allocated = 0;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            int quietBlocks = 0;
+            for (int block = 0; block < 50 && quietBlocks < 4; block++)
+            {
+                long blockBefore = GC.GetAllocatedBytesForCurrentThread();
+                for (int index = 0; index < 200; index++)
+                {
+                    action();
+                }
+                quietBlocks = GC.GetAllocatedBytesForCurrentThread() == blockBefore ? quietBlocks + 1 : 0;
+            }
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int index = 0; index < 1000; index++)
+            {
+                action();
+            }
+            allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            if (allocated == 0)
+            {
+                return 0;
+            }
+        }
+        return allocated;
+    }
+
+    [Test]
+    public async Task StagedPublicationUsesCurrentAuthoredStretchAndOwnsItsPoseValues()
+    {
+        var scene = new SilkSceneState();
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBind(id, "/Triangle");
+        PhysicsRenderTransformOverride[] poses =
+        [
+            new(id, new UsdVec3d(5, 6, 7), PhysicsRenderOrientation.Identity, true)
+        ];
+        var overrides = new SilkPhysicsTransformOverrides(1);
+        overrides.Stage(bindings, new PhysicsRenderOverrideView(poses, 17));
+        poses[0] = poses[0] with { Position = new UsdVec3d(99, 99, 99) };
+        await Assert.That(overrides.SourceRevision).IsEqualTo(0ul);
+        await Assert.That(overrides.HasStaged).IsTrue();
+        double[] authored = (double[])AuthoredTransform.Clone();
+        authored[0] = 2;
+        _ = scene.Apply(CreateMeshCommand(transform: authored), 1, 1);
+        await Assert.That(overrides.RefreshStaged(scene)).IsEqualTo(1);
+        await Assert.That(overrides.SourceRevision).IsEqualTo(17ul);
+        await Assert.That(overrides.GetTransform(7)[0]).IsEqualTo(2d);
+        await Assert.That(overrides.GetTransform(7)[12]).IsEqualTo(5d);
+        authored[0] = 3;
+        _ = scene.Apply(CreateMeshCommand(transform: authored), 1, 2);
+        _ = overrides.RefreshStaged(scene);
+        await Assert.That(overrides.GetTransform(7)[0]).IsEqualTo(3d);
+        overrides.Clear();
+        await Assert.That(overrides.HasStaged).IsFalse();
+        await Assert.That(overrides.SourceRevision).IsEqualTo(0ul);
+        await Assert.That(overrides.RefreshStaged(scene)).IsEqualTo(0);
+    }
+
     private static readonly double[] AuthoredTransform =
     [
         1, 0, 0, 0,

@@ -42,6 +42,138 @@ public static class SilkDeformationRenderConformance
     private const float CasterDepth = 0.8f;
     private const float LightTiltX = 0.6f;
 
+    internal static async Task ActivatedPoseRollback(
+        Func<ISilkGraphicsDevice> createDevice, SilkShaderBinaryFormat shaderFormat)
+    {
+        using var device = new SilkGpuPublicationDevice(createDevice());
+        var budget = new SilkGpuBufferBudget(1_000_000);
+        budget.ConfigureDevice(device);
+        using ISilkGraphicsTexture color = CreateColor(device);
+        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using var renderer = new SilkMeshRenderer(device, shaderFormat);
+        Apply(renderer, 1, CreateQuad("/Quad", BindPoints(), BindNormals(), TranslationRig(0.5f)));
+        byte[] before = RenderInto(renderer, color, depth);
+        SilkMeshGpuResource original = renderer.GpuResources.MeshValues.Single();
+        ISilkGraphicsBuffer vertices = original.VertexBuffer;
+        ulong pending = original.Geometry.Deformation!.PendingIdentity;
+        ulong dispatched = original.Geometry.Deformation.DispatchedIdentity;
+        ulong revision = renderer.GpuResources.Revision;
+        ulong reserved = budget.Usage.ReservedBytes;
+        byte[] changed = CreateQuad("/Quad", BindPoints(), BindNormals(), TranslationRig(1.1f));
+        using var page = new OpenUsdSilkPage(30, 2, changed, 1);
+        Exception? refusal = null;
+        bool candidateVisible;
+        using (SilkSceneState.PreparedPage cpu = renderer.Scene.PreparePage(page))
+        using (SilkSceneGpuResources.PreparedMeshUpdate gpu = renderer.GpuResources.Prepare(
+            renderer.Scene, cpu.Delta, prepareUniformCapacity: true)!)
+        {
+            gpu.Activate();
+            candidateVisible = !ReferenceEquals(renderer.GpuResources.MeshValues.Single().VertexBuffer, vertices) &&
+                original.Geometry.Deformation.PendingIdentity != pending;
+            device.RefuseSubmission = true;
+            try
+            {
+                _ = renderer.Render(color, depth);
+            }
+            catch (SilkGpuStagingBudgetExceededException error)
+            {
+                refusal = error;
+            }
+        }
+        device.RefuseSubmission = false;
+        await Assert.That(candidateVisible).IsTrue();
+        await Assert.That(refusal).IsNotNull();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
+        await Assert.That(renderer.GpuResources.Revision).IsEqualTo(revision);
+        await Assert.That(renderer.GpuResources.MeshValues.Single()).IsSameReferenceAs(original);
+        await Assert.That(original.VertexBuffer).IsSameReferenceAs(vertices);
+        await Assert.That(original.Geometry.Deformation.PendingIdentity).IsEqualTo(pending);
+        await Assert.That(original.Geometry.Deformation.DispatchedIdentity).IsEqualTo(dispatched);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        await Assert.That(RenderInto(renderer, color, depth).SequenceEqual(before)).IsTrue();
+        Apply(renderer, 2, changed);
+        byte[] after = RenderInto(renderer, color, depth);
+        await Assert.That(after.SequenceEqual(before)).IsFalse();
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    internal static async Task PageShadowUsesPendingVertices(
+        Func<ISilkGraphicsDevice> createDevice, SilkShaderBinaryFormat shaderFormat)
+    {
+        using ISilkGraphicsDevice device = createDevice();
+        var budget = new SilkGpuBufferBudget(1_000_000);
+        budget.ConfigureDevice(device);
+        using ISilkGraphicsTexture color = CreateColor(device);
+        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using var renderer = new SilkMeshRenderer(device, shaderFormat);
+        ApplyScene(renderer, 1, CreateShadowLightFrame(),
+            CreateQuad("/Caster", CasterBindPoints(), BindNormals(), CasterRig(0)),
+            CreateReceiver("/Floor"), CreateShadow());
+        byte[] before = RenderInto(renderer, color, depth);
+        ApplyScene(renderer, 2, CreateShadowLightFrame(),
+            CreateQuad("/Caster", CasterBindPoints(), BindNormals(), CasterRig(1)));
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(2ul);
+        ulong dispatched = renderer.GpuResources.DeformationDispatches;
+        byte[] after = RenderInto(renderer, color, depth);
+        await Assert.That(renderer.GpuResources.DeformationDispatches).IsEqualTo(dispatched);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(2ul);
+        byte[] control = RenderShadowScene(createDevice, shaderFormat, CasterRig(1), out _, useCpuGeometry: true);
+        await Assert.That(after.SequenceEqual(control)).IsTrue();
+        await Assert.That(after.SequenceEqual(before)).IsFalse();
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    internal static async Task DispatchRefusalKeepsPublishedPose(
+        Func<ISilkGraphicsDevice> createDevice, SilkShaderBinaryFormat shaderFormat, bool lateCapacity)
+    {
+        using var device = new SilkGpuPublicationDevice(createDevice());
+        var budget = new SilkGpuBufferBudget(1_000_000);
+        budget.ConfigureDevice(device);
+        using ISilkGraphicsTexture color = CreateColor(device);
+        using ISilkGraphicsTexture depth = CreateDepth(device);
+        using var renderer = new SilkMeshRenderer(device, shaderFormat);
+        Apply(renderer, 1, CreateQuad("/Quad", BindPoints(), BindNormals(), TranslationRig(0.5f)));
+        byte[] before = RenderInto(renderer, color, depth);
+        SilkMeshGpuResource original = renderer.GpuResources.MeshValues.Single();
+        ISilkGraphicsBuffer vertices = original.VertexBuffer;
+        ulong identity = original.Geometry.Deformation!.DispatchedIdentity;
+        ulong reserved = budget.Usage.ReservedBytes;
+        byte[] changed = CreateQuad("/Quad", BindPoints(), BindNormals(), TranslationRig(1.1f));
+        byte[] second = CreateQuad("/Quad", BindPoints(), BindNormals(), TranslationRig(1.1f), primId: 2);
+        BinaryPrimitives.WriteInt32LittleEndian(second.AsSpan(24), 1);
+        void apply() => Apply(renderer, 2, lateCapacity ? [changed, second] : [changed]);
+        device.RefuseSubmission = !lateCapacity;
+        device.RefuseBufferAfterSubmission = lateCapacity;
+        if (lateCapacity)
+        {
+            await Assert.That(apply).Throws<InvalidOperationException>();
+        }
+        else
+        {
+            await Assert.That(apply).Throws<SilkGpuStagingBudgetExceededException>();
+        }
+        device.RefuseSubmission = false;
+        device.RefuseBufferAfterSubmission = false;
+        device.RefuseBufferAfter = null;
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
+        await Assert.That(renderer.GpuResources.MeshValues.Single()).IsSameReferenceAs(original);
+        await Assert.That(original.VertexBuffer).IsSameReferenceAs(vertices);
+        await Assert.That(original.Geometry.Deformation.DispatchedIdentity).IsEqualTo(identity);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        await Assert.That(RenderInto(renderer, color, depth).SequenceEqual(before)).IsTrue();
+        apply();
+        ulong dispatched = renderer.GpuResources.DeformationDispatches;
+        byte[] after = RenderInto(renderer, color, depth);
+        await Assert.That(after.SequenceEqual(before)).IsFalse();
+        await Assert.That(renderer.GpuResources.DeformationDispatches).IsEqualTo(dispatched);
+        await Assert.That(renderer.GpuResources.DeformationFallbacks).IsEqualTo(0ul);
+        await Assert.That(renderer.GpuResources.GeometryResourceCount).IsEqualTo(1);
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
     internal static async Task BufferBudgetRefusalPreservesGpuDeformation(
         Func<ISilkGraphicsDevice> createDevice, SilkShaderBinaryFormat shaderFormat)
     {
@@ -107,10 +239,12 @@ public static class SilkDeformationRenderConformance
         for (int iteration = 0; iteration < 8; iteration++)
         {
             int before = device.CreatedBuffers;
+            int uniformsBefore = device.CreatedUniformBuffers;
             float pose = iteration % 2 == 0 ? 0.5f : 1.1f;
             Apply(renderer, (ulong)iteration + 3,
                 CreateQuad("/Quad", BindPoints(), BindNormals(), TranslationRig(pose)));
-            await Assert.That(device.CreatedBuffers - before).IsEqualTo(1);
+            await Assert.That(device.CreatedBuffers - before).IsEqualTo(2);
+            await Assert.That(device.CreatedUniformBuffers - uniformsBefore).IsEqualTo(2);
             await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(withBothPoseSlots);
             byte[] image = RenderInto(renderer, color, depth);
             await Assert.That(image.AsSpan().SequenceEqual(iteration % 2 == 0 ? initial : retried)).IsTrue();
@@ -643,7 +777,7 @@ public static class SilkDeformationRenderConformance
             command.CopyTo(page, offset);
             offset += command.Length;
         }
-        using var owned = new OpenUsdSilkPage(24, revision, page, checked((uint)all.Length));
+        using var owned = new OpenUsdSilkPage(30, revision, page, checked((uint)all.Length));
         renderer.ApplyPage(owned);
     }
 

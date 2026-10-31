@@ -30,7 +30,7 @@ namespace OpenUsd.Viewer.Tests;
 /// <c>ApplyAndRender</c>, using the production applier and the production ordering.
 /// </para>
 /// </remarks>
-public sealed class ViewerSilkDeformationUploadTests
+public sealed partial class ViewerSilkDeformationUploadTests
 {
     private const string MeshPath = "/World/Cloth";
     private const string SecondMeshPath = "/World/Cloth2";
@@ -637,6 +637,10 @@ public sealed class ViewerSilkDeformationUploadTests
     {
         private readonly List<RecordingSilkBuffer> _buffers = [];
 
+        internal Action? BeforeSubmit { get; set; }
+
+        internal bool FailSubmission { get; set; }
+
         public SilkGraphicsBackend Backend => SilkGraphicsBackend.Vulkan;
 
         public SilkGraphicsCapabilities Capabilities { get; } =
@@ -708,8 +712,15 @@ public sealed class ViewerSilkDeformationUploadTests
 
         public ISilkGraphicsCommandList CreateCommandList() => new RecordingSilkCommandList();
 
-        public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList) =>
-            new RecordingSilkSubmission();
+        public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList)
+        {
+            BeforeSubmit?.Invoke();
+            if (FailSubmission)
+            {
+                throw new InvalidOperationException("Injected Viewer submission failure.");
+            }
+            return new RecordingSilkSubmission();
+        }
 
         public void WaitIdle()
         {

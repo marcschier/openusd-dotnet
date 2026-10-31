@@ -385,6 +385,175 @@ public sealed class UsdReviewDocumentNativeTests
         await files.AssertOriginalsUnchangedAsync();
     }
 
+    [Test]
+    public async Task AdoptionPreservesAuthoredSessionAbsenceAndMovesOnlyTheSessionOpinionIntoReview()
+    {
+        using ReviewFiles files = await ReviewFiles.CreateAsync();
+        using UsdStage stage = UsdStage.Open(files.SourcePath);
+        using UsdLayer session = stage.GetSessionLayer();
+        var sourceValue = new UsdLayerEditAddress("/World.weight", UsdLayerEditField.Default);
+        var sessionValue = new UsdLayerEditAddress("/World.sessionValue", UsdLayerEditField.Default);
+
+        UsdLayerAuthoredSnapshot sessionBefore = session.CaptureAuthored([sourceValue, sessionValue]);
+        await Assert.That(sessionBefore.Opinions[0].PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
+        await Assert.That(stage.GetPrim("/World").GetDouble("weight")).IsEqualTo(7d);
+        stage.SetEditTargetToSessionLayer();
+        stage.GetPrim("/World").SetDouble("sessionValue", 31d);
+        UsdLayerAuthoredSnapshot sessionAfterAuthoring = session.CaptureAuthored([sourceValue, sessionValue]);
+        await Assert.That(sessionAfterAuthoring.Opinions[0].PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
+        await Assert.That(sessionAfterAuthoring.Opinions[1].Value.AsDouble()).IsEqualTo(31d);
+
+        UsdReviewSourceBinding binding = stage.AdoptIntoReview();
+
+        await Assert.That(Path.GetFullPath(binding.SourceRootPath)).IsEqualTo(Path.GetFullPath(files.SourcePath));
+        await Assert.That(binding.SourceFingerprint.Length).IsEqualTo(64);
+        await Assert.That(binding.Dependencies.Any(dependency =>
+            Path.GetFileName(dependency.Path) == "sublayer.usda")).IsTrue();
+        using UsdLayer review = stage.GetUserReviewLayer();
+        UsdLayerAuthoredSnapshot adopted = review.CaptureAuthored([sourceValue, sessionValue]);
+        await Assert.That(adopted.Opinions[0].PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
+        await Assert.That(adopted.Opinions[0].Value.Kind).IsEqualTo(UsdLayerEditValueKind.Absent);
+        await Assert.That(adopted.Opinions[1].Value.AsDouble()).IsEqualTo(31d);
+        await Assert.That(review.GetEditingState().Role).IsEqualTo(UsdLayerRole.UserReview);
+        await Assert.That(stage.EditTargetLayerIdentifier).IsEqualTo(review.Identifier);
+        await Assert.That(session.CaptureAuthored([sourceValue, sessionValue]).Opinions.All(
+            opinion => opinion.PropertyKind == UsdLayerPropertyKind.Absent)).IsTrue();
+        await Assert.That(session.GetSublayerPaths().SequenceEqual([review.Identifier])).IsTrue();
+        await Assert.That(stage.GetPrim("/World").GetDouble("weight")).IsEqualTo(7d);
+        await Assert.That(stage.GetPrim("/World").GetDouble("sessionValue")).IsEqualTo(31d);
+        await files.AssertOriginalsUnchangedAsync();
+    }
+
+    [Test]
+    public async Task AdoptionWithEmptySessionMovesCompatibleOpinionsFromTheOwnedReviewLayer()
+    {
+        using ReviewFiles files = await ReviewFiles.CreateAsync();
+        using UsdStage stage = UsdStage.Open(files.SourcePath);
+        using UsdLayer session = stage.GetSessionLayer();
+        using UsdLayer oldReview = stage.GetUserReviewLayer();
+        var address = new UsdLayerEditAddress("/World.weight", UsdLayerEditField.Default);
+        UsdLayerAuthoredSnapshot sessionBefore = session.CaptureAuthored([address]);
+        UsdLayerAuthoredSnapshot oldReviewBefore = oldReview.CaptureAuthored([address]);
+        await Assert.That(sessionBefore.Opinions[0].PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
+
+        UsdLayerEditResult edit = oldReview.CompareAndApply(oldReviewBefore,
+            [UsdLayerEdit.Set(address, UsdLayerEditValue.FromDouble(41d), "double")]);
+        await Assert.That(edit.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+        await Assert.That(edit.AfterSnapshot!.Opinions[0].Value.AsDouble()).IsEqualTo(41d);
+        await Assert.That(session.CaptureAuthored([address]).Opinions[0].PropertyKind)
+            .IsEqualTo(UsdLayerPropertyKind.Absent);
+
+        UsdReviewSourceBinding binding = stage.AdoptIntoReview();
+
+        await Assert.That(Path.GetFullPath(binding.SourceRootPath)).IsEqualTo(Path.GetFullPath(files.SourcePath));
+        using UsdLayer adopted = stage.GetUserReviewLayer();
+        await Assert.That(adopted.Identifier).IsNotEqualTo(oldReview.Identifier);
+        await Assert.That(adopted.CaptureAuthored([address]).Opinions[0].Value.AsDouble()).IsEqualTo(41d);
+        await Assert.That(stage.GetPrim("/World").GetDouble("weight")).IsEqualTo(41d);
+        await Assert.That(session.CaptureAuthored([address]).Opinions[0].PropertyKind)
+            .IsEqualTo(UsdLayerPropertyKind.Absent);
+        await files.AssertOriginalsUnchangedAsync();
+    }
+
+    [Test]
+    public async Task AdoptionPreservesBlockedSessionOpinionAndRemovesItFromSessionLayer()
+    {
+        using ReviewFiles files = await ReviewFiles.CreateAsync();
+        using UsdStage stage = UsdStage.Open(files.SourcePath);
+        using UsdLayer session = stage.GetSessionLayer();
+        var address = new UsdLayerEditAddress("/World.weight", UsdLayerEditField.Default);
+        stage.SetEditTargetToSessionLayer();
+        stage.GetPrim("/World").GetAttribute("weight").BlockValue();
+        await Assert.That(session.CaptureAuthored([address]).Opinions[0].Value.Kind)
+            .IsEqualTo(UsdLayerEditValueKind.Block);
+
+        _ = stage.AdoptIntoReview();
+
+        using UsdLayer review = stage.GetUserReviewLayer();
+        UsdLayerAuthoredOpinion adopted = review.CaptureAuthored([address]).Opinions[0];
+        await Assert.That(adopted.PropertyKind).IsEqualTo(UsdLayerPropertyKind.Attribute);
+        await Assert.That(adopted.Value.Kind).IsEqualTo(UsdLayerEditValueKind.Block);
+        await Assert.That(session.CaptureAuthored([address]).Opinions[0].PropertyKind)
+            .IsEqualTo(UsdLayerPropertyKind.Absent);
+        await Assert.That(stage.EditTargetLayerIdentifier).IsEqualTo(review.Identifier);
+        await files.AssertOriginalsUnchangedAsync();
+    }
+
+    [Test]
+    public async Task AdoptionRefusesOverlappingSessionAndReviewOpinionsWithoutChangingEitherLayer()
+    {
+        using ReviewFiles files = await ReviewFiles.CreateAsync();
+        using UsdStage stage = UsdStage.Open(files.SourcePath);
+        using UsdLayer session = stage.GetSessionLayer();
+        using UsdLayer review = stage.GetUserReviewLayer();
+        var address = new UsdLayerEditAddress("/World.weight", UsdLayerEditField.Default);
+        UsdLayerEditResult reviewEdit = review.CompareAndApply(review.CaptureAuthored([address]),
+            [UsdLayerEdit.Set(address, UsdLayerEditValue.FromDouble(41d), "double")]);
+        await Assert.That(reviewEdit.Outcome).IsEqualTo(UsdLayerEditOutcome.Applied);
+        stage.SetEditTargetToSessionLayer();
+        stage.GetPrim("/World").SetDouble("weight", 42d);
+
+        UsdLayerAuthoredSnapshot sessionBefore = session.CaptureAuthored([address]);
+        UsdLayerAuthoredSnapshot reviewBefore = review.CaptureAuthored([address]);
+        UsdLayerEditingState sessionStateBefore = session.GetEditingState();
+        UsdLayerEditingState reviewStateBefore = review.GetEditingState();
+        string[] layersBefore = stage.GetLayerStackIdentifiers();
+        string targetBefore = stage.EditTargetLayerIdentifier;
+        await Assert.That(sessionBefore.Opinions[0].Value.AsDouble()).IsEqualTo(42d);
+        await Assert.That(reviewBefore.Opinions[0].Value.AsDouble()).IsEqualTo(41d);
+
+        await Assert.That(() => stage.AdoptIntoReview()).Throws<OpenUsdNativeException>();
+
+        await Assert.That(stage.GetLayerStackIdentifiers().SequenceEqual(layersBefore)).IsTrue();
+        await Assert.That(stage.EditTargetLayerIdentifier).IsEqualTo(targetBefore);
+        UsdLayerEditingState sessionStateAfter = session.GetEditingState();
+        UsdLayerEditingState reviewStateAfter = review.GetEditingState();
+        await Assert.That(sessionStateAfter.Identity).IsEqualTo(sessionStateBefore.Identity);
+        await Assert.That(sessionStateAfter.Revision).IsEqualTo(sessionStateBefore.Revision);
+        await Assert.That(reviewStateAfter.Identity).IsEqualTo(reviewStateBefore.Identity);
+        await Assert.That(reviewStateAfter.Revision).IsEqualTo(reviewStateBefore.Revision);
+        await Assert.That(session.CaptureAuthored([address]).CopyBytes()
+            .SequenceEqual(sessionBefore.CopyBytes())).IsTrue();
+        await Assert.That(review.CaptureAuthored([address]).CopyBytes()
+            .SequenceEqual(reviewBefore.CopyBytes())).IsTrue();
+        await Assert.That(stage.GetPrim("/World").GetDouble("weight")).IsEqualTo(42d);
+        await files.AssertOriginalsUnchangedAsync();
+    }
+
+    [Test]
+    public async Task AdoptionRefusesWhenSessionAndOwnedReviewHaveNoOpinions()
+    {
+        using ReviewFiles files = await ReviewFiles.CreateAsync();
+        using UsdStage stage = UsdStage.Open(files.SourcePath);
+        using UsdLayer session = stage.GetSessionLayer();
+        var address = new UsdLayerEditAddress("/World.weight", UsdLayerEditField.Default);
+        string[] layersBefore = stage.GetLayerStackIdentifiers();
+        string targetBefore = stage.EditTargetLayerIdentifier;
+        UsdLayerEditingState sessionBefore = session.GetEditingState();
+        UsdLayerAuthoredSnapshot opinionsBefore = session.CaptureAuthored([address]);
+        await Assert.That(opinionsBefore.Opinions[0].PropertyKind).IsEqualTo(UsdLayerPropertyKind.Absent);
+        await Assert.That(stage.GetPrim("/World").GetDouble("weight")).IsEqualTo(7d);
+
+        await Assert.That(() => stage.AdoptIntoReview()).Throws<OpenUsdNativeException>();
+
+        await Assert.That(stage.GetLayerStackIdentifiers().SequenceEqual(layersBefore)).IsTrue();
+        await Assert.That(stage.EditTargetLayerIdentifier).IsEqualTo(targetBefore);
+        UsdLayerEditingState sessionAfter = session.GetEditingState();
+        await Assert.That(sessionAfter.Identity).IsEqualTo(sessionBefore.Identity);
+        await Assert.That(sessionAfter.Revision).IsEqualTo(sessionBefore.Revision);
+        await Assert.That(sessionAfter.Role).IsEqualTo(sessionBefore.Role);
+        await Assert.That(sessionAfter.Identifier).IsEqualTo(sessionBefore.Identifier);
+        await Assert.That(sessionAfter.IsDirty).IsEqualTo(sessionBefore.IsDirty);
+        await Assert.That(sessionAfter.NativeIsDirty).IsEqualTo(sessionBefore.NativeIsDirty);
+        await Assert.That(sessionAfter.PermissionToEdit).IsEqualTo(sessionBefore.PermissionToEdit);
+        await Assert.That(sessionAfter.PermissionToSave).IsEqualTo(sessionBefore.PermissionToSave);
+        await Assert.That(sessionAfter.CurrentlyLocal).IsEqualTo(sessionBefore.CurrentlyLocal);
+        await Assert.That(session.CaptureAuthored([address]).CopyBytes()
+            .SequenceEqual(opinionsBefore.CopyBytes())).IsTrue();
+        await Assert.That(stage.GetPrim("/World").GetDouble("weight")).IsEqualTo(7d);
+        await files.AssertOriginalsUnchangedAsync();
+    }
+
     private static UsdReviewDocument Capture(ReviewFiles files)
     {
         using UsdStage stage = UsdStage.OpenForReview(files.SourcePath);

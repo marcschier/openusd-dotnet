@@ -11,10 +11,11 @@ public sealed partial class MainWindow
     private AuthoredRenderProductWindow? _authoredRenderProductWindow;
     private bool _sequenceJobRunning;
 
-    private void ShowRenderImageSequence()
+    private void ShowRenderImageSequence(bool recordPhysics = false)
     {
         if (_renderSequenceWindow is { } existing)
         {
+            existing.SelectPhysicsMode(recordPhysics);
             existing.Activate();
             return;
         }
@@ -31,18 +32,40 @@ public sealed partial class MainWindow
             start, end,
             DescribeRenderSequence(coordinator, state),
             coordinator.GetRenderSequenceUnsupportedReason,
-            RenderImageSequenceAsync);
+            RenderImageSequenceAsync,
+            RenderPhysicsSequenceAsync,
+            GetPhysicsRecordingUnsupportedReason,
+            recordPhysics,
+            PublishCompletedJob);
         _renderSequenceWindow = window;
         window.Closed += (_, _) =>
         {
             _renderSequenceWindow = null;
-            RestoreWorkspaceFocus(focus);
         };
+        RestoreWorkspaceFocusWhenClosed(window, focus);
         window.Show(this);
     }
 
-    private async Task<RenderDiskJobResult> RenderImageSequenceAsync(
+    private Task<RenderDiskJobResult> RenderImageSequenceAsync(
         ViewerRenderSequenceRange range, string outputParent, ViewerRenderSequenceOutputOptions outputs,
+        Action<ViewerRenderSequenceProgress> progress, CancellationToken cancellationToken) =>
+        RenderSequenceJobAsync(range, null, outputParent, outputs, progress, cancellationToken);
+
+    private Task<RenderDiskJobResult> RenderPhysicsSequenceAsync(
+        ViewerPhysicsSequenceRequest request, Action<ViewerRenderSequenceProgress> progress,
+        CancellationToken cancellationToken) =>
+        RenderSequenceJobAsync(null, request, request.OutputParent, request.Outputs, progress, cancellationToken);
+
+    private string? GetPhysicsRecordingUnsupportedReason(ViewerRenderSequenceOutputOptions outputs) =>
+        _physics is not { } physics
+            ? "Enable physics before recording a simulation."
+            : physics.RecordingUnsupportedReason ??
+                _coordinator?.GetPhysicsSequenceUnsupportedReason(outputs) ??
+                (_coordinator is null ? "Open a stage before recording." : null);
+
+    private async Task<RenderDiskJobResult> RenderSequenceJobAsync(
+        ViewerRenderSequenceRange? range, ViewerPhysicsSequenceRequest? physicsRequest,
+        string outputParent, ViewerRenderSequenceOutputOptions outputs,
         Action<ViewerRenderSequenceProgress> progress, CancellationToken cancellationToken)
     {
         if (_sequenceJobRunning || _shutdownStarted || _closeDecisionPending || _documentBusy)
@@ -68,11 +91,15 @@ public sealed partial class MainWindow
             entered = true;
             coordinator = _coordinator ?? throw new InvalidOperationException("No document is open.");
             if (_workspaceCaptureBusy || _documentEditBusy || _physicsAuthoringBusy ||
-                _physics is { IsEnabled: true } || IsAutomatedViewerRun())
+                (physicsRequest is null && _physics is { IsEnabled: true }) || IsAutomatedViewerRun())
             {
                 throw new InvalidOperationException(
                     "Finish other capture/edit operations and disable physics preview " +
                     "before rendering a USD time sequence.");
+            }
+            if (physicsRequest is not null && GetPhysicsRecordingUnsupportedReason(outputs) is { } physicsUnsupported)
+            {
+                throw new InvalidOperationException(physicsUnsupported);
             }
             if (_propertyEditor is { } editor)
             {
@@ -108,15 +135,17 @@ public sealed partial class MainWindow
                 await cameras.DisposeAsync();
             }
             ViewerStageCameraModeView camera = _stageCameraMode.GetView();
-            return await coordinator.RenderSequenceAsync(
-                range, outputParent, outputs, camera.IsActive ? camera.PrimPath : null,
-                update =>
-                {
-                    progress(update);
-                    ViewerStatus.Text = $"Image sequence: {update.Phase.ToLowerInvariant()} " +
-                        $"{update.CompletedFrames}/{update.TotalFrames} frames.";
-                },
-                cancellation.Token);
+            void report(ViewerRenderSequenceProgress update)
+            {
+                progress(update);
+                ViewerStatus.Text = $"Image sequence: {update.Phase.ToLowerInvariant()} " +
+                    $"{update.CompletedFrames}/{update.TotalFrames} frames.";
+            }
+            return physicsRequest is null
+                ? await coordinator.RenderSequenceAsync(
+                    range!, outputParent, outputs, camera.IsActive ? camera.PrimPath : null, report, cancellation.Token)
+                : await coordinator.RenderPhysicsSequenceAsync(
+                    _physics!, physicsRequest, camera.IsActive ? camera.PrimPath : null, report, cancellation.Token);
         }
         finally
         {
@@ -137,6 +166,7 @@ public sealed partial class MainWindow
             {
                 ClosingBehavior = closingBehavior;
                 _sequenceJobRunning = false;
+                UpdateCaptureAvailability();
                 try
                 {
                     SyncColorManagementMenu();
@@ -184,13 +214,14 @@ public sealed partial class MainWindow
             RenderAuthoredProductAsync,
             () => coordinator.SupportsRenderProductCapture
                 ? null
-                : "Wait for a completed frame from an hdSilk renderer with authored-product capture.");
+                : "Wait for a completed frame from an hdSilk renderer with authored-product capture.",
+            PublishCompletedJob);
         _authoredRenderProductWindow = window;
         window.Closed += (_, _) =>
         {
             _authoredRenderProductWindow = null;
-            RestoreWorkspaceFocus(focus);
         };
+        RestoreWorkspaceFocusWhenClosed(window, focus);
         window.Show(this);
     }
 
@@ -333,6 +364,8 @@ public sealed partial class MainWindow
         CaptureFrameMenuItem.IsEnabled = enabled && _coordinator is { CanCaptureFrame: true };
         RenderImageSequenceMenuItem.IsEnabled = enabled &&
             _coordinator is { CurrentState.Viewport: { Width: > 0, Height: > 0 } };
+        PhysicsRecordSequenceMenuItem.IsEnabled = enabled && !_sequenceJobRunning &&
+            _physics is { IsEnabled: true, IsBusy: false };
         RenderAuthoredProductMenuItem.IsEnabled = enabled;
         UpdateRenderSequenceContext();
     }

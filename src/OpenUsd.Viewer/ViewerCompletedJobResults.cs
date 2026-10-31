@@ -9,14 +9,17 @@ internal sealed class ViewerCompletedJobResults
 {
     private readonly Window _owner;
     private readonly Button _action;
+    private readonly Action<RenderDiskJobResult, string>? _completed;
     private RenderDiskJobResult? _job;
     private string _description = string.Empty;
     private CompletedRenderJobWindow? _window;
 
-    internal ViewerCompletedJobResults(Window owner, Button action)
+    internal ViewerCompletedJobResults(
+        Window owner, Button action, Action<RenderDiskJobResult, string>? completed = null)
     {
         _owner = owner;
         _action = action;
+        _completed = completed;
         _action.IsEnabled = false;
         _action.Click += (_, _) => Show();
     }
@@ -26,6 +29,7 @@ internal sealed class ViewerCompletedJobResults
         _job = job;
         _description = description;
         _action.IsEnabled = true;
+        _completed?.Invoke(job, description);
     }
 
     internal Task ClearAsync()
@@ -48,10 +52,12 @@ internal sealed class ViewerCompletedJobResults
         }
         var window = new CompletedRenderJobWindow(job, _description);
         _window = window;
+        bool restoreFocus = false;
+        window.Closing += (_, _) => restoreFocus = window.IsKeyboardFocusWithin;
         window.Closed += (_, _) =>
         {
             _window = null;
-            if (_job is not null && _owner.IsVisible && _action.IsEnabled)
+            if (restoreFocus && _job is not null && _owner.IsVisible && _action.IsEnabled)
             {
                 _owner.Activate();
                 _action.Focus();

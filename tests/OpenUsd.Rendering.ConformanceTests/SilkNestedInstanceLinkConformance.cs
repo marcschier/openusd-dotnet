@@ -66,6 +66,47 @@ internal static class SilkNestedInstanceLinkConformance
 
     private static readonly int[] Gaps = [3, 19, 32, 45, 60];
 
+    internal static async Task InstanceCapacityRefusalKeepsPublishedPixels(
+        ISilkGraphicsDevice device, SilkGpuBufferBudget budget)
+    {
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size, Size, SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device);
+        using var first = new OpenUsdSilkPage(30, 1,
+            [.. Frame(), .. Quad(1, NestedPrototype, Positions[0]),
+                .. InstanceReference(NestedPrototype, 1, Positions[1])], 3);
+        renderer.ApplyPage(first);
+        _ = renderer.Render(color, depth);
+        byte[] before = ReadPixels(color);
+        await Assert.That(CoveredColumns(before)[Centres[0]]).IsTrue();
+        await Assert.That(CoveredColumns(before)[Centres[2]]).IsFalse();
+        ulong reserved = budget.Usage.ReservedBytes;
+        using var grown = new OpenUsdSilkPage(30, 2,
+            [.. InstanceReference(NestedPrototype, 2, Positions[2]),
+                .. InstanceReference(NestedPrototype, 3, Positions[3])], 2);
+        const ulong growthBytes = 12ul * SilkSceneUniformWriter.ByteSize;
+        using (budget.Reserve(budget.MaximumBytes - reserved - growthBytes + 1))
+        {
+            await Assert.That(() => renderer.ApplyPage(grown)).Throws<SilkGpuBufferBudgetExceededException>();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
+            await Assert.That(renderer.GpuResources.MeshValues.Count).IsEqualTo(2);
+            _ = renderer.Render(color, depth);
+            await Assert.That(ReadPixels(color).SequenceEqual(before)).IsTrue();
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        renderer.ApplyPage(grown);
+        SilkMeshRenderResult rendered = renderer.Render(color, depth);
+        byte[] after = ReadPixels(color);
+        await Assert.That(rendered.DrawCount).IsEqualTo(1);
+        await Assert.That(renderer.GpuResources.GeometryResourceCount).IsEqualTo(1);
+        await AssertRegionsAreExactlyTheFourQuads(CoveredColumns(after), "admitted growth");
+        await Assert.That(after.SequenceEqual(before)).IsFalse();
+        await Assert.That(budget.Usage.ReservedBytes)
+            .IsEqualTo(reserved + (8ul * SilkSceneUniformWriter.ByteSize));
+    }
+
     internal static async Task ComposedInstancesResolveTheirOwnMasks(
         ISilkGraphicsDevice device)
     {
@@ -437,7 +478,7 @@ internal static class SilkNestedInstanceLinkConformance
         return bytes;
     }
 
-    private static byte[] Quad(ulong id, string path, double x) =>
+    internal static byte[] Quad(ulong id, string path, double x) =>
         SilkMeshRendererConformance.CreateMeshCommand(
             id,
             path,
@@ -456,7 +497,7 @@ internal static class SilkNestedInstanceLinkConformance
     /// Builds a lightweight ABI v8 instance record that reuses the prototype's
     /// geometry and carries only its own composed identity and transform.
     /// </summary>
-    private static byte[] InstanceReference(string path, int instanceIndex, double x)
+    internal static byte[] InstanceReference(string path, int instanceIndex, double x)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         byte[] instancerPathBytes = Encoding.UTF8.GetBytes("/Instancer");
@@ -690,8 +731,8 @@ internal static class SilkNestedInstanceLinkConformance
             await Assert.That(resolved.DomeMask).IsEqualTo(expected[instance].DomeMask).Because(evidence);
             buffers[instance] = renderer.GpuResources.RequireSurfaceBuffer(
                 renderer.Scene, mesh, RenderHeadlight.Deterministic);
-            await Assert.That(buffers[instance].Size).IsEqualTo((nuint)240).Because(evidence);
-            var bytes = new byte[240];
+            await Assert.That(buffers[instance].Size).IsEqualTo((nuint)304).Because(evidence);
+            var bytes = new byte[304];
             buffers[instance].ReadbackForTesting(bytes);
             await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(208, 16)))
                 .IsEqualTo(expected[instance].LightMask).Because(evidence);

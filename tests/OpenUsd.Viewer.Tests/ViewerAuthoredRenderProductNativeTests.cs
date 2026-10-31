@@ -112,6 +112,14 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
                 StringComparison.Ordinal);
         stage += """
 
+        def Camera "FarCamera" {
+            token projection = "orthographic"
+            float horizontalAperture = 40
+            float verticalAperture = 40
+            float2 clippingRange = (1, 11)
+            double3 xformOp:translate = (0, 0, 100)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
         def RenderProduct "UnsupportedProduct" {
             token productName = "unsupported.exr"
             rel orderedVars = </UnsupportedVar>
@@ -130,6 +138,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
         Environment.SetEnvironmentVariable("OPENUSD_STATUS_FILE", statusFile);
         var opened = new TaskCompletionSource<ViewerStageSession>(TaskCreationOptions.RunContinuationsAsynchronously);
         var bufferBudget = new OpenUsd.Rendering.Silk.SilkGpuBufferBudget(1_000_000);
+        var textureBudgets = new OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets(
+            new(67_108_864), new(67_108_864), new(67_108_864));
         ViewerStartupOptions.Initialize(new ViewerHostOptions
         {
             StagePath = stagePath,
@@ -137,6 +147,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             Renderer = ViewerNativeCaptureBackend.Kind.ToString(),
             PreparationLimits = new OpenUsd.Rendering.Silk.SilkPreparationLimits(1_000_000, 1_000_000),
             GpuBufferBudget = bufferBudget,
+            TexturePreparationBudgets = textureBudgets,
             PluginPath = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH"),
             StageReadyAsync = (session, _) =>
             {
@@ -170,6 +181,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await WaitUntilAsync(() => Required<MenuItem>(window, "RenderAuthoredProductMenuItem").IsEnabled);
             ViewerNativeCaptureBackend.Require(session);
             await Assert.That(bufferBudget.Usage.ReservedBytes).IsGreaterThan(0ul);
+            await Assert.That(textureBudgets.GpuTextureBudget!.Usage.ReservedBytes).IsGreaterThan(0ul);
+            await Assert.That(textureBudgets.GpuStagingBudget!.Usage.PeakReservedBytes).IsGreaterThan(0ul);
             StageRenderState before = session.CurrentRenderState;
             string editTarget = await session.Scheduler.InvokeAsync(static stage => stage.EditTargetLayerIdentifier);
             await Assert.That(before.Viewport.Width == 16 && before.Viewport.Height == 16).IsFalse();
@@ -181,6 +194,8 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await WaitUntilAsync(() =>
                 Required<ListBox>(palette, "CommandResults").SelectedItem is
                     ListBoxItem { Tag: ViewerCommandIds.FileRenderAuthoredProduct });
+            Required<TextBox>(palette, "CommandSearch").Focus();
+            await WaitUntilAsync(() => Required<TextBox>(palette, "CommandSearch").IsKeyboardFocusWithin);
             palette.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
             await WaitUntilAsync(
                 () => window.OwnedWindows.Any(child => child.Title == "Render authored RenderProduct"));
@@ -209,6 +224,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             string previewLog = await File.ReadAllTextAsync(configuredStatusFile);
             await Assert.That(previewLog).Contains("Could not preview results:");
             await Assert.That(previewLog).Contains("SHA256");
+            await ExerciseRasterOverridesAsync(product, outputParent, fullOutput);
 
             Required<TextBox>(product, "ProductSettingsPath").Text = "/SettingsPreview";
             await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
@@ -226,10 +242,19 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
             Required<Button>(product, "ProductRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => Required<Button>(product, "ProductRenderButton").IsEnabled);
+            string latestOutput = previewOutput;
+            if (ExrRgba16FloatWriter.IsSupported)
+            {
+                string exrOutput = latestOutput = await RenderSelectedAsync(
+                    product, outputParent, start: "0", end: "0", step: "1", hdrFormat: 1);
+                byte[] exr = await File.ReadAllBytesAsync(Path.Combine(exrOutput, "frame-000000.hdr.exr"));
+                byte[] decoded = ExrScanlineOracle.Read(exr, 16, 16,
+                    new ExrOracleWindows(8, 0, 0, 0, 32, 16, 0x3f800000));
+                await Assert.That(decoded.Length).IsEqualTo(16 * 16 * 8);
+            }
             Required<ComboBox>(product, "ProductHdrFormat").SelectedIndex = 1;
-            await Assert.That(Required<Button>(product, "ProductRenderButton").IsEnabled).IsFalse();
-            await Assert.That(Required<TextBlock>(product, "ProductStatus").Text)
-                .Contains("EXR output currently refuses");
+            await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+            await Assert.That(Required<Button>(product, "ProductRenderButton").IsEnabled).IsTrue();
             int outputsBeforeUnsupported = Directory.GetDirectories(outputParent).Length;
             selector.SelectedIndex = 1;
             await WaitUntilAsync(() => !Required<Button>(product, "ProductRenderButton").IsEnabled);
@@ -246,7 +271,7 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             await Assert.That((await File.ReadAllBytesAsync(stagePath)).SequenceEqual(sourceBytes)).IsTrue();
             await Assert.That(File.Exists(Path.Combine(outputParent, "..", "must-not-be-used.exr"))).IsFalse();
             CompletedRenderJobWindow reloading = await ViewerCompletedJobPreviewJourney.OpenAsync(
-                product, "ProductViewResultsButton", previewOutput, [0], [0]);
+                product, "ProductViewResultsButton", latestOutput, [0], [0]);
             Bitmap[] reloadingImages = Required<ListBox>(reloading, "ResultsFrames").Items
                 .Cast<CompletedRenderJobTile>().Select(static tile => tile.Image).ToArray();
             ViewerStageSession previous = session;
@@ -275,14 +300,64 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
             window.Close();
             await closed.Task.WaitAsync(TimeSpan.FromSeconds(15));
             await WaitUntilAsync(() => bufferBudget.Usage.ReservedBytes == 0);
+            await WaitUntilAsync(() => textureBudgets.CpuTextureBudget!.Usage.ReservedBytes == 0 &&
+                textureBudgets.GpuTextureBudget!.Usage.ReservedBytes == 0 &&
+                textureBudgets.GpuStagingBudget!.Usage.ReservedBytes == 0);
             Environment.SetEnvironmentVariable("OPENUSD_STATUS_FILE", null);
         }
     }
 
-    private static async Task<string> RenderSelectedAsync(
-        Window product, string outputParent, string start, string end, string step)
+    private static async Task ExerciseRasterOverridesAsync(Window product, string outputParent, string authored)
     {
-        Required<ComboBox>(product, "ProductHdrFormat").SelectedIndex = 0;
+        TextBox window = Required<TextBox>(product, "ProductOverrideDataWindow");
+        TextBox camera = Required<TextBox>(product, "ProductOverrideCamera");
+        window.Text = "0 0 1";
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+        await Assert.That(Required<Button>(product, "ProductRenderButton").IsEnabled).IsFalse();
+        await Assert.That(Required<TextBlock>(product, "ProductStatus").Text).Contains("four NDC bounds");
+
+        window.Text = "0 0 1 1";
+        string uncropped = await RenderSelectedAsync(product, outputParent, start: "0", end: "0", step: "1");
+        using (JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(uncropped, "manifest.json"))))
+        {
+            JsonElement frame = manifest.RootElement.GetProperty("frames")[0];
+            await Assert.That(frame.GetProperty("width").GetInt32()).IsEqualTo(32);
+            await Assert.That(frame.GetProperty("height").GetInt32()).IsEqualTo(16);
+            await Assert.That(frame.GetProperty("productRaster").GetProperty("dataWindowMinX").GetInt32())
+                .IsEqualTo(0);
+        }
+        byte[] wide = await File.ReadAllBytesAsync(Path.Combine(uncropped, "frame-000000.hdr.rgba16f"));
+        byte[] crop = await File.ReadAllBytesAsync(Path.Combine(authored, "frame-000000.hdr.rgba16f"));
+        await Assert.That(wide.Length).IsEqualTo(32 * 16 * 8);
+        for (int row = 0; row < 16; row++)
+        {
+            await Assert.That(wide.AsSpan((row * 32 + 8) * 8, 16 * 8)
+                .SequenceEqual(crop.AsSpan(row * 16 * 8, 16 * 8))).IsTrue()
+                .Because("an uncropping data-window override must widen the same frustum, not resize it");
+        }
+
+        window.Text = string.Empty;
+        camera.Text = "/FarCamera";
+        string far = await RenderSelectedAsync(product, outputParent, start: "0", end: "0", step: "1");
+        byte[] empty = await File.ReadAllBytesAsync(Path.Combine(far, "frame-000000.hdr.rgba16f"));
+        await Assert.That(empty.Length).IsEqualTo(crop.Length);
+        await Assert.That(empty.SequenceEqual(crop)).IsFalse();
+        for (int offset = 8; offset < empty.Length; offset += 8)
+        {
+            await Assert.That(empty.AsSpan(offset, 8).SequenceEqual(empty.AsSpan(0, 8))).IsTrue()
+                .Because("the override camera sees the cubes beyond its far clipping plane");
+        }
+
+        camera.Text = string.Empty;
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+        await Assert.That(Required<TextBlock>(product, "ProductDetails").Text).Contains("overrides none");
+    }
+
+    private static async Task<string> RenderSelectedAsync(
+        Window product, string outputParent, string start, string end, string step, int hdrFormat = 0)
+    {
+        Required<ComboBox>(product, "ProductHdrFormat").SelectedIndex = hdrFormat;
         Required<TextBox>(product, "ProductStartTime").Text = start;
         Required<TextBox>(product, "ProductEndTime").Text = end;
         Required<TextBox>(product, "ProductStep").Text = step;
@@ -311,6 +386,14 @@ public sealed partial class ViewerAuthoredRenderProductNativeTests
         await Assert.That(manifest.RootElement.GetProperty("diagnostics").EnumerateArray().Any(static entry =>
             entry.GetProperty("code").GetString() == "HDSILK_GPU_BUFFER_ADMISSION" &&
             entry.GetProperty("message").GetString()!.Contains("ceiling=1000000", StringComparison.Ordinal))).IsTrue();
+        foreach (string code in new[]
+            { "HDSILK_CPU_TEXTURE_ADMISSION", "HDSILK_GPU_TEXTURE_ADMISSION", "HDSILK_GPU_STAGING_ADMISSION" })
+        {
+            await Assert.That(manifest.RootElement.GetProperty("diagnostics").EnumerateArray().Any(entry =>
+                entry.GetProperty("code").GetString() == code &&
+                entry.GetProperty("message").GetString()!
+                    .Contains("ceiling=67108864", StringComparison.Ordinal))).IsTrue();
+        }
         for (int index = 0; index < 2; index++)
         {
             JsonElement frame = frames[index];

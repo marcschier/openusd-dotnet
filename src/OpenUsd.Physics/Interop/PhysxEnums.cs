@@ -30,7 +30,10 @@ internal enum PhysxStatus
     Unsupported = 7,
 
     /// <summary>A declared capacity was too small for the requested operation.</summary>
-    CapacityExceeded = 8
+    CapacityExceeded = 8,
+
+    /// <summary>A cancellable preparation was stopped before publication.</summary>
+    Cancelled = 9
 }
 
 /// <summary>Mirrors <c>openusd_physx_up_axis</c>.</summary>

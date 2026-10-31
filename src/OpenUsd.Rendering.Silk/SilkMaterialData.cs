@@ -1,5 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Numerics;
+
 namespace OpenUsd.Rendering.Silk;
 
 /// <summary>
@@ -39,7 +41,8 @@ public sealed class SilkMaterialTexture
         string asset,
         string uvPrimvar,
         SilkCompositeOperator compositeOperator,
-        float compositeFactor)
+        float compositeFactor,
+        Vector4 luminanceMix = default)
     {
         Parameter = parameter;
         WrapS = wrapS;
@@ -54,7 +57,10 @@ public sealed class SilkMaterialTexture
         UvPrimvar = uvPrimvar;
         CompositeOperator = compositeOperator;
         CompositeFactor = compositeFactor;
+        LuminanceMix = luminanceMix;
     }
+
+    internal Vector4 LuminanceMix { get; }
 
     /// <summary>Gets the parameter this texture drives.</summary>
     public SilkMaterialParameter Parameter { get; }
@@ -90,7 +96,7 @@ public sealed class SilkMaterialTexture
     public int ComponentCount { get; }
 
     /// <summary>
-    /// Gets the connected UsdUVTexture output port. Two inputs driven by the same
+    /// Gets the connected output port or explicit scalar opacity reduction. Two inputs driven by the same
     /// file are told apart by this alone -- a packed occlusion/roughness/metallic
     /// image is exactly one asset with two or three different output connections.
     /// </summary>
@@ -135,6 +141,8 @@ public sealed class SilkMaterialData
         SilkMaterialScalar[] scalars,
         SilkMaterialTexture[] textures,
         float[] uvTransform,
+        uint alternateUvParameterMask,
+        float[] alternateUvTransform,
         byte[] generatedFragmentSpirV,
         byte[] generatedFragmentMslSource)
     {
@@ -144,6 +152,8 @@ public sealed class SilkMaterialData
         Scalars = scalars;
         Textures = textures;
         UvTransform = uvTransform;
+        AlternateUvParameterMask = alternateUvParameterMask;
+        AlternateUvTransform = alternateUvTransform;
         GeneratedFragmentSpirV = generatedFragmentSpirV;
         GeneratedFragmentMslSource = generatedFragmentMslSource;
     }
@@ -164,20 +174,42 @@ public sealed class SilkMaterialData
     public IReadOnlyList<SilkMaterialTexture> Textures { get; }
 
     /// <summary>
-    /// Gets the constant texture-coordinate transform every texture of this
-    /// material samples through, as the row-major affine
-    /// (m00, m01, m10, m11, tx, ty).
+    /// Gets the primary constant texture-coordinate transform of this material,
+    /// as the row-major affine (m00, m01, m10, m11, tx, ty).
     /// </summary>
     /// <remarks>
     /// The identity unless hdSilk folded a chain of constant MaterialX place2d
-    /// or UsdPreviewSurface UsdTransform2d nodes. hdSilk publishes exactly one
-    /// transform per material because the renderer builds one coordinate stream
-    /// per material; a texture asking for a different transform, or for a
-    /// different <see cref="SilkMaterialTexture.UvPrimvar"/>, is rejected
-    /// upstream with a diagnostic rather than sampled with coordinates it did
-    /// not author.
+    /// or UsdPreviewSurface UsdTransform2d nodes. It is the first surface
+    /// texture's transform. Every surface texture whose parameter is absent from
+    /// <see cref="AlternateUvParameterMask"/> samples through it, and so does
+    /// displacement. A transform applies to whichever of the material's two
+    /// coordinate sets a texture reads. Surface textures may name at most two
+    /// distinct <see cref="SilkMaterialTexture.UvPrimvar"/> values and at most
+    /// two transforms; hdSilk drops a texture asking for a third of either with
+    /// a diagnostic rather than sampling coordinates it did not author. Detail
+    /// normals carry independent affine rows through
+    /// <see cref="SilkMaterialParameter.DetailUvRow0"/> and
+    /// <see cref="SilkMaterialParameter.DetailUvRow1"/>.
     /// </remarks>
     public IReadOnlyList<float> UvTransform { get; }
+
+    /// <summary>
+    /// Gets the surface parameters whose textures sample through
+    /// <see cref="AlternateUvTransform"/>, as bit <c>1 &lt;&lt; parameter</c>.
+    /// </summary>
+    /// <remarks>
+    /// Each bit names a surface texture this material carries. Displacement,
+    /// detail normals and volume density are never masked, and both entries of
+    /// a composited parameter read one transform.
+    /// </remarks>
+    public uint AlternateUvParameterMask { get; }
+
+    /// <summary>
+    /// Gets the material's second constant texture-coordinate transform, in the
+    /// same row-major order as <see cref="UvTransform"/>. It is the identity
+    /// when <see cref="AlternateUvParameterMask"/> is zero.
+    /// </summary>
+    public IReadOnlyList<float> AlternateUvTransform { get; }
 
     /// <summary>Gets generated MaterialX fragment SPIR-V bytes for runtime shaders.</summary>
     public ReadOnlyMemory<byte> GeneratedFragmentSpirV { get; }
@@ -228,9 +260,58 @@ public sealed class SilkMaterialData
         SilkMaterialTexture[] textures = command.TextureCount == 0
             ? []
             : new SilkMaterialTexture[command.TextureCount];
+        Vector4 luminanceMix = default;
+        bool hasLuminanceMix = false;
+        bool hasSpecularLevel = false;
+        int detailRows = 0;
+        foreach (SilkMaterialScalar scalar in scalars)
+        {
+            if (scalar.Parameter is SilkMaterialParameter.DetailUvRow0 or SilkMaterialParameter.DetailUvRow1)
+            {
+                int row = scalar.Parameter == SilkMaterialParameter.DetailUvRow0 ? 1 : 2;
+                if ((detailRows & row) != 0)
+                {
+                    throw new InvalidDataException("A material cannot carry duplicate detail UV rows.");
+                }
+                detailRows |= row;
+            }
+            if (scalar.Parameter == SilkMaterialParameter.OmniPbrSpecularLevel)
+            {
+                if (hasSpecularLevel)
+                {
+                    throw new InvalidDataException("A material cannot carry duplicate OmniPBR specular levels.");
+                }
+                hasSpecularLevel = true;
+            }
+            if (scalar.Parameter == SilkMaterialParameter.DiffuseTextureLuminanceMix)
+            {
+                if (hasLuminanceMix)
+                {
+                    throw new InvalidDataException("A material cannot carry duplicate diffuse luminance mixes.");
+                }
+                hasLuminanceMix = true;
+                luminanceMix = new Vector4(
+                    scalar.Values[0], scalar.Values[1], scalar.Values[2], scalar.Values[3]);
+            }
+        }
+        if (detailRows is 1 or 2)
+        {
+            throw new InvalidDataException("Detail UV transforms require both rows.");
+        }
+        bool hasDetailNormal = false;
         for (int index = 0; index < textures.Length; index++)
         {
             SilkMaterialTextureEntry entry = command.GetTexture(index);
+            if (entry.Parameter == SilkMaterialParameter.DetailNormal)
+            {
+                if (hasDetailNormal || entry.ComponentCount != 3 ||
+                    entry.Channel != SilkTextureChannel.Rgb || entry.CompositeOperator != SilkCompositeOperator.None ||
+                    command.SurfaceKind == SilkSurfaceKind.VolumeDensity)
+                {
+                    throw new InvalidDataException("Invalid or duplicate detail normal texture.");
+                }
+                hasDetailNormal = true;
+            }
             float[] scale = new float[4];
             float[] bias = new float[4];
             float[] fallback = new float[4];
@@ -253,7 +334,8 @@ public sealed class SilkMaterialData
                 entry.Asset,
                 entry.UvPrimvar,
                 entry.CompositeOperator,
-                entry.CompositeFactor);
+                entry.CompositeFactor,
+                entry.Parameter == SilkMaterialParameter.DiffuseColor ? luminanceMix : default);
         }
 
         byte[] generatedFragmentSpirV = command.GeneratedFragmentSpirV.ToArray();
@@ -263,6 +345,25 @@ public sealed class SilkMaterialData
         {
             uvTransform[index] = command.GetUvTransform(index);
         }
+        float[] alternateUvTransform = new float[6];
+        for (int index = 0; index < alternateUvTransform.Length; index++)
+        {
+            alternateUvTransform[index] = command.GetAlternateUvTransform(index);
+        }
+        uint alternateUvParameterMask = command.AlternateUvParameterMask;
+        uint maskableParameters = 0;
+        foreach (SilkMaterialTexture texture in textures)
+        {
+            if (IsAlternateUvCandidate(texture.Parameter))
+            {
+                maskableParameters |= 1u << (int)texture.Parameter;
+            }
+        }
+        if ((alternateUvParameterMask & ~maskableParameters) != 0)
+        {
+            throw new InvalidDataException(
+                "The material alternate UV transform names a parameter with no surface texture.");
+        }
         return new SilkMaterialData(
             command.Path,
             command.StableHash,
@@ -270,6 +371,8 @@ public sealed class SilkMaterialData
             scalars,
             textures,
             uvTransform,
+            alternateUvParameterMask,
+            alternateUvTransform,
             generatedFragmentSpirV,
             generatedFragmentMslSource);
     }
@@ -341,6 +444,10 @@ public sealed class SilkMaterialData
         {
             features |= SilkShaderFeatures.NormalMap;
         }
+        if (GetTexture(SilkMaterialParameter.DetailNormal) is not null)
+        {
+            features |= SilkShaderFeatures.DetailNormalMap;
+        }
 
         // Roughness and metallic are separate UsdPreviewSurface inputs with
         // separate connections, so each selects its own bit. A packed
@@ -394,7 +501,7 @@ public sealed class SilkMaterialData
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
-        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v5");
+        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v7");
         writer.Write(Path);
         writer.Write((uint)SurfaceKind);
         writer.Write(Scalars.Count);
@@ -425,6 +532,11 @@ public sealed class SilkMaterialData
         {
             writer.Write(element);
         }
+        writer.Write(AlternateUvParameterMask);
+        foreach (float element in AlternateUvTransform)
+        {
+            writer.Write(element);
+        }
         writer.Write(GeneratedFragmentSpirV.Length);
         writer.Write(GeneratedFragmentSpirV.Span);
         writer.Write(GeneratedFragmentMslSource.Length);
@@ -434,15 +546,14 @@ public sealed class SilkMaterialData
     }
 
     /// <summary>
-    /// Resolves the single texture-coordinate primvar this material samples every
-    /// texture through.
+    /// Resolves the primary texture-coordinate primvar this material samples its
+    /// surface textures through.
     /// </summary>
     /// <remarks>
-    /// The first surface entry that names one wins. hdSilk reconciles the primvar
-    /// across a material's surface textures before publishing, so this scan sees
-    /// agreement for any page hdSilk produced; the scan remains because the page
-    /// is validated wire data rather than trusted input, and an entry may
-    /// legitimately name no primvar at all.
+    /// The first surface entry that names one wins. Surface textures naming a
+    /// different primvar sample the second coordinate set
+    /// (<see cref="GetSecondaryUvPrimvar"/>); an entry may legitimately name no
+    /// primvar at all, and then reads the primary set.
     ///
     /// Displacement is sampled per vertex through its own authored coordinate
     /// set, which may be a different primvar entirely, so it never names the
@@ -471,4 +582,124 @@ public sealed class SilkMaterialData
         }
         return displacementPrimvar;
     }
+
+    /// <summary>
+    /// Resolves the second surface texture-coordinate primvar, or an empty string
+    /// when every surface texture reads the primary one.
+    /// </summary>
+    /// <remarks>
+    /// hdSilk admits at most two distinct surface primvars per material and drops
+    /// any texture naming a third, so the first surface primvar that differs from
+    /// <see cref="GetPrimaryUvPrimvar"/> is the only candidate on any page it
+    /// produced. Displacement and volume density are excluded: the former samples
+    /// per vertex through its own set and the latter carries extents, not a
+    /// primvar.
+    /// </remarks>
+    internal string GetSecondaryUvPrimvar()
+    {
+        string primary = GetPrimaryUvPrimvar();
+        foreach (SilkMaterialTexture texture in Textures)
+        {
+            if (IsSurfaceUvTexture(texture) &&
+                !string.IsNullOrEmpty(texture.UvPrimvar) &&
+                !string.Equals(texture.UvPrimvar, primary, StringComparison.Ordinal))
+            {
+                return texture.UvPrimvar;
+            }
+        }
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Gets the texture-mask bits of the surface inputs that sample the second
+    /// coordinate set.
+    /// </summary>
+    internal SilkShaderFeatures GetSecondaryUvTextureMask()
+    {
+        string secondary = GetSecondaryUvPrimvar();
+        if (secondary.Length == 0)
+        {
+            return SilkShaderFeatures.None;
+        }
+        SilkShaderFeatures mask = SilkShaderFeatures.None;
+        foreach (SilkMaterialTexture texture in Textures)
+        {
+            if (IsSurfaceUvTexture(texture) &&
+                string.Equals(texture.UvPrimvar, secondary, StringComparison.Ordinal))
+            {
+                mask |= GetSurfaceTextureBit(texture.Parameter);
+            }
+        }
+        return mask;
+    }
+
+    /// <summary>
+    /// Gets whether the mesh tangent frame must be derived from the second
+    /// coordinate set, because the normal map that consumes it samples that set.
+    /// </summary>
+    internal bool TangentsFromSecondaryUv()
+    {
+        SilkShaderFeatures mask = GetSecondaryUvTextureMask();
+        if (GetTexture(SilkMaterialParameter.Normal) is not null)
+        {
+            return (mask & SilkShaderFeatures.NormalMap) != 0;
+        }
+        return (mask & SilkShaderFeatures.DetailNormalMap) != 0;
+    }
+
+    /// <summary>
+    /// Gets the texture-mask bits of the surface inputs that sample through
+    /// <see cref="AlternateUvTransform"/>.
+    /// </summary>
+    internal SilkShaderFeatures GetAlternateUvTextureMask()
+    {
+        SilkShaderFeatures mask = SilkShaderFeatures.None;
+        foreach (SilkMaterialTexture texture in Textures)
+        {
+            if (UsesAlternateUvTransform(texture.Parameter))
+            {
+                mask |= GetSurfaceTextureBit(texture.Parameter);
+            }
+        }
+        return mask;
+    }
+
+    /// <summary>
+    /// Gets the row-major affine one surface parameter samples its coordinates
+    /// through.
+    /// </summary>
+    internal IReadOnlyList<float> GetUvTransformFor(SilkMaterialParameter parameter) =>
+        UsesAlternateUvTransform(parameter) ? AlternateUvTransform : UvTransform;
+
+    private bool UsesAlternateUvTransform(SilkMaterialParameter parameter) =>
+        IsAlternateUvCandidate(parameter) &&
+        (AlternateUvParameterMask & (1u << (int)parameter)) != 0;
+
+    private static bool IsAlternateUvCandidate(SilkMaterialParameter parameter) =>
+        (uint)parameter < 32 &&
+        parameter is not SilkMaterialParameter.Displacement and
+            not SilkMaterialParameter.VolumeDensity and
+            not SilkMaterialParameter.DetailNormal;
+
+    private static bool IsSurfaceUvTexture(SilkMaterialTexture texture) =>
+        texture.Parameter is not SilkMaterialParameter.Displacement and
+            not SilkMaterialParameter.VolumeDensity;
+
+    private static SilkShaderFeatures GetSurfaceTextureBit(SilkMaterialParameter parameter) =>
+        parameter switch
+        {
+            SilkMaterialParameter.DiffuseColor => SilkShaderFeatures.BaseColorMap,
+            SilkMaterialParameter.Normal => SilkShaderFeatures.NormalMap,
+            SilkMaterialParameter.DetailNormal => SilkShaderFeatures.DetailNormalMap,
+            SilkMaterialParameter.Roughness => SilkShaderFeatures.RoughnessMetallicMap,
+            SilkMaterialParameter.Metallic => SilkShaderFeatures.MetallicMap,
+            SilkMaterialParameter.EmissiveColor => SilkShaderFeatures.EmissiveMap,
+            SilkMaterialParameter.Opacity => SilkShaderFeatures.OpacityMap,
+            SilkMaterialParameter.Occlusion => SilkShaderFeatures.OcclusionMap,
+            SilkMaterialParameter.SpecularColor => SilkShaderFeatures.SpecularColorMap,
+            SilkMaterialParameter.Clearcoat => SilkShaderFeatures.ClearcoatMap,
+            SilkMaterialParameter.ClearcoatRoughness => SilkShaderFeatures.ClearcoatRoughnessMap,
+            SilkMaterialParameter.Ior => SilkShaderFeatures.IorMap,
+            _ => SilkShaderFeatures.None
+        };
 }

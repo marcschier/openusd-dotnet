@@ -165,6 +165,18 @@ openusd_status openusd_stage_review_source_binding(
     });
 }
 
+openusd_status openusd_stage_review_source_acknowledge_publication(
+    const openusd_stage* stage, openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]()
+    {
+        Check(stage != nullptr, "A verified stage is required to acknowledge source publication.");
+        OpenUsdReview::AcknowledgeSourcePublication(const_cast<openusd_stage*>(stage));
+        return OPENUSD_STATUS_OK;
+    });
+}
+
 openusd_status openusd_layer_review_capture(
     const openusd_layer* layer, const uint8_t* binding, size_t binding_size,
     const char* target_document_path, size_t target_document_path_size,
@@ -342,6 +354,161 @@ openusd_status openusd_stage_review_import(
             state.origins.resize(beforeOrigins); state.sourceLayers.resize(beforeLayers);
             Check(mark.IsClean() && OpenUsdReview::Pristine(stage),
                 "Portable import rollback failed; explicit session reconciliation is required.");
+            throw;
+        }
+    });
+}
+
+openusd_status openusd_stage_review_adopt(
+    const openusd_stage* stage, openusd_edit_buffer** owner,
+    openusd_edit_buffer_view* view, openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    // ABI_OUTPUT_INITIALIZATION: BufferGuard resets owner and view before guarded work.
+    return OpenUsdReview::BufferGuard(stage, owner, view, error, [&]()
+    {
+        Check(stage && stage->value, "A live stage is required for adoption.");
+        auto& context = EditContext(stage);
+        Check(!context.review && !context.physics,
+            "Only an unbound stage without a physics overlay can be adopted.");
+        const auto root = stage->value->GetRootLayer();
+        Check(root && !root->GetRealPath().empty(),
+            "Adoption requires a text-USD stage with a concrete filesystem source.");
+        const auto rootPath = OpenUsdReview::Path(root->GetRealPath(), true);
+        Check(root->GetIdentifier() == rootPath,
+            "The stage source identifier is aliased; reconcile its filesystem anchor before adoption.");
+        auto admitted = OpenUsdReview::Admit(rootPath, true);
+        Check(admitted.source.root == rootPath && root == SdfLayer::Find(rootPath),
+            "The stage root differs from the admitted filesystem source.");
+        Check(stage->value->GetPathResolverContext() == admitted.resolver,
+            "The stage resolver context differs from the admitted filesystem context.");
+        Check(stage->value->GetMutedLayers().empty()
+            && stage->value->GetLoadRules() == UsdStageLoadRules::LoadAll()
+            && stage->value->GetPopulationMask() == UsdStagePopulationMask::All(),
+            "Muted, unloaded or masked stages must be reconciled before adoption.");
+
+        const auto session = stage->value->GetSessionLayer();
+        const auto oldUser = context.user;
+        if (oldUser)
+        {
+            const auto userResident = OpenUsdEdit::DataAccess::Get(*oldUser);
+            Check(oldUser != root && oldUser != session && stage->value->HasLocalLayer(oldUser)
+                && oldUser->PermissionToEdit()
+                && userResident
+                && OpenUsdEdit::DataAccess::ConcreteType(userResident) == typeid(OpenUsdEdit::CountedData),
+                "The existing unbound review layer is not an owned editable target.");
+        }
+        std::set<SdfLayerHandle> admittedLayers(admitted.layers.begin(), admitted.layers.end());
+        std::set<SdfLayerHandle> usedLayers;
+        for (const auto& layer : stage->value->GetUsedLayers())
+        {
+            usedLayers.insert(layer);
+            Check(layer == session || layer == oldUser || admittedLayers.count(layer) != 0,
+                "A foreign layer participates in the stage composition; reconcile before adoption.");
+        }
+        Check(usedLayers.count(session) == 1 && usedLayers.count(root) == 1,
+            "The stage session or source root is not in the active composition.");
+        for (const auto& layer : stage->value->GetLayerStack(true))
+        {
+            if (layer == session || layer == oldUser) { continue; }
+            Check(admittedLayers.count(layer) != 0 && !layer->IsDirty(),
+                "A dirty or foreign non-session layer blocks adoption.");
+        }
+        Check(session->PermissionToEdit(), "The session layer is not editable.");
+
+        const auto sessionOpinions = OpenUsdReview::CaptureSessionOpinions(
+            session, oldUser ? oldUser->GetIdentifier() : std::string());
+        TfRefPtr<OpenUsdEdit::CountedData> userOpinions;
+        if (oldUser)
+        {
+            userOpinions = TfCreateRefPtr(new OpenUsdEdit::CountedData);
+            userOpinions->CopyFrom(OpenUsdEdit::DataAccess::Get(*oldUser));
+        }
+        auto adoptedOpinions = OpenUsdReview::MergeAdoptionOpinions(sessionOpinions, userOpinions);
+        auto replacementSessionData = TfCreateRefPtr(new OpenUsdEdit::CountedData);
+        replacementSessionData->CreateSpec(SdfPath::AbsoluteRootPath(), SdfSpecTypePseudoRoot);
+
+        auto nextState = std::make_shared<OpenUsdReviewState>();
+        nextState->source = std::move(admitted.source);
+        nextState->origins = std::move(admitted.origins);
+        nextState->sourceLayers = std::move(admitted.layers);
+        nextState->resolver = std::move(admitted.resolver);
+        nextState->session = session;
+        nextState->sessionData = replacementSessionData;
+        nextState->documentId = OpenUsdReview::Guid();
+
+        const auto binding = OpenUsdReview::BindingBytes(context.id, nextState->source);
+        OpenUsdEdit::PublishPortable(binding, owner, view);
+        context.review = nextState;
+        SdfLayerRefPtr replacement;
+        try
+        {
+            replacement = OpenUsdReview::NewReviewLayer(stage, adoptedOpinions);
+        }
+        catch (...)
+        {
+            context.review.reset();
+            throw;
+        }
+
+        const auto beforeSessionData = OpenUsdEdit::DataAccess::Get(*session);
+        const auto oldTarget = stage->value->GetEditTarget();
+        const size_t beforeRecords = context.records.size();
+        std::vector<OpenUsdReview::RecordState> records;
+        records.reserve(beforeRecords);
+        for (const auto& record : context.records)
+        {
+            records.push_back({record.get(), record->generation, record->revision,
+                record->savedRevision, record->role, record->local, record->owned});
+        }
+        TfErrorMark mark;
+        try
+        {
+            {
+                SdfChangeBlock change;
+                SdfAbstractDataRefPtr replacementData = replacementSessionData;
+                OpenUsdEdit::DataAccess::Install(get_pointer(session), replacementData);
+            }
+            OpenUsdReview::Failpoint(5);
+            session->SetSubLayerPaths({replacement->GetIdentifier()});
+            Check(mark.IsClean(), "Could not attach the adopted review layer.");
+            context.user = replacement;
+            if (oldUser)
+            {
+                auto& oldRecord = context.Track(oldUser);
+                oldRecord.role = 4;
+                ++oldRecord.generation;
+            }
+            auto& record = context.Track(replacement, 2);
+            record.savedRevision = record.revision;
+            stage->value->SetEditTarget(UsdEditTarget(replacement));
+            Check(mark.IsClean() && stage->value->GetEditTarget().GetLayer() == replacement,
+                "Could not set the adopted review layer as the stage edit target.");
+            OpenUsdReview::UserLayerAttached(stage);
+            OpenUsdReview::Failpoint(6);
+            OpenUsdReview::VerifySource(stage);
+            OpenUsdReview::Failpoint(7);
+            return OPENUSD_STATUS_OK;
+        }
+        catch (...)
+        {
+            ConsumeErrors(mark);
+            {
+                SdfChangeBlock change;
+                OpenUsdEdit::DataAccess::Install(
+                    get_pointer(session),
+                    TfCreateRefPtrFromProtectedWeakPtr(TfWeakPtr<SdfAbstractData>(
+                        const_cast<SdfAbstractData*>(get_pointer(beforeSessionData)))));
+            }
+            stage->value->SetEditTarget(oldTarget);
+            context.user = oldUser;
+            context.review.reset();
+            context.records.resize(beforeRecords);
+            for (const auto& record : records) { record.Restore(); }
+            Check(OpenUsdEdit::DataAccess::Get(*session) == beforeSessionData
+                && stage->value->GetEditTarget() == oldTarget && context.user == oldUser
+                && !context.review && mark.IsClean(),
+                "Adoption rollback failed; explicit session reconciliation is required.");
             throw;
         }
     });

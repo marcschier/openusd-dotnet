@@ -7,6 +7,9 @@ namespace OpenUsd.Rendering.Silk.Vulkan;
 
 public sealed unsafe partial class VulkanSilkGraphicsDevice
 {
+    private long _drawDescriptorPoolCreations;
+    internal long DrawDescriptorPoolCreations => Interlocked.Read(ref _drawDescriptorPoolCreations);
+
     /// <inheritdoc/>
     public ISilkGraphicsTexture CreateTexture2D(
         uint width,
@@ -143,8 +146,10 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         format switch
         {
             SilkTextureFormat.Rgba8Unorm => Format.R8G8B8A8Unorm,
+            SilkTextureFormat.R8Unorm => Format.R8Unorm,
             SilkTextureFormat.D32Float => Format.D32Sfloat,
             SilkTextureFormat.R32Float => Format.R32Sfloat,
+            SilkTextureFormat.Rg32Float => Format.R32G32Sfloat,
             SilkTextureFormat.Rgba16Float => Format.R16G16B16A16Sfloat,
             SilkTextureFormat.Rgba32Float => Format.R32G32B32A32Sfloat,
             _ => throw new ArgumentOutOfRangeException(nameof(format))
@@ -337,6 +342,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
 
         var leases = new List<IDisposable>();
+        var drawDescriptorPools = new SubmissionDescriptorPools(this);
         var uploadResources = new List<VulkanUploadResource>();
         var drawResources = new List<VulkanDrawSubmissionResource>();
         var computeResources = new List<VulkanComputeSubmissionResource>();
@@ -347,6 +353,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         bool success = false;
         try
         {
+            leases.Add(drawDescriptorPools);
             var leasedTextures = new HashSet<VulkanSilkGraphicsTexture>();
             var leasedPipelines = new HashSet<VulkanSilkGraphicsPipeline>();
             var leasedComputePipelines = new HashSet<VulkanSilkComputePipeline>();
@@ -551,6 +558,36 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 }
                 switch (command.Kind)
                 {
+                    case SilkGraphicsCommandKind.CopyRenderTarget:
+                        VulkanSilkGraphicsTexture copySource = command.Texture!;
+                        VulkanSilkGraphicsTexture copyDestination = command.DepthTexture!;
+                        copySource.ThrowIfDisposed();
+                        copyDestination.ThrowIfDisposed();
+                        Transition(nativeCommands, copySource.Image, copySource.AspectMask,
+                            GetCurrentLayout(finalLayouts, copySource), ImageLayout.TransferSrcOptimal);
+                        Transition(nativeCommands, copyDestination.Image, copyDestination.AspectMask,
+                            GetCurrentLayout(finalLayouts, copyDestination), ImageLayout.TransferDstOptimal);
+                        var imageCopy = new ImageCopy
+                        {
+                            SrcSubresource = new ImageSubresourceLayers
+                            {
+                                AspectMask = copySource.AspectMask,
+                                LayerCount = 1
+                            },
+                            DstSubresource = new ImageSubresourceLayers
+                            {
+                                AspectMask = copyDestination.AspectMask,
+                                LayerCount = 1
+                            },
+                            Extent = new Extent3D(copySource.Width, copySource.Height, 1)
+                        };
+                        _api.CmdCopyImage(nativeCommands, copySource.Image, ImageLayout.TransferSrcOptimal,
+                            copyDestination.Image, ImageLayout.TransferDstOptimal, 1, &imageCopy);
+                        Transition(nativeCommands, copyDestination.Image, copyDestination.AspectMask,
+                            ImageLayout.TransferDstOptimal, ImageLayout.TransferSrcOptimal);
+                        finalLayouts[copySource] = ImageLayout.TransferSrcOptimal;
+                        finalLayouts[copyDestination] = ImageLayout.TransferSrcOptimal;
+                        break;
                     case SilkGraphicsCommandKind.UploadTexture:
                         VulkanSilkGraphicsTexture uploadTexture = command.Texture!;
                         uploadTexture.ThrowIfDisposed();
@@ -564,11 +601,10 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             GetCurrentLayout(finalLayouts, uploadTexture),
                             ImageLayout.TransferDstOptimal,
                             uploadTexture.MipLevelCount);
-                        SilkMipLevelLayout[] uploadLevels = SilkMipChainLayout.Create(
-                            uploadTexture.Width,
-                            uploadTexture.Height,
-                            uploadTexture.Format,
-                            uploadTexture.MipLevelCount);
+                        SilkMipLevelLayout[] uploadLevels = command.TextureRows is { } rows
+                            ? [rows.GetLayout(uploadTexture)] : SilkMipChainLayout.Create(
+                                uploadTexture.Width, uploadTexture.Height, uploadTexture.Format,
+                                    uploadTexture.MipLevelCount);
                         var copyRegions = new BufferImageCopy[uploadLevels.Length];
                         for (int level = 0; level < uploadLevels.Length; level++)
                         {
@@ -581,11 +617,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                                 ImageSubresource = new ImageSubresourceLayers
                                 {
                                     AspectMask = ImageAspectFlags.ColorBit,
-                                    MipLevel = checked((uint)level),
+                                    MipLevel = uploadLevel.Level,
                                     BaseArrayLayer = 0,
                                     LayerCount = 1
                                 },
-                                ImageOffset = new Offset3D(0, 0, 0),
+                                ImageOffset = new Offset3D(0, checked((int)(command.TextureRows?.FirstRow ?? 0)), 0),
                                 ImageExtent = new Extent3D(
                                     uploadLevel.Width,
                                     uploadLevel.Height,
@@ -935,8 +971,16 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                             command.IndexCount,
                             bindingsForDraw);
                         VulkanDrawSubmissionResource drawResource =
-                            CreateDrawSubmissionResource(drawState);
-                        drawResources.Add(drawResource);
+                            CreateDrawSubmissionResource(drawState, drawDescriptorPools);
+                        try
+                        {
+                            drawResources.Add(drawResource);
+                        }
+                        catch
+                        {
+                            DestroyDrawSubmissionResource(drawResource);
+                            throw;
+                        }
                         var beginInfo = new RenderPassBeginInfo
                         {
                             SType = StructureType.RenderPassBeginInfo,
@@ -1664,78 +1708,13 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         return count;
     }
 
-    private static bool HasStorageSlot(SilkBindingLayoutDescriptor layout)
-    {
-        foreach (SilkBindingSlot slot in layout.MaterialSlots ?? [])
-        {
-            if (slot.Kind == SilkBindingKind.StorageBuffer)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private VulkanDrawSubmissionResource CreateDrawSubmissionResource(
-        VulkanDrawState command)
+        VulkanDrawState command, SubmissionDescriptorPools pools)
     {
-        if ((command.Pipeline.BindingLayout.MaterialSlots ?? []).Count != 0 &&
-            !HasStorageSlot(command.Pipeline.BindingLayout) &&
-            _materialDescriptorTables is { } descriptorTables &&
-            TryCreateDescriptorIndexedDrawSubmissionResource(
-                command,
-                descriptorTables,
-                out VulkanDrawSubmissionResource descriptorIndexedResource))
-        {
-            return descriptorIndexedResource;
-        }
-
-        DescriptorPool descriptorPool = default;
         Framebuffer framebuffer = default;
         try
         {
-            var poolSize = new DescriptorPoolSize(DescriptorType.UniformBuffer, 1);
-            var poolInfo = new DescriptorPoolCreateInfo
-            {
-                SType = StructureType.DescriptorPoolCreateInfo,
-                MaxSets = 1,
-                PoolSizeCount = 1,
-                PPoolSizes = &poolSize
-            };
-            DescriptorPoolSize* materialSizes = stackalloc DescriptorPoolSize[4];
-            uint materialSizeCount = DescribeMaterialPoolSizes(
-                command.Pipeline.BindingLayout,
-                materialSizes);
-            if (materialSizeCount != 0)
-            {
-                // The set layout now also declares the material slots, so the pool has
-                // to supply their descriptor types or vkAllocateDescriptorSets fails
-                // with ErrorOutOfPoolMemory.
-                poolInfo.PoolSizeCount = materialSizeCount;
-                poolInfo.PPoolSizes = materialSizes;
-            }
-            ThrowIfFailed(
-                _api.CreateDescriptorPool(
-                    _device,
-                    &poolInfo,
-                    null,
-                    &descriptorPool),
-                "vkCreateDescriptorPool");
-            DescriptorSetLayout setLayout = command.Pipeline.DescriptorSetLayout;
-            var allocationInfo = new DescriptorSetAllocateInfo
-            {
-                SType = StructureType.DescriptorSetAllocateInfo,
-                DescriptorPool = descriptorPool,
-                DescriptorSetCount = 1,
-                PSetLayouts = &setLayout
-            };
-            DescriptorSet descriptorSet = default;
-            ThrowIfFailed(
-                _api.AllocateDescriptorSets(
-                    _device,
-                    &allocationInfo,
-                    &descriptorSet),
-                "vkAllocateDescriptorSets");
+            DescriptorSet descriptorSet = pools.Allocate(command.Pipeline);
             WriteDrawDescriptors(
                 descriptorSet,
                 command.UniformBuffer,
@@ -1743,7 +1722,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             framebuffer = CreateDrawFramebuffer(command);
             return new VulkanDrawSubmissionResource(
                 framebuffer,
-                descriptorPool,
+                default,
                 descriptorSet,
                 null);
         }
@@ -1753,10 +1732,6 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             if (framebuffer.Handle != 0)
             {
                 _api.DestroyFramebuffer(_device, framebuffer, null);
-            }
-            if (descriptorPool.Handle != 0)
-            {
-                _api.DestroyDescriptorPool(_device, descriptorPool, null);
             }
             throw;
         }
@@ -1783,48 +1758,6 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         if (resource.DescriptorPool.Handle != 0)
         {
             _api.DestroyDescriptorPool(_device, resource.DescriptorPool, null);
-        }
-    }
-
-    private bool TryCreateDescriptorIndexedDrawSubmissionResource(
-        VulkanDrawState command,
-        VulkanDescriptorIndexedTextureTables descriptorTables,
-        out VulkanDrawSubmissionResource resource)
-    {
-        resource = default;
-        DescriptorSetLayout setLayout = command.Pipeline.DescriptorSetLayout;
-        if (!descriptorTables.TryAllocate(setLayout, out DescriptorSet descriptorSet))
-        {
-            return false;
-        }
-
-        Framebuffer framebuffer = default;
-        bool success = false;
-        try
-        {
-            WriteDrawDescriptors(
-                descriptorSet,
-                command.UniformBuffer,
-                command.MaterialBindings);
-            framebuffer = CreateDrawFramebuffer(command);
-            resource = new VulkanDrawSubmissionResource(
-                framebuffer,
-                default,
-                descriptorSet,
-                descriptorTables);
-            success = true;
-            return true;
-        }
-        finally
-        {
-            if (!success)
-            {
-                if (framebuffer.Handle != 0)
-                {
-                    _api.DestroyFramebuffer(_device, framebuffer, null);
-                }
-                descriptorTables.Free(descriptorSet);
-            }
         }
     }
 
@@ -1867,7 +1800,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
     internal void Readback(
         VulkanSilkGraphicsTexture texture,
-        Span<byte> destination)
+        Span<byte> destination,
+        uint mipLevel = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         texture.ThrowIfDisposed();
@@ -1889,6 +1823,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 texture.Layout,
                 ImageLayout.TransferSrcOptimal,
                 texture.MipLevelCount);
+            (uint width, uint height) = SilkMipChainLayout.GetLevelExtent(texture.Width, texture.Height, mipLevel);
             var region = new BufferImageCopy
             {
                 BufferOffset = 0,
@@ -1897,12 +1832,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 ImageSubresource = new ImageSubresourceLayers
                 {
                     AspectMask = texture.AspectMask,
-                    MipLevel = 0,
+                    MipLevel = mipLevel,
                     BaseArrayLayer = 0,
                     LayerCount = 1
                 },
                 ImageOffset = new Offset3D(0, 0, 0),
-                ImageExtent = new Extent3D(texture.Width, texture.Height, 1)
+                ImageExtent = new Extent3D(width, height, 1)
             };
             _api.CmdCopyImageToBuffer(
                 commands,
@@ -2323,11 +2258,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             SilkSamplerAddressMode.ClampToEdge => SamplerAddressMode.ClampToEdge,
             SilkSamplerAddressMode.Repeat => SamplerAddressMode.Repeat,
             SilkSamplerAddressMode.MirrorRepeat => SamplerAddressMode.MirroredRepeat,
+            SilkSamplerAddressMode.ClampToBorder => SamplerAddressMode.ClampToBorder,
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 }
 
-internal sealed class VulkanSilkGraphicsTexture : SilkGraphicsTextureBase
+internal sealed class VulkanSilkGraphicsTexture : SilkGraphicsTextureBase, ISilkMaterialMipReadback
 {
     private readonly VulkanSilkGraphicsDevice _device;
     private Image _image;
@@ -2382,6 +2318,13 @@ internal sealed class VulkanSilkGraphicsTexture : SilkGraphicsTextureBase
         ThrowIfDisposed();
         ValidateReadback(destination.Length);
         _device.Readback(this, destination);
+    }
+
+    public void ReadMipForTesting(uint mipLevel, Span<byte> destination)
+    {
+        ThrowIfDisposed();
+        SilkTextureRowUpload.ValidateReadback(this, mipLevel, destination.Length);
+        _device.Readback(this, destination, mipLevel);
     }
 
     public override void ReadbackForTesting(Span<float> destination)
@@ -2449,7 +2392,9 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
       ISilkPickGraphicsCommandList,
       ISilkSelectionOutlineGraphicsCommandList,
       ISilkShadowGraphicsCommandList,
-      ISilkDisplayTransformGraphicsCommandList
+      ISilkDisplayTransformGraphicsCommandList,
+      ISilkTextureCopyGraphicsCommandList,
+      ISilkTextureRowUploadCommandList
 {
     private readonly List<VulkanGraphicsCommand> _commands = [];
     private List<IDisposable>? _pixelCopies;
@@ -2477,6 +2422,15 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
 
     internal IReadOnlyList<VulkanGraphicsCommand> Commands => _commands;
 
+    public void CopyRenderTarget(ISilkGraphicsTexture source, ISilkGraphicsTexture destination)
+    {
+        ThrowIfOutsideRendering();
+        VulkanSilkGraphicsTexture from = ValidateTexture(source);
+        VulkanSilkGraphicsTexture to = ValidateTexture(destination);
+        SilkRenderTargetCopy.Validate(from, to);
+        _commands.Add(VulkanGraphicsCommand.CopyRenderTarget(from, to));
+    }
+
     public void UploadTexture(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
     {
         ThrowIfOutsideRendering();
@@ -2501,6 +2455,18 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
         _commands.EnsureCapacity(checked(_commands.Count + 1));
         _commands.Add(VulkanGraphicsCommand.Upload(
             vulkanTexture, Device.CopyTextureCommandData(source, ref _pixelCopies)));
+    }
+
+    public void UploadTextureRows(
+        ISilkGraphicsTexture texture, SilkTextureRowUpload region, ReadOnlySpan<byte> source)
+    {
+        ThrowIfOutsideRendering();
+        VulkanSilkGraphicsTexture target = ValidateTexture(texture);
+        region.Validate(target, source.Length);
+        _commands.EnsureCapacity(checked(_commands.Count + 1));
+        _commands.Add(VulkanGraphicsCommand.Upload(
+            target, Device.CopyTextureCommandData(source, ref _pixelCopies)) with
+        { TextureRows = region });
     }
 
     public void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
@@ -3060,6 +3026,12 @@ internal readonly record struct VulkanGraphicsCommand(
     // Reuses Texture = colour attachment, DepthTexture = scene-colour source.
     VulkanSilkGraphicsTexture? DisplayTransformLattice)
 {
+    internal SilkTextureRowUpload? TextureRows { get; init; }
+
+    internal static VulkanGraphicsCommand CopyRenderTarget(
+        VulkanSilkGraphicsTexture source, VulkanSilkGraphicsTexture destination) =>
+        Create(SilkGraphicsCommandKind.CopyRenderTarget, texture: source, depthTexture: destination);
+
     internal static VulkanGraphicsCommand Upload(
         VulkanSilkGraphicsTexture texture,
         byte[] data) =>

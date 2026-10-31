@@ -2,7 +2,9 @@
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Numerics;
 using System.Text.Json.Serialization;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp;
 
@@ -57,7 +59,9 @@ internal sealed class RenderSequenceRequest : SceneRevisionRequestBase
 internal sealed class ReadSequenceFrameRequest
 {
     [JsonPropertyName("jobId"), Required, MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
-    [Description("Exact completed job identifier returned by render_sequence or render_product in this MCP process.")]
+    [Description(
+        "Exact completed job identifier returned by render_sequence, render_product or render_physics_sequence " +
+            "in this process.")]
     public required string JobId { get; init; }
 
     [JsonPropertyName("frameIndex"), Range(0, 4095)]
@@ -91,6 +95,18 @@ internal sealed record McpRenderSequenceResultDto(
 
     [Description("Optional authored-product selection and exact variable bindings; null for viewport sequences.")]
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
+    [Description("Exact fixed-step simulation identity; null for authored-time rendering.")]
+    public McpSimulationRecordingDto? Simulation { get; init; }
+}
+
+internal sealed record McpSequenceJobsResultDto(
+    [property: Description(
+        "At most eight original completed-job descriptors in ordinal job-ID order, " +
+        "including retired scenes; this process only, with no file-integrity or current-scene claim.")]
+    IReadOnlyList<McpRenderSequenceResultDto> Jobs) : IOpenUsdMcpOutput
+{
+    [Description("Bounded historical job-list summary.")]
+    public string Summary => $"{Jobs.Count} completed disk jobs retained by this MCP process.";
 }
 
 internal sealed record McpSequenceFrameResultDto(
@@ -122,6 +138,86 @@ internal sealed record McpSequenceFrameResultDto(
     [Description("HDR container: 'raw' or 'exr', or null when no HDR plane was captured.")]
     public string? HdrColorFormat { get; init; }
 
+    [Description(
+        "Optional verified primId plane: packed top-down little-endian int32 indices into primIdTable; " +
+        "-1 marks background. Present only for authored products with a primId variable.")]
+    public McpArtifactDto? PrimId { get; init; }
+
+    [Description(
+        "Optional verified JSON identity table for primId: {background:-1, identities:[{index, path, " +
+        "instanceIndex}]}, listing each distinct visible retained Hydra prim path and instance index (-1 when " +
+        "not instanced) exactly once. Present exactly when primId is present.")]
+    public McpArtifactDto? PrimIdTable { get; init; }
+
+    [Description(
+        "Optional verified instanceId plane: packed top-down little-endian int32 instance indices within the " +
+        "innermost instancer that drew each pixel; -1 marks background and non-instanced prims. Present only " +
+        "for authored products with an instanceId variable.")]
+    public McpArtifactDto? InstanceId { get; init; }
+
+    [Description(
+        "Optional verified normal plane: packed top-down little-endian float32 x, y, z world-space unit " +
+        "shading normals of the front-most surface, back faces flipped toward the camera; (0,0,0) marks " +
+        "background. Present only for authored products with a normal variable.")]
+    public McpArtifactDto? Normal { get; init; }
+
+    [Description(
+        "Optional verified elementId plane: packed top-down little-endian int32 authored face indices of the " +
+        "front-most surface; -1 marks background and surfaces without authored face identity. Present only " +
+        "for authored products with an elementId variable.")]
+    public McpArtifactDto? ElementId { get; init; }
+
     [Description("Original authored-product selection and bindings, independent of later scene edits.")]
     public McpAuthoredProductDto? AuthoredProduct { get; init; }
+
+    [Description(
+        "Original prepared product raster, independent of later scene edits; not verified effective backend state. " +
+        "Null for non-product jobs or producers that supply no raster metadata.")]
+    public McpProductRasterDto? ProductRaster { get; init; }
+
+    [Description(
+        "Original sampled product camera inputs and effect-disable flags; not verified effective backend state. " +
+        "Null for non-product jobs or producers that supply no camera samples.")]
+    public McpProductCameraDto? ProductCamera { get; init; }
+
+    [Description("Exact simulation publication captured by this frame; null for authored-time rendering.")]
+    public McpSimulationFrameDto? Simulation { get; init; }
+
+    [Description(
+        "Original submitted camera request, not effective backend state or source verification. " +
+        "Automatic mode has no recorded renderer-selected matrices; null means no request metadata supplied.")]
+    public McpCameraRequestDto? CameraRequest { get; init; }
+
+    [Description(
+        "Original submitted source-frame display and render settings, not effective backend state, " +
+        "source verification or a complete request identity. Null means no request metadata supplied.")]
+    public McpRenderRequestDto? RenderRequest { get; init; }
+}
+
+internal sealed record McpCameraRequestDto(
+    [property: Description("Requested mode: automatic or matrices; not an effective-camera claim.")] string Mode,
+    [property: Description("Sixteen row-major world-to-view floats; null for automatic mode.")]
+    IReadOnlyList<float>? View,
+    [property: Description("Sixteen row-major view-to-clip floats; null for automatic mode.")]
+    IReadOnlyList<float>? Projection,
+    [property: Description("Zero to eight view-space plane equations, each four floats (x,y,z,w).")]
+    IReadOnlyList<IReadOnlyList<float>> ClipPlanes)
+{
+    internal static McpCameraRequestDto From(CameraState camera) => new(
+        camera.Mode == CameraMode.Matrices ? "matrices" : "automatic",
+        camera.Mode == CameraMode.Matrices ? CopyMatrix(camera.View) : null,
+        camera.Mode == CameraMode.Matrices ? CopyMatrix(camera.Projection) : null,
+        new OwnedReadOnlyList<IReadOnlyList<float>>(camera.ClipPlanes.Select(static plane =>
+            CopyPlane(plane)).ToArray()));
+
+    private static OwnedReadOnlyList<float> CopyPlane(Vector4 plane) =>
+        new OwnedReadOnlyList<float>([plane.X, plane.Y, plane.Z, plane.W]);
+
+    private static OwnedReadOnlyList<float> CopyMatrix(Matrix4x4 matrix) => new(
+        [
+            matrix.M11, matrix.M12, matrix.M13, matrix.M14,
+            matrix.M21, matrix.M22, matrix.M23, matrix.M24,
+            matrix.M31, matrix.M32, matrix.M33, matrix.M34,
+            matrix.M41, matrix.M42, matrix.M43, matrix.M44
+        ]);
 }

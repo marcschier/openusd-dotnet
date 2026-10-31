@@ -21,6 +21,8 @@ public sealed class McpToolPackageTests
         "OpenUsd.dll",
         "OpenUsd.Interop.dll",
         "OpenUsd.Rendering.dll",
+        "OpenUsd.Physics.dll",
+        "OpenUsd.Rendering.Physics.dll",
         "OpenUsd.Rendering.Silk.dll",
         "OpenUsd.Rendering.Silk.D3D12.dll",
         "OpenUsd.Rendering.Silk.Metal.dll",
@@ -57,7 +59,7 @@ public sealed class McpToolPackageTests
         await Assert.That(project.Descendants("SymbolPackageFormat").Single().Value)
             .IsEqualTo("snupkg");
         await Assert.That(project.Descendants("ProjectReference").Count())
-            .IsEqualTo(7);
+            .IsEqualTo(9);
         await Assert.That(project
                 .Descendants("PackageReference")
                 .Select(element => element.Attribute("Include")?.Value)
@@ -74,6 +76,8 @@ public sealed class McpToolPackageTests
                      "DYLD_LIBRARY_PATH",
                      "eng/run-mcp.ps1",
                      "eng/publish-mcp-bundle.ps1",
+                     "stageSettings",
+                     "source-sublayer root metadata is not implicitly inherited",
                  })
         {
             await Assert.That(readme).Contains(requiredText);
@@ -191,6 +195,9 @@ public sealed class McpToolPackageTests
             {
                 await Assert.That(entries).Contains($"{ToolRoot}{assembly}");
             }
+            await Assert.That(entries.Where(entry =>
+                entry.StartsWith($"{ToolRoot}OpenUsd.Runtime.", StringComparison.Ordinal) &&
+                entry.EndsWith(".pdb", StringComparison.Ordinal))).IsEmpty();
 
             string[] toolFrameworkRoots = entries
                 .Where(entry => entry.StartsWith("tools/", StringComparison.Ordinal))

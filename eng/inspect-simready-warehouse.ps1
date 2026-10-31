@@ -8,8 +8,13 @@ param(
     [string]$NativeRuntimeRoot,
     [Parameter(Mandatory = $true)]
     [string]$ReportPath,
-    [ValidateSet('Audit', 'Localize')]
+    [ValidateSet('Audit', 'Localize', 'MaterialCensus')]
     [string]$Operation = 'Audit',
+    [Parameter(Mandatory = $true)]
+    [ulong]$MaximumCommitBytes,
+    [Nullable[ulong]]$MaximumWorkingSetBytes,
+    [ValidateRange(1, 86400)]
+    [int]$TimeoutSeconds = 300,
     [string]$DataRoot = 'D:\simready',
     [string]$CacheRoot,
     [switch]$WithMdlCore,
@@ -21,6 +26,10 @@ $ErrorActionPreference = 'Stop'
 if (-not $IsWindows)
 {
     throw 'The current warehouse runtime wrapper requires Windows.'
+}
+if ($MaximumCommitBytes -eq 0)
+{
+    throw 'An explicit positive kernel process/tree commit ceiling is required.'
 }
 foreach ($path in @($AuditExecutable, $NativeRuntimeRoot, $ReportPath, $DataRoot))
 {
@@ -35,7 +44,8 @@ if (-not (Test-Path -LiteralPath $AuditExecutable -PathType Leaf))
 }
 $report = [IO.Path]::GetFullPath($ReportPath)
 $data = [IO.Path]::GetFullPath($DataRoot)
-if ((Test-Path -LiteralPath $report) -or (Test-Path -LiteralPath ($report + '.log')))
+if ((Test-Path -LiteralPath $report) -or (Test-Path -LiteralPath ($report + '.log')) -or
+    (Test-Path -LiteralPath ($report + '.process.json')))
 {
     throw "Existing audit evidence will not be overwritten: $report"
 }
@@ -99,10 +109,51 @@ try
     else
     {
         $root = if ([string]::IsNullOrWhiteSpace($CacheRoot)) { $source } else { $CacheRoot }
-        @($plugin, (Join-Path $root $profile.rootScene))
+        if ($Operation -eq 'MaterialCensus')
+        {
+            @('--material-census', $plugin, (Join-Path $root $profile.rootScene))
+        }
+        else
+        {
+            @($plugin, (Join-Path $root $profile.rootScene))
+        }
     }
-    & $AuditExecutable @arguments 1> $temporary 2> $diagnostics
-    $code = $LASTEXITCODE
+    if (-not ('OpenUsd.Tooling.BoundedWindowsProcess' -as [type]))
+    {
+        Add-Type -Path (Join-Path $PSScriptRoot 'BoundedWindowsProcess.cs')
+    }
+    $worker = [OpenUsd.Tooling.BoundedWindowsProcess]::Start(
+        $AuditExecutable, $arguments, (Split-Path -Parent $PSScriptRoot), $temporary, $diagnostics,
+        $MaximumCommitBytes, $MaximumWorkingSetBytes)
+    try
+    {
+        $finished = $worker.WaitForExit($TimeoutSeconds * 1000)
+        $code = if ($finished) { $worker.ExitCode } else { $null }
+        $processEvidence = [ordered]@{
+            completed = $finished
+            exitCode = $code
+            maximumProcessCommitBytes = $MaximumCommitBytes
+            maximumJobCommitBytes = $MaximumCommitBytes
+            maximumProcessWorkingSetBytes = $MaximumWorkingSetBytes
+            reportedPeakProcessMemoryUsedBytes = $worker.PeakProcessMemoryUsedBytes
+            reportedPeakJobMemoryUsedBytes = $worker.PeakJobMemoryUsedBytes
+            observedJobProcesses = $worker.ObservedProcessCount
+            reportedPeakExceedsConfiguredCommit = $worker.PeakJobMemoryUsedBytes -gt $MaximumCommitBytes
+            admission = 'Windows job limits installed before suspended child execution; no breakaway.'
+            exclusions = 'Not total host RAM: shared mappings, system cache, GPU and driver memory are separate.'
+            accounting = 'Raw Windows peak-memory counters are not a proven historical aggregate commit measurement.'
+        }
+        $processEvidence | ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath ($report + '.process.json') -Encoding utf8NoBOM
+        if (-not $finished)
+        {
+            throw 'The native operation exceeded its timeout; the owned worker tree will be terminated.'
+        }
+    }
+    finally
+    {
+        $worker.Dispose()
+    }
     if ($code -gt 1)
     {
         Get-Content -LiteralPath $diagnostics -Tail 8 | Write-Error
@@ -119,10 +170,12 @@ try
         inventorySha256 = $profile.inventory.sha256
         profileSha256 = (Get-FileHash -LiteralPath $ProfilePath -Algorithm SHA256).Hash
         auditExecutableSha256 = (Get-FileHash -LiteralPath $AuditExecutable -Algorithm SHA256).Hash
-        usdLibrarySha256 = (Get-FileHash -LiteralPath (Join-Path $NativeRuntimeRoot 'lib\usd_ms.dll') -Algorithm SHA256).Hash
+        usdLibrarySha256 = (Get-FileHash -LiteralPath (
+            Join-Path $NativeRuntimeRoot 'lib\usd_ms.dll') -Algorithm SHA256).Hash
         sourceSnapshotVerified = $true
         mdlModuleRoot = $moduleRoot
         exitCode = $code
+        processAdmission = $processEvidence
     }
     $result | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $temporary -Encoding utf8NoBOM
     Move-Item -LiteralPath $temporary -Destination $report
@@ -130,7 +183,7 @@ try
     Write-Output "Warehouse $Operation report: $report"
     if ($code -ne 0)
     {
-        throw 'The warehouse audit found unresolved dependencies or invalid content; see the report, not a rendering-success claim.'
+        throw 'The warehouse operation found unresolved dependencies or invalid content; see the diagnostic report.'
     }
 }
 finally

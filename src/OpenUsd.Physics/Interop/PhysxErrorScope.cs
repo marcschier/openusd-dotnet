@@ -38,6 +38,7 @@ internal static unsafe class PhysxErrorScope
         PhysxStatus.InvalidState => "The operation is not valid for the current world state.",
         PhysxStatus.Unsupported => "The native physics runtime does not support the operation.",
         PhysxStatus.CapacityExceeded => "A caller-declared capacity was exceeded.",
+        PhysxStatus.Cancelled => "Collider preparation was cancelled.",
         _ => string.Create(CultureInfo.InvariantCulture, $"The native physics runtime returned status {(int)status}.")
     };
 

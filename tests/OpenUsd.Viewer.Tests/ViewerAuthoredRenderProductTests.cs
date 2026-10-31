@@ -1,9 +1,12 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using OpenUsd.Render;
 using OpenUsd.Rendering;
@@ -13,6 +16,482 @@ namespace OpenUsd.Viewer.Tests;
 [NotInParallel]
 public sealed class ViewerAuthoredRenderProductTests
 {
+    private static readonly string[] ActionNames =
+        ["ProductViewResultsButton", "ProductCancelButton", "ProductCloseButton", "ProductRenderButton"];
+
+    [Test]
+    [Arguments(false, "success", "owned")]
+    [Arguments(true, "success", "owned")]
+    [Arguments(false, "success", "close")]
+    [Arguments(true, "success", "close")]
+    [Arguments(false, "success", "other")]
+    [Arguments(true, "success", "other")]
+    [Arguments(false, "failure", "owned")]
+    [Arguments(true, "failure", "owned")]
+    [Arguments(false, "failure", "close")]
+    [Arguments(true, "failure", "close")]
+    [Arguments(false, "failure", "other")]
+    [Arguments(true, "failure", "other")]
+    [Arguments(false, "cancel", "owned")]
+    [Arguments(true, "cancel", "owned")]
+    [Arguments(false, "cancel", "close")]
+    [Arguments(true, "cancel", "close")]
+    [Arguments(false, "cancel", "other")]
+    [Arguments(true, "cancel", "other")]
+    public async Task ProductRenderHandsFocusToCancelAndRestoresOnlyOwnedFocusAfterDrain(
+        bool dark, string outcome, string destination)
+    {
+        using var files = new ViewerCompletedJobTestFiles();
+        RenderDiskJobResult job = files.CreateJob(count: 1);
+        await RunUiAsync(async () =>
+        {
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var product = new ViewerAuthoredRenderProductItem("/Render/Product", "Original product", "/World/Camera",
+                new ViewportDimensions(64, 32), "raw:color/half4", null, null);
+            var snapshot = new ViewerAuthoredRenderProductSnapshot("/Render/Settings", [product]);
+            int renders = 0;
+            int published = 0;
+            int queries = 0;
+            CancellationToken observedToken = default;
+            var window = new AuthoredRenderProductWindow(0, 0, "Original renderer",
+                (_, _, _) =>
+                {
+                    queries++;
+                    return ValueTask.FromResult(snapshot);
+                },
+                async (request, _, token) =>
+                {
+                    await Assert.That(request.SettingsPath).IsEqualTo("/Render/Settings");
+                    await Assert.That(request.ProductPath).IsEqualTo("/Render/Product");
+                    renders++;
+                    if (renders == 1)
+                    {
+                        observedToken = token;
+                        entered.TrySetResult();
+                        await release.Task;
+                        if (outcome == "failure")
+                        {
+                            throw new IOException("Controlled product render refusal.");
+                        }
+                    }
+                    return job;
+                }, completed: (_, _) => published++)
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            Required<TextBox>(window, "ProductOutputFolder").Text = files.Root;
+            var otherAction = new Button { Content = "Other window action" };
+            var other = new Window { Content = otherAction, Width = 240, Height = 160 };
+            window.Show();
+            try
+            {
+                Button render = Required<Button>(window, "ProductRenderButton");
+                Button cancel = Required<Button>(window, "ProductCancelButton");
+                Button close = Required<Button>(window, "ProductCloseButton");
+                await WaitUntilAsync(() => render.IsEnabled);
+                await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                await Assert.That(render.Focus()).IsTrue();
+                render.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(window.IsRunning).IsTrue();
+                await Assert.That(render.IsEnabled).IsFalse();
+                await Assert.That(cancel.IsKeyboardFocusWithin).IsTrue();
+                if (outcome == "cancel")
+                {
+                    Control escapeTarget = cancel;
+                    if (destination == "close")
+                    {
+                        await Assert.That(close.Focus()).IsTrue();
+                        escapeTarget = close;
+                    }
+                    escapeTarget.RaiseEvent(new KeyEventArgs
+                    {
+                        RoutedEvent = InputElement.KeyDownEvent,
+                        Key = Key.Escape
+                    });
+                    await Assert.That(observedToken.IsCancellationRequested).IsTrue();
+                    await Assert.That(cancel.IsEnabled).IsFalse();
+                    await Assert.That(close.IsKeyboardFocusWithin).IsTrue();
+                    await Assert.That(window.IsVisible).IsTrue();
+                    await Assert.That(window.IsRunning).IsTrue();
+                }
+                Control expectedFocus = destination == "owned" ? render :
+                    destination == "close" ? close : otherAction;
+                if (destination == "close")
+                {
+                    await Assert.That(close.Focus()).IsTrue();
+                }
+                else if (destination == "other")
+                {
+                    other.Show();
+                    other.Activate();
+                    Dispatcher.UIThread.RunJobs();
+                    await Assert.That(otherAction.Focus()).IsTrue();
+                }
+                release.TrySetResult();
+                await WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(published).IsEqualTo(outcome == "success" ? 1 : 0);
+                await Assert.That(Required<Button>(window, "ProductViewResultsButton").IsEnabled)
+                    .IsEqualTo(outcome == "success");
+                await Assert.That(Required<TextBlock>(window, "ProductStatus").Text)
+                    .Contains(outcome == "success" ? "Completed" :
+                        outcome == "failure" ? "Controlled product render refusal." : "Cancelled.");
+                await Assert.That(renders).IsEqualTo(1);
+                await Assert.That(Required<ComboBox>(window, "ProductSelector").SelectedItem)
+                    .IsSameReferenceAs(product);
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                other.Close();
+                await Assert.That(render.Focus()).IsTrue();
+                render.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await WaitUntilAsync(() => !window.IsRunning);
+                await Assert.That(render.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(published).IsEqualTo(outcome == "success" ? 2 : 1);
+                await Assert.That(renders).IsEqualTo(2);
+                await Assert.That(queries).IsEqualTo(1);
+            }
+            finally
+            {
+                release.TrySetResult();
+                other.Close();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
+    }
+
+    [Test]
+    [Arguments(false, "success", "owned")]
+    [Arguments(true, "success", "owned")]
+    [Arguments(false, "success", "close")]
+    [Arguments(true, "success", "close")]
+    [Arguments(false, "success", "other")]
+    [Arguments(true, "success", "other")]
+    [Arguments(false, "failure", "owned")]
+    [Arguments(true, "failure", "owned")]
+    [Arguments(false, "failure", "close")]
+    [Arguments(true, "failure", "close")]
+    [Arguments(false, "failure", "other")]
+    [Arguments(true, "failure", "other")]
+    [Arguments(false, "empty", "owned")]
+    [Arguments(true, "empty", "owned")]
+    [Arguments(false, "empty", "close")]
+    [Arguments(true, "empty", "close")]
+    [Arguments(false, "empty", "other")]
+    [Arguments(true, "empty", "other")]
+    public async Task InitialProductDiscoveryHandsOffOnlyItsOwnedFocus(bool dark, string outcome, string destination)
+    {
+        await RunUiAsync(async () =>
+        {
+            string output = Directory.CreateTempSubdirectory("viewer-product-discovery-").FullName;
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var product = new ViewerAuthoredRenderProductItem("/Render/Product", "Original product", "/World/Camera",
+                new ViewportDimensions(64, 32), "raw:color/half4", null, null);
+            var snapshot = new ViewerAuthoredRenderProductSnapshot("/Render/Settings", [product]);
+            int queries = 0;
+            int renders = 0;
+            var window = new AuthoredRenderProductWindow(0, 1, "Original renderer",
+                async (_, _, token) =>
+                {
+                    if (++queries == 1)
+                    {
+                        entered.TrySetResult();
+                        await release.Task.WaitAsync(token);
+                        if (outcome == "failure")
+                        {
+                            throw new InvalidOperationException("Controlled product discovery refusal.");
+                        }
+                        if (outcome == "empty")
+                        {
+                            return ViewerAuthoredRenderProductSnapshot.Empty("No authored products.");
+                        }
+                    }
+                    return snapshot;
+                },
+                (_, _, _) =>
+                {
+                    renders++;
+                    throw new InvalidOperationException("Discovery must not render.");
+                })
+            {
+                Width = 620,
+                Height = 680,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            Required<TextBox>(window, "ProductOutputFolder").Text = output;
+            var otherAction = new Button { Content = "Other window action" };
+            var other = new Window { Content = otherAction, Width = 240, Height = 160 };
+            window.Show();
+            try
+            {
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                ComboBox selector = Required<ComboBox>(window, "ProductSelector");
+                Button refresh = Required<Button>(window, "ProductRefreshButton");
+                await Assert.That(selector.IsEnabled).IsFalse();
+                await Assert.That(refresh.IsEnabled).IsFalse();
+                await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsFalse();
+                await Assert.That(Required<ScrollViewer>(window, "ProductBodyScroll").IsFocused).IsTrue();
+                await Assert.That(AutomationProperties.GetName(Required<ScrollViewer>(window, "ProductBodyScroll")))
+                    .IsEqualTo("Authored render product details");
+                Control expectedFocus = destination switch
+                {
+                    "owned" => selector,
+                    "close" => Required<Button>(window, "ProductCloseButton"),
+                    "other" => otherAction,
+                    _ => throw new ArgumentOutOfRangeException(nameof(destination))
+                };
+                if (destination == "other")
+                {
+                    other.Show();
+                    other.Activate();
+                    Dispatcher.UIThread.RunJobs();
+                    await Assert.That(otherAction.Focus()).IsTrue();
+                }
+                else if (destination == "close")
+                {
+                    await Assert.That(expectedFocus.Focus()).IsTrue();
+                }
+                release.TrySetResult();
+                await WaitUntilAsync(() => refresh.IsEnabled);
+                await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(selector.ItemCount).IsEqualTo(outcome == "success" ? 1 : 0);
+                if (outcome == "success")
+                {
+                    await Assert.That(selector.SelectedItem).IsSameReferenceAs(product);
+                }
+                else
+                {
+                    string expectedStatus = outcome == "empty"
+                        ? "No authored products."
+                        : "Controlled product discovery refusal.";
+                    await Assert.That(Required<TextBlock>(window, "ProductStatus").Text)
+                        .Contains(expectedStatus);
+                }
+                other.Close();
+                await Assert.That(refresh.Focus()).IsTrue();
+                refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await WaitUntilAsync(() => queries == 2 && refresh.IsEnabled);
+                await Assert.That(selector.SelectedItem).IsSameReferenceAs(product);
+                await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsTrue();
+                await Assert.That(renders).IsEqualTo(0);
+                await Assert.That(Directory.GetFileSystemEntries(output)).IsEmpty();
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+            }
+            finally
+            {
+                release.TrySetResult();
+                other.Close();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                Directory.Delete(output, recursive: true);
+            }
+        });
+    }
+
+    [Test]
+    [Arguments(false, "success", "owned")]
+    [Arguments(true, "success", "owned")]
+    [Arguments(false, "success", "close")]
+    [Arguments(true, "success", "close")]
+    [Arguments(false, "success", "other")]
+    [Arguments(true, "success", "other")]
+    [Arguments(false, "failure", "owned")]
+    [Arguments(true, "failure", "owned")]
+    [Arguments(false, "failure", "close")]
+    [Arguments(true, "failure", "close")]
+    [Arguments(false, "failure", "other")]
+    [Arguments(true, "failure", "other")]
+    [Arguments(false, "cancel", "owned")]
+    [Arguments(true, "cancel", "owned")]
+    [Arguments(false, "cancel", "close")]
+    [Arguments(true, "cancel", "close")]
+    [Arguments(false, "cancel", "other")]
+    [Arguments(true, "cancel", "other")]
+    public async Task ProductRefreshRestoresOnlyOwnedFocusAfterSuccessRefusalOrStaleQuery(
+        bool dark, string outcome, string destination)
+    {
+        await RunUiAsync(async () =>
+        {
+            string output = Directory.CreateTempSubdirectory("viewer-product-refresh-").FullName;
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var product = new ViewerAuthoredRenderProductItem("/Render/Product", "Original product", "/World/Camera",
+                new ViewportDimensions(64, 32), "raw:color/half4", null, null);
+            var snapshot = new ViewerAuthoredRenderProductSnapshot("/Render/Settings", [product]);
+            int queries = 0;
+            int renders = 0;
+            bool queryCancelled = false;
+            var window = new AuthoredRenderProductWindow(0, 1, "Original renderer",
+                async (_, _, token) =>
+                {
+                    if (++queries == 2)
+                    {
+                        entered.TrySetResult();
+                        await release.Task;
+                        queryCancelled = token.IsCancellationRequested;
+                        if (outcome == "cancel")
+                        {
+                            return new ViewerAuthoredRenderProductSnapshot("/Render/Retired",
+                                [new ViewerAuthoredRenderProductItem("/Render/RetiredProduct", "Stale product",
+                                    "/World/RetiredCamera", new ViewportDimensions(32, 16),
+                                    "raw:color/half4", null, null)]);
+                        }
+                        token.ThrowIfCancellationRequested();
+                        if (outcome == "failure")
+                        {
+                            throw new InvalidOperationException("Controlled refresh refusal.");
+                        }
+                    }
+                    return snapshot;
+                },
+                (_, _, _) =>
+                {
+                    renders++;
+                    throw new InvalidOperationException("Refresh must not render.");
+                })
+            {
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            Required<TextBox>(window, "ProductOutputFolder").Text = output;
+            var otherAction = new Button { Content = "Other window action" };
+            var other = new Window { Content = otherAction, Width = 240, Height = 160 };
+            window.Show();
+            try
+            {
+                Button refresh = Required<Button>(window, "ProductRefreshButton");
+                ComboBox selector = Required<ComboBox>(window, "ProductSelector");
+                await WaitUntilAsync(() => queries == 1 && refresh.IsEnabled);
+                await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                await Assert.That(refresh.Focus()).IsTrue();
+                refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Assert.That(refresh.IsEnabled).IsFalse();
+                await Assert.That(selector.IsEnabled).IsFalse();
+                await Assert.That(Required<ScrollViewer>(window, "ProductBodyScroll").IsFocused).IsTrue();
+                if (outcome == "cancel")
+                {
+                    Required<TextBox>(window, "ProductSettingsPath").Text = "/Render/Replaced";
+                }
+                Control expectedFocus = destination == "owned"
+                    ? refresh
+                    : destination == "close" ? Required<Button>(window, "ProductCloseButton") : otherAction;
+                if (destination == "other")
+                {
+                    other.Show();
+                    other.Activate();
+                    Dispatcher.UIThread.RunJobs();
+                    await Assert.That(otherAction.Focus()).IsTrue();
+                }
+                else if (destination == "close")
+                {
+                    await Assert.That(expectedFocus.Focus()).IsTrue();
+                }
+                release.TrySetResult();
+                await WaitUntilAsync(() => refresh.IsEnabled);
+                await Assert.That(expectedFocus.IsKeyboardFocusWithin).IsTrue();
+                await Assert.That(queryCancelled).IsEqualTo(outcome == "cancel");
+                await Assert.That(selector.ItemCount).IsEqualTo(outcome == "failure" ? 0 : 1);
+                if (outcome != "failure")
+                {
+                    await Assert.That(selector.SelectedItem).IsSameReferenceAs(product);
+                }
+                other.Close();
+                refresh.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await WaitUntilAsync(() => queries == 3 && refresh.IsEnabled);
+                await Assert.That(selector.SelectedItem).IsSameReferenceAs(product);
+                await Assert.That(renders).IsEqualTo(0);
+                await Assert.That(Directory.GetFileSystemEntries(output)).IsEmpty();
+            }
+            finally
+            {
+                release.TrySetResult();
+                other.Close();
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                Directory.Delete(output, recursive: true);
+            }
+        });
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public Task ProductActionsKeepLongDetailsAndRefusalReachableAtMinimumSize(bool longContext, bool dark) =>
+        ExerciseLayoutAsync(longContext, dark);
+
+    internal static async Task ExerciseLayoutAsync(bool longContext, bool dark)
+    {
+        string details = longContext
+            ? string.Join(' ', Enumerable.Repeat("raw:original-variable/half4", 80))
+            : "raw:color/half4";
+        const string refusal = "This exact product is unsupported; no beauty fallback.";
+        var snapshot = new ViewerAuthoredRenderProductSnapshot("/Render/Settings",
+            [new ViewerAuthoredRenderProductItem("/Render/Product", "Original product", "/World/Camera",
+                new ViewportDimensions(64, 32), details, null, refusal)]);
+        int renders = 0;
+        await RunUiAsync(async () =>
+        {
+            var window = new AuthoredRenderProductWindow(0, 1, "Original renderer",
+                (_, _, _) => ValueTask.FromResult(snapshot), (_, _, _) =>
+                {
+                    renders++;
+                    throw new InvalidOperationException("Unsupported products must not render.");
+                })
+            {
+                Width = 620,
+                Height = 680,
+                RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light
+            };
+            window.Show();
+            try
+            {
+                await WaitUntilAsync(() => Required<ComboBox>(window, "ProductSelector").ItemCount == 1);
+                window.UpdateLayout();
+                await Assert.That(window.ActualThemeVariant)
+                    .IsEqualTo(dark ? ThemeVariant.Dark : ThemeVariant.Light);
+                await Assert.That(Required<TextBlock>(window, "ProductDetails").Text).Contains(details);
+                TextBlock status = Required<TextBlock>(window, "ProductStatus");
+                await Assert.That(status.Text).IsEqualTo(refusal);
+                foreach (string name in ActionNames)
+                {
+                    Button action = Required<Button>(window, name);
+                    Point? origin = action.TranslatePoint(default, window);
+                    await Assert.That(origin).IsNotNull();
+                    await Assert.That(origin!.Value.X).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Value.Y).IsGreaterThanOrEqualTo(0);
+                    await Assert.That(origin.Value.X + action.Bounds.Width)
+                        .IsLessThanOrEqualTo(window.ClientSize.Width);
+                    await Assert.That(origin.Value.Y + action.Bounds.Height)
+                        .IsLessThanOrEqualTo(window.ClientSize.Height);
+                }
+                TextBox end = Required<TextBox>(window, "ProductEndTime");
+                await Assert.That(end.Focus()).IsTrue();
+                end.BringIntoView();
+                window.UpdateLayout();
+                ScrollViewer body = Required<ScrollViewer>(window, "ProductBodyScroll");
+                Point? fieldOrigin = end.TranslatePoint(default, body);
+                await Assert.That(fieldOrigin).IsNotNull();
+                await Assert.That(fieldOrigin!.Value.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(fieldOrigin.Value.Y + end.Bounds.Height).IsLessThanOrEqualTo(body.Viewport.Height);
+                status.BringIntoView();
+                window.UpdateLayout();
+                Point? statusOrigin = status.TranslatePoint(default, body);
+                await Assert.That(statusOrigin).IsNotNull();
+                await Assert.That(statusOrigin!.Value.Y).IsGreaterThanOrEqualTo(0);
+                await Assert.That(statusOrigin.Value.Y + status.Bounds.Height)
+                    .IsLessThanOrEqualTo(body.Viewport.Height);
+                await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsFalse();
+                await Assert.That(renders).IsEqualTo(0);
+            }
+            finally
+            {
+                await window.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
+    }
+
     [Test]
     public async Task SnapshotKeepsUnsupportedProductsVisibleWithoutAdmittingThemAsBeauty()
     {
@@ -31,6 +510,68 @@ public sealed class ViewerAuthoredRenderProductTests
         await Assert.That(snapshot.Products[1].CanRender).IsFalse();
         await Assert.That(snapshot.Products[1].UnsupportedReason).Contains("unsupported 'id' / 'int'");
         await Assert.That(snapshot.Products[1].Label).StartsWith("* /Render/ProductUnsupported");
+    }
+
+    [Test]
+    public async Task SnapshotAdmitsIntInstanceIdentityAlongsidePrimIdentityAndRefusesOtherTypes()
+    {
+        UsdRenderSpecification specification = CreateSpecification([
+            Product("/Render/ProductIdentity", [0, 3, 4]),
+            Product("/Render/ProductInstanceOnly", [0, 4]),
+            Product("/Render/ProductFloatInstance", [0, 5])
+        ]);
+
+        ViewerAuthoredRenderProductSnapshot snapshot =
+            ViewerAuthoredRenderProductSelection.CreateSnapshot(specification, "/Render/ProductIdentity");
+
+        await Assert.That(snapshot.Products.Count).IsEqualTo(3);
+        await Assert.That(snapshot.Products[0].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:primId/int");
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:instanceId/int");
+        await Assert.That(snapshot.Products[1].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[2].CanRender).IsFalse();
+        await Assert.That(snapshot.Products[2].UnsupportedReason).Contains("'instanceId' / 'float'");
+    }
+
+    [Test]
+    public async Task SnapshotAdmitsNormal3fSurfaceNormalsAndRefusesOtherTypes()
+    {
+        UsdRenderSpecification specification = CreateSpecification([
+            Product("/Render/ProductNormal", [0, 1, 3, 4, 6]),
+            Product("/Render/ProductNormalOnly", [6]),
+            Product("/Render/ProductFloat3Normal", [0, 7])
+        ]);
+
+        ViewerAuthoredRenderProductSnapshot snapshot =
+            ViewerAuthoredRenderProductSelection.CreateSnapshot(specification, "/Render/ProductNormal");
+
+        await Assert.That(snapshot.Products.Count).IsEqualTo(3);
+        await Assert.That(snapshot.Products[0].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:normal/normal3f");
+        await Assert.That(snapshot.Products[1].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[2].CanRender).IsFalse();
+        await Assert.That(snapshot.Products[2].UnsupportedReason).Contains("'normal' / 'float3'");
+    }
+
+    [Test]
+    public async Task SnapshotAdmitsIntElementIdentityAlongsideEveryPlaneAndRefusesOtherTypes()
+    {
+        UsdRenderSpecification specification = CreateSpecification([
+            Product("/Render/ProductElement", [0, 1, 3, 4, 6, 8]),
+            Product("/Render/ProductElementOnly", [8]),
+            Product("/Render/ProductFloatElement", [0, 9])
+        ]);
+
+        ViewerAuthoredRenderProductSnapshot snapshot =
+            ViewerAuthoredRenderProductSelection.CreateSnapshot(specification, "/Render/ProductElement");
+
+        await Assert.That(snapshot.Products.Count).IsEqualTo(3);
+        await Assert.That(snapshot.Products[0].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:elementId/int");
+        await Assert.That(snapshot.Products[0].VariableSummary).Contains("raw:instanceId/int");
+        await Assert.That(snapshot.Products[1].CanRender).IsTrue();
+        await Assert.That(snapshot.Products[2].CanRender).IsFalse();
+        await Assert.That(snapshot.Products[2].UnsupportedReason).Contains("'elementId' / 'float'");
     }
 
     [Test]
@@ -95,6 +636,59 @@ public sealed class ViewerAuthoredRenderProductTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    [Test]
+    public async Task BlankOverrideFieldsPreserveEveryAuthoredValue()
+    {
+        RenderProductOverrides overrides = ViewerAuthoredRenderProductOverrides.Parse(" ", null, "", "\t", null, "");
+        await Assert.That(overrides).IsSameReferenceAs(RenderProductOverrides.None);
+        await Assert.That(ViewerAuthoredRenderProductOverrides.Describe(overrides)).IsEqualTo("none (authored values)");
+    }
+
+    [Test]
+    public async Task OverrideFieldsParseInvariantValuesIntoTheSharedOverrideModel()
+    {
+        RenderProductOverrides overrides = ViewerAuthoredRenderProductOverrides.Parse(
+            " /World/Camera ", "640", "360", "1.5", "cropAperture", "-0.1, 0 1.1\t0.75");
+        await Assert.That(overrides.CameraPath).IsEqualTo("/World/Camera");
+        await Assert.That(overrides.Resolution).IsEqualTo(new ViewportDimensions(640, 360));
+        await Assert.That(overrides.PixelAspectRatio).IsEqualTo(1.5);
+        await Assert.That(overrides.AspectRatioConformPolicy).IsEqualTo("cropAperture");
+        await Assert.That(overrides.DataWindowNdc).IsEqualTo(new UsdVec4f(-0.1f, 0f, 1.1f, 0.75f));
+        await Assert.That(ViewerAuthoredRenderProductOverrides.Describe(overrides)).IsEqualTo(
+            "camera /World/Camera; raster 640 x 360; pixel aspect 1.5; conform cropAperture; " +
+            "data window (-0.1, 0, 1.1, 0.75)");
+    }
+
+    [Test]
+    [Arguments("Camera", null, null, null, null, null, "absolute prim path")]
+    [Arguments(null, "640", null, null, null, null, "supplied together")]
+    [Arguments(null, "0", "360", null, null, null, "supplied together")]
+    [Arguments(null, "8193", "360", null, null, null, "supplied together")]
+    [Arguments(null, "1e3", "360", null, null, null, "supplied together")]
+    [Arguments(null, null, null, "0", null, null, "finite positive")]
+    [Arguments(null, null, null, "NaN", null, null, "finite positive")]
+    [Arguments(null, null, null, "1,5", null, null, "finite positive")]
+    [Arguments(null, null, null, null, "fitAperture", null, "conform policy")]
+    [Arguments(null, null, null, null, null, "0 0 1", "four NDC bounds")]
+    [Arguments(null, null, null, null, null, "0 0 1 x", "four finite NDC bounds")]
+    [Arguments(null, null, null, null, null, "0.5 0 0.5 1", "below its maximum")]
+    public async Task InvalidOverrideFieldsAreRefusedBeforeAJobIsPrepared(
+        string? camera, string? width, string? height, string? aspect, string? policy, string? window,
+        string expected)
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(() =>
+            ViewerAuthoredRenderProductOverrides.Parse(camera, width, height, aspect, policy, window));
+        await Assert.That(exception.Message).Contains(expected);
+    }
+
+    [Test]
+    public async Task OverridePixelAspectUsesTheExrStorageBounds()
+    {
+        await Assert.That(ViewerAuthoredRenderProductSelection.GetExrUnsupportedReason(1d / 65536)).IsNull();
+        await Assert.That(ViewerAuthoredRenderProductSelection.GetExrUnsupportedReason(65536)).IsNull();
+        await Assert.That(ViewerAuthoredRenderProductSelection.GetExrUnsupportedReason(65537)).Contains("65536");
     }
 
     [Test]
@@ -290,10 +884,25 @@ public sealed class ViewerAuthoredRenderProductTests
                     "/World/Camera",
                     5,
                     3,
-                    1,
+                    2,
                     "expandAperture",
                     new UsdVec2f(20, 10),
-                    new UsdVec4f(0.25f, 0, 0.75f, 1),
+                    new UsdVec4f(-0.25f, 0, 0.75f, 1),
+                    disableMotionBlur: true,
+                    disableDepthOfField: true,
+                    [0],
+                    []),
+            new UsdRenderProductSpecification(
+                    "/Render/ProductExtremeAspect",
+                    "extreme",
+                    "raster",
+                    "/World/Camera",
+                    5,
+                    3,
+                    1e6f,
+                    "expandAperture",
+                    new UsdVec2f(20, 10),
+                    new UsdVec4f(0, 0, 1, 1),
                     disableMotionBlur: true,
                     disableDepthOfField: true,
                     [0],
@@ -322,9 +931,12 @@ public sealed class ViewerAuthoredRenderProductTests
             Required<Button>(window, "ProductRefreshButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitUntilAsync(() => Required<Button>(window, "ProductRenderButton").IsEnabled);
             Required<ComboBox>(window, "ProductHdrFormat").SelectedIndex = 1;
+            await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+            await Assert.That(Required<Button>(window, "ProductRenderButton").IsEnabled).IsTrue();
+            Required<ComboBox>(window, "ProductSelector").SelectedIndex = 1;
             await WaitUntilAsync(() => !Required<Button>(window, "ProductRenderButton").IsEnabled);
             await Assert.That(Required<TextBlock>(window, "ProductStatus").Text)
-                .Contains("EXR output currently refuses");
+                .Contains("pixel aspect only within 1/65536..65536");
         }
         finally
         {
@@ -452,7 +1064,14 @@ public sealed class ViewerAuthoredRenderProductTests
             [
                 Variable("/Render/Vars/Color", "half4", "color"),
                 Variable("/Render/Vars/Depth", "float", "depth"),
-                Variable("/Render/Vars/Id", "int", "id")
+                Variable("/Render/Vars/Id", "int", "id"),
+                Variable("/Render/Vars/PrimId", "int", "primId"),
+                Variable("/Render/Vars/InstanceId", "int", "instanceId"),
+                Variable("/Render/Vars/FloatInstanceId", "float", "instanceId"),
+                Variable("/Render/Vars/Normal", "normal3f", "normal"),
+                Variable("/Render/Vars/Float3Normal", "float3", "normal"),
+                Variable("/Render/Vars/ElementId", "int", "elementId"),
+                Variable("/Render/Vars/FloatElementId", "float", "elementId")
             ],
             ["default", "render"],
             ["full"],
@@ -499,11 +1118,19 @@ public sealed class ViewerAuthoredRenderProductTests
     private static async Task RunUiAsync(Func<Task> action)
     {
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(App));
+        await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
         await session.Dispatch(async () =>
         {
             await action();
             return 0;
         }, lifetime.Token).WaitAsync(lifetime.Token);
+    }
+
+    private static class SkiaAppEntryPoint
+    {
+        public static AppBuilder BuildAvaloniaApp() =>
+            AppBuilder.Configure<App>()
+                .UseSkia()
+                .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
     }
 }

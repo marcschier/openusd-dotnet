@@ -87,6 +87,12 @@
     <None Include="..\..\eng\shaders\checked\shadow.fragment.metal"
           Link="Shaders\shadow.fragment.metal"
           Visible="false" />
+    <None Include="..\..\eng\shaders\checked\normal.vertex.metal"
+          Link="Shaders\normal.vertex.metal"
+          Visible="false" />
+    <None Include="..\..\eng\shaders\checked\normal.fragment.metal"
+          Link="Shaders\normal.fragment.metal"
+          Visible="false" />
     <None Include="..\..\eng\shaders\checked\compute.fill.metal"
           Link="Shaders\compute.fill.metal"
           Visible="false" />

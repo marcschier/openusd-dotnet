@@ -82,6 +82,24 @@ public sealed class SilkDeformationGpuPolicyTests
     }
 
     [Test]
+    public async Task AGeometryWithASecondTextureCoordinateSetFallsBack()
+    {
+        // The checked kernel writes only the six- and eight-float layouts, so a
+        // ten-float vertex with a second coordinate set would lose that set.
+        SilkMeshDeformationData rig = Rig();
+        SilkDeformationGpuFallback fallback = SilkDeformationGpuPayload.TryBuild(
+            rig,
+            10,
+            rig.BindPointCount,
+            hasTangents: false,
+            SilkTopologyKind.TriangleList,
+            out SilkDeformationGpuPayload? payload);
+
+        await Assert.That(fallback).IsEqualTo(SilkDeformationGpuFallback.SecondaryTexCoords);
+        await Assert.That(payload).IsNull();
+    }
+
+    [Test]
     [Arguments(SilkTopologyKind.LineList)]
     [Arguments(SilkTopologyKind.PointList)]
     public async Task ANonTriangleTopologyFallsBack(SilkTopologyKind topologyKind)

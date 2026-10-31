@@ -68,6 +68,16 @@ preprocessor switch through a manifest `defines` object, validated against the
 DXIL, SPIR-V, and MSL, so a resource can never exist in one backend's binary and
 be absent from another's.
 
+Normal-map permutations additionally bind an independent detail-normal texture at
+the otherwise unused volume texture/sampler registers (`t9`/`s4`, Vulkan bindings
+9/13). The source refuses simultaneous volume and normal-map defines. This keeps
+the full material path within 16 fragment samplers without borrowing the emission
+composite. Detail samples use their own UV affine and tangent orientation, then
+combine with the primary normal through per-fragment reoriented normal mapping.
+The surface block is 272 bytes; its final two rows carry the detail affine. An
+exactly antipodal primary normal uses a half-turn about tangent X, resolving the
+shortest-arc ambiguity without division by zero.
+
 Reflection schema 2 preserves separate D3D register/space and Vulkan
 set/binding contracts, resource access and shape, arrays and strides, recursive
 struct/matrix layout, and stage I/O semantics. System values have a null
@@ -90,6 +100,12 @@ equality with every checked DXIL, SPIR-V, MSL, reflection, and manifest file.
 The checked manifest hashes source files, the lock, the shader manifest, and
 the scripts that generated and validated it. Every required checked text input
 must use LF-only line endings before publication.
+
+SPIR-V verification also caps mesh-fragment numeric invocation-local storage at a 1024-byte
+static lower bound per function, including private globals. Large frame-light arrays must be
+indexed in the existing raw storage buffer rather than materialized per fragment. This guards
+against the previously observed 14-KiB light-array copies and their large Vulkan pipeline
+allocation without lowering the 128-light limit or changing the frame-buffer layout.
 
 The shader workflow runs only when this tree, its documentation, or the
 workflow changes. Windows x64 is the byte-authoritative checked-artifact gate.

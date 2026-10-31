@@ -2065,6 +2065,10 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         deformationRefreshed || subdivisionRefreshed)
     {
         const bool layoutChanged = _RefreshAttributes(sceneDelegate, id);
+        HdSilkSceneState& state = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState();
+        state.ShareMeshAttributes(&_attributes);
+        state.ShareMeshIndices(&_attributePointIndices);
+        state.ShareMeshIndices(&_attributeTriangleIndices);
 
         // Expanding the topology so a face-varying primvar can be resolved onto
         // corners, or collapsing it again when that primvar goes away, changes
@@ -2082,6 +2086,14 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
             }
             ++_topologyRevision;
         }
+    }
+
+    if (topologyRefreshed)
+    {
+        HdSilkSceneState& state = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState();
+        state.ShareMeshIndices(&_coarseTriangleIndices);
+        state.ShareMeshIndices(&_coarseTriangleSubprims);
+        state.ShareMeshIndices(&_coarseCornerEdges);
     }
 
     // Instancer state must be refreshed before instance transforms are read,
@@ -2361,6 +2373,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         const std::string path = record.path;
         HdSilkRenderParam* silkRenderParam =
             static_cast<HdSilkRenderParam*>(renderParam);
+        silkRenderParam->GetSceneState().ShareMeshIndices(&record.pointOrigins);
 
         std::vector<HdSilkMeshRecord> records =
             _BuildInstanceRecords(sceneDelegate, std::move(record));
@@ -2862,7 +2875,8 @@ HdSilkMesh::_BuildInstanceRecords(
     {
         const HdSilkInstanceSample& sample = samples[position];
         if (sample.index > static_cast<int64_t>(
-                std::numeric_limits<int32_t>::max()))
+                std::numeric_limits<int32_t>::max()) ||
+            sample.sourcePickIndex > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
         {
             throw std::overflow_error(
                 "The hdSilk instance index exceeds the 32-bit instance index.");
@@ -2872,6 +2886,7 @@ HdSilkMesh::_BuildInstanceRecords(
         instanceRecord.instanceId = instanceId;
         instanceRecord.instancerPath = instancerId.GetString();
         instanceRecord.instanceIndex = static_cast<int32_t>(sample.index);
+        instanceRecord.sourcePickIndex = static_cast<int32_t>(sample.sourcePickIndex);
         // The complete ordered chain rides beside the composite index. It is
         // the only description that decodes back to a scene instance once more
         // than one instancing level is involved.

@@ -73,6 +73,10 @@ internal static class D3D12ShaderRegisters
                 SilkBindingLayoutDescriptor.EnvironmentIrradianceTextureBinding => 17,
                 SilkBindingLayoutDescriptor.EnvironmentSpecularTextureBinding => 18,
                 SilkBindingLayoutDescriptor.EnvironmentBrdfTextureBinding => 19,
+                SilkBindingLayoutDescriptor.NormalValuesTextureBinding => 20,
+                SilkBindingLayoutDescriptor.DetailNormalValuesTextureBinding => 21,
+                SilkBindingLayoutDescriptor.DiffuseValuesTextureBinding => 22,
+                SilkBindingLayoutDescriptor.EmissiveValuesTextureBinding => 23,
                 SilkBindingLayoutDescriptor.VolumeDensityTextureBinding => 9,
                 _ => slot.Binding >= 2 ? slot.Binding - 2 : slot.Binding
             };

@@ -175,6 +175,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ArgumentNullException.ThrowIfNull(settingsStore);
         _recentStageStore = recentStageStore;
         _settingsStore = settingsStore;
+        _recentRenderManifests = new ViewerRecentRenderManifestStore(settingsStore.RootPath);
         _documentFilePicker = documentFilePicker ?? ViewerDocumentFilePicker.Default;
         _assetFilePicker = assetFilePicker ?? ViewerAssetFilePicker.Default;
         _frameFilePicker = frameFilePicker ?? ViewerFrameFilePicker.Default;
@@ -243,6 +244,9 @@ public sealed partial class MainWindow : Window, IDisposable
             HierarchyRootPrevious.Click += OnHierarchyRootPrevious;
             HierarchyRootNext.Click += OnHierarchyRootNext;
             InspectorPropertyQuery.TextChanged += OnInspectorPropertyQueryChanged;
+            InspectorPropertyFilter.SelectionChanged += OnInspectorPropertyFilterChanged;
+            InspectorPropertyGroup.SelectionChanged += OnInspectorPropertyFilterChanged;
+            InspectorShaderRegistryRead.Click += OnInspectorShaderRegistryRead;
             InspectorPropertyPrevious.Click += OnInspectorPropertyPrevious;
             InspectorPropertyNext.Click += OnInspectorPropertyNext;
             InspectorPropertyDefaultTime.Click += OnInspectorPropertyDefaultTime;
@@ -375,6 +379,8 @@ public sealed partial class MainWindow : Window, IDisposable
         WorkspaceMenu.IsEnabled = false;
         try
         {
+            _rememberRenderManifestTask = RememberRenderManifestAsync(_rememberRenderManifestTask, path: null);
+            await _rememberRenderManifestTask;
             ViewerSettingsLoadResult result =
                 await _settingsStore.LoadAsync(cancellationToken);
             ApplySettings(result.Settings);
@@ -687,6 +693,15 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (WorkspaceOwnsKeyboard || TryHandleWorkspaceShortcut(e))
         {
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Escape &&
+            e.KeyModifiers == KeyModifiers.None &&
+            _measure.IsActive &&
+            !IsCameraShortcutEditing())
+        {
+            CancelMeasureMode("Measure mode cancelled.");
             e.Handled = true;
             return;
         }
@@ -1340,6 +1355,13 @@ public sealed partial class MainWindow : Window, IDisposable
                 return;
             }
 
+            if (_measure.IsActive)
+            {
+                // Measure mode reads the pick as a point; the selection and its tint stay untouched.
+                await ApplyMeasurePickAsync(coordinator, result, cancellationToken);
+                return;
+            }
+
             switch (result.Status)
             {
                 case RenderPickStatus.Hit when result.Item is { } item:
@@ -1860,6 +1882,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void OnRenderStateChanged(StageRenderState state)
     {
         Dispatcher.UIThread.Post(UpdateSavedViewsContext);
+        Dispatcher.UIThread.Post(() => InvalidateMeasurementForState(state));
         var camera = new ViewerCameraState(state.Camera, state.Viewport);
         if (_hasLastHostCamera && camera == _lastHostCamera)
         {
@@ -3613,15 +3636,17 @@ public sealed partial class MainWindow : Window, IDisposable
                 return;
             }
 
+            StageRenderState state = coordinator.CurrentState;
+            RenderBackendIdentity? backend = coordinator.ActiveBackend;
             ViewerFrameCaptureResult capture = await coordinator.CaptureFrameAsync(
                 viewport.Width,
                 viewport.Height,
                 _viewerLifetime.Token);
-            await ViewerFrameFileWriter.WriteAsync(path, capture, _viewerLifetime.Token);
+            await ViewerCaptureStateReceiptFile.SaveCaptureAsync(path, capture, state, backend, _viewerLifetime.Token);
             if (!_shutdownStarted && ReferenceEquals(coordinator, _coordinator))
             {
                 ViewerStatus.Text =
-                    $"Captured {capture.Width}×{capture.Height} frame to {Path.GetFileName(path)}.";
+                    $"Captured {capture.Width}×{capture.Height} frame and state receipt to {Path.GetFileName(path)}.";
             }
         }
         catch (OperationCanceledException) when (_viewerLifetime.IsCancellationRequested)
@@ -4248,6 +4273,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             stageChangeCoordinator.StateChanged -= OnRenderStateChanged;
         }
+        CancelMeasureMode(status: null);
         ViewerStageCameraRefreshPump? stageCameraRefreshes =
             _stageCameraRefreshes;
         _stageCameraRefreshes = null;
@@ -5364,6 +5390,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void ShowInspector(ViewerPrimInspectorSnapshot inspector)
     {
+        PrepareShaderInspection(inspector);
         _currentInspector = inspector;
         ViewerPropertyPage properties = PrepareInspectorPropertyPage(inspector);
         _diagnostics.AddUnsupported(inspector.UnsupportedFeatures);
@@ -5582,6 +5609,11 @@ public sealed partial class MainWindow : Window, IDisposable
                     $"{attribute.TypeName}; {ViewerPropertyInspectionFormatter.State(attribute)}; " +
                     $"samples={ViewerPropertyInspectionFormatter.Count(attribute.TimeSampleCount)}; " +
                     $"value={attribute.Value}{splineSuffix}");
+                if (_shaderInspection?.DescribeProperty(attribute.Name) is { } shaderProperty)
+                {
+                    AddInspectorRow("Shader definition", shaderProperty);
+                    AddMetadataRow($"{attribute.Name} shader definition", shaderProperty);
+                }
                 AddValueAttributeRow(attribute, inspector);
             }
             string relationshipHeading =
@@ -5604,6 +5636,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     relationship.Name,
                     targets);
                 AddValueRow(relationship.Name, targets);
+                AddMaterialBindingEditRow(relationship, inspector);
                 AddMetadataRow(relationship.Name, targets);
                 if (relationship.Inspection is { } inspection)
                 {
@@ -5767,6 +5800,15 @@ public sealed partial class MainWindow : Window, IDisposable
             Classes = { "viewer-caption" },
             TextWrapping = TextWrapping.Wrap
         });
+        if (_shaderInspection?.DescribeProperty(attribute.Name) is { } shaderProperty)
+        {
+            row.Children.Add(new TextBlock
+            {
+                Text = shaderProperty,
+                Classes = { "viewer-caption" },
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
         row.Children.Add(new SelectableTextBlock
         {
             Text = $"Value: {ViewerScalarFormatter.Bound(attribute.Value, 512)}",
@@ -6480,6 +6522,7 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = false;
         ReloadStageButton.IsEnabled = false;
         ReloadStageMenuItem.IsEnabled = false;
+        UpdateMeasureAvailability(available: false);
         UpdateCameraAvailability();
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
@@ -6501,6 +6544,7 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = true;
         ReloadStageButton.IsEnabled = _coordinator is not null;
         ReloadStageMenuItem.IsEnabled = _coordinator is not null;
+        UpdateMeasureAvailability(_coordinator is not null);
         UpdateCameraAvailability();
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
@@ -6524,6 +6568,7 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = true;
         ReloadStageButton.IsEnabled = _coordinator is not null;
         ReloadStageMenuItem.IsEnabled = _coordinator is not null;
+        UpdateMeasureAvailability(_coordinator is not null);
         UpdateCameraAvailability();
         UpdateTimelineAvailability();
         UpdateLayerAvailability();
@@ -6553,8 +6598,10 @@ public sealed partial class MainWindow : Window, IDisposable
         OpenStageMenuItem.IsEnabled = !_documentBusy;
         ReloadStageButton.IsEnabled = false;
         ReloadStageMenuItem.IsEnabled = false;
+        UpdateMeasureAvailability(available: false);
         CaptureFrameMenuItem.IsEnabled = false;
         RenderImageSequenceMenuItem.IsEnabled = false;
+        PhysicsRecordSequenceMenuItem.IsEnabled = false;
         RenderAuthoredProductMenuItem.IsEnabled = false;
         UpdateCameraAvailability();
         RenderStageCameraMenu();
@@ -8649,6 +8696,11 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
         _commandPalette?.Close();
+        if (_completedJobHistoryWindow is { } history)
+        {
+            await history.CloseAsync();
+        }
+        await _rememberRenderManifestTask;
         if (_captureComparison is { } comparison)
         {
             await comparison.CloseAsync();
@@ -8776,6 +8828,7 @@ public sealed partial class MainWindow : Window, IDisposable
             _viewerLifetime.Dispose();
             _documentGate.Dispose();
             _settingsStore.Dispose();
+            _recentRenderManifests.Dispose();
             DisposeReviewRecovery();
             _physicsBakeLifetime.Dispose();
             DisposeBridgeConnection();

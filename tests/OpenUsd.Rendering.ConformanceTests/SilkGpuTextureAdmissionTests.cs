@@ -10,6 +10,60 @@ public sealed class SilkGpuTextureAdmissionTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task OnePolicySharesEveryConfiguredPoolAcrossRealDevicesAndReleasesAllCredit(
+        SilkGraphicsBackend backend)
+    {
+        var budgets = new SilkTexturePreparationBudgets(new(128), new(128), new(1_000_000));
+        using ISilkGraphicsDevice first = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsDevice second = SilkDepthCaptureConformance.CreateDevice(backend);
+        budgets.ConfigureDevice(first);
+        budgets.ConfigureDevice(second);
+        budgets.ConfigureDevice(first);
+        foreach (ISilkGraphicsDevice device in new[] { first, second })
+        {
+            await Assert.That(((ISilkCpuTextureAdmissionDevice)device).CpuTextureBudget)
+                .IsSameReferenceAs(budgets.CpuTextureBudget);
+            await Assert.That(((ISilkTextureAdmissionDevice)device).GpuTextureBudget)
+                .IsSameReferenceAs(budgets.GpuTextureBudget);
+            await Assert.That(((ISilkStagingAdmissionDevice)device).GpuStagingBudget)
+                .IsSameReferenceAs(budgets.GpuStagingBudget);
+        }
+        var descriptor = new SilkTextureDescriptor(4, 4, SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination | SilkTextureUsage.CopySource);
+        using ISilkGraphicsTexture a = first.CreateTexture2D(descriptor);
+        using ISilkGraphicsTexture b = second.CreateTexture2D(descriptor);
+        await Assert.That(budgets.GpuTextureBudget!.Usage.ReservedBytes).IsEqualTo(128ul);
+        await Assert.That(() => second.CreateTexture2D(descriptor)).Throws<SilkGpuTextureBudgetExceededException>();
+        byte[] pixels = Enumerable.Range(0, 64).Select(static value => (byte)value).ToArray();
+        using (ISilkGraphicsCommandList aCommands = first.CreateCommandList())
+        using (ISilkGraphicsCommandList bCommands = second.CreateCommandList())
+        {
+            aCommands.UploadTexture(a, pixels);
+            bCommands.UploadTexture(b, pixels);
+            await Assert.That(budgets.CpuTextureBudget!.Usage.ReservedBytes).IsEqualTo(128ul);
+            using ISilkGraphicsCommandList excess = first.CreateCommandList();
+            await Assert.That(() => excess.UploadTexture(a, pixels)).Throws<SilkCpuTextureBudgetExceededException>();
+            using ISilkGraphicsSubmission aSubmission = first.Submit(aCommands);
+            using ISilkGraphicsSubmission bSubmission = second.Submit(bCommands);
+            aSubmission.Wait();
+            bSubmission.Wait();
+        }
+        byte[] actual = new byte[64];
+        a.ReadbackForTesting(actual);
+        await Assert.That(actual.SequenceEqual(pixels)).IsTrue();
+        b.ReadbackForTesting(actual);
+        await Assert.That(actual.SequenceEqual(pixels)).IsTrue();
+        await Assert.That(budgets.GpuStagingBudget!.Usage.PeakReservedBytes).IsGreaterThan(0ul);
+        a.Dispose();
+        b.Dispose();
+        await Assert.That(budgets.CpuTextureBudget!.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budgets.GpuTextureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budgets.GpuStagingBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task RealTexturesShareMipAndVolumeCapacityWithoutChargingTheBufferPool(SilkGraphicsBackend backend)
     {
         using ISilkGraphicsDevice first = SilkDepthCaptureConformance.CreateDevice(backend);

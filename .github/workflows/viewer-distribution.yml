@@ -114,9 +114,9 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
-            8.0.x
-            9.0.x
-            10.0.401
+            8.0.426
+            9.0.319
+            10.0.403
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
@@ -392,20 +392,34 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           . ./eng/viewer-input-readiness.ps1
+          $directory = 'artifacts/viewer-input-readiness'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
           $api = "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           $run = gh api $api | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the Viewer workflow-run identity.' }
+          $run | ConvertTo-Json -Depth 20 | Set-Content "$directory/workflow-run.json"
           if ($LASTEXITCODE -ne 0 -or $run.id -ne [long]$env:GITHUB_RUN_ID -or
               $run.head_sha -cne $env:WORKFLOW_HEAD_SHA)
           {
             throw 'Viewer input readiness workflow-run/source identity differs.'
           }
-          $jobs = gh api "$api/jobs?per_page=100" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer pack-job evidence.' }
+          $jobs = $null
+          for ($attempt = 0; $attempt -lt 12; $attempt++)
+          {
+            $jobs = gh api "$api/jobs?per_page=100" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer pack-job evidence.' }
+            $packJobs = @($jobs.jobs | Where-Object {
+              $_.name.StartsWith('pack Viewer inputs ', [StringComparison]::Ordinal)
+            })
+            $unfinished = @($packJobs | Where-Object status -ne 'completed')
+            if ($packJobs.Count -eq 3 -and $unfinished.Count -eq 0) { break }
+            if ($attempt -lt 11) { Start-Sleep -Seconds 5 }
+          }
+          $jobs | ConvertTo-Json -Depth 20 | Set-Content "$directory/jobs.json"
           $artifacts = gh api "$api/artifacts?per_page=100" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer input-artifact evidence.' }
+          $artifacts | ConvertTo-Json -Depth 20 | Set-Content "$directory/artifacts.json"
           $result = Get-ViewerInputReadiness -WorkflowRun $run -JobsResponse $jobs -ArtifactsResponse $artifacts
-          $directory = 'artifacts/viewer-input-readiness'
-          New-Item -ItemType Directory -Force -Path $directory | Out-Null
           $result | ConvertTo-Json -Depth 6 | Set-Content "$directory/readiness.json"
           "ready=$($result.ready.ToString().ToLowerInvariant())" | Out-File $env:GITHUB_OUTPUT -Append
           if (-not $result.ready)
@@ -475,7 +489,7 @@ jobs:
           }
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.401
+          dotnet-version: 10.0.403
       - name: Install Linux viewer smoke prerequisites
         if: matrix.rid == 'linux-x64'
         shell: bash

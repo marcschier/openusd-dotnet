@@ -154,6 +154,62 @@ public sealed class StageStatisticsAnalyzerTests
         await Assert.That(analysis.WorldBounds.IsEmpty).IsFalse();
         await Assert.That(analysis.OrientedWorldBounds.IsEmpty).IsFalse();
         await Assert.That(analysis.BoundsQueryDuration >= TimeSpan.Zero).IsTrue();
+        await Assert.That(analysis.BoundsFailure).IsNull();
+    }
+
+    [Test]
+    public async Task AnalyzerDegradesBoundsWhenOpenUsdReportsAnExtentError()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "openusd-bounds-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "skeleton-without-rest.usda");
+        await File.WriteAllTextAsync(
+            path,
+            """
+            #usda 1.0
+            def Xform "World"
+            {
+                def Mesh "Mesh"
+                {
+                    int[] faceVertexCounts = [3]
+                    int[] faceVertexIndices = [0, 1, 2]
+                    point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+                }
+            }
+            def Skeleton "Rig"
+            {
+                uniform token[] joints = ["root"]
+            }
+            """);
+        try
+        {
+            UsdStage stage;
+            try
+            {
+                stage = UsdStage.Open(path);
+            }
+            catch (DllNotFoundException exception)
+            {
+                Skip.Test($"openusd_dotnet native runtime is unavailable: {exception.Message}");
+                throw;
+            }
+
+            using (stage)
+            {
+                StageStatisticsAnalysis analysis = StageStatisticsAnalyzer.Analyze(stage);
+
+                await Assert.That(analysis.PrimCount).IsEqualTo(3);
+                await Assert.That(analysis.MeshCount).IsEqualTo(1);
+                await Assert.That(analysis.WorldBounds.IsEmpty).IsTrue();
+                await Assert.That(analysis.OrientedWorldBounds.IsEmpty).IsTrue();
+                await Assert.That(analysis.BoundsFailure).IsNotNull();
+                await Assert.That(analysis.BoundsFailure!).Contains("extent");
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Test]

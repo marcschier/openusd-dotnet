@@ -547,6 +547,13 @@ public sealed class SilkTransactionalApplyTests
             .. BitConverter.GetBytes(1f),
             .. BitConverter.GetBytes(0f),
             .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
         ];
         var bytes = new byte[8 + payload.Count];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
@@ -569,7 +576,7 @@ public sealed class SilkTransactionalApplyTests
         return bytes;
     }
 
-    private static byte[] Removal(string path)
+    internal static byte[] Removal(string path)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         var bytes = new byte[24 + pathBytes.Length];
@@ -903,7 +910,7 @@ public sealed class SilkTransactionalApplyTests
 
     private static byte[] WideTransactionGpu(SilkSceneState scene)
     {
-        var bytes = new byte[15296];
+        var bytes = new byte[17344];
         SilkShadowFrameBinding shadows = SilkShadowFrameBinding.Create(
             scene.Shadows.Descriptors, SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!);
         SilkFrameUniformWriter.Write(

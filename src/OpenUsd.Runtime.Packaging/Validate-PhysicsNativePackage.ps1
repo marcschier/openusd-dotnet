@@ -35,6 +35,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ExtractHeader,
 
+    [string]$MeshHeader = (Join-Path $PSScriptRoot '../../native/openusd_physx/include/openusd_physx_mesh.h'),
+
     [Parameter(Mandatory = $true)]
     [string]$EvidencePath,
 
@@ -86,6 +88,14 @@ $extractAbi = Get-HeaderValue `
     -Name 'OPENUSD_PHYSICS_EXTRACT_ABI_VERSION'
 
 $requiredWorldAbi = [int]$lock.abi.physics
+$meshAbi = Get-HeaderValue `
+    -Path $MeshHeader `
+    -Pattern 'OPENUSD_PHYSX_MESH_ABI_VERSION\s+(\d+)u?' `
+    -Name 'OPENUSD_PHYSX_MESH_ABI_VERSION'
+if ($meshAbi -ne [int]$lock.abi.physicsMeshPreparation)
+{
+    throw "Physics mesh preparation ABI $meshAbi does not match lock ABI $($lock.abi.physicsMeshPreparation)."
+}
 $requiredExtractAbi = [int]$lock.abi.physicsExtract
 if ($worldAbi -ne $requiredWorldAbi)
 {
@@ -147,6 +157,7 @@ $evidence = [ordered]@{
     rid = $Rid
     kind = 'Physics'
     physicsWorldAbiVersion = $worldAbi
+    physicsMeshPreparationAbiVersion = $meshAbi
     physicsExtractAbiVersion = $extractAbi
     # Recorded per package rather than left to be inferred from an absence: no OpenUsd package ever
     # contains a PhysX GPU or device module, on any RID.

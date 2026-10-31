@@ -11,5 +11,5 @@
 uint32_t
 HdSilkMdlStubSupportValue()
 {
-    return 0xABCDEF01u;
+    return 4u;
 }

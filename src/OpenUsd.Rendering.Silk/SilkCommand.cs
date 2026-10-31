@@ -102,6 +102,7 @@ public readonly ref struct SilkFrameCommand
     private const int ExtendedSize = 536;
     private const int LightingSize = AmbientOffset + 16;
     private const int DomeSize = DomeTableOffset + ((int)MaximumDomes * DomeEntrySize);
+    private const int ShapingSize = ShapingTableOffset + ((int)MaximumLights * ShapingEntrySize);
     private const int ClipPlaneOffset = MinimumSize + 8;
     private const int LightCountOffset = ExtendedSize;
     private const int LightTableOffset = ExtendedSize + 16;
@@ -110,6 +111,8 @@ public readonly ref struct SilkFrameCommand
     private const int DomeCountOffset = LightingSize;
     private const int DomeTableOffset = LightingSize + 16;
     private const int DomeEntrySize = 32;
+    private const int ShapingTableOffset = DomeSize;
+    private const int ShapingEntrySize = 16;
     private readonly ReadOnlySpan<byte> _bytes;
 
     /// <summary>Gets the fixed number of direct lights a frame table can carry.</summary>
@@ -124,10 +127,11 @@ public readonly ref struct SilkFrameCommand
         if (bytes.Length != MinimumSize &&
             bytes.Length != ExtendedSize &&
             bytes.Length != LightingSize &&
-            bytes.Length != DomeSize)
+            bytes.Length != DomeSize &&
+            bytes.Length != ShapingSize)
         {
             throw new InvalidDataException(
-                "The frame command must be exactly 272, 536, 23096, or 23368 bytes.");
+                "The frame command must be exactly 272, 536, 23096, 23368, or 25416 bytes.");
         }
         if (bytes.Length >= ExtendedSize &&
             BinaryPrimitives.ReadUInt32LittleEndian(bytes[MinimumSize..(MinimumSize + 4)]) > 8)
@@ -153,7 +157,7 @@ public readonly ref struct SilkFrameCommand
         {
             ValidateLightTable(bytes);
         }
-        if (bytes.Length == DomeSize)
+        if (bytes.Length >= DomeSize)
         {
             uint domeCount = BinaryPrimitives.ReadUInt32LittleEndian(
                 bytes[DomeCountOffset..(DomeCountOffset + 4)]);
@@ -162,6 +166,10 @@ public readonly ref struct SilkFrameCommand
                 throw new InvalidDataException("The frame command dome count is invalid.");
             }
             ValidateDomeTable(bytes, domeCount);
+        }
+        if (bytes.Length == ShapingSize)
+        {
+            ValidateShapingTable(bytes);
         }
         _bytes = bytes;
     }
@@ -197,6 +205,50 @@ public readonly ref struct SilkFrameCommand
         if (!float.IsFinite(BinaryPrimitives.ReadSingleLittleEndian(entry[offset..])))
         {
             throw new InvalidDataException("A frame light scalar is not finite.");
+        }
+    }
+
+    /// <summary>
+    /// Checks the ABI v28 ShapingAPI table before any accessor reads a cone.
+    /// </summary>
+    /// <remarks>
+    /// A published slot carries a finite cone angle in [0, 180] degrees and a
+    /// finite, non-negative focus exponent; the producer clamps authored values
+    /// into that range, so anything outside it is corruption rather than intent.
+    /// Slots past the light count must be zero, as in every other fixed table.
+    /// </remarks>
+    private static void ValidateShapingTable(ReadOnlySpan<byte> bytes)
+    {
+        uint lightCount = BinaryPrimitives.ReadUInt32LittleEndian(
+            bytes[LightCountOffset..(LightCountOffset + 4)]);
+        for (int light = 0; light < MaximumLights; light++)
+        {
+            ReadOnlySpan<byte> entry = bytes.Slice(
+                ShapingTableOffset + (light * ShapingEntrySize), ShapingEntrySize);
+            float cone = BinaryPrimitives.ReadSingleLittleEndian(entry[0..4]);
+            float focus = BinaryPrimitives.ReadSingleLittleEndian(entry[4..8]);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(entry[8..12]) != 0 ||
+                BinaryPrimitives.ReadUInt32LittleEndian(entry[12..16]) != 0)
+            {
+                throw new InvalidDataException(
+                    "A frame light shaping entry reserved field is not zero.");
+            }
+            if (light >= lightCount)
+            {
+                if (BinaryPrimitives.ReadUInt32LittleEndian(entry[0..4]) != 0 ||
+                    BinaryPrimitives.ReadUInt32LittleEndian(entry[4..8]) != 0)
+                {
+                    throw new InvalidDataException(
+                        "A frame light shaping entry past the published count is not zeroed.");
+                }
+                continue;
+            }
+            if (!float.IsFinite(cone) || cone < 0 || cone > 180 ||
+                !float.IsFinite(focus) || focus < 0)
+            {
+                throw new InvalidDataException(
+                    "A frame light shaping cone or focus is outside its finite range.");
+            }
         }
     }
 
@@ -340,6 +392,33 @@ public readonly ref struct SilkFrameCommand
     internal float GetLightSpecular(int light) => ReadLightSingle(light, 168);
 
     internal float GetLightRadius(int light) => ReadLightSingle(light, 172);
+
+    /// <summary>
+    /// Gets the ShapingAPI cone angle, in degrees, of one direct light.
+    /// </summary>
+    /// <remarks>
+    /// 180 for a frame that predates the ABI v28 shaping table, which leaves the
+    /// light unshaped exactly as earlier consumers drew it.
+    /// </remarks>
+    internal float GetLightShapingConeAngle(int light)
+    {
+        ValidateLight(light);
+        return _bytes.Length >= ShapingSize
+            ? BinaryPrimitives.ReadSingleLittleEndian(
+                _bytes.Slice(ShapingTableOffset + (light * ShapingEntrySize), 4))
+            : 180;
+    }
+
+    /// <summary>Gets the ShapingAPI focus exponent of one direct light.</summary>
+    /// <remarks>Zero, meaning no falloff, for a frame without the shaping table.</remarks>
+    internal float GetLightShapingFocus(int light)
+    {
+        ValidateLight(light);
+        return _bytes.Length >= ShapingSize
+            ? BinaryPrimitives.ReadSingleLittleEndian(
+                _bytes.Slice(ShapingTableOffset + (light * ShapingEntrySize) + 4, 4))
+            : 0;
+    }
 
     internal float GetAmbientColor(int component)
     {
@@ -826,7 +905,8 @@ public readonly ref struct SilkMeshUpsertCommand
     public SilkMeshCullStyle CullStyle =>
         (SilkMeshCullStyle)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[44..48]);
 
-    /// <summary>Gets the USD prim path.</summary>
+    /// <summary>Gets the retained Hydra prim path, which can name a propagated prototype.</summary>
+    /// <remarks>Resolve authored source paths with <see cref="OpenUsdSilkSession.ResolveSourceIdentities"/>.</remarks>
     public string Path => _path;
 
     /// <summary>Gets the number of mesh points.</summary>
@@ -1708,6 +1788,10 @@ public enum SilkMaterialParameter : uint
     Ior = 10,
 
     /// <summary>normal, three components.</summary>
+    /// <remarks>
+    /// A normal texture's scale and bias produce encoded [0, 1] texels that the shader decodes once as
+    /// <c>2x - 1</c>; hdSilk folds an authored UsdPreviewSurface decode into that encoded space.
+    /// </remarks>
     Normal = 11,
 
     /// <summary>displacement, one component.</summary>
@@ -1720,7 +1804,25 @@ public enum SilkMaterialParameter : uint
     UseSpecularWorkflow = 14,
 
     /// <summary>Uniform volume density, one component.</summary>
-    VolumeDensity = 15
+    VolumeDensity = 15,
+
+    /// <summary>
+    /// Diffuse texture luminance mix: normalized nonnegative RGB weights, then a finite amount.
+    /// Applied before texture scale/bias; constant diffuse color and alpha are unchanged.
+    /// </summary>
+    DiffuseTextureLuminanceMix = 16,
+
+    /// <summary>OmniPBR dielectric custom-curve weight in [0,1], with F0=0.08, F90=1 and exponent 5.</summary>
+    OmniPbrSpecularLevel = 17,
+
+    /// <summary>Tangent-space detail normal, combined with the base normal using RNM.</summary>
+    DetailNormal = 18,
+
+    /// <summary>Independent detail UV affine row (m00, m01, tx), three finite components.</summary>
+    DetailUvRow0 = 19,
+
+    /// <summary>Independent detail UV affine row (m10, m11, ty), three finite components.</summary>
+    DetailUvRow1 = 20
 }
 
 /// <summary>
@@ -1755,18 +1857,13 @@ public enum SilkCompositeOperator : uint
 public enum SilkTextureWrap : uint
 {
     /// <summary>
-    /// UsdUVTexture's authored <c>black</c>, any wrap token this renderer does
-    /// not recognise, and MaterialX <c>constant</c> addressing.
+    /// UsdUVTexture's authored <c>black</c> and any wrap token this renderer does
+    /// not recognise.
     /// </summary>
     /// <remarks>
     /// The name records the authored intent, not what every stage does with it.
-    /// The wire carries no border colour, no supported backend is given one, and
-    /// <c>SilkSceneGpuResources</c> resolves this mode to
-    /// <see cref="SilkSamplerAddressMode.ClampToEdge"/> for the fragment stage,
-    /// so a fragment sample outside the unit range returns the edge texel. The
-    /// vertex-stage displacement sampler owns its own addressing and implements
-    /// this mode exactly, as a transparent-black border that contributes zero
-    /// height to a bilinear blend.
+    /// The fragment and vertex-stage displacement samplers use a transparent-black
+    /// border for this mode.
     /// </remarks>
     Black = 0,
 
@@ -1786,13 +1883,26 @@ public enum SilkTextureWrap : uint
     /// <remarks>
     /// Distinct from <see cref="Black"/> because it records different authored
     /// intent: <c>black</c> states the addressing, while <c>useMetadata</c>
-    /// defers it to wrap metadata inside the image file. hdSilk reads no image
-    /// wrap metadata, and USD's documented fallback when no metadata is present
-    /// is <c>black</c>, so both resolve to the same addressing in this renderer
-    /// -- but a consumer that reads metadata, or that reports what it resolved,
-    /// must be able to tell them apart.
+    /// defers it to wrap metadata inside the image file. The renderer resolves
+    /// observed per-axis metadata; USD's documented fallback when metadata is
+    /// absent is <c>black</c>. Unavailable or unsupported metadata also falls
+    /// back to the black border and emits a texture-fallback diagnostic.
     /// </remarks>
-    UseMetadata = 4
+    UseMetadata = 4,
+
+    /// <summary>
+    /// MaterialX <c>constant</c> addressing: outside the unit range the texture
+    /// reads the entry's own fallback, which carries the node's <c>default</c>.
+    /// </summary>
+    /// <remarks>
+    /// The renderer pads each constant axis with a one-texel ring of the baked
+    /// fallback and remaps coordinates inside the unit range onto the original
+    /// texels, so a filtered sample near the edge blends into the border colour
+    /// and a sample outside reads it exactly. UDIM tiles are not padded and
+    /// clamp to edge. Before page ABI 29 this mode was published as
+    /// <see cref="Black"/>.
+    /// </remarks>
+    Constant = 5
 }
 
 /// <summary>UsdUVTexture sourceColorSpace.</summary>
@@ -1813,8 +1923,9 @@ public enum SilkColorSpace : uint
 /// of the sampled texel drives the bound surface input.
 /// </summary>
 /// <remarks>
-/// These are exactly the outputs <c>UsdUVTexture</c> declares: four single-channel
-/// outputs and one three-channel output. There is no unspecified value: hdSilk
+/// The first five values are the outputs <c>UsdUVTexture</c> declares: four single-channel
+/// outputs and one three-channel output. The remaining values explicitly reduce RGB
+/// for scalar opacity only. There is no unspecified value: hdSilk
 /// rejects a connection whose output it cannot resolve rather than publishing a
 /// channel nobody authored, so every entry on the wire names a real port.
 /// </remarks>
@@ -1833,7 +1944,16 @@ public enum SilkTextureChannel : uint
     A = 3,
 
     /// <summary>The three-channel <c>outputs:rgb</c> port.</summary>
-    Rgb = 4
+    Rgb = 4,
+
+    /// <summary>Mean of scaled RGB, for scalar opacity textures only.</summary>
+    AverageRgb = 5,
+
+    /// <summary>MDL luminance of scaled RGB, for scalar opacity textures only.</summary>
+    LuminanceRgb = 6,
+
+    /// <summary>Maximum scaled RGB component, for scalar opacity textures only.</summary>
+    MaximumRgb = 7
 }
 
 /// <summary>
@@ -1965,10 +2085,16 @@ public readonly ref struct SilkMaterialUpsertCommand
     private const int FixedSize = 32;
 
     /// <summary>
-    /// Bytes of the trailing row-major affine (m00, m01, m10, m11, tx, ty) every
+    /// Bytes of the trailing row-major affine (m00, m01, m10, m11, tx, ty) a
     /// texture of this material samples its coordinates through.
     /// </summary>
     private const int UvTransformByteCount = 6 * sizeof(float);
+
+    /// <summary>
+    /// Bytes of the ABI v30 tail: the alternate parameter mask and the
+    /// alternate row-major affine.
+    /// </summary>
+    private const int AlternateUvByteCount = sizeof(uint) + UvTransformByteCount;
 
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _path;
@@ -2063,6 +2189,12 @@ public readonly ref struct SilkMaterialUpsertCommand
         }
         _uvTransformOffset = offset;
         offset += UvTransformByteCount;
+        if (offset + AlternateUvByteCount > bytes.Length)
+        {
+            throw new InvalidDataException(
+                "The material upsert alternate UV transform is truncated.");
+        }
+        offset += AlternateUvByteCount;
         if (offset != bytes.Length)
         {
             throw new InvalidDataException(
@@ -2089,9 +2221,10 @@ public readonly ref struct SilkMaterialUpsertCommand
     public string Path => _path;
 
     /// <summary>
-    /// Gets one element of the constant texture-coordinate transform every
-    /// texture of this material samples through, in the row-major order
-    /// (m00, m01, m10, m11, tx, ty).
+    /// Gets one element of the material's primary constant texture-coordinate
+    /// transform, in the row-major order (m00, m01, m10, m11, tx, ty). Every
+    /// texture whose parameter is absent from
+    /// <see cref="AlternateUvParameterMask"/> samples through it.
     /// </summary>
     /// <remarks>
     /// The identity (1, 0, 0, 1, 0, 0) unless the graph routed texture
@@ -2106,6 +2239,35 @@ public readonly ref struct SilkMaterialUpsertCommand
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, 6);
         return BinaryPrimitives.ReadSingleLittleEndian(
             _bytes.Slice(_uvTransformOffset + (index * sizeof(float)), sizeof(float)));
+    }
+
+    /// <summary>
+    /// Gets the surface parameters whose textures sample through the alternate
+    /// UV transform, as bit <c>1 &lt;&lt; parameter</c>.
+    /// </summary>
+    /// <remarks>
+    /// Zero when every texture of the material reads the primary transform.
+    /// hdSilk sets a bit only for a published surface texture, never for
+    /// displacement, and both entries of a composited parameter read one
+    /// transform.
+    /// </remarks>
+    public uint AlternateUvParameterMask => BinaryPrimitives.ReadUInt32LittleEndian(
+        _bytes.Slice(_uvTransformOffset + UvTransformByteCount, sizeof(uint)));
+
+    /// <summary>
+    /// Gets one element of the material's alternate constant texture-coordinate
+    /// transform, in the same row-major order as <see cref="GetUvTransform"/>.
+    /// </summary>
+    /// <remarks>
+    /// The identity when <see cref="AlternateUvParameterMask"/> is zero.
+    /// </remarks>
+    public float GetAlternateUvTransform(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, 6);
+        return BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(
+            _uvTransformOffset + UvTransformByteCount + sizeof(uint) + (index * sizeof(float)),
+            sizeof(float)));
     }
 
     /// <summary>Gets generated MaterialX fragment SPIR-V bytes, if this material carries any.</summary>
@@ -2168,6 +2330,61 @@ public readonly ref struct SilkMaterialUpsertCommand
         {
             throw new InvalidDataException("A material scalar entry is truncated.");
         }
+        uint parameter = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4));
+        if (parameter == (uint)SilkMaterialParameter.DetailNormal)
+        {
+            throw new InvalidDataException("A detail normal requires a texture.");
+        }
+        if (parameter is (uint)SilkMaterialParameter.DetailUvRow0 or (uint)SilkMaterialParameter.DetailUvRow1)
+        {
+            if (components != 3)
+            {
+                throw new InvalidDataException("A detail UV row requires three finite components.");
+            }
+            for (int component = 0; component < 3; component++)
+            {
+                if (!float.IsFinite(BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(offset + 8 + (
+                    component * 4), 4))))
+                {
+                    throw new InvalidDataException("A detail UV row requires three finite components.");
+                }
+            }
+        }
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) ==
+            (uint)SilkMaterialParameter.OmniPbrSpecularLevel)
+        {
+            float level = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(offset + 8, 4));
+            if (components != 1 || !float.IsFinite(level) || level < 0 || level > 1)
+            {
+                throw new InvalidDataException("OmniPBR specular level requires one finite value in [0,1].");
+            }
+        }
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) ==
+            (uint)SilkMaterialParameter.DiffuseTextureLuminanceMix)
+        {
+            if (components != 4)
+            {
+                throw new InvalidDataException("A diffuse texture luminance mix requires four components.");
+            }
+            float sum = 0;
+            for (int component = 0; component < 4; component++)
+            {
+                float value = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(offset + 8 + (component * 4), 4));
+                if (!float.IsFinite(value) || (component < 3 && (value < 0 || value > 1)))
+                {
+                    throw new InvalidDataException(
+                        "Diffuse texture luminance weights must be in [0,1] and all four values must be finite.");
+                }
+                if (component < 3)
+                {
+                    sum += value;
+                }
+            }
+            if (MathF.Abs(sum - 1) > 0.000001f)
+            {
+                throw new InvalidDataException("Diffuse texture luminance weights must sum to one.");
+            }
+        }
         return offset + size;
     }
 
@@ -2190,15 +2407,24 @@ public readonly ref struct SilkMaterialUpsertCommand
             throw new InvalidDataException(
                 "A material texture entry requires a resolved asset path.");
         }
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) is
+            (uint)SilkMaterialParameter.DiffuseTextureLuminanceMix or (
+                uint)SilkMaterialParameter.OmniPbrSpecularLevel or
+            (uint)SilkMaterialParameter.DetailUvRow0 or (uint)SilkMaterialParameter.DetailUvRow1)
+        {
+            throw new InvalidDataException("The material operation requires a constant scalar, not a texture.");
+        }
         if (components is 0 or > 4)
         {
             throw new InvalidDataException(
                 "A material texture entry must consume one to four components.");
         }
-        if (channel > (uint)SilkTextureChannel.Rgb)
+        if (channel > (uint)SilkTextureChannel.MaximumRgb ||
+            (channel > (uint)SilkTextureChannel.Rgb &&
+                BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) != (uint)SilkMaterialParameter.Opacity))
         {
             throw new InvalidDataException(
-                "A material texture entry must name a known UsdUVTexture output channel.");
+                "A material texture entry must name a known output channel or a supported scalar opacity reduction.");
         }
         // The channel and the consumed width are two statements about the same
         // connection, so a page that disagrees with itself is malformed rather
@@ -2298,7 +2524,10 @@ public enum SilkEnvironmentUnsupportedFeatures : uint
     /// <summary>Everything authored on the dome reached the wire.</summary>
     None = 0,
 
-    /// <summary><c>enableColorTemperature</c> is on and was not applied.</summary>
+    /// <summary>
+    /// <c>enableColorTemperature</c> is on and was not applied, because the
+    /// authored temperature is not finite.
+    /// </summary>
     ColorTemperature = 1,
 
     /// <summary><c>poleAxis</c> is authored to something other than <c>scene</c>.</summary>

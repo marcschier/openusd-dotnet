@@ -6,7 +6,7 @@ using System.Text;
 namespace OpenUsd.Physics.Extraction;
 
 /// <summary>
-/// One immutable, pointer-free physics extraction page produced by a single stage traversal.
+/// One immutable, pointer-free physics extraction or prepared geometry page.
 /// </summary>
 /// <remarks>
 /// A page owns a private copy of the extraction bytes and never refers to the stage it came
@@ -66,7 +66,8 @@ public sealed class UsdPhysicsExtractionPage : IUsdDetachedResult
     public UsdPhysicsExtractionPageTraits Flags =>
         (UsdPhysicsExtractionPageTraits)ReadUInt32(_bytes, PhysicsExtractAbi.OffsetFlags);
 
-    /// <summary>Gets the per-section truncation mask, which is zero for a complete page.</summary>
+    /// <summary>Gets the per-section truncation mask; intentional geometry windows instead set <see
+    /// cref="UsdPhysicsExtractionPageTraits.PartialGeometry"/>.</summary>
     public uint TruncationFlags => ReadUInt32(_bytes, PhysicsExtractAbi.OffsetTruncationFlags);
 
     /// <summary>Gets the object index of the default simulation scene, or <c>-1</c>.</summary>
@@ -98,6 +99,9 @@ public sealed class UsdPhysicsExtractionPage : IUsdDetachedResult
 
     /// <summary>Gets the number of ordered diagnostics.</summary>
     public int DiagnosticCount => _counts[PhysicsExtractAbi.SectionDiagnostics];
+
+    /// <summary>Gets the number of prepared convex hull ranges.</summary>
+    public int HullCount => _counts[PhysicsExtractAbi.SectionHulls];
 
     /// <summary>Validates the bytes and wraps a defensive copy as an immutable page.</summary>
     /// <param name="bytes">The page bytes.</param>
@@ -170,7 +174,8 @@ public sealed class UsdPhysicsExtractionPage : IUsdDetachedResult
     public string GetText(int index) =>
         ReadString(ReadUInt32(_bytes, RecordOffset(PhysicsExtractAbi.SectionTexts, index)));
 
-    /// <summary>Reads one collider point in the local space of its object.</summary>
+    /// <summary>Reads one local collider point, in metres for prepared convex geometry and stage units
+    /// otherwise.</summary>
     /// <param name="index">The zero based point index.</param>
     /// <returns>The decoded point components.</returns>
     public (float X, float Y, float Z) GetPoint(int index)
@@ -187,6 +192,22 @@ public sealed class UsdPhysicsExtractionPage : IUsdDetachedResult
     /// <returns>The decoded point index.</returns>
     public int GetIndex(int index) =>
         (int)ReadUInt32(_bytes, RecordOffset(PhysicsExtractAbi.SectionIndices, index));
+
+    /// <summary>Reads the point range of one prepared convex hull.</summary>
+    /// <param name="index">The zero based hull index.</param>
+    /// <returns>The first point and number of points in this hull.</returns>
+    public (int PointStart, int PointCount) GetHull(int index)
+    {
+        int at = RecordOffset(PhysicsExtractAbi.SectionHulls, index);
+        return ((int)ReadUInt32(_bytes, at), (int)ReadUInt32(_bytes, at + 4));
+    }
+
+    internal ReadOnlySpan<byte> HeaderBytes => _bytes.AsSpan(0, PhysicsExtractAbi.HeaderBytes);
+
+    internal ReadOnlySpan<byte> SectionBytes(int section) =>
+        _bytes.AsSpan(_offsets[section], _counts[section] * PhysicsExtractAbi.RecordBytes(section));
+
+    internal int SectionCount(int section) => _counts[section];
 
     /// <summary>Wraps already owned page bytes without copying them again.</summary>
     /// <param name="bytes">The owned page bytes.</param>

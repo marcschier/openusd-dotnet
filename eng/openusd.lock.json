@@ -62,14 +62,15 @@
     "license": "Apache-2.0"
   },
   "abi": {
-    "data": 24,
-    "dataCapabilities": 8589934591,
+    "data": 26,
+    "dataCapabilities": 137438953471,
     "storm": 9,
     "stormChild": 9,
     "silkSession": 6,
-    "renderCommands": 24,
-    "physics": 7,
-    "physicsExtract": 1
+    "renderCommands": 30,
+    "physics": 8,
+    "physicsMeshPreparation": 1,
+    "physicsExtract": 2
   },
   "vulkanSdk": {
     "version": "1.4.363.0",

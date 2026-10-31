@@ -788,6 +788,13 @@ public sealed class SilkPagePreflightTests
             .. BitConverter.GetBytes(1f),
             .. BitConverter.GetBytes(0f),
             .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
         ];
         var bytes = new byte[8 + payload.Count];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MaterialUpsert);
@@ -1063,7 +1070,7 @@ public sealed class SilkPagePreflightTests
 
     private static WideState CaptureWideState(SilkSceneState scene)
     {
-        var bytes = new byte[15296];
+        var bytes = new byte[17344];
         SilkShadowFrameBinding binding = scene.Shadows.HasShadows
             ? SilkShadowFrameBinding.Create(scene.Shadows.Descriptors,
                 SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!)

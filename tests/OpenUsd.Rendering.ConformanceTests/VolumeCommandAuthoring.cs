@@ -99,7 +99,7 @@ internal static class VolumeCommandAuthoring
                 Encoding.UTF8.GetByteCount(texture.UvPrimvar));
         }
         const int scalarBytes = 8 + (3 * sizeof(float)) + 8 + sizeof(float);
-        const int uvTransformBytes = 6 * sizeof(float);
+        const int uvTransformBytes = (12 * sizeof(float)) + sizeof(uint);
         byte[] bytes = new byte[
             32 + pathBytes.Length + scalarBytes + textureBytes +
             (2 * sizeof(uint)) + uvTransformBytes];
@@ -123,6 +123,13 @@ internal static class VolumeCommandAuthoring
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + sizeof(uint)), 0);
         offset += 2 * sizeof(uint);
         float[] identityUvTransform = [1, 0, 0, 1, 0, 0];
+        for (int index = 0; index < identityUvTransform.Length; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(offset + (index * sizeof(float))),
+                identityUvTransform[index]);
+        }
+        offset += 6 * sizeof(float) + sizeof(uint);
         for (int index = 0; index < identityUvTransform.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -169,8 +176,14 @@ internal static class VolumeCommandAuthoring
         ArgumentNullException.ThrowIfNull(mesh);
         byte[] pathBytes = Encoding.UTF8.GetBytes(materialPath);
         byte[] bound = new byte[mesh.Length + pathBytes.Length];
-        mesh.CopyTo(bound, 0);
-        pathBytes.CopyTo(bound, mesh.Length);
+        int materialOffset = checked(268 +
+            (int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(48)) +
+            ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(52)) * 12) +
+            ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(56)) * 4) +
+            ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(60)) * 4));
+        mesh.AsSpan(0, materialOffset).CopyTo(bound);
+        pathBytes.CopyTo(bound, materialOffset);
+        mesh.AsSpan(materialOffset).CopyTo(bound.AsSpan(materialOffset + pathBytes.Length));
         BinaryPrimitives.WriteUInt32LittleEndian(bound.AsSpan(4), checked((uint)bound.Length));
         BinaryPrimitives.WriteUInt64LittleEndian(
             bound.AsSpan(208),

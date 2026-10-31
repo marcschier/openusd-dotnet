@@ -14,7 +14,8 @@ internal sealed class ViewerRenderSequenceRange
         {
             throw new ArgumentException("Use finite time codes, an end at or after the start, and a positive step.");
         }
-        double intervals = (end - start) / step;
+        double span = end - start;
+        double intervals = double.IsFinite(span) ? span / step : (end / 2 - start / 2) / (step / 2);
         double count = Math.Floor(Math.BitIncrement(intervals)) + 1;
         if (!double.IsFinite(count) || count > RenderDiskJobLimits.Default.MaximumFrames)
         {
@@ -102,7 +103,8 @@ internal static class ViewerRenderSequenceRunner
         Func<ValueTask> restore,
         Action<ViewerRenderSequenceProgress> progress,
         CancellationToken cancellationToken,
-        Action<RenderProductJobPlan, CancellationToken>? validateProduct = null) =>
+        Action<RenderProductJobPlan, CancellationToken>? validateProduct = null,
+        RenderBackendIdentity? backend = null) =>
         Task.Factory.StartNew(
             () => RenderDiskJob.Execute(
                 request, new FrameSource(
@@ -110,7 +112,8 @@ internal static class ViewerRenderSequenceRunner
                     restore,
                     progress,
                     request.Frames.Count,
-                    validateProduct), cancellationToken),
+                    validateProduct,
+                    backend), cancellationToken),
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
@@ -120,7 +123,8 @@ internal static class ViewerRenderSequenceRunner
         Func<ValueTask> restore,
         Action<ViewerRenderSequenceProgress> progress,
         int totalFrames,
-        Action<RenderProductJobPlan, CancellationToken>? validateProduct) : IRenderProductFrameSource
+        Action<RenderProductJobPlan, CancellationToken>? validateProduct,
+        RenderBackendIdentity? backend) : IRenderProductFrameSource
     {
         private int _completed;
 
@@ -161,7 +165,12 @@ internal static class ViewerRenderSequenceRunner
                 {
                     Diagnostics = image.Diagnostics,
                     DeviceDepth = image.DeviceDepth,
-                    HdrColor = image.HdrColor
+                    HdrColor = image.HdrColor,
+                    PrimId = image.PrimId,
+                    InstanceId = image.InstanceId,
+                    Normal = image.Normal,
+                    ElementId = image.ElementId,
+                    Backend = backend
                 };
             }, DispatcherPriority.Normal, cancellationToken).GetAwaiter().GetResult();
             return frame.GetAwaiter().GetResult();

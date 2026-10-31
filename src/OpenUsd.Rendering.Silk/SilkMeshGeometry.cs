@@ -11,7 +11,8 @@ internal sealed record SilkMeshGeometry(
     string UvPrimvar,
     bool HasTangents,
     bool Displaced = false,
-    float MaximumDisplacement = 0)
+    float MaximumDisplacement = 0,
+    string SecondaryUvPrimvar = "")
 {
     internal uint IndexCount => checked((uint)Indices.Length);
 }
@@ -24,7 +25,10 @@ internal static class SilkMeshGeometryBuilder
         SilkMeshData mesh,
         string uvPrimvar = "",
         bool requireTangents = false,
-        ReadOnlySpan<float> displacementAmounts = default)
+        ReadOnlySpan<float> displacementAmounts = default,
+        bool requireTextureCoordinates = false,
+        string secondaryUvPrimvar = "",
+        bool tangentsFromSecondary = false)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         ReadOnlySpan<float> points = mesh.Points.Span;
@@ -61,14 +65,16 @@ internal static class SilkMeshGeometryBuilder
             }
         }
 
+        ReadOnlySpan<float> authored = mesh.AuthoredNormals.Span;
+        bool useAuthored = authored.Length == points.Length;
         uint[] indices = new uint[meshIndices.Length];
-        double[] normals = new double[points.Length];
+        double[] normals = useAuthored ? [] : new double[points.Length];
         for (int i = 0; i < meshIndices.Length; i++)
         {
             indices[i] = checked((uint)ValidateIndex(mesh, meshIndices, pointCount, i));
         }
 
-        if (mesh.TopologyKind == SilkTopologyKind.TriangleList)
+        if (!useAuthored && mesh.TopologyKind == SilkTopologyKind.TriangleList)
         {
             for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
             {
@@ -107,18 +113,31 @@ internal static class SilkMeshGeometryBuilder
         SilkVertexAttributeData? uvAttribute = string.IsNullOrEmpty(uvPrimvar)
             ? null
             : mesh.FindTexCoord(uvPrimvar);
-        bool hasUv = uvAttribute is not null;
+        bool hasUv = uvAttribute is not null || requireTextureCoordinates;
         bool hasTangents = hasUv && requireTangents;
+        // A second surface coordinate set is emitted only beside a first one. A mesh
+        // that lacks it reads zeros, exactly as a missing first set does.
+        bool hasSecondary = hasUv && !string.IsNullOrEmpty(secondaryUvPrimvar) &&
+            !string.Equals(secondaryUvPrimvar, uvPrimvar, StringComparison.Ordinal);
+        SilkVertexAttributeData? secondaryAttribute = hasSecondary
+            ? mesh.FindTexCoord(secondaryUvPrimvar)
+            : null;
+        // Tangents follow the coordinate set the normal map samples, or the
+        // tangent frame would rotate the mapped normal by the angle between sets.
+        SilkVertexAttributeData? tangentAttribute = hasSecondary && tangentsFromSecondary
+            ? secondaryAttribute
+            : uvAttribute;
         double[] tangents = hasTangents ? new double[checked(pointCount * 3)] : [];
+        double[] bitangents = hasTangents ? new double[checked(pointCount * 3)] : [];
 
-        if (hasTangents && mesh.TopologyKind == SilkTopologyKind.TriangleList)
+        if (hasTangents && tangentAttribute is not null && mesh.TopologyKind == SilkTopologyKind.TriangleList)
         {
             for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
             {
                 int a = checked((int)indices[triangle]);
                 int b = checked((int)indices[triangle + 1]);
                 int c = checked((int)indices[triangle + 2]);
-                AccumulateTangent(mesh, points, uvAttribute!, tangents, a, b, c);
+                AccumulateTangent(mesh, points, tangentAttribute, tangents, bitangents, a, b, c);
             }
         }
 
@@ -126,10 +145,7 @@ internal static class SilkMeshGeometryBuilder
         // vertices; otherwise they are area-weighted from topology as before.
         // Both paths still normalise and reject a degenerate normal, so an
         // authored zero or non-finite value cannot reach the GPU.
-        ReadOnlySpan<float> authored = mesh.AuthoredNormals.Span;
-        bool useAuthored = authored.Length == points.Length;
-
-        int strideFloats = hasTangents ? 12 : hasUv ? 8 : 6;
+        int strideFloats = (hasTangents ? 12 : hasUv ? 8 : 6) + (hasSecondary ? 2 : 0);
         float[] vertices = new float[checked(pointCount * strideFloats)];
         float maximumDisplacement = 0;
         for (int point = 0; point < pointCount; point++)
@@ -183,8 +199,8 @@ internal static class SilkMeshGeometryBuilder
             vertices[destination + 5] = normalZ;
             if (hasUv)
             {
-                vertices[destination + 6] = uvAttribute!.GetComponent(point, 0);
-                vertices[destination + 7] = uvAttribute.ComponentCount > 1
+                vertices[destination + 6] = uvAttribute?.GetComponent(point, 0) ?? 0;
+                vertices[destination + 7] = uvAttribute is { ComponentCount: > 1 }
                     ? uvAttribute.GetComponent(point, 1)
                     : 0;
             }
@@ -207,15 +223,32 @@ internal static class SilkMeshGeometryBuilder
                 vertices[destination + 8] = checked((float)(tx * inverseTangentLength));
                 vertices[destination + 9] = checked((float)(ty * inverseTangentLength));
                 vertices[destination + 10] = checked((float)(tz * inverseTangentLength));
-                vertices[destination + 11] = 1;
+                double bx = bitangents[tangentSource];
+                double by = bitangents[tangentSource + 1];
+                double bz = bitangents[tangentSource + 2];
+                double handedness = ((normalY * tz - normalZ * ty) * bx) +
+                    ((normalZ * tx - normalX * tz) * by) + ((normalX * ty - normalY * tx) * bz);
+                vertices[destination + 11] = handedness < 0 ? -1 : 1;
+            }
+            if (hasSecondary)
+            {
+                int secondary = destination + strideFloats - 2;
+                vertices[secondary] = secondaryAttribute?.GetComponent(point, 0) ?? 0;
+                vertices[secondary + 1] = secondaryAttribute is { ComponentCount: > 1 }
+                    ? secondaryAttribute.GetComponent(point, 1)
+                    : 0;
             }
         }
 
-        SilkVertexLayoutDescriptor layout = hasTangents
-            ? SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent
-            : hasUv
+        SilkVertexLayoutDescriptor layout = (hasTangents, hasSecondary) switch
+        {
+            (true, true) => SilkVertexLayoutDescriptor.PositionNormalTexCoordTangentSecondary,
+            (true, false) => SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent,
+            (false, true) => SilkVertexLayoutDescriptor.PositionNormalTexCoordSecondary,
+            _ => hasUv
                 ? SilkVertexLayoutDescriptor.PositionNormalTexCoord
-                : SilkVertexLayoutDescriptor.PositionNormal;
+                : SilkVertexLayoutDescriptor.PositionNormal
+        };
         return new SilkMeshGeometry(
             vertices,
             indices,
@@ -223,7 +256,8 @@ internal static class SilkMeshGeometryBuilder
             hasUv ? uvPrimvar : "",
             hasTangents,
             !displacementAmounts.IsEmpty,
-            maximumDisplacement);
+            maximumDisplacement,
+            hasSecondary ? secondaryUvPrimvar : "");
     }
 
     private static void AccumulateTangent(
@@ -231,6 +265,7 @@ internal static class SilkMeshGeometryBuilder
         ReadOnlySpan<float> points,
         SilkVertexAttributeData uv,
         double[] tangents,
+        double[] bitangents,
         int a,
         int b,
         int c)
@@ -259,13 +294,20 @@ internal static class SilkMeshGeometryBuilder
         double tx = ((edge1X * dv2) - (edge2X * dv1)) * r;
         double ty = ((edge1Y * dv2) - (edge2Y * dv1)) * r;
         double tz = ((edge1Z * dv2) - (edge2Z * dv1)) * r;
-        if (!double.IsFinite(tx) || !double.IsFinite(ty) || !double.IsFinite(tz))
+        double bx = ((edge2X * du1) - (edge1X * du2)) * r;
+        double by = ((edge2Y * du1) - (edge1Y * du2)) * r;
+        double bz = ((edge2Z * du1) - (edge1Z * du2)) * r;
+        if (!double.IsFinite(tx) || !double.IsFinite(ty) || !double.IsFinite(tz) ||
+            !double.IsFinite(bx) || !double.IsFinite(by) || !double.IsFinite(bz))
         {
             throw InvalidMesh(mesh, "computed tangent is not finite");
         }
         Accumulate(tangents, pa, tx, ty, tz);
         Accumulate(tangents, pb, tx, ty, tz);
         Accumulate(tangents, pc, tx, ty, tz);
+        Accumulate(bitangents, pa, bx, by, bz);
+        Accumulate(bitangents, pb, bx, by, bz);
+        Accumulate(bitangents, pc, bx, by, bz);
     }
 
     private static int ValidateIndex(

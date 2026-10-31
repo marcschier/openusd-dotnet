@@ -22,17 +22,22 @@ internal static class SilkSurfaceUniformWriter
     /// <remarks>
     /// float4 diffuseColor+opacity, emissiveColor+occlusion, specularColor+ior,
     /// (metallic, roughness, opacityThreshold, useSpecularWorkflow),
-    /// (clearcoat, clearcoatRoughness, shaded, 0),
+    /// (clearcoat, clearcoatRoughness, shaded, OmniPBR specular weight),
     /// lightDirection+intensity,
     /// lightColor+ambient, volume values,
-    /// (textureMask, udimMask, volumeVoxelDepth, 0),
+    /// (textureMask, udimMask, volumeVoxelDepth, OmniPBR custom-curve enabled),
     /// the
     /// two folded MaterialX UV transform rows (m00, m01, tx, 0) and
-    /// (m10, m11, ty, 0), the two-image composite controls
+    /// (m10, m11, ty, secondaryUvMask), the two-image composite controls
     /// (targetTextureMaskBit, operator, factor, 0), and the dome link controls
-    /// (domeLinkMask, 0, 0, 0), followed by uint4 direct and shadow link masks.
+    /// (domeLinkMask, constantBorderMaskU, constantBorderMaskV, alternateUvMask), followed by uint4
+    /// direct and shadow link masks, two independent detail-normal UV affine rows,
+    /// and the two alternate UV transform rows (m00, m01, tx, 0) and (m10, m11, ty, 0).
+    /// The detail rows' unused w components select private indexed storage for the
+    /// base and detail normal respectively. The base UV row's unused w selects
+    /// private compact RGB emission storage.
     /// </remarks>
-    internal const int ByteSize = 240;
+    internal const int ByteSize = 304;
 
     // UsdPreviewSurface authored defaults, used when a material omits an input.
     private const float DefaultDiffuse = 0.18f;
@@ -62,7 +67,11 @@ internal static class SilkSurfaceUniformWriter
         RenderHeadlight light,
         Span<byte> destination,
         bool supportsVolumeTextures = false,
-        SilkLightLinkMasks? linkMasks = null)
+        SilkLightLinkMasks? linkMasks = null,
+        bool compactDiffuse = false,
+        bool indexedNormal = false,
+        bool indexedDetailNormal = false,
+        bool compactEmissive = false)
     {
         if (destination.Length != ByteSize)
         {
@@ -96,16 +105,25 @@ internal static class SilkSurfaceUniformWriter
             shaded,
             SilkMaterialParameter.DiffuseColor,
             new Vector3(DefaultDiffuse, DefaultDiffuse, DefaultDiffuse));
-        float opacity = Scalar(shaded, SilkMaterialParameter.Opacity, DefaultOpacity);
+        float opacity = GetOpacity(shaded);
         Vector3 emissive = Vector(shaded, SilkMaterialParameter.EmissiveColor, Vector3.Zero);
         float occlusion = Scalar(shaded, SilkMaterialParameter.Occlusion, DefaultOcclusion);
         Vector3 specular = Vector(shaded, SilkMaterialParameter.SpecularColor, Vector3.Zero);
         float ior = Scalar(shaded, SilkMaterialParameter.Ior, DefaultIor);
         float metallic = Scalar(shaded, SilkMaterialParameter.Metallic, 0);
         float roughness = Scalar(shaded, SilkMaterialParameter.Roughness, DefaultRoughness);
-        float opacityThreshold = Scalar(shaded, SilkMaterialParameter.OpacityThreshold, 0);
+        float opacityThreshold = GetOpacityThreshold(shaded);
         float specularWorkflow = Scalar(shaded, SilkMaterialParameter.UseSpecularWorkflow, 0);
         float clearcoat = Scalar(shaded, SilkMaterialParameter.Clearcoat, 0);
+        ReadOnlySpan<float> specularLevel = shaded is null
+            ? default : shaded.GetScalar(SilkMaterialParameter.OmniPbrSpecularLevel);
+        bool omniPbrSpecular = !specularLevel.IsEmpty;
+        if (omniPbrSpecular &&
+            (specularLevel.Length != 1 || !float.IsFinite(specularLevel[0]) ||
+                specularLevel[0] < 0 || specularLevel[0] > 1))
+        {
+            throw new InvalidDataException("OmniPBR specular level requires one finite value in [0,1].");
+        }
         float clearcoatRoughness = Scalar(
             shaded,
             SilkMaterialParameter.ClearcoatRoughness,
@@ -124,7 +142,7 @@ internal static class SilkSurfaceUniformWriter
             clearcoat,
             clearcoatRoughness,
             unlit ? 2 : shaded is null ? 0 : 1,
-            0);
+            omniPbrSpecular ? specularLevel[0] : 0);
 
         Vector3 direction = Normalize(light.Direction);
         WriteVector4(
@@ -163,11 +181,11 @@ internal static class SilkSurfaceUniformWriter
             volumeDensity ? 0 : (float)(uint)(shaded?.GetTextureFeatures() ?? SilkShaderFeatures.None),
             udimMask,
             volumeDepth,
-            0);
+            omniPbrSpecular ? 1 : 0);
 
-        // hdSilk publishes one folded MaterialX place2d affine per material, so the
-        // shader applies it once to the interpolated coordinate rather than
-        // re-deriving a per-texture transform it was never given.
+        // hdSilk publishes up to two folded MaterialX place2d affines per material.
+        // This is the primary one; the slots in the alternate mask at 192.w read
+        // the second pair of rows at 272 instead.
         IReadOnlyList<float>? uv = shaded?.UvTransform;
         WriteVector4(
             destination,
@@ -175,14 +193,16 @@ internal static class SilkSurfaceUniformWriter
             uv is null ? 1 : Finite(uv[0], "UV transform m00"),
             uv is null ? 0 : Finite(uv[1], "UV transform m01"),
             uv is null ? 0 : Finite(uv[4], "UV transform tx"),
-            0);
+            compactEmissive ? 1 : 0);
         WriteVector4(
             destination,
             160,
             uv is null ? 0 : Finite(uv[2], "UV transform m10"),
             uv is null ? 1 : Finite(uv[3], "UV transform m11"),
             uv is null ? 0 : Finite(uv[5], "UV transform ty"),
-            0);
+            // Texture-mask bits of the slots that sample the second coordinate set.
+            // Every bit is below 2^24, so the float carries the mask exactly.
+            volumeDensity || shaded is null ? 0 : (float)(uint)shaded.GetSecondaryUvTextureMask());
 
         // The material's single two-image composite. The target is written as the
         // same texture-mask bit the slot already uses, so the shader compares one
@@ -200,7 +220,8 @@ internal static class SilkSurfaceUniformWriter
             // reusing the primary slot's bit sampled a plain image through the
             // atlas path, which reads its first texel as tile metadata and returns
             // one flat colour for the whole surface.
-            composite is not null && IsUdim(composite) ? 1 : 0);
+            // Private diffuse storage: an indexed RGB scalar table or exact split blue plane.
+            compactDiffuse ? 2 : composite is not null && IsUdim(composite) ? 1 : 0);
 
         // The UsdLux dome link mask for the prim this block is drawn for. It is a
         // slot of its own rather than more bits of the light mask because the
@@ -213,11 +234,31 @@ internal static class SilkSurfaceUniformWriter
             destination,
             192,
             masks.DomeMask & SilkLightLinkMasks.AllDomeBits,
-            0,
-            0,
-            0);
+            volumeDensity ? 0 : GetConstantBorderMask(shaded, horizontal: true),
+            volumeDensity ? 0 : GetConstantBorderMask(shaded, horizontal: false),
+            // Texture-mask bits below 2^24, so the float carries the mask exactly.
+            volumeDensity || shaded is null ? 0 : (float)(uint)shaded.GetAlternateUvTextureMask());
         BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(208, 16), masks.LightMask);
         BinaryPrimitives.WriteUInt128LittleEndian(destination.Slice(224, 16), masks.ShadowMask);
+        Vector3 detailRow0 = Vector(shaded, SilkMaterialParameter.DetailUvRow0, Vector3.UnitX);
+        Vector3 detailRow1 = Vector(shaded, SilkMaterialParameter.DetailUvRow1, Vector3.UnitY);
+        WriteVector4(destination, 240, detailRow0.X, detailRow0.Y, detailRow0.Z, indexedNormal ? 1 : 0);
+        WriteVector4(destination, 256, detailRow1.X, detailRow1.Y, detailRow1.Z, indexedDetailNormal ? 1 : 0);
+        IReadOnlyList<float>? alternate = volumeDensity ? null : shaded?.AlternateUvTransform;
+        WriteVector4(
+            destination,
+            272,
+            alternate is null ? 1 : Finite(alternate[0], "alternate UV transform m00"),
+            alternate is null ? 0 : Finite(alternate[1], "alternate UV transform m01"),
+            alternate is null ? 0 : Finite(alternate[4], "alternate UV transform tx"),
+            0);
+        WriteVector4(
+            destination,
+            288,
+            alternate is null ? 0 : Finite(alternate[2], "alternate UV transform m10"),
+            alternate is null ? 1 : Finite(alternate[3], "alternate UV transform m11"),
+            alternate is null ? 0 : Finite(alternate[5], "alternate UV transform ty"),
+            0);
     }
 
     private static bool IsUdim(SilkMaterialTexture texture) =>
@@ -252,6 +293,7 @@ internal static class SilkSurfaceUniformWriter
         int mask = 0;
         addUdimBit(SilkMaterialParameter.DiffuseColor, SilkShaderFeatures.BaseColorMap);
         addUdimBit(SilkMaterialParameter.Normal, SilkShaderFeatures.NormalMap);
+        addUdimBit(SilkMaterialParameter.DetailNormal, SilkShaderFeatures.DetailNormalMap);
         addUdimBit(SilkMaterialParameter.Roughness, SilkShaderFeatures.RoughnessMetallicMap);
         addUdimBit(SilkMaterialParameter.EmissiveColor, SilkShaderFeatures.EmissiveMap);
         addUdimBit(SilkMaterialParameter.Metallic, SilkShaderFeatures.MetallicMap);
@@ -273,6 +315,69 @@ internal static class SilkSurfaceUniformWriter
             if (material?.GetTexture(parameter) is { } texture && IsUdim(texture))
             {
                 mask |= (int)feature;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether a material texture is uploaded with a one-texel ring of its
+    /// authored default on each <see cref="SilkTextureWrap.Constant"/> axis.
+    /// </summary>
+    /// <remarks>
+    /// UDIM sets are excluded because their atlas already addresses unauthored
+    /// tiles through the default, and volume density and displacement never reach
+    /// the fragment sampler. The texture cache pads by this rule and the border
+    /// masks are derived from it, so the shader remaps a coordinate exactly when
+    /// the ring exists.
+    /// </remarks>
+    internal static (bool S, bool T) GetConstantBorderAxes(SilkMaterialTexture texture) =>
+        texture.Parameter is SilkMaterialParameter.VolumeDensity or SilkMaterialParameter.Displacement ||
+        IsUdim(texture)
+            ? (false, false)
+            : (texture.WrapS == SilkTextureWrap.Constant, texture.WrapT == SilkTextureWrap.Constant);
+
+    /// <summary>
+    /// The texture-mask bits of the slots whose image carries a constant border
+    /// on one axis, with bit 1 standing for the composite operand.
+    /// </summary>
+    /// <remarks>
+    /// Bit 1 is the coordinate feature, which never names a sampled slot, so it
+    /// is free to identify the composite operand without a second identifier
+    /// space. Every bit is below 2^24, so the float carries the mask exactly.
+    /// </remarks>
+    private static float GetConstantBorderMask(SilkMaterialData? material, bool horizontal)
+    {
+        if (material is null)
+        {
+            return 0;
+        }
+        int mask = 0;
+        addBorderBit(material.GetTexture(SilkMaterialParameter.DiffuseColor), SilkShaderFeatures.BaseColorMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Normal), SilkShaderFeatures.NormalMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.DetailNormal), SilkShaderFeatures.DetailNormalMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Roughness), SilkShaderFeatures.RoughnessMetallicMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.EmissiveColor), SilkShaderFeatures.EmissiveMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Metallic), SilkShaderFeatures.MetallicMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Opacity), SilkShaderFeatures.OpacityMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Occlusion), SilkShaderFeatures.OcclusionMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.SpecularColor), SilkShaderFeatures.SpecularColorMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Clearcoat), SilkShaderFeatures.ClearcoatMap);
+        addBorderBit(
+            material.GetTexture(SilkMaterialParameter.ClearcoatRoughness),
+            SilkShaderFeatures.ClearcoatRoughnessMap);
+        addBorderBit(material.GetTexture(SilkMaterialParameter.Ior), SilkShaderFeatures.IorMap);
+        addBorderBit(material.GetCompositeTexture(), SilkShaderFeatures.Uv);
+        return mask;
+
+        void addBorderBit(SilkMaterialTexture? texture, SilkShaderFeatures feature)
+        {
+            if (texture is not null)
+            {
+                (bool s, bool t) = GetConstantBorderAxes(texture);
+                if (horizontal ? s : t)
+                {
+                    mask |= (int)feature;
+                }
             }
         }
     }
@@ -316,6 +421,12 @@ internal static class SilkSurfaceUniformWriter
         material is not null && TryReadVector(material, parameter, out Vector3 value)
             ? value
             : fallback;
+
+    internal static float GetOpacity(SilkMaterialData? material) =>
+        Scalar(material, SilkMaterialParameter.Opacity, DefaultOpacity);
+
+    internal static float GetOpacityThreshold(SilkMaterialData? material) =>
+        Scalar(material, SilkMaterialParameter.OpacityThreshold, 0);
 
     private static float Scalar(
         SilkMaterialData? material,

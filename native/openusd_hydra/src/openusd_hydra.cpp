@@ -6,6 +6,7 @@
 
 #include "openusd_hydra.h"
 #include "context_support.h"
+#include "openusd_geom_subset_scene_index.h"
 #include "openusd_physics_override_scene_index.h"
 #include "openusd_render_camera_internal.h"
 #include "openusd_render_pick_internal.h"
@@ -38,6 +39,8 @@
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/primRange.h"
 #include "pxr/usd/usd/stage.h"
+#include "pxr/usd/usdGeom/gprim.h"
+#include "pxr/usd/usdGeom/subset.h"
 #include "pxr/usd/usdLux/lightAPI.h"
 #include "pxr/usdImaging/usdImagingGL/engine.h"
 #include "pxr/usdImaging/usdImagingGL/renderParams.h"
@@ -662,6 +665,7 @@ openusd_status InitializeStormRenderer(
         // The override scene index is installed into exactly the Hydra graph
         // this engine builds, in both scene-index and emulated legacy modes.
         const OpenUsdPhysicsOverrideSceneIndexRegistrar::Capture capture;
+        const OpenUsdGeomSubsetSceneIndexRegistrar::Capture subsetCapture;
         engine = std::make_unique<OpenUsdStormEngine>(parameters);
         physicsOverrides = capture.Take();
     }
@@ -1501,6 +1505,26 @@ openusd_status openusd_storm_set_selection(
     {
         return WithStageAccess(renderer->stage_core, error, [&](openusd_stage_access*)
         {
+            // UsdImaging highlights a GeomSubset through its parent's rprim. A subset whose
+            // parent is not a gprim, such as one under an Xform or at the stage root, has no
+            // such rprim. OpenUsdGeomSubsetSceneIndex hides it from the render index; it is
+            // also dropped here because it has nothing to highlight.
+            const auto drawsNothing = [&](const SdfPath& path)
+            {
+                if (!renderer->stage)
+                {
+                    return false;
+                }
+                const UsdPrim prim = renderer->stage->GetPrimAtPath(path);
+                return prim.IsA<UsdGeomSubset>() && !prim.GetParent().IsA<UsdGeomGprim>();
+            };
+            paths.erase(std::remove_if(paths.begin(), paths.end(), drawsNothing), paths.end());
+            instances.erase(
+                std::remove_if(instances.begin(), instances.end(), [&](const auto& instance)
+                {
+                    return drawsNothing(instance.first);
+                }),
+                instances.end());
             TfErrorMark mark;
             if (paths.empty())
             {

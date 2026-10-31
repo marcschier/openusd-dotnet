@@ -8,24 +8,311 @@ namespace OpenUsd.Viewer;
 internal sealed record ViewerReviewSaveCapture(
     Guid DocumentId, string LayerIdentifier, UsdReviewDocument Document, ViewerFileIdentity Destination);
 
+internal sealed record ViewerSourceLayerSaveCapture(
+    Guid DocumentId,
+    string LayerIdentifier,
+    ulong Revision,
+    string SourcePath,
+    UsdReviewSourceBinding SourceBinding,
+    ViewerSourceLayerPublication Publication) : IAsyncDisposable
+{
+    public ValueTask DisposeAsync() => Publication.DisposeAsync();
+}
+
 internal sealed record ViewerReviewSaveResult(
     UsdReviewDocument Document, ViewerFileIdentity Destination, bool Acknowledged, string Message);
+
+internal sealed record ViewerSourceLayerSaveResult(string Message, bool ReviewBindingRefreshed);
 
 internal sealed record ViewerSavedReview(UsdReviewDocument Document, ViewerFileIdentity Destination);
 
 internal sealed partial class ViewerAuthoredEditController
 {
     internal const int MaximumReviewDocumentBytes = 24 * 1024 * 1024;
-    private readonly UsdReviewSourceBinding? _sourceBinding;
+    private UsdReviewSourceBinding? _sourceBinding;
     private ViewerSavedReview? _savedReview;
     private bool _publicationUnacknowledged;
+    private bool _sourceEditOptIn;
 
     internal bool CanSaveReview => _sourceBinding is not null && !_disposed && !IsSuspended;
+
+    internal bool CanAdoptReview => _sourceBinding is null && !_disposed && !IsSuspended;
+
+    internal bool CanSaveSource => _sourceBinding is not null && !_disposed && !IsSuspended;
+
+    internal bool SourceEditOptIn => _sourceEditOptIn;
 
     internal string? SavedReviewPath => _savedReview?.Destination.FullPath;
 
     internal UsdReviewDocument? SavedReviewDocument => _savedReview?.Document;
     internal ViewerFileIdentity? SavedReviewIdentity => _savedReview?.Destination;
+
+    internal async Task SetSourceEditOptInAsync(
+        bool enabled, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, cancellationToken);
+        await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
+        bool changed = false;
+        try
+        {
+            if (IsSuspended)
+            {
+                throw new InvalidOperationException(
+                    "Finish or cancel the document transition before changing save policy.");
+            }
+            if (_sourceEditOptIn != enabled)
+            {
+                _sourceEditOptIn = enabled;
+                changed = true;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+            if (changed)
+            {
+                Changed?.Invoke();
+            }
+        }
+    }
+
+    internal async Task<ViewerSourceLayerSaveCapture> PrepareSourceLayerSaveAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Guarded source-layer publication currently requires Windows.");
+        }
+        UsdReviewSourceBinding sourceBinding = _sourceBinding ??
+            throw new NotSupportedException("Source publication requires a verified source origin.");
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, cancellationToken);
+        await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            if (IsSuspended)
+            {
+                throw new InvalidOperationException("Finish or cancel the document transition before saving.");
+            }
+
+            var source = await _scheduler.InvokeAsync(stage =>
+            {
+                ViewerDocumentObservation observation = ReadDocument(stage);
+                ViewerDocumentState state = observation.State;
+                ViewerDocumentSaveDecision decision = ViewerDocumentSavePolicy.Plan(
+                    state, ViewerDocumentSaveAction.SaveSource);
+                if (!decision.IsAllowed)
+                {
+                    throw new InvalidOperationException(decision.Message);
+                }
+                if (state.Source.FilePath is not { } path ||
+                    !string.Equals(
+                        Path.GetFullPath(path),
+                        Path.GetFullPath(sourceBinding.SourceRootPath),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        "The verified source origin does not own the current root layer.");
+                }
+                if (!string.Equals(
+                    stage.RootLayerIdentifier, state.Source.Identifier, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "Only the exact current root layer can be published as the source.");
+                }
+                return (state.Source.Identifier, state.Source.Revision, path);
+            }, linked.Token).ConfigureAwait(false);
+
+            ViewerSourceLayerPublication publication = await ViewerSourceLayerPublication.BeginAsync(
+                source.path, sourceBinding.SourceFingerprint, linked.Token).ConfigureAwait(false);
+            try
+            {
+                await _scheduler.InvokeAsync(stage =>
+                {
+                    ViewerDocumentState current = ReadDocument(stage).State;
+                    if (current.Source.Identifier != source.Identifier ||
+                        current.Source.Revision != source.Revision ||
+                        !current.Source.HasChanges ||
+                        current.HasOtherLayerChanges ||
+                        stage.RootLayerIdentifier != source.Identifier)
+                    {
+                        throw new IOException("The source layer changed while its publication was being staged.");
+                    }
+                    using UsdLayer root = stage.GetRootLayer();
+                    root.Export(publication.StagingPath);
+                    return true;
+                }, linked.Token).ConfigureAwait(false);
+                await publication.CompleteStagingAsync(linked.Token).ConfigureAwait(false);
+                return new ViewerSourceLayerSaveCapture(
+                    _documentId, source.Identifier, source.Revision, source.path, sourceBinding, publication);
+            }
+            catch
+            {
+                await publication.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    internal async Task<ViewerSourceLayerSaveResult> PublishSourceLayerSaveAsync(
+        ViewerSourceLayerSaveCapture capture, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(capture);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Guarded source-layer publication currently requires Windows.");
+        }
+        if (capture.DocumentId != _documentId || _sourceBinding is null ||
+            !_sourceBinding.HasSamePayload(capture.SourceBinding))
+        {
+            throw new InvalidOperationException("The source capture belongs to another or unverified document.");
+        }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, cancellationToken);
+        await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
+        bool published = false;
+        try
+        {
+            if (IsSuspended)
+            {
+                throw new InvalidOperationException("Finish or cancel the document transition before saving.");
+            }
+            linked.Token.ThrowIfCancellationRequested();
+            (UsdReviewSourceBinding? Binding, string? Error, bool HasReview) result =
+                await _scheduler.InvokeAsync(stage =>
+            {
+                ViewerDocumentState current = ReadDocument(stage).State;
+                if (current.Source.Identifier != capture.LayerIdentifier ||
+                    current.Source.Revision != capture.Revision ||
+                    !current.Source.HasChanges ||
+                    current.HasOtherLayerChanges ||
+                    current.Source.FilePath is not { } currentPath ||
+                    !string.Equals(
+                        Path.GetFullPath(currentPath),
+                        Path.GetFullPath(capture.SourcePath),
+                        StringComparison.OrdinalIgnoreCase) ||
+                    stage.RootLayerIdentifier != capture.LayerIdentifier)
+                {
+                    throw new IOException("The source layer changed after capture. No source bytes were published.");
+                }
+
+                capture.Publication.Publish();
+                using UsdLayer root = stage.GetRootLayer();
+                try
+                {
+                    root.Save();
+                }
+                catch (Exception publicationFailure)
+                {
+                    try
+                    {
+                        capture.Publication.Rollback();
+                    }
+                    catch (Exception rollbackFailure)
+                    {
+                        throw new IOException(
+                            $"Source publication failed and the prior destination could not be restored. " +
+                            $"The retained rollback file is '{capture.Publication.BackupPath}'.",
+                            new AggregateException(publicationFailure, rollbackFailure));
+                    }
+                    try
+                    {
+                        if (!root.Reload(force: true))
+                        {
+                            throw new IOException("OpenUSD could not reload the restored source layer.");
+                        }
+                    }
+                    catch (Exception restoreFailure)
+                    {
+                        throw new IOException(
+                            "Source bytes were restored, but OpenUSD could not reload the restored layer.",
+                            new AggregateException(publicationFailure, restoreFailure));
+                    }
+                    throw;
+                }
+
+                try
+                {
+                    stage.AcknowledgeReviewSourcePublication();
+                    return (stage.CaptureReviewSourceBinding(), (string?)null, current.Review is not null);
+                }
+                catch (Exception bindingFailure) when (
+                    bindingFailure is OpenUsdNativeException or InvalidDataException or
+                        NotSupportedException or IOException)
+                {
+                    return ((UsdReviewSourceBinding?)null, bindingFailure.Message, current.Review is not null);
+                }
+            }, CancellationToken.None).ConfigureAwait(false);
+
+            published = true;
+            _sourceBinding = result.Binding;
+            _savedReview = null;
+            _publicationUnacknowledged = result.HasReview;
+            string message = result.Binding is null
+                ? $"Source layer saved. Review publication is disabled until the document is reopened: {result.Error}"
+                : _publicationUnacknowledged
+                    ? "Source layer saved. The active review must be saved again against the updated source."
+                    : "Source layer saved.";
+            return new ViewerSourceLayerSaveResult(message, result.Binding is not null);
+        }
+        finally
+        {
+            _gate.Release();
+            if (published)
+            {
+                Changed?.Invoke();
+            }
+        }
+    }
+
+    internal async Task<ViewerDocumentObservation> AdoptIntoReviewAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Verified review adoption currently requires Windows.");
+        }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, cancellationToken);
+        await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
+        bool adopted = false;
+        try
+        {
+            if (IsSuspended)
+            {
+                throw new InvalidOperationException("Finish or cancel the document transition before adopting.");
+            }
+            if (_sourceBinding is not null)
+            {
+                throw new InvalidOperationException("This document is already bound to a verified review source.");
+            }
+
+            UsdReviewSourceBinding binding = await _scheduler.InvokeAsync(
+                static stage => stage.AdoptIntoReview(), linked.Token).ConfigureAwait(false);
+            _sourceBinding = binding;
+            _initialSessionIdentity = null;
+            _initialSessionRevision = 0;
+            _savedReview = null;
+            _publicationUnacknowledged = true;
+            _history.Clear();
+            adopted = true;
+
+            return await _scheduler.InvokeAsync(ReadDocument, CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+            if (adopted)
+            {
+                Changed?.Invoke();
+            }
+        }
+    }
 
     internal async Task<UsdReviewDocument> CaptureRecoveryDocumentAsync(
         string recoveryPath, bool retiring, CancellationToken cancellationToken)

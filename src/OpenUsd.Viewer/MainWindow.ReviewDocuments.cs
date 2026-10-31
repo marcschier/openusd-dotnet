@@ -7,6 +7,70 @@ namespace OpenUsd.Viewer;
 
 public sealed partial class MainWindow
 {
+    private async Task AdoptReviewAsync()
+    {
+        bool entered = false;
+        try
+        {
+            await _documentGate.WaitAsync(_viewerLifetime.Token);
+            entered = true;
+            if (_shutdownStarted)
+            {
+                throw new InvalidOperationException("The document is already retiring.");
+            }
+            ViewerAuthoredEditController editor = _documentEditor ??
+                throw new InvalidOperationException("Open a stage before adopting session opinions.");
+            if (!editor.CanAdoptReview)
+            {
+                throw new InvalidOperationException("This document is already bound to a verified review source.");
+            }
+
+            ViewerDocumentObservation current = await editor.ReadDocumentAsync(_viewerLifetime.Token);
+            ViewerDocumentActionChoice choice = await ShowDocumentActionAsync(
+                "Adopt the current session opinions into a review?",
+                $"Source: {current.State.Source.Identifier}\n\n" +
+                "The Viewer will verify the text-USD source and its bounded dependencies, then move compatible " +
+                "authored session opinions into a separate source-linked review layer. The source files are not " +
+                "written. This starts fresh Undo/Redo history; existing history cannot be replayed after adoption. " +
+                "Conflicting or unsupported opinions leave the current document unchanged.",
+                "Adopt into review");
+            if (choice != ViewerDocumentActionChoice.Accept)
+            {
+                ViewerStatus.Text = "Review adoption cancelled; the current document is unchanged.";
+                return;
+            }
+
+            _documentEditBusy = true;
+            UpdateDocumentCommands();
+            ViewerDocumentObservation adopted =
+                await editor.AdoptIntoReviewAsync(_viewerLifetime.Token);
+            _documentObservation = adopted;
+            _reviewSessionOnlyReason = null;
+            ViewerStatus.Text = "Session opinions adopted into a source-linked review. " +
+                "Save the review document to publish it.";
+        }
+        catch (OperationCanceledException) when (_viewerLifetime.IsCancellationRequested)
+        {
+            ViewerStatus.Text = "Review adoption cancelled before it started.";
+        }
+        catch (Exception exception) when (exception is OpenUsdNativeException or IOException or
+            UnauthorizedAccessException or InvalidOperationException or NotSupportedException or
+            InvalidDataException or ArgumentException)
+        {
+            ShowError($"Session opinions were not adopted: {exception.Message}");
+        }
+        finally
+        {
+            if (entered)
+            {
+                _documentEditBusy = false;
+                UpdateDocumentCommands();
+                _documentGate.Release();
+                QueueDocumentEditingRefresh();
+            }
+        }
+    }
+
     private async Task RevertReviewAsync()
     {
         bool entered = false;

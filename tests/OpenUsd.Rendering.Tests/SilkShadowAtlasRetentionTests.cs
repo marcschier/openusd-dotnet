@@ -30,19 +30,123 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkShadowAtlasRetentionTests
 {
     [Test]
+    [Arguments(false, false, false)]
+    [Arguments(true, false, false)]
+    [Arguments(false, true, false)]
+    [Arguments(true, true, false)]
+    [Arguments(false, false, true)]
+    [Arguments(true, false, true)]
+    [Arguments(false, true, true)]
+    [Arguments(true, true, true)]
+    public async Task ActivatedShadowAtlasRetainsItsPriorPublicationUntilFinalCommit(
+        bool reuse, bool commit, bool resize)
+    {
+        using var fixture = new ShadowFixture();
+        var budget = new SilkGpuTextureBudget(33_554_432);
+        budget.ConfigureDevice(fixture.Device);
+        fixture.Prepare();
+        if (reuse)
+        {
+            fixture.Scene.AdvanceGeometryRevisionForRebuild();
+            fixture.Prepare();
+        }
+        ShadowTexture original = fixture.BindAndCaptureAtlas();
+        SilkShadowFrameBinding binding = fixture.Cache.Binding;
+        ulong revision = fixture.Cache.BindingRevision;
+        ulong renderCount = fixture.Cache.RenderCount;
+        ulong reserved = budget.Usage.ReservedBytes;
+        fixture.Scene.AdvanceGeometryRevisionForRebuild();
+        if (resize)
+        {
+            fixture.Resolution = 1024;
+            fixture.UpdateDescription();
+        }
+        ShadowTexture candidate;
+        using (SilkShadowMapCache.PreparedCapacity prepared = fixture.Cache.PrepareCapacity(
+            fixture.Scene, prepareRendering: true)!)
+        {
+            prepared.Render(fixture.Scene, fixture.Resources, (_, _) =>
+                throw new InvalidOperationException("This shadow fixture contains no casters."));
+            prepared.Activate();
+            candidate = fixture.BindAndCaptureAtlas();
+            await Assert.That(candidate).IsNotSameReferenceAs(original);
+            await Assert.That(original.IsDisposed).IsFalse();
+            await Assert.That(fixture.Cache.RenderCount).IsEqualTo(renderCount + 1);
+            if (commit)
+            {
+                prepared.Commit();
+            }
+        }
+        if (commit)
+        {
+            await Assert.That(fixture.BindAndCaptureAtlas()).IsSameReferenceAs(candidate);
+            await Assert.That(fixture.Cache.RenderCount).IsEqualTo(renderCount + 1);
+            await Assert.That(fixture.Cache.BindingRevision).IsEqualTo(revision + 1);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(resize ? 16_777_216ul :
+                reuse ? reserved : 2 * reserved);
+            await Assert.That(original.IsDisposed).IsEqualTo(resize);
+        }
+        else
+        {
+            await Assert.That(fixture.BindAndCaptureAtlas()).IsSameReferenceAs(original);
+            await Assert.That(fixture.Cache.Binding).IsSameReferenceAs(binding);
+            await Assert.That(fixture.Cache.BindingRevision).IsEqualTo(revision);
+            await Assert.That(fixture.Cache.RenderCount).IsEqualTo(renderCount);
+            await Assert.That(candidate.IsDisposed).IsEqualTo(!reuse || resize);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+            fixture.Prepare();
+            await Assert.That(fixture.BindAndCaptureAtlas()).IsNotSameReferenceAs(original);
+        }
+        fixture.Cache.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task ShadowInstanceCapacityIsAdmittedBeforePublishingTheDescriptorPage()
+    {
+        using var device = new ShadowDevice(SilkGraphicsBackend.D3D12);
+        device.CasterPathsByX[0] = "/Caster";
+        var budget = new SilkGpuBufferBudget(1_048_576);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var first = new OpenUsdSilkPage(30, 1,
+            [.. HighShadowFrame(1), .. SilkTransactionalApplyTests.Mesh("/Caster", 1)], 2);
+        renderer.ApplyPage(first);
+        SilkMeshGpuGeometryResource geometry = renderer.GpuResources.MeshValues.Single().Geometry;
+        ulong reserved = budget.Usage.ReservedBytes;
+        using var changed = new OpenUsdSilkPage(30, 2, HighShadowTable(1, 0), 1);
+        const ulong required = 2ul * SilkSceneUniformWriter.ByteSize;
+        using (budget.Reserve(budget.MaximumBytes - reserved - required + 1))
+        {
+            await Assert.That(() => renderer.ApplyPage(changed)).Throws<SilkGpuBufferBudgetExceededException>();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
+            await Assert.That(renderer.Scene.Shadows.Descriptors).IsEmpty();
+            await Assert.That(geometry.ShadowInstanceBuffer).IsNull();
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        renderer.ApplyPage(changed);
+        await Assert.That(renderer.Scene.Shadows.Descriptors.Count).IsEqualTo(1);
+        await Assert.That(geometry.ShadowInstanceBuffer!.Size).IsEqualTo((nuint)SilkSceneUniformWriter.ByteSize);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved + required);
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
     public async Task ShadowAtlasCapacityIsAdmittedBeforePublishingTheCpuAndMeshPage()
     {
         using var device = new ShadowDevice(SilkGraphicsBackend.D3D12);
+        device.CasterPathsByX[0] = "/New";
         var budget = new SilkGpuTextureBudget(33_554_432);
         budget.ConfigureDevice(device);
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(24, 1,
+        using var first = new OpenUsdSilkPage(30, 1,
             [.. HighShadowFrame(1), .. SilkTransactionalApplyTests.Mesh("/Old", 1)], 2);
         renderer.ApplyPage(first);
         SilkMeshGpuResource original = renderer.GpuResources.Meshes.Values.Single();
         ulong revision = renderer.Scene.Revision;
         ulong reserved = budget.Usage.ReservedBytes;
-        using var update = new OpenUsdSilkPage(24, 2,
+        using var update = new OpenUsdSilkPage(30, 2,
             [.. HighShadowFrame(1), .. HighShadowTable(1, 0), .. HighShadowMeshRemoval("/Old"),
                 .. SilkTransactionalApplyTests.Mesh("/New", 2)], 4);
         using (IDisposable pressure = budget.Reserve(new SilkTextureDescriptor(
@@ -516,13 +620,18 @@ public sealed class SilkShadowAtlasRetentionTests
 
         internal void Prepare()
         {
+            UpdateDescription();
+            _ = Cache.Prepare(Scene, Resources);
+        }
+
+        internal void UpdateDescription()
+        {
             if (_appliedResolution != Resolution)
             {
                 _ = Scene.Apply(
                     [.. HighShadowFrame(1), .. CreateShadowTable(Resolution)], 2, ++_revision);
                 _appliedResolution = Resolution;
             }
-            _ = Cache.Prepare(Scene, Resources);
         }
 
         /// <summary>Binds the cache and returns the texture it bound.</summary>
@@ -656,9 +765,19 @@ public sealed class SilkShadowAtlasRetentionTests
                 RefuseNextBuffer = false;
                 throw new InvalidOperationException("Injected shadow buffer allocation refusal.");
             }
-            var buffer = new ShadowBuffer(size, usage, this);
-            _buffers.Add(buffer);
-            return buffer;
+            IDisposable? reservation = ReserveBufferAllocation(size);
+            try
+            {
+                var buffer = new ShadowBuffer(size, usage, this);
+                buffer.OwnBufferReservation(reservation);
+                _buffers.Add(buffer);
+                return buffer;
+            }
+            catch
+            {
+                reservation?.Dispose();
+                throw;
+            }
         }
 
         public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
@@ -781,16 +900,12 @@ public sealed class SilkShadowAtlasRetentionTests
     }
 
     private sealed class ShadowBuffer(nuint size, SilkBufferUsage usage, ShadowDevice device)
-        : ISilkGraphicsBuffer
+        : SilkGraphicsBufferBase(size, usage)
     {
         private readonly byte[] _bytes = new byte[checked((int)size)];
         internal bool IsDisposed { get; private set; }
 
-        public nuint Size => size;
-
-        public SilkBufferUsage Usage => usage;
-
-        public void Write(ReadOnlySpan<byte> data, nuint offset = 0)
+        public override void Write(ReadOnlySpan<byte> data, nuint offset = 0)
         {
             ObjectDisposedException.ThrowIf(IsDisposed, this);
             if (device.RefuseBufferWrites)
@@ -800,10 +915,10 @@ public sealed class SilkShadowAtlasRetentionTests
             data.CopyTo(_bytes.AsSpan(checked((int)offset)));
         }
 
-        public void ReadbackForTesting(Span<byte> destination) =>
+        public override void ReadbackForTesting(Span<byte> destination) =>
             _bytes.AsSpan(0, destination.Length).CopyTo(destination);
 
-        public void Dispose()
+        protected override void ReleaseNative()
         {
             IsDisposed = true;
         }
@@ -1073,7 +1188,7 @@ public sealed class SilkShadowAtlasRetentionTests
         await Assert.That(fixture.Device.CreatedShadowTextureCount).IsEqualTo(1);
         ISilkGraphicsBuffer frame = fixture.Resources.RequireFrameBuffer(
             fixture.Scene, RenderOutputTransform.Identity, 0, fixture.Cache.Binding, fixture.Cache.BindingRevision);
-        var bytes = new byte[15296];
+        var bytes = new byte[17344];
         frame.ReadbackForTesting(bytes);
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(12960 + (127 * 16))))
             .IsEqualTo(-1f);

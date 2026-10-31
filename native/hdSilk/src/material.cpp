@@ -4,6 +4,7 @@
 
 #include "materialXBridge.h"
 #include "mdlAdapter.h"
+#include "mdlIdentifier.h"
 #include "openusd_hdsilk.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
@@ -154,6 +155,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     ((bias, "bias"))
     ((fallback, "fallback"))
     ((sourceColorSpace, "sourceColorSpace"))
+    ((fileColorSpace, "colorSpace:file"))
     ((clamp, "clamp"))
     ((repeat, "repeat"))
     ((mirror, "mirror"))
@@ -485,7 +487,10 @@ uint32_t _ReadFloats(const VtValue& value, float (&out)[4])
     return 0;
 }
 
-/// Reads one UsdUVTexture wrap token onto the wire enum.
+bool _TryReadStringParameter(
+    const std::map<TfToken, VtValue>& parameters, const TfToken& name, std::string* out);
+
+/// Reads one UsdUVTexture wrap token or string onto the wire enum.
 ///
 /// OPENUSD_SILK_WRAP_BLACK is the value for an authored `black` and for any
 /// token this delegate does not recognise, which is USD's documented fallback.
@@ -495,8 +500,8 @@ uint32_t _ReadFloats(const VtValue& value, float (&out)[4])
 /// intent. See OPENUSD_SILK_WRAP_BLACK in openusd_hdsilk.h.
 uint32_t _ReadWrap(const std::map<TfToken, VtValue>& parameters, const TfToken& name)
 {
-    const auto entry = parameters.find(name);
-    if (entry == parameters.end() || !entry->second.IsHolding<TfToken>())
+    std::string wrap;
+    if (!_TryReadStringParameter(parameters, name, &wrap))
     {
         // UsdUVTexture's schema default for `wrap` is `useMetadata`, so an
         // unauthored wrap is that value rather than an authored `black`. It is
@@ -505,29 +510,27 @@ uint32_t _ReadWrap(const std::map<TfToken, VtValue>& parameters, const TfToken& 
         // that it did so because no metadata was read.
         return OPENUSD_SILK_WRAP_USE_METADATA;
     }
-    const TfToken wrap = entry->second.UncheckedGet<TfToken>();
-    if (wrap == _tokens->clamp)
+    if (wrap == _tokens->clamp.GetString())
     {
         return OPENUSD_SILK_WRAP_CLAMP;
     }
-    if (wrap == _tokens->repeat)
+    if (wrap == _tokens->repeat.GetString())
     {
         return OPENUSD_SILK_WRAP_REPEAT;
     }
-    if (wrap == _tokens->mirror)
+    if (wrap == _tokens->mirror.GetString())
     {
         return OPENUSD_SILK_WRAP_MIRROR;
     }
-    if (wrap == _tokens->useMetadata)
+    if (wrap == _tokens->useMetadata.GetString())
     {
         return OPENUSD_SILK_WRAP_USE_METADATA;
     }
     return OPENUSD_SILK_WRAP_BLACK;
 }
 
-/// Reads a string-valued MaterialX parameter. usdMtlx carries MaterialX
-/// `string` inputs as either std::string or TfToken depending on how the layer
-/// was authored, so both are accepted rather than one being silently ignored.
+/// Hydra texture parameters can carry std::string or TfToken, including values
+/// normalized through Sdr; both preserve the same authored textual intent.
 bool _TryReadStringParameter(
     const std::map<TfToken, VtValue>& parameters,
     const TfToken& name,
@@ -557,18 +560,14 @@ bool _TryReadStringParameter(
 /// The MaterialX default is `periodic`, not the `black` that UsdUVTexture's
 /// unauthored `wrap` resolves to, so an image node with no authored address
 /// mode tiles. Reading the UsdUVTexture token names here instead published
-/// `black` for every MaterialX image, which clamped a tiled texture to its edge
-/// row of texels.
+/// `black` for every MaterialX image, which selected a transparent-black border
+/// and stopped the tiled texture from repeating.
 ///
-/// `constant` is carried as OPENUSD_SILK_WRAP_BLACK, and that is an
-/// approximation rather than an exact transport. MaterialX returns the node's
-/// `default` value outside the unit range; the wire carries no border colour and
-/// the current renderer resolves the black mode to clamp-to-edge, so an authored
-/// `constant` renders the edge texel instead. It is still the right value to
-/// publish: it is the only mode that records "the author did not ask for
-/// periodic or mirrored addressing", which is what a consumer implementing
-/// border sampling would need. Anything else is reported so the caller can
-/// refuse the entry rather than tile a texture the graph asked to clamp.
+/// `constant` is carried as OPENUSD_SILK_WRAP_CONSTANT. MaterialX returns the
+/// node's `default` outside the unit range, and the entry's fallback already
+/// carries that `default`, so the consumer reads its border colour from there.
+/// Anything else is reported so the caller can refuse the entry rather than tile
+/// a texture the graph asked to clamp.
 bool _TryReadMaterialXAddressMode(
     const std::map<TfToken, VtValue>& parameters,
     const TfToken& name,
@@ -599,7 +598,7 @@ bool _TryReadMaterialXAddressMode(
     }
     if (mode == _tokens->constant.GetString())
     {
-        *wrap = OPENUSD_SILK_WRAP_BLACK;
+        *wrap = OPENUSD_SILK_WRAP_CONSTANT;
         return true;
     }
     *unsupportedValue = mode;
@@ -608,17 +607,16 @@ bool _TryReadMaterialXAddressMode(
 
 uint32_t _ReadColorSpace(const std::map<TfToken, VtValue>& parameters)
 {
-    const auto entry = parameters.find(_tokens->sourceColorSpace);
-    if (entry == parameters.end() || !entry->second.IsHolding<TfToken>())
+    std::string space;
+    if (!_TryReadStringParameter(parameters, _tokens->sourceColorSpace, &space) || space == "auto")
     {
-        return OPENUSD_SILK_COLOR_SPACE_AUTO;
+        (void)_TryReadStringParameter(parameters, _tokens->fileColorSpace, &space);
     }
-    const TfToken space = entry->second.UncheckedGet<TfToken>();
-    if (space == _tokens->raw)
+    if (space == _tokens->raw.GetString())
     {
         return OPENUSD_SILK_COLOR_SPACE_RAW;
     }
-    return space == _tokens->sRGB
+    return space == _tokens->sRGB.GetString()
         ? OPENUSD_SILK_COLOR_SPACE_SRGB
         : OPENUSD_SILK_COLOR_SPACE_AUTO;
 }
@@ -805,31 +803,6 @@ const HdMaterialNode* _FindMdlSurface(const HdMaterialNetwork& network)
     return nullptr;
 }
 
-/// Splits "mdl:<module>:<material>" back into its two halves. The module may
-/// itself contain colons, as an omniverse:// URI does, so the split is on the
-/// last separator rather than the first.
-void _ParseMdlIdentifier(
-    const TfToken& identifier,
-    std::string* module,
-    std::string* material)
-{
-    const std::string text = identifier.GetString();
-    const size_t start = std::strlen(_mdlIdentifierPrefix);
-    if (text.size() <= start)
-    {
-        return;
-    }
-    const std::string body = text.substr(start);
-    const size_t separator = body.rfind(':');
-    if (separator == std::string::npos)
-    {
-        *module = body;
-        return;
-    }
-    *module = body.substr(0, separator);
-    *material = body.substr(separator + 1);
-}
-
 /// Converts one authored MDL input into the value kinds the openusd_mdl C ABI
 /// carries. Returns false for anything else, so an input this bridge cannot
 /// express is reported by name instead of being narrowed into a different type.
@@ -955,12 +928,11 @@ void _ResolveMdlSurface(
 
     std::string module;
     std::string material;
-    _ParseMdlIdentifier(surface.identifier, &module, &material);
-    if (module.empty())
+    if (!HdSilkDecodeMdlIdentifier(surface.identifier.GetString(), &module, &material))
     {
         TF_WARN(
             "hdSilk material '%s' has an MDL surface terminal that names no "
-            "module; it cannot be distilled and is not shaded.",
+            "valid module identity; it cannot be distilled and is not shaded.",
             record.path.c_str());
         return;
     }
@@ -1020,6 +992,11 @@ void _ResolveMdlSurface(
         return;
     }
 
+    if (!distillation.diagnostic.empty())
+    {
+        TF_WARN("hdSilk material '%s' MDL projection diagnostic: %s",
+            record.path.c_str(), distillation.diagnostic.c_str());
+    }
     for (const HdSilkMdlDistilledScalar& source : distillation.scalars)
     {
         HdSilkMaterialScalar scalar;
@@ -1040,6 +1017,7 @@ void _ResolveMdlSurface(
         texture.wrapS = source.wrapS;
         texture.wrapT = source.wrapT;
         texture.sourceColorSpace = source.colorSpace;
+        texture.compositeOp = source.compositeOperator;
         for (size_t index = 0; index < 4; ++index)
         {
             texture.scale[index] = source.scale[index];
@@ -1047,6 +1025,10 @@ void _ResolveMdlSurface(
         }
         texture.asset = source.asset;
         texture.uvPrimvar = _tokens->st.GetString();
+        for (size_t index = 0; index < 6; ++index)
+        {
+            texture.uvTransform[index] = distillation.uvTransform[index];
+        }
         record.textures.push_back(std::move(texture));
     }
     record.surfaceKind = OPENUSD_SILK_SURFACE_MDL_DISTILLED;
@@ -1127,6 +1109,8 @@ bool _ReadParameterFloats(
 struct _UvBinding
 {
     std::string primvar = "st";
+    bool hasFallback = false;
+    float fallback[2] = {0.0f, 0.0f};
     float transform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     bool supported = true;
     std::string unsupportedReason;
@@ -1344,17 +1328,15 @@ bool _IsCoordinateNode(const HdMaterialNode& node)
         node.identifier == _tokens->MtlxTexCoord2;
 }
 
-/// Accepts only the first texture-coordinate set of a MaterialX texcoord node.
+/// Resolves the MaterialX texcoord index to its conventional USD primvar name.
 ///
-/// `ND_texcoord_vector2` carries a uniform integer `index` naming which UV set
-/// to read, defaulting to zero. hdSilk publishes one coordinate stream per
-/// material and names it from the primvar the coordinate node states, and a
-/// texcoord node states no primvar name at all, so index 0 is the only value
-/// that resolves to the documented default primvar. A non-zero index used to
-/// fall through to that same default and silently sample the first UV set.
-bool _TryValidateTexCoordIndex(
+/// Index zero uses `st`; positive indices append their value (`st1`, `st2`, ...).
+/// The material wire carries one named coordinate stream, so the resulting
+/// primvar name is enough to select the requested set without expanding the wire.
+bool _TryResolveTexCoordIndex(
     const HdMaterialNetwork& network,
     const HdMaterialNode& node,
+    std::string* primvarName,
     std::string* reason)
 {
     if (_FindInputConnection(network, node.path, _tokens->index) != nullptr)
@@ -1363,25 +1345,23 @@ bool _TryValidateTexCoordIndex(
                   "selects a UV set per pixel";
         return false;
     }
+    int index = 0;
     const auto entry = node.parameters.find(_tokens->index);
-    if (entry == node.parameters.end())
+    if (entry != node.parameters.end())
     {
-        return true;
+        if (!entry->second.IsHolding<int>())
+        {
+            *reason = "its texture-coordinate node has an 'index' that is not an integer";
+            return false;
+        }
+        index = entry->second.UncheckedGet<int>();
+        if (index < 0)
+        {
+            *reason = "its texture-coordinate node has a negative 'index'";
+            return false;
+        }
     }
-    float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    if (_ReadFloats(entry->second, values) == 0)
-    {
-        *reason = "its texture-coordinate node has an 'index' this projection "
-                  "cannot read";
-        return false;
-    }
-    if (values[0] != 0.0f)
-    {
-        *reason = "its texture-coordinate node reads UV set " +
-            std::to_string(static_cast<int>(values[0])) +
-            ", and hdSilk carries one texture-coordinate stream per material";
-        return false;
-    }
+    *primvarName = index == 0 ? "st" : "st" + std::to_string(index);
     return true;
 }
 
@@ -1430,21 +1410,44 @@ _UvBinding _ResolveUvBinding(
         }
         if (_IsCoordinateNode(*node))
         {
-            if (node->identifier == _tokens->MtlxTexCoord2 &&
-                !_TryValidateTexCoordIndex(network, *node, &binding.unsupportedReason))
+            std::string name;
+            if (node->identifier == _tokens->MtlxTexCoord2)
             {
-                // A non-zero texcoord index names a second UV set. hdSilk carries
-                // one texture-coordinate stream per material and its name comes
-                // from the primvar the coordinate node states, so resolving a
-                // non-zero index to "st" would sample the first UV set while the
-                // graph asked for another.
-                binding.supported = false;
-                return binding;
+                if (!_TryResolveTexCoordIndex(
+                        network, *node, &name, &binding.unsupportedReason))
+                {
+                    binding.supported = false;
+                    return binding;
+                }
             }
-            const std::string name = _ReadPrimvarName(*node);
+            else
+            {
+                name = _ReadPrimvarName(*node);
+            }
             if (!name.empty())
             {
                 binding.primvar = name;
+                const TfToken fallbackName = node->identifier == _tokens->UsdPrimvarReaderFloat2
+                    ? TfToken("fallback") : TfToken("default");
+                if (_FindInputConnection(network, node->path, fallbackName) != nullptr)
+                {
+                    binding.supported = false;
+                    binding.unsupportedReason = "its coordinate fallback is connected rather than constant";
+                    return binding;
+                }
+                const auto fallback = node->parameters.find(fallbackName);
+                float values[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                if (fallback != node->parameters.end() &&
+                    (_ReadFloats(fallback->second, values) != 2 ||
+                        !std::isfinite(values[0]) || !std::isfinite(values[1])))
+                {
+                    binding.supported = false;
+                    binding.unsupportedReason = "its coordinate fallback is not a finite float2";
+                    return binding;
+                }
+                binding.hasFallback = true;
+                binding.fallback[0] = values[0];
+                binding.fallback[1] = values[1];
             }
             return binding;
         }
@@ -1909,6 +1912,25 @@ void _ComposeTextureAffine(
     {
         entry.bias[index] = (entry.bias[index] * affine.scale[index]) + affine.bias[index];
         entry.scale[index] = entry.scale[index] * affine.scale[index];
+    }
+}
+
+/// Re-expresses a UsdPreviewSurface normal texture's affine in encoded space.
+///
+/// UsdPreviewSurface reads `normal` as a tangent-space direction, so a
+/// conforming normal map authors scale (2, 2, 2, 1) and bias (-1, -1, -1, 0) to
+/// decode its [0, 1] texels. Every normal slot in the renderer stores encoded
+/// texels instead: the mip chain averages them as encoded directions and the
+/// shader decodes them once. Publishing the authored affine unchanged decoded the
+/// texel twice and tilted every mapped normal. Halving the decode turns the
+/// canonical authoring into the identity, and any other affine keeps its exact
+/// meaning. Alpha is not part of the direction and keeps its authored mapping.
+void _EncodeDecodedNormalAffine(HdSilkMaterialTexture& entry)
+{
+    for (size_t index = 0; index < 3; ++index)
+    {
+        entry.scale[index] *= 0.5f;
+        entry.bias[index] = (entry.bias[index] * 0.5f) + 0.5f;
     }
 }
 
@@ -2450,6 +2472,9 @@ bool _TryCreateTextureEntry(
         return fail(_TextureEntryFailure::UnsupportedGraph);
     }
     entry.uvPrimvar = uv.primvar;
+    entry.hasUvFallback = uv.hasFallback;
+    entry.uvFallback[0] = uv.fallback[0];
+    entry.uvFallback[1] = uv.fallback[1];
     for (size_t index = 0; index < 6; ++index)
     {
         entry.uvTransform[index] = uv.transform[index];
@@ -2526,21 +2551,23 @@ bool _TryPublishCompositeEntries(
     return true;
 }
 
-/// Settles the one texture-coordinate stream this material publishes.
+/// Settles the texture-coordinate streams this material publishes.
 ///
-/// The renderer builds exactly one coordinate stream per material: it takes the
-/// material's UV transform from the wire's per-material affine, and its primvar
-/// from the first texture entry that names one, then samples every texture of the
-/// material through that pair. A material whose images ask for different
-/// transforms, or for different primvars, is therefore outside the projection.
+/// The renderer builds at most two coordinate streams per material and at most
+/// two UV transforms: the primary transform is the first surface texture's, and
+/// the alternate is the first surface transform that differs from it. Each
+/// texture samples whichever stream its own entry names, through whichever of
+/// the two transforms it asked for; alternateUvParameterMask records the
+/// parameters that read the alternate one. The primary primvar is the first
+/// surface texture entry that names one, and the secondary the first surface
+/// entry naming a different one. A material whose images ask for a third
+/// transform, or a third primvar, is outside the projection.
 ///
-/// The first texture in the fixed input order states both. A texture that asks
-/// for a different transform or a different primvar is dropped with a diagnostic
-/// naming which of the two diverged, rather than sampled through coordinates it
-/// did not author. The primvar half matters as much as the transform half and was
-/// previously unreconciled: a base colour on `uvSet0` beside a normal map on
-/// `uvSet1` published both entries, and the consumer sampled both through
-/// `uvSet0` with nothing reported.
+/// A texture that asks for a third transform or a third primvar is dropped with
+/// a diagnostic naming which of the two diverged, rather than sampled through
+/// coordinates it did not author. So is a parameter whose entries disagree on
+/// the stream or the transform: the shader samples both halves of one input
+/// through one coordinate.
 ///
 /// Entries are dropped a whole parameter at a time. Since ABI v15 one surface
 /// input may carry two entries -- a primary and a composite operand -- and those
@@ -2550,8 +2577,8 @@ bool _TryPublishCompositeEntries(
 ///
 /// Returns whether anything was dropped, so the caller can re-settle the stream
 /// against the survivors.
-/// Whether one texture entry belongs to the material's single surface
-/// texture-coordinate stream.
+/// Whether one texture entry belongs to the material's surface
+/// texture-coordinate streams.
 ///
 /// Displacement does not. It is sampled per vertex, from its own authored
 /// coordinate set and through its own folded affine, so it neither constrains
@@ -2565,6 +2592,11 @@ bool _BelongsToSurfaceUvStream(const HdSilkMaterialTexture& texture)
 
 bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
 {
+    for (size_t index = 0; index < 6; ++index)
+    {
+        record.alternateUvTransform[index] = index == 0 || index == 3 ? 1.0f : 0.0f;
+    }
+    record.alternateUvParameterMask = 0;
     const HdSilkMaterialTexture* first = nullptr;
     for (const HdSilkMaterialTexture& texture : record.textures)
     {
@@ -2582,19 +2614,55 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
     {
         record.uvTransform[index] = first->uvTransform[index];
     }
-
-    // The material primvar is the first non-empty one, which is exactly how the
-    // consumer derives its single stream. An entry that names no primvar asks
-    // for nothing and is sampled through that stream either way.
-    std::string primvar;
+    // The alternate transform is the first surface transform, in the fixed input
+    // order, that differs from the primary one. A third distinct transform has no
+    // slot and is dropped below.
+    const HdSilkMaterialTexture* alternate = nullptr;
     for (const HdSilkMaterialTexture& texture : record.textures)
     {
-        if (_BelongsToSurfaceUvStream(texture) && !texture.uvPrimvar.empty())
+        if (_BelongsToSurfaceUvStream(texture) &&
+            !_UvTransformsEqual(texture.uvTransform, record.uvTransform))
         {
-            primvar = texture.uvPrimvar;
+            alternate = &texture;
             break;
         }
     }
+    if (alternate != nullptr)
+    {
+        for (size_t index = 0; index < 6; ++index)
+        {
+            record.alternateUvTransform[index] = alternate->uvTransform[index];
+        }
+    }
+    const auto usesAlternate = [&record](const HdSilkMaterialTexture& texture) {
+        return !_UvTransformsEqual(texture.uvTransform, record.uvTransform);
+    };
+
+    // The primary primvar is the first non-empty one and the secondary the first
+    // that differs from it, which is exactly how the consumer derives its two
+    // streams. An entry that names no primvar asks for nothing and is sampled
+    // through the primary stream.
+    std::string primvar;
+    std::string secondary;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (!_BelongsToSurfaceUvStream(texture) || texture.uvPrimvar.empty())
+        {
+            continue;
+        }
+        if (primvar.empty())
+        {
+            primvar = texture.uvPrimvar;
+        }
+        else if (texture.uvPrimvar != primvar)
+        {
+            secondary = texture.uvPrimvar;
+            break;
+        }
+    }
+    const auto streamOf = [&primvar](const HdSilkMaterialTexture& texture) -> const std::string& {
+        return texture.uvPrimvar.empty() ? primvar : texture.uvPrimvar;
+    };
 
     std::vector<uint32_t> divergent;
     for (const HdSilkMaterialTexture& texture : record.textures)
@@ -2604,10 +2672,25 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
             continue;
         }
         const bool transformAgrees =
-            _UvTransformsEqual(texture.uvTransform, record.uvTransform);
-        const bool primvarAgrees =
-            texture.uvPrimvar.empty() || texture.uvPrimvar == primvar;
-        if (transformAgrees && primvarAgrees)
+            _UvTransformsEqual(texture.uvTransform, record.uvTransform) ||
+            (alternate != nullptr &&
+                _UvTransformsEqual(texture.uvTransform, record.alternateUvTransform));
+        const bool primvarAgrees = texture.uvPrimvar.empty() ||
+            texture.uvPrimvar == primvar || texture.uvPrimvar == secondary;
+        bool pairAgrees = true;
+        for (const HdSilkMaterialTexture& other : record.textures)
+        {
+            if (other.parameter == texture.parameter &&
+                (streamOf(other) != streamOf(texture) ||
+                    usesAlternate(other) != usesAlternate(texture)))
+            {
+                pairAgrees = false;
+                break;
+            }
+        }
+        const bool fallbackAgrees = texture.uvFallback[0] == first->uvFallback[0] &&
+            texture.uvFallback[1] == first->uvFallback[1];
+        if (transformAgrees && primvarAgrees && pairAgrees && fallbackAgrees)
         {
             continue;
         }
@@ -2617,29 +2700,58 @@ bool _ReconcileUvBindingsOnce(HdSilkMaterialRecord& record)
             continue;
         }
         divergent.push_back(texture.parameter);
+        if (!fallbackAgrees)
+        {
+            TF_WARN(
+                "hdSilk material '%s' texture for parameter %u asks for a different "
+                "primvar-reader fallback than its single coordinate stream; this input is left at its default.",
+                record.path.c_str(), texture.parameter);
+            continue;
+        }
         if (!primvarAgrees)
         {
             TF_WARN(
                 "hdSilk material '%s' texture for parameter %u reads primvar '%s' "
-                "while the material's coordinate stream is '%s'; hdSilk carries "
-                "one texture-coordinate stream per material, so this input is "
-                "left at its default.",
+                "while the material's coordinate streams are '%s' and '%s'; hdSilk "
+                "carries at most two texture-coordinate streams per material, so "
+                "this input is left at its default.",
                 record.path.c_str(),
                 texture.parameter,
                 texture.uvPrimvar.c_str(),
-                primvar.c_str());
+                primvar.c_str(),
+                secondary.c_str());
+            continue;
+        }
+        if (!pairAgrees)
+        {
+            TF_WARN(
+                "hdSilk material '%s' parameter %u combines images that read "
+                "different texture-coordinate streams or transforms; one input "
+                "samples one stream through one transform, so this input is left "
+                "at its default.",
+                record.path.c_str(),
+                texture.parameter);
             continue;
         }
         TF_WARN(
-            "hdSilk material '%s' texture for parameter %u asks for a different "
-            "MaterialX UV transform than the material's first texture; hdSilk "
-            "carries one UV transform per material, so this input is left at its "
-            "default.",
+            "hdSilk material '%s' texture for parameter %u asks for a third "
+            "MaterialX UV transform; hdSilk carries at most two UV transforms per "
+            "material, so this input is left at its default.",
             record.path.c_str(),
             texture.parameter);
     }
     if (divergent.empty())
     {
+        for (const HdSilkMaterialTexture& texture : record.textures)
+        {
+            // A detail normal samples through its own DETAIL_UV_ROW affine.
+            if (_BelongsToSurfaceUvStream(texture) &&
+                texture.parameter != OPENUSD_SILK_MATERIAL_DETAIL_NORMAL &&
+                usesAlternate(texture))
+            {
+                record.alternateUvParameterMask |= 1u << texture.parameter;
+            }
+        }
         return false;
     }
 
@@ -2987,14 +3099,24 @@ void _ReconcileDisplacementTransform(HdSilkMaterialRecord& record)
         }
         return;
     }
-    if (_UvTransformsEqual(displacement->uvTransform, record.uvTransform))
+    bool fallbackAgrees = true;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (_BelongsToSurfaceUvStream(texture) && texture.uvPrimvar == displacement->uvPrimvar &&
+            (texture.uvFallback[0] != displacement->uvFallback[0] ||
+                texture.uvFallback[1] != displacement->uvFallback[1]))
+        {
+            fallbackAgrees = false;
+        }
+    }
+    if (_UvTransformsEqual(displacement->uvTransform, record.uvTransform) && fallbackAgrees)
     {
         return;
     }
     TF_WARN(
         "hdSilk material '%s' displacement asks for a different folded texture "
-        "coordinate transform than the material's surface textures; hdSilk "
-        "carries one transform per material, so the displacement is left "
+        "coordinate transform or reader fallback than the material's surface textures; hdSilk "
+        "carries one transform per material and one default per missing primvar, so the displacement is left "
         "unpublished rather than sampled through coordinates it did not author.",
         record.path.c_str());
     std::vector<HdSilkMaterialTexture> kept;
@@ -3460,6 +3582,10 @@ HdSilkMaterial::Resolve(
             if (_TryCreateTextureEntry(
                     network, record.path, *texture, outputName, input, entry, &diagnosed))
             {
+                if (input.parameter == OPENUSD_SILK_MATERIAL_NORMAL)
+                {
+                    _EncodeDecodedNormalAffine(entry);
+                }
                 record.textures.push_back(std::move(entry));
             }
             continue;

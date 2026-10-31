@@ -3,7 +3,7 @@
 namespace OpenUsd.Physics.Interop;
 
 /// <summary>
-/// Mirrors the compile-time constants of the retained physics world C ABI, version 7.
+/// Mirrors the compile-time constants of the retained physics world C ABI, version 8.
 /// </summary>
 /// <remarks>
 /// Every value is copied from <c>native/openusd_physx/include/openusd_physx_world.h</c> and from the
@@ -14,7 +14,7 @@ namespace OpenUsd.Physics.Interop;
 internal static class PhysxAbi
 {
     /// <summary>The exact ABI version this managed mirror implements.</summary>
-    internal const uint Version = 7u;
+    internal const uint Version = 8u;
 
     /// <summary>The native library name resolved for every entry point.</summary>
     internal const string LibraryName = "openusd_physx";

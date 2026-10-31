@@ -14,7 +14,7 @@ public sealed partial class StormSilkParityCaptureDriverTests
         foreach (ParityScene scene in scenes)
         {
             ParityPerformanceBudget budget = scene.GetPerformanceBudget("Vulkan SwiftShader");
-            ulong variable = budget.MeasuredBufferAllocationBytes - 15_296;
+            ulong variable = budget.MeasuredBufferAllocationBytes - 17_344;
             ulong headroom = Math.Max(256ul, (variable + 3) / 4);
             await Assert.That(budget.MaxBufferAllocationBytes)
                 .IsEqualTo(budget.MeasuredBufferAllocationBytes + headroom);

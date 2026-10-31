@@ -21,6 +21,7 @@ internal sealed partial class ShortcutsWindow : Window
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
         ShortcutItems.ItemsSource = ViewerShortcutCatalog.All;
+        Opened += (_, _) => ShortcutScroll.Focus();
         CloseButton.Click += (_, _) => Close();
     }
 }

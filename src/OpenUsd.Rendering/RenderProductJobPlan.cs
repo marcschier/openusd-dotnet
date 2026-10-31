@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Text;
+using OpenUsd.Geom;
 using OpenUsd.Render;
 
 namespace OpenUsd.Rendering;
@@ -8,10 +9,47 @@ namespace OpenUsd.Rendering;
 /// <summary>Identifies the exact captured plane backing an admitted raw render variable.</summary>
 public enum RenderProductPlane
 {
-    /// <summary>Pre-display packed top-down RGBA binary16 with stored framebuffer alpha.</summary>
+    /// <summary>Camera-exposed, pre-display packed top-down RGBA binary16 with stored framebuffer alpha.</summary>
     HdrColor,
     /// <summary>Top-down float32 normalized device depth in [0,1], with clear/far value one.</summary>
-    DeviceDepth
+    DeviceDepth,
+    /// <summary>
+    /// Top-down int32 index of the front-most rendered prim identity, with background value minus one.
+    /// </summary>
+    /// <remarks>
+    /// Indices are dense and refer to a per-frame identity table of distinct prim path and instance
+    /// index pairs, sorted by ordinal path and then instance index.
+    /// </remarks>
+    PrimId,
+    /// <summary>
+    /// Top-down int32 instance index of the front-most rendered prim, with value minus one for the
+    /// background and for prims that are not drawn through an instancer.
+    /// </summary>
+    /// <remarks>
+    /// The index is the instance ordinal within the innermost instancer that drew the pixel, the same
+    /// value as the instance index of the matching prim identity table entry.
+    /// </remarks>
+    InstanceId,
+    /// <summary>
+    /// Top-down little-endian float32 x, y, z world-space unit shading normal of the front-most
+    /// rendered surface, with (0, 0, 0) for the background.
+    /// </summary>
+    /// <remarks>
+    /// The normal is the interpolated, renormalized vertex normal transformed to world space; a back
+    /// face reports the normal flipped toward the camera, and a surface whose interpolated normal
+    /// degenerates also reports (0, 0, 0). Material normal maps are not applied.
+    /// </remarks>
+    Normal,
+    /// <summary>
+    /// Top-down int32 authored face index of the front-most rendered surface, with value minus one for
+    /// the background and for surfaces without authored face identity.
+    /// </summary>
+    /// <remarks>
+    /// The index is the authored mesh face the visible triangle was triangulated from; a refined
+    /// subdivision surface reports its coarse authored face. Curves, points and meshes drawn as points
+    /// report minus one.
+    /// </remarks>
+    ElementId
 }
 
 /// <summary>Maps one unchanged requested variable to its explicitly typed output plane.</summary>
@@ -31,8 +69,15 @@ public sealed class RenderProductOutputBinding
 
 /// <summary>Admits one sampled raster product for the shared bounded split-plane disk-job engine.</summary>
 /// <remarks>
-/// The initial profile supports raw half4 color and float normalized depth, one material-binding
-/// purpose, standard scene purposes, unit camera exposure and no active motion blur or depth of field.
+/// The initial profile supports raw half4 color, float normalized depth, int prim identity, int
+/// instance index, int element index and normal3f world-space normal, one material-binding
+/// purpose and standard scene purposes. The authored camera exposure
+/// multiplier scales the HDR color variable and adds its stops to the PNG companion's display
+/// exposure, so both outputs carry the same camera exposure. An open shutter with motion blur enabled
+/// renders eight equal-weight samples at stratified sub-interval centers and stores their mean. An
+/// active depth-of-field aperture on a perspective camera renders sixteen thin-lens samples instead,
+/// with their shutter times decorrelated from the lens positions. Accumulated frames cannot include
+/// device depth, prim identity, instance index, element index or normal, or exceed 4096 x 4096 pixels.
 /// Unsupported variables/settings remain inspectable through RenderProductRequest but cannot execute here.
 /// A PNG is an explicitly identified display companion, not a replacement for a requested variable.
 /// Adapters must apply the admitted scene filters and all render settings before returning each frame.
@@ -41,6 +86,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
 {
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private readonly IReadOnlyList<StageRenderState> _states;
+    private readonly IReadOnlyList<StageRenderState>?[]? _accumulationStates;
 
     /// <summary>
     /// Copies and validates samples from one immutable product request before rendering or file creation.
@@ -48,6 +94,7 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     /// <remarks>
     /// Renderer settings are explicit caller choices. Their display transform/exposure affect the PNG
     /// companion, not the raw HDR variable; scene lighting/material/quality choices affect the render.
+    /// Each frame's state adds the sampled camera exposure in stops to the display exposure.
     /// </remarks>
     public RenderProductJobPlan(
         StageIdentity stage, IReadOnlyList<RenderPreparedFrame> frames,
@@ -64,13 +111,19 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             throw new ArgumentException("A sample cannot be null.", nameof(frames));
         Request = first.Request;
         (IncludedPurposes, Outputs) = ValidateStaticRequest(Request);
-        MaterialBindingPurpose = Request.Specification.MaterialBindingPurposes[0];
+        MaterialBindingPurpose = ResolveMaterialBindingPurpose(
+            Request.Specification.MaterialBindingPurposes, nameof(frames));
         IncludeHdrColor = Outputs.Any(static output => output.Plane == RenderProductPlane.HdrColor);
         IncludeDeviceDepth = Outputs.Any(static output => output.Plane == RenderProductPlane.DeviceDepth);
+        IncludePrimId = Outputs.Any(static output => output.Plane == RenderProductPlane.PrimId);
+        IncludeInstanceId = Outputs.Any(static output => output.Plane == RenderProductPlane.InstanceId);
+        IncludeNormal = Outputs.Any(static output => output.Plane == RenderProductPlane.Normal);
+        IncludeElementId = Outputs.Any(static output => output.Plane == RenderProductPlane.ElementId);
         SourceStageRevision = sourceStageRevision;
         RenderSettings = renderSettings;
         var samples = new RenderPreparedFrame[count];
         var states = new StageRenderState[count];
+        IReadOnlyList<StageRenderState>?[]? shutterStates = null;
         StageRenderState state = StageRenderState.Create(stage)
             .WithDisplay(new SceneDisplayState(
                 IncludedPurposes, RenderVisibility.RespectAuthored, RenderDrawMode.SmoothShaded))
@@ -84,14 +137,37 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
                 throw new ArgumentException(
                     "All samples must belong to the same immutable product request.", nameof(frames));
             }
-            ValidateCamera(frame);
+            ValidateCamera(
+                frame, IncludeDeviceDepth, IncludePrimId, IncludeInstanceId, IncludeNormal, IncludeElementId);
             samples[index] = frame;
+            RenderSettings exposed = ProductCameraExposure.ApplyToDisplay(
+                renderSettings, frame.CameraSettings!.LinearExposureScale);
+            if (frame.AccumulationSamples.Count != 0)
+            {
+                var shutter = new StageRenderState[frame.AccumulationSamples.Count];
+                for (int sample = 0; sample < shutter.Length; sample++)
+                {
+                    RenderPreparedFrame subframe = frame.AccumulationSamples[sample];
+                    shutter[sample] = state = state.WithCamera(subframe.Camera)
+                        .WithViewport(subframe.OutputDimensions).WithTime(new StageTime(subframe.TimeCode))
+                        .WithRenderSettings(exposed).AdvanceRevision();
+                }
+                shutterStates ??= new IReadOnlyList<StageRenderState>?[count];
+                shutterStates[index] = new OwnedReadOnlyList<StageRenderState>(shutter);
+            }
             states[index] = state = state.WithCamera(frame.Camera).WithViewport(frame.OutputDimensions)
-                .WithTime(new StageTime(frame.TimeCode)).AdvanceRevision();
+                .WithTime(new StageTime(frame.TimeCode)).WithRenderSettings(exposed).AdvanceRevision();
         }
         Frames = new OwnedReadOnlyList<RenderPreparedFrame>(samples);
         _states = new OwnedReadOnlyList<StageRenderState>(states);
+        _accumulationStates = shutterStates;
     }
+
+    /// <summary>Gets the per-sample states accumulated for a frame's active shutter, or null.</summary>
+    internal IReadOnlyList<StageRenderState>? AccumulationStates(int index) => _accumulationStates?[index];
+
+    /// <summary>Gets the largest output raster that may be accumulated across a shutter interval.</summary>
+    internal const int MaximumAccumulatedPixels = 4096 * 4096;
 
     /// <summary>Gets the unchanged authored request and explicit raster overrides.</summary>
     public RenderProductRequest Request { get; }
@@ -111,32 +187,50 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
     public bool IncludeHdrColor { get; }
     /// <summary>Gets whether the product requires actual normalized device depth.</summary>
     public bool IncludeDeviceDepth { get; }
+    /// <summary>Gets whether the product requires the visible prim identity index plane and its table.</summary>
+    public bool IncludePrimId { get; }
+    /// <summary>Gets whether the product requires the visible instance index plane.</summary>
+    public bool IncludeInstanceId { get; }
+    /// <summary>Gets whether the product requires the world-space normal plane.</summary>
+    public bool IncludeNormal { get; }
+    /// <summary>Gets whether the product requires the visible authored face index plane.</summary>
+    public bool IncludeElementId { get; }
 
     /// <summary>
     /// Creates a bounded job with caller-authorized output and generated filenames, never product-name authority.
     /// </summary>
     /// <remarks>
-    /// Raw split planes preserve crop/overscan and pixel aspect in the manifest. The initial EXR encoder
-    /// requires a complete origin-zero square-pixel color raster; it does not silently discard authored windows.
+    /// Raw split planes preserve crop/overscan and pixel aspect in the manifest. EXR output stores the same
+    /// crop/overscan as a data window inside the full display window, plus the pixel aspect.
     /// The PNG display companion is not a separately authored product or a color-space conversion claim.
     /// </remarks>
     public RenderDiskJobRequest CreateJob(
         string outputDirectory, RenderHdrColorFormat hdrColorFormat = RenderHdrColorFormat.RawRgba16Float,
         RenderDiskJobLimits? limits = null)
+        => CreateJob(outputDirectory, hdrColorFormat, limits, frameEncoded: null);
+
+    internal RenderDiskJobRequest CreateJob(
+        string outputDirectory, RenderHdrColorFormat hdrColorFormat, RenderDiskJobLimits? limits,
+        Action<int, int>? frameEncoded)
     {
         if (hdrColorFormat == RenderHdrColorFormat.Exr)
         {
             ViewportDimensions full = Request.Overrides.Resolution ??
                 new ViewportDimensions(Request.Product.Width, Request.Product.Height);
-            if (Frames.Any(frame => frame.DataWindowMinX != 0 || frame.DataWindowMinY != 0 ||
-                frame.OutputDimensions != full || frame.PixelAspectRatio != 1))
+            foreach (RenderPreparedFrame frame in Frames)
             {
-                throw new NotSupportedException(
-                    "The EXR encoder cannot omit a product's crop, overscan or non-square pixels.");
+                // Crop, overscan and pixel aspect become EXR data/display windows; refuse before rendering
+                // anything when a frame has no exact encoder representation.
+                _ = ExrImageWindows.FromProductFrame(full, frame.DataWindowMinX, frame.DataWindowMinY,
+                    frame.OutputDimensions.Height, frame.PixelAspectRatio)
+                    .Validate(frame.OutputDimensions.Width, frame.OutputDimensions.Height);
             }
         }
         return new RenderDiskJobRequest(outputDirectory, _states, IncludeDeviceDepth, IncludeHdrColor,
-            hdrColorFormat, limits, this);
+            hdrColorFormat, limits, this, IncludePrimId, IncludeInstanceId, IncludeNormal, IncludeElementId)
+        {
+            FrameEncoded = frameEncoded
+        };
     }
 
     internal static (RenderPurpose IncludedPurposes, IReadOnlyList<RenderProductOutputBinding> Outputs)
@@ -164,16 +258,38 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             throw new NotSupportedException(
                 "The capture adapters cannot certify the requested named rendering color space.");
         }
-        if (specification.MaterialBindingPurposes.Count != 1)
+        _ = ResolveMaterialBindingPurpose(specification.MaterialBindingPurposes, nameof(request));
+    }
+
+    // UsdShade resolution of a named purpose already falls back to the allPurpose ("") binding,
+    // so trailing allPurpose entries after one named purpose select the same materials.
+    private static string ResolveMaterialBindingPurpose(IReadOnlyList<string> purposes, string parameterName)
+    {
+        if (purposes.Count is < 1 or > 8)
         {
             throw new NotSupportedException("Product execution currently requires one exact material-binding purpose.");
         }
-        RequireText(specification.MaterialBindingPurposes[0]);
-        if (specification.MaterialBindingPurposes[0].Length > 128)
+        string purpose = purposes[0];
+        if (purpose is null || purpose.Length == 0)
+        {
+            throw new NotSupportedException(
+                "Product execution requires a named material-binding purpose before any allPurpose fallback.");
+        }
+        if (purpose.Length > 128)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(request), "The material-binding purpose exceeds 128 characters.");
+                parameterName, "The material-binding purpose exceeds 128 characters.");
         }
+        RequireText(purpose);
+        for (int index = 1; index < purposes.Count; index++)
+        {
+            if (purposes[index] is not { Length: 0 })
+            {
+                throw new NotSupportedException(
+                    "Product execution cannot resolve an ordered list of named material-binding purposes.");
+            }
+        }
+        return purpose;
     }
 
     private static RenderPurpose ResolvePurposes(IReadOnlyList<string> purposes)
@@ -199,10 +315,11 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
 
     private static OwnedReadOnlyList<RenderProductOutputBinding> ResolveOutputs(RenderProductRequest request)
     {
-        if (request.Outputs.Count is < 1 or > 2)
+        if (request.Outputs.Count is < 1 or > 6)
         {
             throw new NotSupportedException(
-                "The current product profile accepts one color variable and/or one depth variable.");
+                "The current product profile accepts at most one color, one depth, one prim identity, one " +
+                "instance identity, one element identity and one normal variable.");
         }
         var outputs = new RenderProductOutputBinding[request.Outputs.Count];
         var seen = new HashSet<RenderProductPlane>();
@@ -219,6 +336,10 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
             {
                 ("color", "half4") => RenderProductPlane.HdrColor,
                 ("depth", "float") => RenderProductPlane.DeviceDepth,
+                ("primId", "int") => RenderProductPlane.PrimId,
+                ("instanceId", "int") => RenderProductPlane.InstanceId,
+                ("normal", "normal3f") => RenderProductPlane.Normal,
+                ("elementId", "int") => RenderProductPlane.ElementId,
                 _ => throw new NotSupportedException(
                     $"Variable '{variable.Path}' requests unsupported '{variable.SourceName}' / '{variable.DataType}'.")
             };
@@ -231,24 +352,73 @@ public sealed partial class RenderProductJobPlan : IUsdDetachedResult
         return new OwnedReadOnlyList<RenderProductOutputBinding>(outputs);
     }
 
-    private static void ValidateCamera(RenderPreparedFrame frame)
+    private static void ValidateCamera(
+        RenderPreparedFrame frame, bool includeDeviceDepth, bool includePrimId, bool includeInstanceId,
+        bool includeNormal, bool includeElementId)
     {
         RenderCameraFrameSettings settings = frame.CameraSettings ??
             throw new NotSupportedException(
                 "Executing a product requires sampled camera shutter and exposure, not geometry alone.");
-        if (settings.LinearExposureScale != 1)
-        {
-            throw new NotSupportedException("The current raw-output profile cannot omit non-unit camera exposure.");
-        }
-        if (!frame.Request.Product.DisableMotionBlur && (settings.ShutterOpen != 0 || settings.ShutterClose != 0))
-        {
-            throw new NotSupportedException(
-                "The current capture profile cannot omit the active camera shutter interval.");
-        }
-        if (!frame.Request.Product.DisableDepthOfField && frame.SampledCamera.FStop != 0)
+        bool blur = !frame.Request.Product.DisableMotionBlur &&
+            (settings.ShutterOpen != 0 || settings.ShutterClose != 0);
+        bool lens = frame.Request.IsDepthOfFieldActive(frame.SampledCamera);
+        if (blur && settings.ShutterClose <= settings.ShutterOpen)
         {
             throw new NotSupportedException(
-                "The current capture profile cannot omit the active depth-of-field aperture.");
+                "A zero-length or inverted camera shutter interval cannot be accumulated.");
+        }
+        if (lens && (frame.SampledCamera.Projection != UsdGeomCameraProjection.Perspective ||
+            frame.SampledCamera.FocusDistance <= 0))
+        {
+            throw new NotSupportedException(
+                "Depth of field requires a perspective camera with a positive focusDistance.");
+        }
+        if (blur || lens)
+        {
+            int expected = lens
+                ? RenderProductRequest.DepthOfFieldSampleCount
+                : RenderProductRequest.MotionBlurSampleCount;
+            if (frame.AccumulationSamples.Count != expected ||
+                (lens && frame.AccumulationSamples.Any(static sample => sample.LensOffset is null)))
+            {
+                throw new NotSupportedException(
+                    "An active shutter or lens aperture needs stage-sampled accumulation samples " +
+                    "from PrepareExecutionFrame.");
+            }
+            if (includeDeviceDepth)
+            {
+                throw new NotSupportedException(
+                    "Normalized device depth has no defined value when accumulated across a shutter or lens aperture.");
+            }
+            if (includePrimId)
+            {
+                throw new NotSupportedException(
+                    "Prim identity cannot be averaged across a shutter or lens aperture; disable motion blur and " +
+                    "depth of field for a product with a primId variable.");
+            }
+            if (includeInstanceId)
+            {
+                throw new NotSupportedException(
+                    "Instance identity cannot be averaged across a shutter or lens aperture; disable motion blur " +
+                    "and depth of field for a product with an instanceId variable.");
+            }
+            if (includeElementId)
+            {
+                throw new NotSupportedException(
+                    "Element identity cannot be averaged across a shutter or lens aperture; disable motion blur " +
+                    "and depth of field for a product with an elementId variable.");
+            }
+            if (includeNormal)
+            {
+                throw new NotSupportedException(
+                    "Surface normals cannot be averaged across a shutter or lens aperture; disable motion blur " +
+                    "and depth of field for a product with a normal variable.");
+            }
+            if ((long)frame.OutputDimensions.Width * frame.OutputDimensions.Height > MaximumAccumulatedPixels)
+            {
+                throw new NotSupportedException(
+                    "The output raster exceeds the accumulation pixel limit of 4096 x 4096.");
+            }
         }
     }
 

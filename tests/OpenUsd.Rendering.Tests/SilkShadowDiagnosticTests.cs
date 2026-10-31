@@ -451,7 +451,7 @@ public sealed class SilkShadowDiagnosticTests
         await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(-1);
         await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
             .DoesNotContain(SilkRenderDiagnosticCodes.ShadowUnsupported);
-        var bytes = new byte[15296];
+        var bytes = new byte[17344];
         emptyFrame.ReadbackForTesting(bytes);
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(220))).IsEqualTo(0f);
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(15020))).IsEqualTo(0f);

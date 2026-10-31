@@ -16,7 +16,7 @@ internal sealed class SilkDecodedImage(
 
     internal uint Width { get; } = width;
     internal uint Height { get; } = height;
-    internal byte[] Pixels { get; } = pixels;
+    internal byte[] Pixels { get; private set; } = pixels;
     internal SilkTextureFormat Format { get; } = format;
 
     internal void OwnReservation(IDisposable? reservation)
@@ -27,7 +27,11 @@ internal sealed class SilkDecodedImage(
         }
     }
     internal IDisposable? TransferReservation() => Interlocked.Exchange(ref _reservation, null);
-    public void Dispose() => TransferReservation()?.Dispose();
+    public void Dispose()
+    {
+        Pixels = [];
+        TransferReservation()?.Dispose();
+    }
 }
 
 /// <summary>
@@ -124,6 +128,10 @@ internal static unsafe partial class SilkNativeImageDecoder
 
     internal static SilkDecodedImage Decode(
         string asset, bool convertSrgbToLinear, SilkCpuTextureBudget? budget)
+        => Decode(asset, convertSrgbToLinear, false, budget);
+
+    internal static SilkDecodedImage Decode(
+        string asset, bool convertSrgbToLinear, bool preferFloat, SilkCpuTextureBudget? budget)
     {
         ArgumentException.ThrowIfNullOrEmpty(asset);
         OpenUsdNativeImageInfo info = OpenUsdNativeImageInfo.Create();
@@ -131,6 +139,10 @@ internal static unsafe partial class SilkNativeImageDecoder
         fixed (byte* error = errorBytes)
         {
             NativeErrorBuffer errorBuffer = new(error, (nuint)errorBytes.Length);
+            if (preferFloat)
+            {
+                return DecodeRgba32Float(asset, convertSrgbToLinear, ref info, errorBytes, error, budget);
+            }
             OpenUsdNativeStatus status = DecodeImageRgba8(
                 asset,
                 convertSrgbToLinear ? 1u : 0u,

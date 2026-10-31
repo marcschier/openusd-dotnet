@@ -4,11 +4,16 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 
-// Independent test oracle for the writer's single-part, origin-zero, RGBA HALF
-// scanline/ZIPS contract. This is not a general EXR reader or production codec.
+// Independent test oracle for the writer's single-part RGBA HALF scanline/ZIPS
+// contract. This is not a general EXR reader or production codec.
 internal static class ExrScanlineOracle
 {
-    internal static byte[] Read(byte[] file, int width, int height)
+    internal static byte[] Read(byte[] file, int width, int height) =>
+        Read(file, width, height, new ExrOracleWindows(0, 0, 0, 0, width, height, 0x3f800000));
+
+    // width and height describe the data window; windows carries its EXR
+    // (Y-down) origin, the display window and the exact aspect float bits.
+    internal static byte[] Read(byte[] file, int width, int height, ExrOracleWindows windows)
     {
         Require(file.Length is >= 8 and <= 67_108_864, "Bounded EXR extent.");
         Require(U32(file, 0) == 20000630 && U32(file, 4) == 2, "EXR magic and scanline version.");
@@ -34,11 +39,16 @@ internal static class ExrScanlineOracle
         Require(compression[0] == 2, "Lossless single-scanline ZIPS compression.");
         ReadOnlySpan<byte> data = Attribute(file, attributes, "dataWindow", "box2i", 16);
         ReadOnlySpan<byte> display = Attribute(file, attributes, "displayWindow", "box2i", 16);
-        Require(data.SequenceEqual(display) && I32(data, 0) == 0 && I32(data, 4) == 0 &&
-            I32(data, 8) == width - 1 && I32(data, 12) == height - 1, "Origin-zero equal full windows.");
+        Require(I32(data, 0) == windows.DataOriginX && I32(data, 4) == windows.DataOriginY &&
+            (long)I32(data, 8) == (long)windows.DataOriginX + width - 1 &&
+            (long)I32(data, 12) == (long)windows.DataOriginY + height - 1, "Expected data window.");
+        Require(I32(display, 0) == windows.DisplayOriginX && I32(display, 4) == windows.DisplayOriginY &&
+            (long)I32(display, 8) == (long)windows.DisplayOriginX + windows.DisplayWidth - 1 &&
+            (long)I32(display, 12) == (long)windows.DisplayOriginY + windows.DisplayHeight - 1,
+            "Expected display window.");
         Require(Attribute(file, attributes, "lineOrder", "lineOrder", 1)[0] == 0, "Increasing scanline order.");
-        Require(U32(Attribute(file, attributes, "pixelAspectRatio", "float", 4), 0) == 0x3f800000,
-            "Square pixels.");
+        Require(U32(Attribute(file, attributes, "pixelAspectRatio", "float", 4), 0) == windows.PixelAspectBits,
+            "Expected pixel aspect.");
         Require(StringAttribute(file, attributes, "openusd:colorPolicy") == "raw-working-unspecified",
             "Explicit raw renderer-working metadata.");
         Require(StringAttribute(file, attributes, "openusd:alphaPolicy") == "stored-unspecified",
@@ -54,7 +64,10 @@ internal static class ExrScanlineOracle
         {
             ulong offset = BinaryPrimitives.ReadUInt64LittleEndian(file.AsSpan(position + y * 8, 8));
             Require(offset == (ulong)chunkPosition, "Contiguous, rewritten scanline offsets.");
-            Require(chunkPosition <= file.Length - 8 && I32(file, chunkPosition) == y, "Scanline coordinate.");
+            Require(
+                chunkPosition <= file.Length - 8 &&
+                (long)I32(file, chunkPosition) == (long)windows.DataOriginY + y,
+                "Scanline coordinate.");
             int payloadBytes = I32(file, chunkPosition + 4);
             Require(payloadBytes > 0 && payloadBytes <= rowBytes &&
                 payloadBytes <= file.Length - chunkPosition - 8, "Bounded scanline payload.");
@@ -186,3 +199,12 @@ internal static class ExrScanlineOracle
 
     private readonly record struct AttributeValue(string Type, int Offset, int Length);
 }
+
+internal readonly record struct ExrOracleWindows(
+    int DataOriginX,
+    int DataOriginY,
+    int DisplayOriginX,
+    int DisplayOriginY,
+    int DisplayWidth,
+    int DisplayHeight,
+    uint PixelAspectBits);

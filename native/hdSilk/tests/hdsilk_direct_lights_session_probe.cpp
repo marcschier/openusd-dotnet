@@ -22,14 +22,14 @@ namespace
 using namespace hdsilk_direct_lights_test;
 
 static_assert(OPENUSD_STATUS_NATIVE_ERROR == 4);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 24u);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 30u);
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6u);
 static_assert(OPENUSD_SILK_SCENE_INGESTION_VERSION == 1u);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128u);
 static_assert(OPENUSD_SILK_MAX_SHADOW_MAPS == 4u);
 static_assert(OPENUSD_SILK_MAX_DOME_LIGHTS == 8u);
 
-constexpr size_t FrameBytes = 23368;
+constexpr size_t FrameBytes = 25416;
 constexpr size_t DirectOffset = 552;
 constexpr size_t DirectBytes = 176;
 constexpr std::array<double, 16> Identity{
@@ -145,13 +145,13 @@ Frame ReadNativeFrame(const OwnedPage& page)
     Require(page.handle != nullptr, "Successful sync returned no owned page");
     Require(
         openusd_silk_get_session_abi_version() == 6u &&
-            openusd_silk_get_page_abi_version() == 24u,
-        "Loaded native session/page ABI is not 6/24");
+            openusd_silk_get_page_abi_version() == 30u,
+        "Loaded native session/page ABI is not 6/30");
     Require(
-        view.struct_size == sizeof(view) && view.abi_version == 24u &&
+        view.struct_size == sizeof(view) && view.abi_version == 30u &&
             view.revision != 0 && view.data != nullptr &&
             view.data_size >= FrameBytes,
-        "Successful sync returned an invalid page24 view");
+        "Successful sync returned an invalid page27 view");
     Frame frame = ReadFrame(view.data, view.data_size, view.command_count);
     Require(
         frame.width == 96 && frame.height == 96 && frame.clipPlaneCount == 0u,

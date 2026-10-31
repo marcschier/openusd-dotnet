@@ -40,6 +40,7 @@ PINNED_INPUTS = [
     "eng/patches/openusd/render-product-hash-adl.patch",
     "eng/cesium.lock.json",
     "eng/physx.lock.json",
+    "eng/vhacd.lock.json",
     "eng/mdl.lock.json",
     "eng/shaders/toolchain.lock.json",
     "eng/pack-packages.ps1",
@@ -494,6 +495,7 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
     openusd = read_json("eng/openusd.install.lock.json")
     cesium = read_json("eng/cesium.lock.json")
     physx = read_json("eng/physx.lock.json")
+    vhacd = read_json("eng/vhacd.lock.json")
     shaders = read_json("eng/shaders/toolchain.lock.json")
     components: dict[str, dict[str, Any]] = {}
     root_ref = f"pkg:nuget/OpenUsd@{version}"
@@ -682,6 +684,24 @@ def generate(cache_root: Path, vcpkg_components: Path) -> dict[str, Any]:
                 "openusd:source": "eng/physx.lock.json",
                 "openusd:release-scope": physx_native["releaseScope"],
                 "openusd:release-rids": ",".join(physx_native["supportedRids"]),
+            },
+        ),
+    )
+
+    add_component(
+        components,
+        component(
+            "native:V-HACD",
+            vhacd["name"],
+            vhacd["version"],
+            licenses=[vhacd["license"]],
+            purl=github_purl(vhacd["repository"], vhacd["version"], vhacd["commit"]),
+            external_refs=[{"type": "vcs", "url": vhacd["repository"]}],
+            properties={
+                "openusd:source": "eng/vhacd.lock.json",
+                "openusd:release-scope": vhacd["scope"],
+                "openusd:release-rids": ",".join(physx_native["supportedRids"]),
+                "openusd:header-sha256": vhacd["files"][0]["sha256"],
             },
         ),
     )

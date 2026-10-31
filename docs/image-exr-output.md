@@ -1,6 +1,6 @@
 # Bounded raw RGBA16Float EXR output
 
-> Unreleased source API requiring the matching Data ABI 24 Core runtime.
+> Unreleased source API requiring the matching Data ABI 26 Core runtime.
 > Published `0.14.0-alpha` native assets cannot serve this API.
 
 `OpenUsd.Rendering.ExrRgba16FloatWriter` writes one exact, packed RGBA binary16
@@ -28,8 +28,8 @@ Success synchronizes both the native cursor and `FileStream.Position` to EOF.
 
 ## Exact contract
 
-* Data ABI **24**, required capability **`OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT`**,
-  bit **32**, full current required mask **`0x1FFFFFFFF`**.
+* Introduced in Data ABI **24**, required capability **`OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT`**,
+  bit **32**. The current runtime is Data ABI **25** with full required mask **`0x3FFFFFFFF`**.
 * The capability describes a **guarded API**, not portable file-descriptor support.
   Old ABI23, a missing capability, and a missing export must be rejected. It is not
   valid to advertise this required export under ABI23.
@@ -63,9 +63,20 @@ conversion**. Metadata is recorded in project string attributes
 `openusd:colorPolicy` and `openusd:alphaPolicy`; third-party compositors need not
 honor those custom attributes. No chromaticities attribute is silently added.
 
-The initial API is viewport/raster output: explicit origin `(0,0)`, complete equal
-data/display windows, and square pixels. Crops, overscan, arbitrary authored render
-windows/aspect/primaries and float32 input are unsupported, not reinterpreted.
+The public writer API is viewport/raster output: explicit origin `(0,0)`, complete equal
+data/display windows, and square pixels. Authored render-product jobs need more than
+that, because a product's crop, overscan and pixel aspect are part of its raster. They
+use an internal overload with the `EXPLICIT_WINDOWS` policy of the same encoder:
+
+- The display window is the product's full raster, with origin `(0,0)`.
+- The data window is the product's crop or overscan region. Its bottom-left product
+  origin is converted to EXR's downward Y axis, so overscan produces negative or
+  beyond-display coordinates rather than a clamped image.
+- The `pixelAspectRatio` attribute stores the product's effective pixel aspect as a float.
+
+A pixel aspect outside 1/65536..65536, or a window corner beyond ±1,073,741,823, is
+refused before the job stages output. Neither is clamped. Arbitrary authored primaries
+and float32 input remain unsupported, not reinterpreted.
 
 ## Platform matrix
 

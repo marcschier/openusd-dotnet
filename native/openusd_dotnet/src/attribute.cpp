@@ -1277,6 +1277,83 @@ openusd_status openusd_stage_get_vec3f_array(
     });
 }
 
+openusd_status openusd_stage_set_vec4f_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    const openusd_vec4f* values,
+    size_t count,
+    int32_t time_sampled,
+    double time_code,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        return SetArrayAttribute<openusd_vec4f, GfVec4f>(
+            stage,
+            prim_path,
+            attribute_name,
+            values,
+            count,
+            time_sampled,
+            time_code,
+            SdfValueTypeNames->Float4Array,
+            "vec4f",
+            [](const SdfValueTypeName& type)
+            {
+                return type == SdfValueTypeNames->Float4Array ||
+                    type == SdfValueTypeNames->Color4fArray;
+            },
+            [](const openusd_vec4f& value) { return GfVec4f(value.x, value.y, value.z, value.w); },
+            error);
+
+    });
+}
+
+openusd_status openusd_stage_get_vec4f_array(
+    const openusd_stage* stage,
+    const char* prim_path,
+    const char* attribute_name,
+    int32_t time_sampled,
+    double time_code,
+    openusd_vec4f* values,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(required);
+        return WithAbiWritableBuffer(values, capacity, [&]()
+        {
+            return GetArrayAttribute<openusd_vec4f, GfVec4f>(
+                stage,
+                prim_path,
+                attribute_name,
+                time_sampled,
+                time_code,
+                values,
+                capacity,
+                required,
+                "vec4f",
+                [](const SdfValueTypeName& type)
+                {
+                    return type == SdfValueTypeNames->Float4Array ||
+                        type == SdfValueTypeNames->Color4fArray;
+                },
+                [](const GfVec4f& value)
+                {
+                    return openusd_vec4f{value[0], value[1], value[2], value[3]};
+                },
+                error);
+        });
+
+    });
+}
+
 openusd_status openusd_stage_set_color3f_array(
     const openusd_stage* stage,
     const char* prim_path,

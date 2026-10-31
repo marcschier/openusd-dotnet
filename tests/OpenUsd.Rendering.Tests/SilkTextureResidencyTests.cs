@@ -15,6 +15,33 @@ namespace OpenUsd.Rendering.Tests;
 /// </summary>
 public sealed class SilkTextureResidencyTests
 {
+    [Test]
+    [Arguments("1", true)]
+    [Arguments("true", true)]
+    [Arguments("TRUE", true)]
+    [Arguments("0", false)]
+    [Arguments("false", false)]
+    [Arguments("FALSE", false)]
+    public async Task StreamingConfigurationParsesExplicitFlags(string value, bool expected)
+    {
+        SilkTextureResidencyOptions options = SilkTextureResidencyOptions.FromConfiguration(value)!;
+        await Assert.That(options.StreamMaterialTextures).IsEqualTo(expected);
+        await Assert.That(options.MaxDecodedCpuBytes).IsEqualTo(SilkTextureResidencyOptions.DefaultMaxDecodedCpuBytes);
+        await Assert.That(options.MaxGpuBytes).IsEqualTo(SilkTextureResidencyOptions.DefaultMaxGpuBytes);
+        await Assert.That(SilkTextureResidencyOptions.FromConfiguration(null)).IsNull();
+    }
+
+    [Test]
+    [Arguments("")]
+    [Arguments("yes")]
+    [Arguments("2")]
+    [Arguments(" true")]
+    [Arguments("false ")]
+    public async Task StreamingConfigurationRejectsMalformedFlags(string value)
+    {
+        await Assert.That(() => SilkTextureResidencyOptions.FromConfiguration(value)).Throws<ArgumentException>();
+    }
+
     // Learned once, deterministically, from the real (pure, CPU-only) mip-generation and
     // fallback-image logic, so tests can pass tight residency budgets to the constructor up front
     // instead of mutating a running instance's options.
@@ -38,6 +65,24 @@ public sealed class SilkTextureResidencyTests
             .IsEqualTo(SilkTextureResidencyOptions.DefaultMaxGpuBytes);
         await Assert.That(new SilkTextureResidencyOptions().MaxDecodedCpuBytes)
             .IsEqualTo(options.MaxDecodedCpuBytes);
+        await Assert.That(options.StreamMaterialTextures).IsFalse();
+        await Assert.That(new SilkTextureResidencyOptions(16, 32).StreamMaterialTextures).IsFalse();
+    }
+
+    [Test]
+    public async Task StreamingIsExplicitAndRequiresTransactionalGpuAdmission()
+    {
+        var options = new SilkTextureResidencyOptions(16, 32, true);
+        await Assert.That(options.StreamMaterialTextures).IsTrue();
+        await Assert.That(options.MaxDecodedCpuBytes).IsEqualTo(16ul);
+        await Assert.That(options.MaxGpuBytes).IsEqualTo(32ul);
+        using var device = new TextureDevice();
+        InvalidOperationException error = (await Assert.That(() => new SilkMeshRenderer(device, options))
+            .Throws<InvalidOperationException>())!;
+        await Assert.That(error.Message).Contains("transactional frame publication");
+        await Assert.That(() => new SilkFrameCapturer(device, options)).Throws<InvalidOperationException>();
+        await Assert.That(() => new SilkFrameCapturer(device, null!)).Throws<ArgumentNullException>();
+        await Assert.That(device.AllTextures.Count).IsEqualTo(0);
     }
 
     [Test]
@@ -1082,6 +1127,24 @@ public sealed class SilkTextureResidencyTests
     }
 
     [Test]
+    public async Task TextureDrivenOpacityRemainsAnUnsupportedShadowCaster()
+    {
+        const string materialPath = "/World/Materials/Cutout";
+        const string meshPath = "/World/Cutout";
+        var scene = new SilkSceneState();
+        byte[] material = CreateMaterialUpsert(
+            materialPath,
+            SilkSurfaceKind.PreviewSurface,
+            [ScalarTexture(SilkMaterialParameter.Opacity, "opacity.png", SilkTextureChannel.R)],
+            [(SilkMaterialParameter.OpacityThreshold, [0.25f])]);
+        byte[] mesh = CreateMeshUpsert(meshPath, materialPath, primId: 7);
+        _ = scene.Apply(Concat(material, mesh), 2, 1);
+
+        await Assert.That(SilkShadowMapCache.ClassifyOpacity(scene, scene.MeshesByPath[(meshPath, 0)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+    }
+
+    [Test]
     public async Task OpaqueMeshesPrecedeTransparentMeshesSortedFarToNear()
     {
         using var device = new RenderPipelineDevice();
@@ -1347,6 +1410,11 @@ public sealed class SilkTextureResidencyTests
         }
 
         payload.AddRange(BitConverter.GetBytes(0u));
+        payload.AddRange(BitConverter.GetBytes(0u));
+        foreach (float element in new[] { 1f, 0f, 0f, 1f, 0f, 0f })
+        {
+            payload.AddRange(BitConverter.GetBytes(element));
+        }
         payload.AddRange(BitConverter.GetBytes(0u));
         foreach (float element in new[] { 1f, 0f, 0f, 1f, 0f, 0f })
         {

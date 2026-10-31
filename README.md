@@ -75,7 +75,7 @@ and render gates that run before releases. The details and caveats live in
 
 ## 🚀 Start from source
 
-The repository pins .NET SDK `10.0.401`. The managed baseline does not build OpenUSD itself:
+The repository pins .NET SDK `10.0.403`. The managed baseline does not build OpenUSD itself:
 
 ```shell
 git clone https://github.com/marcschier/openusd-dotnet.git
@@ -86,7 +86,7 @@ dotnet build OpenUsd.slnx -c Release
 dotnet build samples/OpenUsd.HelloStage/OpenUsd.HelloStage.csproj -c Release -f net10.0
 ```
 
-`dotnet --version` must print `10.0.401`. If it is unavailable, use `./eng/install-dotnet.ps1` on
+`dotnet --version` must print `10.0.403`. If it is unavailable, use `./eng/install-dotnet.ps1` on
 Windows or `bash ./eng/install-dotnet.sh` on macOS/Linux. Managed projects compile without OpenUSD;
 executing `OpenUsd.HelloStage` requires the matching Core runtime.
 
@@ -156,6 +156,7 @@ All 31 package IDs below ship together in `0.14.0-alpha`. This release adds
 | `OpenUsd.Rendering.Storm` | 8/9/10 | Hydra/Storm adapter |
 | `OpenUsd.Cesium` | 8/9/10 | Optional Cesium 3D Tiles importer |
 | `OpenUsd.Physics` | 8/9/10 | Optional retained `UsdPhysics` simulation sessions and baking |
+| `OpenUsd.Rendering.Physics` | 8/9/10 | Optional exact-step simulation recording through renderer capture adapters |
 | `OpenUsd.Rendering.Silk` | 8/9/10 | Hydra-fed managed renderer and backend-neutral RHI |
 | `OpenUsd.Rendering.Silk.D3D12` | 8/9/10 | Direct3D 12 backend |
 | `OpenUsd.Rendering.Silk.Vulkan` | 8/9/10 | Vulkan backend |

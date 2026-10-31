@@ -37,17 +37,32 @@ The output parent must be an existing local folder chosen
 by the operator; opening, refreshing, cancelling or closing the dialog does not create directories.
 Each job publishes a generated subfolder only after all frames, sidecars and the manifest are
 complete, and authored `productName` values are never treated as filesystem authority.
+Long original product/variable details remain in a scrollable body at the minimum window size.
+The fixed action area wraps when necessary so View results, Cancel job, Close and Render product
+remain reachable; focused range fields and unsupported-product reasons scroll into view.
 
 The capture uses the authored product camera, raster, variables, scene purposes and exact
 material-binding purpose rather than the current viewport camera or dimensions. PNG files are
-explicit display companions. Raw HDR product variables are top-down RGBA16F, EXR is available only
-when the current encoder restrictions admit the product window, and depth variables are top-down
+explicit display companions. Raw HDR product variables are top-down RGBA16F. EXR stores the full
+raster as its display window, the crop or overscan as its data window and the product's pixel aspect;
+a pixel aspect outside 1/65536..65536 disables EXR for that product. Depth variables are top-down
 float32 normalized device depth rather than metric distance. Windows Viewer execution covers
 hdSilk Direct3D 12 and Vulkan. Both capture on the active composition device, with an exclusive
 lease that prevents presentation, device replacement or teardown while capture resources are
 owned. Failed resource cleanup retains that lease for retry. Native Storm has no authored-product
 binding. The same managed adapter is wired for Metal, but native macOS capture execution remains
 unverified; this is not a Metal support claim.
+
+The dialog's raster overrides replace authored values for one job without editing the stage. They use
+the `RenderProductOverrides` model behind the MCP `render_product` tool. The dialog accepts an absolute
+camera prim path, a width and height supplied together (1-8192 each), a finite positive pixel aspect,
+one of the five `aspectRatioConformPolicy` tokens, and an NDC data window given as four numbers with
+each minimum below its maximum. Blank fields keep the authored value. An invalid field disables **Render
+product** and names the field instead of reporting a frame-range error, so no job or output folder is
+created. The EXR pixel-aspect limit applies to the override aspect when one is given. Conformance tests
+prove on Direct3D 12 (WARP) and Vulkan that a camera, resolution, pixel-aspect and conform override
+renders the same pixels as authoring those values, and the Viewer journey proves that widening the data
+window keeps the authored crop's pixels in place rather than rescaling the frustum.
 
 After a successful job, **View results** opens the read-only
 [completed-job contact sheet](#previewing-completed-render-jobs) using its PNG display companions.
@@ -94,6 +109,20 @@ leave a window behind.
 
 ### Opt-in session preparation ceilings
 
+`OPENUSD_D3D12_GPU_UPLOAD_HEAPS=true` opts into supported GPU-local D3D12 upload heaps;
+`false` disables it and other values fail startup. The default is off.
+`ViewerHostOptions.D3D12GpuUploadHeaps` overrides the environment, including explicit
+`false`. An explicit GPU-buffer budget is required. The effective choice is captured
+by the host and used when D3D12 resources are created or recreated; other backends
+are unavailable rather than silently bypassing it. Hardware support is checked before
+resource creation. This reduces observed host-resident pressure on supported discrete
+GPUs but does not lower private commit, resource quotas or the protected host-memory reserve.
+The small authored-product GUI workflow has been exercised with this option and
+material streaming enabled: a visible D3D12 viewport imported/presented frames, and
+File/menu plus command-palette actions produced persistent PNG/HDR products while
+preserving the source. The directly launched test process passed under a 2-GiB
+process/tree cap. This is not complete-warehouse or all-workflow acceptance.
+
 `ViewerHostOptions.GpuBufferBudget` or `OPENUSD_SILK_GPU_BUFFER_BYTES` independently
 enables shared RHI buffer-payload admission. The same pool covers viewport and isolated
 product renderers, and embedding hosts can reuse an object across Viewer hosts in one
@@ -101,6 +130,26 @@ process. The limit must be a positive invariant decimal byte count. It excludes 
 backend staging, driver overhead and source/managed memory; it is not a VRAM measurement.
 Submission-held buffers retain their reservations until their final native release.
 See [shared GPU buffer admission](rendering.md#shared-gpu-buffer-payload-admission).
+
+`ViewerHostOptions.TexturePreparationBudgets` groups independently optional CPU texture,
+owned GPU texture and backend staging pools. Without an explicit object, startup reads
+`OPENUSD_SILK_CPU_TEXTURE_BYTES`, `OPENUSD_SILK_GPU_TEXTURE_BYTES` and
+`OPENUSD_SILK_GPU_STAGING_BYTES`. Each configured value must be a positive invariant
+decimal byte count. An explicit object replaces all three environment settings and can
+be shared by multiple embedding hosts; viewport and isolated product captures share
+its pools. Storm is unavailable rather than bypassing configured limits. Source geometry,
+native codec/OCIO scratch, detached captures, imported presentation images and driver
+overhead remain outside these metrics.
+See [shared texture-preparation policies](rendering.md#shared-texture-preparation-policies-in-viewer-and-mcp).
+
+Set `OPENUSD_SILK_STREAM_MATERIAL_TEXTURES=true` (or `1`) to stream full-resolution
+material working sets through ordered, completed submissions. `false`/`0` disables
+it; unset remains disabled. `ViewerHostOptions.StreamMaterialTextures` overrides this
+environment choice, including an explicit `false`. A GPU-buffer budget is required
+for transactional private-frame publication; texture/staging pools remain independent.
+The policy follows D3D12, Vulkan and Metal presenter creation and isolated product
+capturers. It reduces simultaneous material residency at the cost of repeated
+decode/upload work, not by reducing resolution; a single material still must fit.
 
 Managed hdSilk session creation requires the native page-acknowledgement extension as
 well as matching ABI versions. Older runtimes fail explicitly instead of leaving copy
@@ -123,6 +172,13 @@ These are logical numeric-buffer reservations and per-page serialized-byte ceili
 not total RAM/VRAM or source/material/cache limits. Concurrent viewport and product sessions
 each have their own ceiling, not a shared pool. Measure an appropriate policy and keep
 independent host safeguards. See [render preparation admission](rendering.md#opt-in-coarse-mesh-preparation-admission).
+
+For multi-gigabyte updates, optionally add all four `OPENUSD_SILK_STORAGE_*_BYTES`
+settings described in [file-backed command updates](rendering.md#file-backed-command-updates),
+or set `SilkPreparationLimits.CommandStorage` through its constructor. This applies to
+viewport and product sessions; each has its own live-file pool. Explicit embedding
+options override the entire environment policy. Stored transport is not a promise that
+the scene's retained geometry, materials or GPU resources fit the host.
 
 ### Reacting to the operator
 
@@ -264,6 +320,141 @@ offer payload add/remove authoring.
 
 ### Searchable property pages
 
+The snapshot-state selector intersects the text search with authored, unauthored, blocked or
+time-sampled **attributes**, relationships, or attributes with unknown authored state. These
+categories use detached composed metadata, not opinions in a particular layer. A missing authored
+flag is unknown, never an unauthored default; a missing sample count is not evidence of animation.
+Changing the category resets the page without fetching new native values or changing selection.
+Choose **All properties** to restore the complete list. Review edits still capture the exact
+selected property through the shared document history; filtering does not grant write authority.
+
+The property-group selector intersects that state filter and search before paging. Transform groups
+contain the existing `xformOp:*` attributes and `xformOpOrder`, without reordering or decomposing the
+operation stack. Camera optics, shutter, and stereo properties, and the BackPlateAPI
+`backPlate:<name>:*` attributes, are grouped only when the detached snapshot identifies a
+validated camera schema. **Common light controls** exposes the eight
+supported light inputs (`inputs:intensity`, `inputs:exposure`, `inputs:diffuse`, `inputs:specular`,
+`inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`, and `inputs:color`)
+only for a validated Rect, Sphere, Disk, Cylinder, Distant, or Dome light. The same group includes
+native shape inputs (`inputs:width`, `inputs:height`, `inputs:radius`, `inputs:length`, and
+`inputs:angle`) only on their matching light schemas, and `inputs:shaping:focus`,
+`inputs:shaping:cone:angle`, and `inputs:shaping:cone:softness` only when `ShapingAPI` is applied.
+The detached snapshot carries validated shape, shaping and texture property membership from the same native
+schema checks used by review editing. A light flag or authored lookalike name alone does not
+establish that membership; unvalidated properties remain available through **Inputs**.
+`inputs:texture:file` belongs to this group only on rectangle and dome lights;
+`inputs:texture:format` belongs only on dome lights. Other light schemas do not gain texture controls
+from an authored lookalike. Grouping does not load a texture or change rendering support.
+These inputs remain available in the **Inputs** group as well. Inputs and outputs group
+attribute namespaces
+(`inputs:` and `outputs:`); they do not imply a registered shader definition. Material bindings
+group only `material:binding` relationships and its nested namespace, not similarly named attributes.
+**Primvars** groups `primvars:` attributes, including their `:indices` companions; a relationship in
+that namespace stays under **Other properties**. **Collections** groups both attributes and
+relationships in the `collection:` namespace, such as `collection:lights:includes`. Like inputs and
+outputs, these two groups follow the namespace and do not check that `PrimvarsAPI` or
+`CollectionAPI` is applied. A bare `primvars:` or `collection:` name with nothing after the prefix,
+or a prefix that differs in case, stays under **Other properties**.
+**Visibility and purpose** groups the exact `visibility` and `purpose` attributes and the exact
+`proxyPrim` relationship; it does not check that the prim is imageable. **Physics** groups
+attributes and relationships in the `physics:` namespace, such as `physics:mass`, and the
+PhysicsDriveAPI and PhysicsLimitAPI attributes `drive:<dof>:physics:*` and
+`limit:<dof>:physics:*`, such as `drive:angular:physics:stiffness`. PhysX
+namespaces such as `physxRigidBody:` stay under **Other properties**, as do a bare `physics:`
+name and names that differ in case.
+**Mesh geometry** applies when the selected prim is a `UsdGeomMesh`, `UsdGeomTetMesh`,
+`UsdGeomNurbsPatch`, or `UsdGeomSubset`. For a mesh it groups the exact topology and subdivision
+attributes, such as `faceVertexCounts`, `faceVertexIndices`, and `creaseSharpnesses`, plus the
+inherited `points`, `velocities`, `accelerations`, `normals`, `extent`, `doubleSided`, and
+`orientation` attributes. A tetrahedral mesh adds `tetVertexIndices` and
+`surfaceFaceVertexIndices` to the inherited set. A NURBS patch adds its `u` and `v` vertex counts,
+orders, knots, forms, and ranges, `pointWeights`, and the `trimCurve:` attributes. A subset holds
+`elementType`, `indices`, and `familyName`. A custom `points` attribute on an `Xform` stays under
+**Other properties**, as do lookalikes such as `pointsExtra`. Mesh primvars, including
+`primvars:normals`, stay under **Primvars**. Storm highlights a selected subset through its parent
+mesh. A subset whose parent is not a gprim, such as one under the stage root or an `Xform`, has no
+geometry to highlight. Storm leaves such a subset out of the render, so selecting it or one of its
+ancestors shows the properties and draws no subset highlight.
+**Skinning and skeletons** groups attributes and relationships in the `skel:` namespace, such as
+`skel:skinningMethod` and the `skel:skeleton` relationship. Like the other namespace groups, it does
+not check that `SkelBindingAPI` is applied. Skinning primvars such as `primvars:skel:jointIndices`
+stay under **Primvars**; a bare `skel:` name and names that differ in case stay under
+**Other properties**. The group also holds the schema attributes of skeletal prims: `joints`,
+`jointNames`, `bindTransforms` and `restTransforms` on a `Skeleton`; `joints`, `translations`,
+`rotations`, `scales`, `blendShapes` and `blendShapeWeights` on a `SkelAnimation`; and `offsets`,
+`normalOffsets`, `pointIndices` and `inbetweens:` attributes on a `BlendShape`.
+**Model and draw mode** groups properties in the `model:` namespace, such as `model:drawMode`,
+`model:applyDrawMode` and the `model:card*` texture attributes. It does not check that
+`GeomModelAPI` is applied either. Primvars such as `primvars:model:tint` stay under **Primvars**,
+and a bare `model:` name or a case variant stays under **Other properties**.
+**Instancing** appears for a `PointInstancer` and groups its schema attributes, such as
+`protoIndices`, `positions`, `orientations`, `scales`, `ids`, `invisibleIds` and the velocity
+attributes, plus `extent` and the `prototypes` relationship. On other prim types these names are not
+grouped as instancing, and lookalikes such as `positionsExtra` stay under **Other properties**.
+**Points and curves** appears for `Points`, `BasisCurves`, `NurbsCurves` and `HermiteCurves` prims.
+It groups `points`, `widths`, `normals`, `doubleSided`, `orientation`, the velocity attributes and
+`extent`, and adds the names
+each schema defines: `ids` for points, `curveVertexCounts` for every curve type, `type`, `basis` and
+`wrap` for basis curves, `order`, `knots`, `ranges` and `pointWeights` for NURBS curves, and
+`tangents` for Hermite curves. Width primvars stay under **Primvars**.
+**Volume and fields** groups the `field:` relationships of a `Volume` prim, such as
+`field:density`, and the attributes a field asset defines: `filePath`, `fieldName`, `fieldIndex`,
+`fieldDataType` and `vectorDataRoleHint`, plus `fieldClass` for `OpenVDBAsset` and `fieldPurpose` for
+`Field3DAsset`. On a `ParticleField` or `ParticleField3DGaussianSplat` prim the group holds the
+particle arrays `positions`, `orientations`, `scales` and `opacities` with their half-precision
+`h` variants, the `radiance:` spherical-harmonics attributes, the splat `projectionModeHint` and
+`sortingModeHint`, and `extent`, `doubleSided` and `orientation`. The Viewer recognizes these
+prims by type name because the managed API has no ParticleField wrapper. Other prims keep these
+names under **Other properties**, as does a bare `field:` relationship or `radiance:` attribute.
+**Intrinsic shapes** groups the dimensions of a built-in shape: `radius` for `Sphere`, `size` for
+`Cube`, `radius`, `height` and `axis` for `Cylinder`, `Cone` and `Capsule`, and `width`, `length`
+and `axis` for `Plane`. The group also holds `extent`, `doubleSided` and `orientation` for those
+shapes. A mesh or any other prim keeps these names under **Other properties**.
+**Render settings and products** groups the UsdRender schema properties. `RenderSettings` and
+`RenderProduct` share `resolution`, `pixelAspectRatio`, `aspectRatioConformPolicy`,
+`dataWindowNDC`, `instantaneousShutter`, `disableMotionBlur`, `disableDepthOfField` and the
+`camera` relationship. `RenderSettings` adds `includedPurposes`, `materialBindingPurposes`,
+`renderingColorSpace` and `products`; `RenderProduct` adds `productType`, `productName` and
+`orderedVars`. `RenderVar` contributes `dataType`, `sourceName` and `sourceType`, and `RenderPass`
+contributes `passType`, `command`, `fileName`, `denoise:enable`, `renderSource` and `inputPasses`.
+On any other prim these names stay under **Other properties**.
+**Shader identity (info:)** groups the UsdShade node-definition properties in the `info:`
+namespace: `info:id`, `info:implementationSource`, `info:sourceAsset`, `info:sourceCode` and
+source-type variants such as `info:glslfx:sourceAsset`. The group is name-based and applies to any
+prim. A bare `info:` and lookalikes such as `infos:id` stay under **Other properties**, and
+`inputs:info:id` stays under **Inputs**.
+**User interface (ui:)** groups the UsdUI presentation properties in the `ui:` namespace:
+`ui:nodegraph:node:pos`, `ui:nodegraph:node:size` and the other NodeGraphNodeAPI hints,
+`ui:displayName` and `ui:displayGroup` from SceneGraphPrimAPI, and `ui:description` on a Backdrop.
+It also holds the AccessibilityAPI properties `accessibility:<name>:label`, `description` and
+`priority`. The group is name-based and applies to any prim. A bare `ui:` and lookalikes such as
+`uix:pos` stay under **Other properties**; `inputs:ui:hint` stays under **Inputs** and
+`primvars:ui:tag` under **Primvars**.
+**Semantic labels** groups the UsdSemantics `semantics:labels:<taxonomy>` arrays, one per applied
+SemanticsLabelsAPI instance. **Level of detail (lod:)** groups the UsdLod root and override
+properties: `lod:default:index`, `lod:override:*`, `lod:domain` and the `lod:heuristics`
+relationship. On `LODDistanceHeuristic` and `LODScreenSizeHeuristic` prims, which the Viewer
+recognizes by type name, the group also holds `thresholds`, `blendThresholds`, `center`,
+`extent`, `projectionMethod` and the `boundingVolume` relationship. A bare `semantics:` or
+`lod:` stays under **Other properties**, and `primvars:semantics:labels:class` stays under
+**Primvars**.
+**Motion (motion:)** groups the UsdGeom MotionAPI attributes `motion:blurScale`,
+`motion:velocityScale` and `motion:nonlinearSampleCount`. **Coordinate systems (coordSys:)**
+groups the UsdShade CoordSysAPI `coordSys:<name>:binding` relationships, one per named
+coordinate system. Both groups are name-based. A bare `motion:` or `coordSys:` and lookalikes such
+as `motions:blurScale` stay under **Other properties**, as does the point-based `velocities`
+attribute on prims outside the geometry groups.
+**Color space** groups the UsdColorSpaceAPI `colorSpace:name` attribute and the
+UsdColorSpaceDefinitionAPI `colorSpaceDefinition:<name>:*` attributes. Grouping is name-based
+and does not resolve the inherited color space or change rendering.
+**Audio** groups the UsdMedia SpatialAudio attributes `filePath`, `auralMode`, `playbackMode`,
+`startTime`, `endTime`, `mediaOffset`, and `gain`, only on SpatialAudio prims. The Viewer does not
+play audio, and the same names on other prims stay under **Other properties**.
+**Other properties** retains everything outside those groups; **All property groups** restores
+the complete inventory. These are cached browsing controls, not new schema-authoring widgets.
+Group changes reset the page and details without a native read, authoring an opinion, or changing
+the selected prim. Existing exact-property review edits and undo remain the only edit path.
+
 The Properties, Value, and Metadata tabs share a **Find properties by name or type** filter and
 **Previous / Next** navigation. Search is case-insensitive; `relationship` finds relationship rows.
 Each page contains at most 32 attributes and relationships combined, in their snapshot order, with
@@ -283,6 +474,28 @@ the cached snapshot, without another native read. Only one property's details ar
 time, and collapsing releases its detail controls. The chosen disclosure survives same-prim
 refreshes and undo but resets on a different prim. Missing assets remain visible as text warnings
 even when their details are collapsed.
+
+### Read-only shader registry inspection
+
+On a `Shader` prim, **Inspect shader registry** explicitly reads the implementation source and
+`info:id` through the stage scheduler. Only the `id` implementation source (including its schema
+default) with a nonempty identifier enumerates the bounded native Sdr registry. The action is
+unavailable during document-state refreshes. An exact,
+valid, unique identifier adds input/output direction, type, array state, and connectability to the
+current property page. Registry metadata is **not edit permission**: the existing review-layer
+capture, conflict checks, and undo remain authoritative.
+
+An empty or unknown identifier, invalid or ambiguous definition, or truncated registry produces an
+explicit unavailable result instead of guessed metadata. Source-asset-only shader definitions are
+not resolved by this action, even if an `info:id` is also authored. Source-code and unknown
+implementation modes likewise never fall back to that identifier. Custom properties and connections remain visible
+and unchanged; missing or duplicate registry properties are labeled rather than coerced or removed.
+Unset, blocked, and deferred identifier values remain distinct and never authorize a registry lookup
+from coincidental preview text. The explicit token reads use the inspector's selected snapshot time.
+
+Search, page changes, and property disclosures reuse the detached result without querying Sdr again.
+Selection changes, property refreshes, and explicit time snapshots invalidate it and require another
+click. An in-flight result for an older snapshot or retired document is discarded.
 
 ### Bounded values, provenance, and inspection time
 
@@ -518,6 +731,17 @@ camera/time, renaming, removing and recalling named views. The manager is also s
 command palette using “saved views”, “add”, “rename” or “remove”. **Camera > Recall Saved View**
 and palette searches for a view's name recall that view directly. Dynamic commands use stable
 bookmark IDs, not names or filesystem paths; underscores in labels remain literal.
+At the minimum window size, long source descriptions and refusal messages scroll with the
+manager body rather than pushing Refresh, Cancel operation or Close out of reach.
+Keyboard-focused name fields scroll into view; source and error text are kept intact.
+The manager body is also a keyboard focus stop: use Page Up/Down to read
+long source descriptions and refusal text without starting a saved-view operation.
+Tab to the saved-view list, use the arrow keys to select a view, and press Enter to recall it.
+Enter in the name field or with a modifier does not recall a view. The same availability,
+cancellation and restoration rules apply as for the Recall button.
+Refresh keeps the selected bookmark by ID if it still exists, even after reordering or renaming.
+Subsequent actions use the refreshed record. If that ID was removed, no view is selected;
+a replacement with the same name is not selected automatically. Refresh does not recall or edit a view.
 
 Saved views are **review data**, not global settings or a settings sidecar. The reserved review-only
 address is `/__OpenUsdViewerReview.openusdViewer:cameraBookmarks`, a custom uniform `string[]` of
@@ -553,6 +777,10 @@ Add/rename/remove are single exact whole-list transactions in the shared review 
 Disjoint review edits are preserved; competing changes to the catalog produce a conflict rather
 than a merge or overwrite. Cancelling a name edit makes no opinion/history change. An added or
 changed view remains **unsaved** until **Save Review Document** or **Save Review As...** succeeds.
+When a saved-view operation starts from a focused control, keyboard focus moves to
+**Cancel operation**. Cancellation keeps the window open until the operation and any view
+restoration drain, with Close reachable during that wait; focus then returns to the initiating
+control. Escape cancels active work and closes the manager only when idle.
 The existing native URD, source/dependency verification, late-edit acknowledgement, recovery,
 reopen/revert and Save/Discard/Cancel protocols apply. Reopening restores the catalog with fresh
 history, but does not automatically recall a view. Verified Windows text-USD review sources are the
@@ -568,7 +796,11 @@ boundary failure checks supplement actual D3D12 view and pixel comparisons, not 
 The Render menu's Draw Mode submenu exposes the usdview draw-mode ladder: Wireframe, Wireframe on
 surface, Smooth shaded, Flat shaded, Points, Geom only, Geom flat, Geom smooth, and Hidden
 surface wireframe. The statistics HUD displays stage AABB and OBB values from the world-bounds
-query capability at the stage start time.
+query capability at the stage start time. When OpenUSD reports an error while computing bounds,
+the HUD shows `AABB: unavailable` with the first 160 characters of that error. The stage still
+opens. A `Skeleton` with joints but no `restTransforms` is one stage that triggers this, because
+its extent plugin returns no extent. MCP `inspect_scene` uses the same analysis and still returns
+its prim and geometry counts for such a stage.
 
 The Render menu's Colour Management submenu is the whole colour-management control surface: one
 "Use OpenColorIO display transform" toggle, one "Choose OpenColorIO Config..." file chooser, and
@@ -729,7 +961,9 @@ reported without changing the camera.
 Native Storm child-window camera input is polled from the child ABI-9 navigation v2 snapshot at a bounded
 UI cadence. The snapshot carries physical pointer position, buttons, modifiers, cumulative wheel,
 focus/inside state, cumulative F/Home/P command counters, and four repeat-aware arrow counters, so
-the child may retain native focus
+the child may retain native focus. Input polling reads the native child's independently synchronized
+input state without waiting for the managed render-command gate; a stage edit blocking a render must
+not also block the UI timer that releases or cancels that edit. The Viewer can operate
 without losing orbit, pan, dolly, zoom, or shortcuts. Polling baselines reset on attach, focus
 transitions, and backend switches. Avalonia-routed camera events suppress the overlapping native
 sample to avoid duplicate handling. Composition backends continue to use Avalonia routing, and the
@@ -785,6 +1019,7 @@ that are meaningful every time physics is running.
 | Speed | Physics menu | `0.25x` to `4x`. |
 | Apply Preview | Physics menu | Authors the simulated poses into the session overlay. |
 | Bake... | Physics menu | Opens the bake dialog. |
+| Record Sequence... | Physics menu / Search Commands | Records exact fixed steps from the paused world. |
 | Gizmo | Physics menu | Chooses what a viewport drag manipulates: nothing, move, rotate, scale, or drag a body. |
 | Snap | Physics menu | Quantizes gizmo drags to the configured translation, rotation, and scale increments. |
 | Undo / Redo | Physics menu | Reverses or replays the newest physics property edit. |
@@ -826,6 +1061,11 @@ backend through the renderer-neutral physics channel. Storm and Silk receive the
 thread that owns their retained state. If no new frame is ready the previous pose is redrawn, so a
 slow simulation degrades to a repeated pose instead of stalling the camera.
 
+The native Storm child stages transform and deformation batches on the UI thread and submits
+them from the background frame task. It never waits for a native override command on the UI
+thread: the child can be waiting for a stage edit that itself needs the UI to continue.
+Override reports are published only after the corresponding native frame completes successfully.
+
 Building the world also builds the binding table: every extracted simulated identity is bound to the
 prim path it drives, and rebuilding or a new stage revision rebuilds it. An identity that cannot be
 bound is reported as a refused row in the inspector rather than silently dropped at the backend.
@@ -845,6 +1085,13 @@ state, so the accepted count says nothing about how many poses were actually dra
 therefore reports back what it resolved and what it could not, as a revisioned, latest-wins report
 the render bridge drains around each apply. The applied and unresolved counts in the status line and
 the inspector come from those reports rather than from the count the Viewer handed over.
+
+hdSilk resolves staged rigid poses **after** applying the current authored scene page, preserving
+that page's scale and shear even on the first frame. It reports the consumed pose revision only
+after the render call succeeds; staging or a failed graphics submission is not acknowledgement.
+Capture must additionally finish readback before treating that revision as a recorded frame.
+An aborted transport-to-render copy returns its unpublished buffer claim and releases its physics
+frame lease, so a failed copy cannot consume the channel's reusable storage permanently.
 
 A failure while applying a batch never propagates into the render loop. Simulated poses stop being
 applied, the authored transforms are restored, the reason is shown in the status line and the
@@ -878,6 +1125,13 @@ Baking is explicit and never implicit. The dialog requires a file-backed `.usd`,
 `.usdc` destination, an authored start/end range, a positive sample stride, and a policy for
 existing authored samples (overwrite, skip, or reject the whole bake). Progress is reported while
 the bake runs, cancellation rolls the destination back, and saving the destination layer is opt-in.
+Opening the dialog preserves both authored range endpoints with invariant round-trip precision,
+including fractions below 0.001 and adjacent-double time codes; it does not round them to three decimals
+or convert them to seconds. Collecting or cancelling the request does not write the destination.
+At the minimum window size, the form scrolls independently of the wrapping validation message
+and fixed Cancel/Bake buttons. The form supports standard keyboard paging; Escape cancels.
+The destination field owns initial keyboard focus. An invalid range keeps Bake disabled
+and the dialog open when Enter is pressed; focused Cancel and Escape return no request.
 
 A running bake shows a progress bar and an enabled **Cancel Bake** button next to it. The bake holds
 the transport command gate for its whole duration, so cancelling deliberately does not go through
@@ -960,7 +1214,7 @@ an opinion in the chosen target layer. In particular, a weaker root opinion can 
 true while the session target contains no prim at all. General conflict-safe document undo cannot
 use that reader as its before-state source.
 
-The Viewer recognises its own authored changes exactly, by the change-serial pair that brackets
+The Viewer recognizes its own authored changes exactly, by the change-serial pair that brackets
 them, and replaces the caller's conservative classification with what it actually authored. Editing
 a mass therefore pauses playback and rebuilds the world once the edit burst goes quiet, while
 editing simulation metadata - which is provenance, never an input - does not disturb a running
@@ -979,14 +1233,90 @@ owned, themed window. It supports existing local declarations of `bool`, `int`, 
 row-major `matrix4d`, and three-component float/double vectors and their point, normal,
 vector and colour roles. Supported aliases include `texCoord2f` and `color4f`.
 This includes camera clipping ranges, ordinary translate/scale/Euler/matrix attributes and supported
-light/material parameters, not a material graph editor. Unsupported, referenced-only and
-schema-only declarations remain read-only instead of guessing their declaration metadata.
+light/material parameters, not a material graph editor.
 
-Vector, quaternion and matrix input requires the exact number of finite components; float fields
-reject values outside the float range. Commas, whitespace, parentheses and matrix brackets/separators
-are accepted. Quaternions are scalar-first and are never silently normalized. Matrices retain
-OpenUSD row-vector semantics, with translation in the first three values of the final row; no
-transpose is applied. The form displays the input convention for the selected type.
+Sixteen native camera fields can also be edited without an authored local declaration:
+`projection`, `focalLength`, `horizontalAperture`, `verticalAperture`, `clippingRange`,
+`horizontalApertureOffset`, `verticalApertureOffset`, `focusDistance`, `fStop`,
+`shutter:open`, `shutter:close`, `exposure`, `exposure:iso`, `exposure:time`,
+`exposure:fStop`, and `exposure:responsivity`.
+The controller validates the camera schema and exact supported type, then reads noncustom
+declaration metadata from a fresh bounded native query. It never derives creation metadata from a
+display string or Sdr hint. The query does not supply undo state: the review layer is separately
+captured, so undo removes a newly authored opinion and reveals the original schema fallback.
+Declared variability is preserved rather than guessed; uniform declarations cannot be authored
+as time samples. Other unsupported, referenced-only, and schema-only properties remain read-only
+instead of guessing their declaration metadata.
+The four offset/focus/f-stop fields support exact default and numeric-time review edits, Clear and
+conflict-safe Undo/Redo. Signed aperture offsets are preserved; no stage-unit conversion or value
+clamping is implied. Editing these authored inputs does not enable depth-of-field rendering or
+relax an output adapter's existing refusal of unsupported optical effects.
+Shutter fields preserve native double precision, signed values and authored time-code units in
+default and numeric-time review opinions. They use the same Clear, conflict and Undo semantics.
+The editor does not convert shutter intervals to seconds, clamp or reorder endpoints, or enable
+motion blur; effective temporal rendering and backend shutter admission remain separate.
+The five exposure fields retain their native float declarations, including signed exposure
+compensation. They appear in the Camera group, not a prefix-matched catch-all namespace.
+Exposure time remains in seconds; exposure f-stop is distinct from the optics' depth-of-field
+`fStop`. Review editing does not apply an exposure multiplier to the viewport, change display
+exposure, convert units, or bypass an output adapter's physical-value checks.
+
+Common light controls also accept native schema declarations on validated rectangle, sphere, disk,
+cylinder, distant, and dome lights: `inputs:intensity`, `inputs:exposure`, `inputs:diffuse`,
+`inputs:specular`, `inputs:colorTemperature`, `inputs:enableColorTemperature`, `inputs:normalize`,
+and `inputs:color`. The same exact-schema path supports rectangle `inputs:width`/`inputs:height`,
+sphere/disk/cylinder `inputs:radius`, cylinder `inputs:length`, and distant-light `inputs:angle`.
+It also supports the three float inputs on an
+already-applied `ShapingAPI` (`inputs:shaping:focus`, `inputs:shaping:cone:angle`, and
+`inputs:shaping:cone:softness`). Admission checks the exact light schema or applied API, native
+type, and noncustom declaration metadata, not a property-name or registry hint. These fields reuse
+the focused typed review editor and shared history; they do not recreate lights, apply `ShapingAPI`,
+or flatten shader graphs. No values are silently clamped or normalized. Custom schema fields and
+other shape/shaping properties remain outside this admission path.
+
+Boolean review properties use a three-state checkbox instead of text entry. Checked and unchecked
+select explicit true and false drafts. An absent or blocked target starts indeterminate; Set stays
+disabled until a boolean is chosen. Indeterminate is not a request to Clear or Block: those remain
+separate operations. Toggling changes only the draft; Set uses the captured review target and existing
+conflict checks. Refresh restores the exact authored boolean, not the composed fallback. These controls
+also apply to numeric-time samples and retain shared Undo/Redo.
+
+Rectangle and dome `inputs:texture:file` fields and dome `inputs:texture:format` also accept exact
+native declarations through the same review editor. Asset paths and format tokens retain their
+native varying declarations for default and individual numeric-time edits. Set preserves the entered
+path or token; Clear reveals the weaker value, Block suppresses it, and stale captures refuse conflicting writes.
+Shared Undo removes a newly authored review declaration rather than copying the composed fallback.
+The native schema's type and noncustom metadata remain authoritative over weaker reference
+declarations. Referenced lookalikes on unrelated schemas remain read-only through this admission path.
+Choosing or editing an asset path does not copy a texture, write the source layer, validate the
+image format or add environment-light rendering support.
+
+Existing direct material bindings have an **Edit Direct Binding...** action in the Value tab,
+including the Material bindings property group. The action supports `material:binding` and the
+`preview` and `full` purpose variants. It requires an already applied native `MaterialBindingAPI`
+and a noncustom relationship; it does not apply APIs or create missing bindings.
+**Set** takes one absolute path to an existing native Material prim. An empty Set authors an
+explicitly empty target list to unbind; **Clear** removes only the review target opinion and
+reveals weaker bindings. Exact six-bucket list operations are shown separately from the composed
+display snapshot and retained by shared Undo/Redo. Material schema validation is repeated at
+mutation time, and conflicting target edits require a refresh rather than overwriting them.
+Collection bindings, binding strength, shader connections and material graphs are not edited.
+Normal USD ancestor and collection-binding precedence still applies to the effective material.
+
+Two-, three- and four-component vector and colour properties use individually labelled inputs:
+X/Y/Z/W for vectors and R/G/B/A for colours. Each field takes one finite component, and Set requires
+every component within the declared numeric range. Empty fields remain empty for absent or blocked
+opinions; the editor does not substitute zero or a composed fallback. Signed, HDR and double-precision
+values retain their declared types and component values without clamping, normalization, colour transforms
+or unit conversion. Changing the default/sample selector or Refresh reads the exact target field.
+
+Quaternion properties use scalar-first fields labelled Real, X, Y and Z. Signed, non-unit
+quaternions retain their entered components without normalization; each field must fit the float range.
+Matrix properties use a four-by-four grid of double-precision fields labelled M00 through M33.
+The labels identify zero-based row and column indices. Matrices retain OpenUSD row-vector semantics,
+with translation in M30, M31 and M32; no transpose is applied. All fields are required for Set,
+while absent or blocked opinions remain empty. Refresh and default/sample selection restore the
+exact authored components through the same review history as vector and colour edits.
 
 Asset properties include **Choose asset...**, which fills in an absolute local path without
 authoring anything. **Set** commits that exact asset-path opinion to the review layer; canceling
@@ -995,6 +1325,13 @@ authored paths, without implicit resolution or rebasing. Native anchor and depen
 govern portable save/reopen. Relinking a texture keeps the existing shader nodes and connections;
 shared Undo/Redo restores the earlier review opinion rather than modifying the source material.
 Closing the property window cancels a pending choice without applying its eventual result.
+
+Property context, typed input and status share a keyboard-focusable scrolling body, so long
+authored values cannot push Set, Clear, Block, Refresh or Close outside the minimum-size window.
+Focusing the value input scrolls it into view; Page Down/Page Up on the body reaches the full
+context and status. Escape retains the existing cancel-and-drain behavior. Enter in the value box
+or any component box runs **Set**, including its validation, so a keyboard user does not have to
+tab to the button. Enter does not run **Set** for Boolean values, which the check box selects.
 
 The window distinguishes the read-only composed display snapshot from the exact target-layer
 opinion. **Set**, **Clear** and **Block** affect only the selected default or individual current-time
@@ -1051,6 +1388,17 @@ verification failure requires an explicit **Open session-only** decision or Canc
 opened unverified session is never silently rebound, reloaded or discarded to manufacture proof;
 reloading a session-only document preserves that mode.
 
+The unsaved-changes prompt keeps Save Review, Discard and Cancel visible at its minimum
+window size. Exact dirty-layer identities and the full save restriction share a scrollable
+body, so a long refusal cannot hide the decisions. Cancel receives initial keyboard focus;
+Tab or Shift+Tab reaches the named body, and Page Down/Page Up reads the full explanation.
+Escape from the body cancels the transition without saving or discarding edits.
+
+Document-decision prompts also keep initial focus on Cancel. Their named details area is
+reachable with Tab or Shift+Tab and supports Page Down/Page Up through the full explanation
+without choosing an action. Escape from the details cancels, including when a session-only
+alternative is offered.
+
 **File > Save Review Document** (`Ctrl+S`) and **Save Review As...** (`Ctrl+Shift+S`) write native
 `.urd` source-linked review documents. They capture the exact native review and its private
 same-session receipt on the stage scheduler, bound the portable file to 24 MiB, and acknowledge
@@ -1091,7 +1439,21 @@ keeps the current document and history. Unrelated dirty source/session opinions 
 first rather than silently lost. This restriction is enforced again on the retained transition
 state after saved-candidate preparation, so newly unrelated opinions cannot be accepted by a later
 Discard decision. Transient simulation is reset rather than persisted.
-**Save Source Layer** remains visibly disabled: no generic source-saving protocol is implemented.
+**File > Save Source Layer...** publishes only the verified, writable root layer of a Windows
+text-USD document. The command stays disabled unless that source has unsaved changes, the current
+document still owns the verified root, and no other layer has changes. Each publication requires
+confirmation; the first confirmation also opts the document into source saving until it closes.
+Before replacing the file, the Viewer checks the captured layer identity and revision and verifies
+the source file's identity and contents. It exports to an owned staging file beside the source,
+then atomically replaces the root and saves it through OpenUSD. If that save fails, the Viewer
+restores the prior file and reloads it; if rollback fails, it retains the backup and reports its
+path. A reload failure is reported after the source bytes have been restored.
+Cancellation before publication and stale-revision refusal leave the source unchanged.
+After a successful save, the active review stays in memory but its saved baseline is invalidated and
+must be saved again. If the Viewer cannot refresh the native source binding after publication, it
+keeps the source save and disables review publication until the document is reopened. This does not
+enable generic or implicit source writes; dependencies, other layers, and unsupported source
+profiles are never published by this command.
 
 **File > Export Review Delta...** is a separate, working escape hatch for supported opinions.
 It exports the native bounded review-only USDA payload to a **new** `.usda` file, using a
@@ -1106,8 +1468,7 @@ It does not acknowledge a saved revision, clear dirty state, or enable Revert to
 
 Save routing always selects the review target for Save/Ctrl+S, regardless of the current edit
 target. An anonymous review or Save As requires a destination and asset-anchor validation.
-The source-save policy still requires explicit source-edit opt-in, but does not enable a live
-source-saving adapter. A simulation layer can never substitute for review. A named review
+A simulation layer can never substitute for review. A named review
 destination must not alias the source or a dependency, regardless of the raw stage edit target.
 The save/transition policy cannot discard separately dirty source or other-layer opinions after
 saving only review. The delta exporter remains a distinct create-only operation.
@@ -1137,10 +1498,16 @@ File-identity preparation uses a caller-bounded streaming SHA256 read, not just 
 timestamps. Missing files, read failures, over-budget inputs and cancellation remain distinct.
 A fingerprint is an observation, not a write lease or atomic filesystem compare-and-swap.
 Portable review support remains bounded to the native Windows filesystem USDA/text-USD profile
-with concrete assets/composition. Non-Windows verified opening, crate/custom/URI/package/template/
+with concrete assets/composition. A `.usd` source whose content carries the crate signature `PXR-USDC`
+opens as a session-only document without a verified source binding. Its edits use the shared
+Undo/Redo history, but review Save and recovery checkpoints are refused, and neither the source nor a
+review destination is written. A reload keeps the retained session-only reason, so it never upgrades
+a document to verified review even when its source would otherwise qualify.
+Non-Windows verified opening, crate/custom/URI/package/template/
 UDIM/value-clip/inherit/specialize/relocate portability and unverified dirty legacy reconciliation
-remain unsupported. Source saving and broader platform/document-editing work remain completion
-gaps. Counted review-layer admission into render-specification queries is validated separately;
+remain unsupported. Generic and implicit source writes remain disabled; the guarded Windows root
+publication path is described above. Broader platform/document-editing work remains. Counted
+review-layer admission into render-specification queries is validated separately;
 the Viewer workflow does not claim that broader render-request domain.
 
 Safe late simulation-overlay normalization preserves the registered review-layer identity and
@@ -1181,7 +1548,7 @@ separately packaged physics backend is absent.
 `ViewerPortableDocumentNativeTests`, run alone with `OPENUSD_VIEWER_PORTABLE_SMOKE=1`, exercises
 the live textured-source Save/Ctrl+S/Save As, source-confirmed Open Review, Revert/Cancel,
 dirty-close Save and explicit validated recovery journey. Use a physical `OPENUSD_TEST_WORK_ROOT`
-and the matching ABI21 runtime. This does not claim non-Windows, mixed-DPI, solver execution or
+and the matching ABI26 runtime. This does not claim non-Windows, mixed-DPI, solver execution or
 unrestricted source saving.
 
 ### Gizmos and snapping
@@ -1341,8 +1708,9 @@ Reload and renderer selection remain in their menus instead of competing for vie
 The status strip shows current document/camera/renderer information and active document, validation,
 or capture work; it is not a render-job queue.
 
-- **File**: Open, Review Sample, Recent Stages, Reload, review-delta export, frame capture/comparison, Exit.
-- **Edit**: focused review-property editing and shared Undo/Redo. Portable save/revert actions stay disabled.
+- **File**: Open, Review Sample, Recent Stages, Reload, Save Review, Save As, guarded Save Source,
+  Revert, review-delta export, frame capture/comparison, Exit.
+- **Edit**: focused review-property editing and shared Undo/Redo.
 - **View**: Stage/Inspector/Timeline panel visibility, an Inspector Tabs submenu that shows or
   hides the Diagnostics, Hydra, and TfDebug developer tabs, snap-to-authored-frames, and
   **Reset Layout**, plus **Theme > Follow system / Light / Dark**, command search, Find Prim,
@@ -1402,8 +1770,10 @@ and results to 64 entries; refine the query to find additional actions.
 Menus remain the canonical action/state sources. The palette, contextual buttons and modified shell
 shortcuts invoke those same actions, including ancestor enablement, conditional visibility and
 current checked state. Unavailable actions remain dimmed in search; conditionally hidden commands,
-such as an unconfigured bridge, are omitted. In the search/results controls, Enter runs the selected
-available action and Up/Down moves selection. Focused Run and Close buttons retain normal keyboard
+such as an unconfigured bridge, are omitted. In the search/results controls, plain Enter runs the selected
+available action and plain Up/Down moves selection. The palette does not intercept modified Enter or
+arrow gestures; modified keys in the search query cannot run commands or change the selected result.
+Focused Run and Close buttons retain normal keyboard
 activation; Enter on Close never executes the selected action. Escape closes from any control.
 The palette closes before dispatching an action that may open another
 dialog. Closing restores the prior control or the still-attached native viewport's actual focus.
@@ -1435,6 +1805,19 @@ reload and inspection workflow rather than returning to welcome. Welcome is hidd
 surface creation and never overlaid over a live Storm child. Palette and comparison use separate
 owned windows; the viewport frame still contains only the renderer host.
 
+Command search initially focuses its query. Up/Down skip unavailable actions; Enter invokes
+the original enabled Viewer command, not a duplicate handler. Unavailable results retain
+their accessible names and an unavailable hint. Changing availability is refreshed while the
+palette stays open, and execution rechecks the live command state. Escape closes without
+executing the selection. Compact 400-by-280 layout and both light/dark themes have managed
+headless coverage; this does not qualify native-child focus, device DPI or a screen reader.
+
+Availability refresh preserves keyboard ownership when it replaces result controls.
+A focused result returns to the same enabled command, or the first enabled result if
+that command becomes unavailable. Focused Run remains on Run when execution is still
+available. If no command can run, either path moves focus to the query. Refresh does
+not move focus from the query, Close or another window, and never executes a command.
+
 ### Capturing the current viewport
 
 **File > Capture Frame** saves a PNG by default, or an uncompressed 24-bit BMP when chosen in the
@@ -1451,7 +1834,8 @@ Captured RGBA data and encoded output are each limited to 64 MiB, with at most 8
 for export. Encoding runs off the UI thread into a new sibling temporary file. Only a completed,
 flushed image replaces the chosen destination; cancellation or encoding failure preserves any old
 file and removes temporary output. This is atomic publication, not a filesystem compare-and-swap
-lease against independent writers.
+lease against independent writers. Each capture also gets a `<capture>.usdstate.json` state receipt;
+[Comparing saved captures](#comparing-saved-captures) describes its content and how Compare uses it.
 
 Unsupported presentation paths, including the alternative
 Avalonia-hosted OpenGL Storm path without readback, disable Capture Frame rather than advertising
@@ -1467,6 +1851,9 @@ and lets the operator choose an existing local output folder. The end is include
 falls on the stepped range. These are explicit time codes, not repeated captures of the current
 frame or timeline-snap requests. The current physical viewport size is used; resizing cancels
 the running job rather than changing its camera window partway through.
+At minimum window size, the settings, full renderer/refusal text and completed output location
+scroll independently of the View results, Cancel job, Close and Render actions.
+The same layout applies to fixed-step physics recording; focused input fields scroll into view.
 
 PNG is always included. Two unchecked-by-default choices add raw data beside each PNG:
 
@@ -1486,7 +1873,7 @@ automatically requesting HDR or depth. The dialog shows the selected file types,
 charge, and completed PNG/HDR/depth file counts.
 
 When HDR is enabled, **HDR format** offers **Raw half** (the default) or **EXR**.
-EXR writes `frame-000000.hdr.exr` through the matching Windows x64 Data ABI 24 Core encoder.
+EXR writes `frame-000000.hdr.exr` through the matching Windows x64 Data ABI 26 Core encoder.
 It preserves the same finite binary16 samples and stored alpha without a color/alpha conversion;
 equal origin-zero windows, square pixels, unspecified primaries and alpha association remain explicit.
 The format is frozen with the job options and disabled during rendering; changing a control
@@ -1598,9 +1985,52 @@ It also exercises GPU three-plane cancellation, mid-job source/non-finite failur
 cleanup and retry without stale HDR, actual rendered-view restoration, and pending Reload/Close.
 Running this scenario alone is not an all-Viewer-workflows result.
 
+### Recording a physics simulation
+
+**Physics > Record Sequence...**, also available through **Search Commands**, opens the
+image-sequence dialog with **Record physics fixed steps** selected. Set a frame count,
+**1-8 fixed steps per frame**, a bounded scenario identity, the output folder, and optional
+HDR/depth outputs. The current viewport and selected camera are used. Turn the option off to
+return to ordinary USD-time sampling; that mode still requires physics to be disabled.
+
+Build physics, pause playback, and turn **Loop** and **Apply Preview** off before recording.
+Large rigid scenes can explicitly select `--full-scene-physics`, or set
+`ViewerHostOptions.FullScenePhysics` when embedding. This admits up to 32,768 actors and
+65,536 collision shapes; it does not enlarge rendering, publication, texture or job budgets.
+Compound rigid bodies drive their noninstanced descendant meshes relative to the authored
+body pose, preserving child offsets, scale and shear. Moving instance subtrees must be
+de-instanced in the scenario; unrelated static instances remain unchanged.
+Recording refuses a build with errors or skipped composition inputs before advancing the world or
+creating output. The refusal remains attached to that build even after interactive stepping;
+correct the reported inputs and rebuild to clear it. `convexDecomposition` uses prepared multiple
+hulls; unsupported approximations such as `sdf` are not silently recorded as a different shape.
+The Viewer exclusively owns the transport while recording: live interpolation and interactive
+runtime-command submission cannot replace an exact captured pose. A fresh extraction fingerprint
+must match the built world before any recorded step. Each frame retains its exact physics
+publication through capture and records epoch, scenario, source revision, publication, step/time
+and binding metadata through `OpenUsd.Rendering.Physics`.
+
+Recording **advances the current world**; cancellation does not rewind it. Playback remains paused
+at the last completed step. The original camera/display state and authored render geometry are
+restored before atomic publication, and on capture failure. The ordinary live bridge can then show
+the paused world's latest pose again. No physics opinions are authored into the source or review
+layer. A completed publication wins a later cancellation request and remains visible in the result
+window rather than being mislabeled as a discarded job.
+
+This entry point currently requires an hdSilk capture backend and complete rigid-pose publications;
+deformable geometry is explicitly refused. It shares the existing frame, raster, encoding and
+4-GiB job limits, encoder choices and verified **View results** gallery. Windows D3D12 execution
+covers exact moving frames, live-pump exclusion, incomplete-build/stale-world/end-range/loop refusal, cancellation
+after capture and retry. Vulkan/Metal use the shared adapter but are not newly execution-qualified
+by that Windows evidence; macOS still has no supported physics runtime.
+
+The dedicated native workflow is `physics-recording`. It keeps simulation runtime prerequisites
+separate from the ordinary `render-sequence` workflow and checks the actual menu/palette, immutable
+simulation metadata, moving HDR pixels and completed gallery, including deeply nested output paths.
+
 ### Previewing completed render jobs
 
-After **Render Image Sequence** or **Render Authored Product** succeeds, its **View results**
+After **Render Image Sequence**, **Record Sequence** or **Render Authored Product** succeeds, its **View results**
 button opens an owned, themed **Contact sheet** window. The button stays disabled until success;
 starting another job closes and drains the previous preview before clearing its result. A failed
 or cancelled newer job cannot expose the previous job as its own result.
@@ -1620,6 +2050,11 @@ their aspect ratio and alpha with transparent letterboxing, no crop and no colou
 The grid follows Viewer dark/light and contrast resources. Tab reaches the output location, frame
 grid and Close action; arrow keys move between frames. Escape closes the preview and restores focus
 to **View results** when its job dialog remains open.
+Long descriptions and job/output locations scroll in a separate metadata area so they do not
+collapse the frame grid or push Close outside the compact window. Focusing the read-only
+output location brings it into view without truncating its recorded value.
+The metadata area is a named keyboard focus stop before the output location. Use Page Up/Down
+there to read the entire original description and context without changing the selected frame.
 
 Every selected file must remain inside the recorded job directory, with no reparse-point or
 filesystem-alias traversal. Windows reads reuse the retained physical-directory/file handles.
@@ -1638,8 +2073,97 @@ thumbnail raster quota. This is not a process-memory guarantee.
 Close cancels and asynchronously drains loading before releasing the window and every owned
 bitmap; it does not block the UI thread waiting for a file or decoder. Late completions cannot
 publish into a closing or replacement preview. The sheet belongs to its job dialog: closing that
-dialog, closing the stage/Viewer or reloading the stage closes and drains it too. It is not a
-persistent results browser that survives document retirement.
+dialog, closing the stage/Viewer or reloading the stage closes and drains it too.
+Long verification refusals remain complete in a bounded, keyboard-focusable status area rather
+than pushing Close outside the window. Shift+Tab from Close reaches that area; PageDown/PageUp
+reads the full message and Escape closes. The initial focus remains on Close, and failed loads
+publish no thumbnails or successful-completion status.
+
+**File > Completed Render Jobs** (also in command search) lists the last eight successful sequence,
+authored-product and physics-recording jobs from this Viewer process, newest first. The list remains
+available after the original job dialog closes, the document is reloaded or another stage is opened.
+It retains original completion metadata, not a live scene, renderer or decoded images. Failed and
+cancelled jobs are not added; adding a ninth success evicts only the oldest list entry, never its files.
+Select a job to see its original description and copyable output directory, then press Enter in
+the job list or use **View results**
+to reopen the same verified gallery. Changing the selected job closes and drains the previous preview
+when **View results** is invoked, so the old job cannot masquerade as the newly requested output.
+Closing the history window or Viewer drains that preview too.
+Selecting a recorded physics frame shows its original simulation epoch, scenario, source and
+publication revisions, fixed-step index, seconds, USD time code, fixed step, binding revision,
+body/deformation counts and optional review identity in copyable read-only metadata.
+Ordinary frames explicitly report that no simulation publication was recorded. These are
+the recording host's attestations, not independent source verification or a query of the current
+scene; changing the selected frame replaces the context rather than retaining the prior frame.
+The same gallery exposes the selected frame's original **camera request** in a separate
+copyable field: automatic or matrix mode, complete row-major view/projection matrices and
+any view-space clip planes, with invariant round-trip numbers. Automatic mode explicitly
+reports that the renderer-selected camera was not recorded; it does not present default
+zero matrices as that camera. Selection and closing clear stale context. This is requested
+state retained with the completed frame, not effective backend state, a camera-prim/optics
+receipt, source verification or a query of the current document. No stage is reopened or
+frame rerendered to display it.
+The original stage label and tooltip follow the selected frame, not the job's first frame,
+and clear when there is no selection. They name recorded request identity, not a verified file.
+The selected frame also exposes its recorded **display, colour and selection request**:
+purposes, visibility/draw mode, sample count, lighting/shadows/culling/material switches,
+complexity, output transform, exposure and clear RGBA; optional OCIO config/source/display/view/look,
+lattice/shaper request; and ordered selected prim, element and nested-instancer identities.
+Numbers are invariant round-trip text. Config/display defaults are labeled as requested defaults,
+not resolved values; no OCIO file or live stage is read. The bounded read-only field is copyable,
+updates with the selected frame and clears with selection or closing. It describes the retained
+request only, not effective colour processing, selection rendering or independently verified output.
+Keyboard focus starts in the job list; Up/Down changes the selected historical output.
+Plain Enter uses the same verified preview and replacement/drain path as the button, and does
+nothing when there is no available selection or the browser is already opening or closing.
+Modified Enter does not open a preview or read historical files.
+The original description stays readable in the scrollable details area, actions remain visible
+at the minimum window size, and Escape closes and drains the browser from its focused controls.
+
+Restarting Viewer clears the **This process** list. A separate **Remembered paths** tab retains
+the last eight completed or explicitly imported original manifest paths, newest first.
+Opening a remembered path imports its files again; it does not restore a trusted process-history entry.
+Startup reads only the bounded path index, without opening referenced manifests, decoding images
+or scanning output directories. Missing paths remain listed and report an error when opened.
+**Import manifest** opens an original
+`manifest.json` from an older job without adding it to that list or opening a source stage.
+This works with an empty history. Keep the PNGs beside the manifest at their generated names.
+The imported descriptor contains file metadata, not a reconstructed `StageRenderState`:
+stage, camera, simulation, source revision, render settings, authored-product details and other
+recorded JSON remain explicitly **unverified manifest claims**. Missing camera or simulation metadata
+is reported as not recorded; absent fields are unknown, not defaulted or recovered from the current scene.
+The selected frame's complete JSON and the job-level JSON can be copied from the request context.
+An imported hash only checks consistency with that manifest; it does not authenticate the producer
+or independently verify source, camera or effective render state.
+
+Import accepts version 1 `rgba8-sequence` manifests with 1-4096 ordered frames and at most 24 MiB
+of JSON. Each complete frame record and the combined job-level metadata are limited to 32768
+characters; JSON nesting is limited to 32. Duplicate properties, unsupported versions/kinds,
+invalid extents/hashes/times, unexpected generated names, relative/network/device paths and
+filesystem reparse points are refused. Before publishing any thumbnails, the same strict PNG reader
+checks the sampled files' recorded byte extents, encoded SHA-256, dimensions and PNG checksums.
+At most sixteen thumbnails are sampled in order with both endpoints; unsampled PNGs and companion
+HDR/depth planes are not opened or verified. The manifest is rechecked against its imported extent
+and hash before and after loading. A changed descriptor requires explicit reimport, not silent refresh.
+Failure publishes no partial sheet and allows retry after the files are restored. Invalid manifest
+import leaves an already open gallery and the process-local list unchanged.
+Keyboard import moves focus to Close while reading and restores Import after refusal, unless
+focus has moved elsewhere. A successful import focuses its gallery; closing it returns to its
+originating history action only while the gallery still owns keyboard focus. Focus moved to
+another history control or another window is kept.
+Loading runs off the UI thread, observes cancellation and is drained before the owning history window
+closes. Closing either window releases decoded thumbnails. Remembered paths use the same import,
+verification and preview lifecycle; a remembered path grants no additional trust.
+The Viewer stores paths only in `recent-render-manifests.json` beside its settings. The versioned index
+is limited to eight distinct absolute local paths of at most 4096 characters and 256 KiB of JSON;
+it does not increase the settings file's separate 16-KiB limit. Reopening or reimporting a path moves
+it to the front, and eviction never deletes render files. Updates replace the index atomically.
+Viewer owns and drains queued updates before closing. Automated smoke runs do not persist these paths.
+An unreadable, malformed or busy index reports a storage warning without failing a completed render,
+removing its files or replacing the previous index. A malformed index requires explicit repair or removal
+before new paths can be saved; existing process history and manual import remain usable.
+There is no asset/config resolution, source replay, effective-request comparison or certification
+that old output is trustworthy.
 
 ### Comparing saved captures
 
@@ -1647,6 +2171,84 @@ persistent results browser that survives document retirement.
 without opening a stage or starting another render. Choose before/after independently, then use
 Side by side, Before, or After. Images fit independently and retain their original dimension labels;
 this is a visual comparison, not a pixel-error metric or a new colour-management pipeline.
+At the compact 600-by-360 minimum, the capture/notes area scrolls while the status and
+comparison/file/close actions stay visible. Keyboard focus brings an expanded notes editor
+into view. Ctrl+Home/End navigates within the notes without scrolling the editor out of view.
+At the default size, the preview fills the available area without extra scrolling.
+Long status/refusal details have their own named keyboard focus stop and bounded scrolling
+area, so errors cannot push the actions offscreen. Use Page Up/Down to read the entire message;
+reverse Tab from **Open comparison** reaches those details when the display-mode control is disabled.
+
+**Save comparison** writes a new `.usdcompare.json` file containing the two absolute capture
+paths, their decoded RGBA SHA-256 checksums and dimensions, the selected display mode and
+optional plain-text **Review notes**. Notes belong to that verified historical pair, not a
+prim, camera or current scene. Compare keeps edited notes only when both ordered paths,
+dimensions and decoded pixel checksums still match the displayed pair. Re-encoding a PNG
+without changing its decoded pixels keeps the notes; changing either capture or its path
+clears them. Opening a saved comparison restores that file's notes rather than the unsaved
+editor text. Failed or cancelled loading clears the displayed pair and disables the notes
+editor, but retains the note text and capture identities in this window. A successful Compare
+restores those notes only after both ordered paths, dimensions and decoded pixel checksums
+match again. A successful replacement pair or saved comparison retires that draft; returning
+to the earlier captures does not resurrect it. Closing the window discards the draft without
+retaining decoded images. Save failure keeps the displayed pair and notes.
+Notes are not rendered as markup.
+**Open comparison** reopens both captures without a stage, renderer or the originating document.
+It verifies both pixel checksums and dimensions before displaying either image. A missing or
+changed capture fails explicitly; a different PNG encoding with identical decoded pixels remains
+valid. Save records the displayed pair, not a later version of the files. Keep both captures at
+their original paths; the comparison references them rather than copying them into a bundle.
+Network/device paths are not admitted by saved comparisons.
+
+Pixels alone cannot tell a reviewer whether two captures differ because the scene changed or because
+the time, camera or render settings did. **File > Capture Frame** therefore writes a state receipt,
+`<capture>.usdstate.json`, beside each image. The receipt records the stage identifier, time code,
+camera, display purposes, visibility and draw mode, render settings including the optional OCIO
+display transform, the active render backend, the image size and the SHA-256 checksum of the RGBA
+pixels decoded back from the written file. The Viewer writes the image, removes any earlier receipt
+for that path, decodes the written image and only then publishes the receipt through a
+same-directory temporary file. A failed or cancelled save leaves either no receipt or one that
+matches the pixels on disk; it never leaves an older receipt beside a newer image.
+
+Compare and **Open comparison** read both receipts from the capture paths after the pair loads.
+Matching receipts report that the recorded stage, time, camera, display, render settings and backend
+match. Differing receipts name the differing fields in a fixed order: stage, time, camera, display,
+render settings, backend and size. A missing receipt, a receipt whose checksum or size no longer
+matches the decoded capture, or an invalid receipt is reported for A before B, and Compare then
+compares pixels only. Captures from other tools or earlier Viewer versions still compare without a
+receipt. A receipt is limited to 16 KiB and 4096 characters per field. Unknown, duplicate or missing
+fields, a version other than 1, a non-finite time code, dimensions outside 1 to 8192 or a malformed
+checksum make it invalid. Saved comparisons keep the version 2 format and do not copy receipts into
+the manifest.
+
+Render-sequence and authored-product frames have no `.usdstate.json` sidecar. When a capture lacks
+one, Compare reads the `manifest.json` that the render job wrote into the same directory and builds
+the receipt from the frame entry whose `file` matches the capture's file name. That entry records
+the stage, time code, camera, display state, render settings with the display transform, the size
+and the SHA-256 checksum of the written PNG file. Compare accepts it only when the checksum matches
+the file on disk and the pixels decoded from that file equal the displayed image; otherwise the
+receipt is stale. A manifest with no matching frame counts as a missing receipt. A malformed,
+unreadable or oversized manifest (over 32 MiB) is invalid. Viewer render sequences, physics
+recordings and authored-product jobs record the backend in each frame entry, and Compare matches it
+the same way it matches a `.usdstate.json` backend. A frame entry without a `backend` field, from an
+older job or from a source that reports none, leaves the backend out of the match report and of the
+differing fields.
+
+A receipt records what the Viewer requested; it does not authenticate it. Anyone who can write the
+capture directory can write a matching receipt, and the receipt does not identify the source or
+review revision or prove that the current scene still matches. Saved comparisons are likewise
+historical image evidence. They do not certify the authored camera, the current scene, or the
+trust or authenticity of the manifest. Cross-document browsing and scene annotations remain
+separate roadmap work.
+The manifest is limited to 32 KiB,
+4096 characters per path, 2048 UTF-16 code units of valid Unicode notes and three display modes.
+NUL and unpaired surrogate code units are rejected. Version 2 saves notes; version 1 remains
+readable with empty notes. The 32 KiB file limit still applies after JSON escaping.
+Duplicate, unknown,
+missing or incorrectly typed fields are rejected. Publication uses a same-directory temporary
+file and never replaces an existing destination. Choose a new filename to save another version.
+Cancellation/failure removes the temporary file and preserves the displayed pair; failed or
+cancelled opening clears both images rather than showing a partial historical comparison.
 
 Comparison supports non-interlaced 8-bit RGBA PNGs with all five standard scanline filters, plus
 uncompressed 24-bit and 32-bit Windows BMPs. PNG transparency is preserved; the BMP reserved fourth
@@ -1709,6 +2311,35 @@ rewritten with them on the next save. A token this build does not recognise fall
 rather than rejecting the whole profile, because a forward-compatible token must not cost the user
 their unrelated layout.
 
+### Measure distance
+
+**Tools &gt; Measure Distance** (`tools.measureDistance`, **Ctrl+M**) turns the next two viewport
+clicks into measurement points instead of selections. While the mode is checked, a click neither
+replaces the selection nor changes its tint. The first hit sets the start point; the second hit
+reports the straight-line distance on the status line, and the next click starts a new pair. Clicking
+the menu entry again or pressing **Escape** ends the mode.
+
+The distance comes from `RenderPickMeasurement` (see
+[Rendering](rendering.md#units-aware-pick-measurement)), and the Viewer only words its result.
+The status line shows meters first, then the scene-unit distance and the `metersPerUnit` that
+converted it, for example `2.000 m (200 scene units, metersPerUnit not authored, fallback 0.01)`.
+A stage without authored `metersPerUnit` is measured with the UsdGeom fallback and says so, because
+an unlabelled length from unauthored metadata would look like a confirmed scale. Each end point is
+named by its prim path, plus the instance index and instancer when the hit was on an instance.
+
+The stage units are read on the stage scheduler only when the second hit arrives. A miss, a stale
+pick, a hit without a world position, or a pair resolved against different view states or scene
+revisions is refused with a named reason, and no distance is shown. A miss, stale, or position-less
+end click keeps the start point, so the user can click again. A refusal after a valid end hit drops
+the start point, and the next click starts a new pair. A runtime older than data ABI 26 cannot
+report units, so the second point is refused with that reason instead of assuming centimeters.
+
+A measurement describes one view of one stage revision. A camera, viewport, or time change that
+moves the render state revision clears a pending start point and the last measurement. Editing,
+reloading, or closing the stage clears them too and reports why. The command is disabled while no
+stage is open, and closing or failing to load a stage leaves the mode. The mode is not persisted in
+the settings profile.
+
 Diagnostics, Hydra, and TfDebug visibility is independently toggleable from two places that stay in
 sync: View &gt; Inspector Tabs, and Tools &gt; Developer &gt; (Diagnostics | Hydra Scene | TfDebug)
 &gt; Show tab.
@@ -1755,6 +2386,14 @@ would turn the Viewer into a place secrets are typed and, eventually, persisted.
 bridge is written to the settings store. Any endpoint the Viewer displays has its userinfo, query,
 and fragment removed first, and the same redaction is applied to every provider-supplied message, so
 a failure that quotes a URL back cannot leak a token into a status bar or an exported diagnostic.
+At the minimum dialog size, connection details and full refusal text scroll independently of the
+wrapping action footer. Tab to the details area and use the scroll keys to read long messages;
+Close remains reachable even while provider commands are unavailable.
+When a focused connection control becomes disabled, focus moves to Close first.
+After the command finishes, focus returns to the original control if enabled, or to the
+next enabled connection action, only while Close still owns keyboard focus. Moving focus
+to the details area or another window prevents that handoff. Closing the dialog leaves
+the command with its existing model owner; later completion does not reactivate the dialog.
 
 The status-bar indicator is hidden until a session is configured or active, and hides again after a
 successful disconnect, so a Viewer that is only opening local files never grows a bridge field. A
@@ -1774,8 +2413,9 @@ independently tested:
   state, so a second click cannot overlap a command in flight.
 - A provider that throws, faults, is cancelled, or misbehaves in its own properties produces an
   explicit redacted message in the dialog rather than an exception crossing into UI code.
-- Closing the window disposes the model: the subscription is dropped, in-flight commands are
+- Closing the Viewer shell disposes the model: the subscription is dropped, in-flight commands are
   cancelled, and every later command is refused, so a provider cannot keep a closed window alive.
+  Closing only the Bridge dialog leaves the host-owned connection and in-flight commands intact.
 - The subscription itself never throws back at the provider. A failed hand-off to the UI thread -
   a dispatcher that is shutting down, for example - is counted as a dropped notification and
   reported as an error, because a Viewer-side defect that escaped into a transport's observer
@@ -1933,7 +2573,10 @@ An unknown or empty theme value falls back to System with an explicit diagnostic
 the rest of the profile. Explicit theme choices are saved atomically on selection and again on
 normal close; Reset Layout leaves the theme choice intact. Stage-specific
 camera and session state are not persisted. Malformed or oversized settings are ignored with an
-explicit Viewer diagnostic; I/O failures are shown in the status area. Unknown/removed selected tab
+explicit Viewer diagnostic; I/O failures are shown in the status area. If another process, such as
+a search indexer or virus scanner, briefly holds the settings file, the save retries for about
+630 ms before it reports the failure. The previous file stays intact and no temporary file is left
+behind. Unknown/removed selected tab
 IDs fall back to Properties and out-of-range saved dimensions are normalized independently, with
 a diagnostic, rather than discarding unrelated preferences. Non-finite dimensions use their clean
 defaults; numeric dimensions are clamped to the supported ranges. Restored window dimensions are
@@ -2032,6 +2675,10 @@ Access keys are shown with underlined menu/button labels. Keyboard shortcuts inc
 - `Q`/`G`/`E`/`R`/`H`: physics gizmo none/move/rotate/scale/drag
 - `X`: toggle physics gizmo snapping
 - `Z`/`Y`: undo/redo the last physics property edit
+
+Shortcut help initially focuses its scrollable catalog. Page Down/Page Up reach the
+remaining bindings without a mouse; Escape closes the dialog. The Close action stays
+visible while the catalog scrolls, including at the minimum window size.
 
 Camera and physics shortcuts are ignored while a text box or combo box is being edited, and never
 fire with a modifier held. Controls use logical markup order, automation names, and theme resources

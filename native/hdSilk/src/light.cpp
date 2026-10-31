@@ -15,6 +15,7 @@
 #include "pxr/usd/sdf/assetPath.h"
 #include "pxr/base/vt/value.h"
 
+#include <cmath>
 #include <string>
 #include <utility>
 
@@ -117,6 +118,23 @@ uint32_t _ReadDomeTextureFormat(const VtValue& value)
     }
     return OPENUSD_SILK_DOME_TEXTURE_AUTOMATIC;
 }
+
+/// Reads UsdLux ShapingAPI the way Storm's area-light approximation does: the
+/// cone angle defaults to 90 degrees, which leaves a rect or disk light lit only
+/// on its -Z side even without the API, and a negative focus counts as zero.
+/// Cone softness and IES profiles are not read; Storm ignores them too.
+void _ReadShaping(
+    HdSceneDelegate* sceneDelegate,
+    const SdfPath& id,
+    HdSilkLightRecord& record)
+{
+    record.shapingConeAngle = _ReadFloat(
+        sceneDelegate->GetLightParamValue(id, HdLightTokens->shapingConeAngle),
+        90.0f);
+    record.shapingFocus = _ReadFloat(
+        sceneDelegate->GetLightParamValue(id, HdLightTokens->shapingFocus),
+        0.0f);
+}
 }
 
 HdSilkLight::HdSilkLight(SdfPath const& id, TfToken typeId)
@@ -165,10 +183,12 @@ HdSilkLight::Sync(
         record.type = OPENUSD_SILK_LIGHT_RECT;
         record.shapeX = _ReadFloat(sceneDelegate->GetLightParamValue(GetId(), WidthToken), 1.0f);
         record.shapeY = _ReadFloat(sceneDelegate->GetLightParamValue(GetId(), HeightToken), 1.0f);
+        _ReadShaping(sceneDelegate, GetId(), record);
     }
     else if (_typeId == HdPrimTypeTokens->diskLight)
     {
         record.type = OPENUSD_SILK_LIGHT_DISK;
+        _ReadShaping(sceneDelegate, GetId(), record);
     }
     else if (_typeId == HdPrimTypeTokens->cylinderLight)
     {
@@ -194,18 +214,9 @@ HdSilkLight::Sync(
             // the decoded image, which is the only place the information exists.
             record.sourceColorSpace = OPENUSD_SILK_COLOR_SPACE_AUTO;
 
-            // Colour temperature and a non-scene pole axis both change what the
-            // image means and neither is on this wire, so they are named rather
-            // than silently dropped.
-            if (_ReadBool(
-                    sceneDelegate->GetLightParamValue(
-                        GetId(),
-                        HdLightTokens->enableColorTemperature),
-                    false))
-            {
-                record.unsupportedFeatures |=
-                    OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_COLOR_TEMPERATURE;
-            }
+            // A non-scene pole axis re-parameterizes the image and is not on
+            // this wire, so it is named rather than silently dropped. Colour
+            // temperature is resolved into the published colour instead.
             const TfToken poleAxis = _ReadToken(
                 sceneDelegate->GetLightParamValue(GetId(), PoleAxisToken));
             if (!poleAxis.IsEmpty() && poleAxis != SceneAxisToken)
@@ -228,6 +239,23 @@ HdSilkLight::Sync(
     record.color[0] = color[0];
     record.color[1] = color[1];
     record.color[2] = color[2];
+    record.colorTemperatureEnabled = _ReadBool(
+        sceneDelegate->GetLightParamValue(GetId(), HdLightTokens->enableColorTemperature),
+        false);
+    record.colorTemperature = _ReadFloat(
+        sceneDelegate->GetLightParamValue(GetId(), HdLightTokens->colorTemperature),
+        6500.0f);
+
+    // A direct light refuses a non-finite temperature at frame selection. A
+    // dome has no such refusal path, so it keeps its authored colour and names
+    // the dropped tint on its environment record instead.
+    if (record.ambientOnly && record.colorTemperatureEnabled &&
+        !std::isfinite(record.colorTemperature))
+    {
+        record.colorTemperatureEnabled = false;
+        record.unsupportedFeatures |=
+            OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_COLOR_TEMPERATURE;
+    }
     record.intensity = _ReadFloat(
         sceneDelegate->GetLightParamValue(GetId(), HdLightTokens->intensity),
         1.0f);

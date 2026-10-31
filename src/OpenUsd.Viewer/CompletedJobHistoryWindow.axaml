@@ -1,0 +1,70 @@
+<Window
+    x:Class="OpenUsd.Viewer.CompletedJobHistoryWindow"
+    x:ClassModifier="internal"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenUsd.Viewer"
+    Classes="openusd-viewer"
+    AutomationProperties.Name="Completed render jobs"
+    Title="Completed render jobs"
+    Width="740" Height="560" MinWidth="520" MinHeight="440"
+    ShowInTaskbar="False" ClosingBehavior="OwnerWindowOnly"
+    WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
+  </Window.Styles>
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">
+    <TextBlock Text="Browse this process's last eight jobs or eight remembered manifest paths. Remembered jobs are imported again when opened; their metadata is unverified file content. Sampled PNG hashes are checked. No folders are scanned and no scene is opened or rendered."
+               TextWrapping="Wrap" Classes="viewer-caption" />
+    <TabControl x:Name="HistoryTabs" Grid.Row="1" SelectedIndex="0"
+                AutomationProperties.Name="Completed job sources">
+      <TabItem Header="This process">
+        <ListBox x:Name="HistoryJobs" MinHeight="100" Focusable="True"
+                 AutomationProperties.Name="Completed jobs from this Viewer process"
+                 ToolTip.Tip="Choose a job, then press Enter or select View results to preview its original files.">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="local:ViewerCompletedJobHistoryEntry">
+              <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxHeight="64"
+                         TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </TabItem>
+      <TabItem Header="Remembered paths">
+        <ListBox x:Name="HistoryRememberedJobs" MinHeight="100" Focusable="True"
+                 AutomationProperties.Name="Remembered render manifest paths"
+                 ToolTip.Tip="Press Enter to import the original manifest again. Missing paths remain listed.">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxHeight="64"
+                         TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </TabItem>
+    </TabControl>
+    <ScrollViewer x:Name="HistoryContextScroll" Grid.Row="2" MaxHeight="128" Focusable="True"
+                  AutomationProperties.Name="Original completed job context"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="6">
+        <TextBlock x:Name="HistoryRememberedStatus" TextWrapping="Wrap" IsVisible="False"
+                   AutomationProperties.Name="Remembered render manifest storage status" />
+        <TextBlock x:Name="HistoryDescription" TextWrapping="Wrap"
+                   AutomationProperties.Name="Original completed job description" />
+        <TextBox x:Name="HistoryOutput" IsReadOnly="True" TextWrapping="Wrap"
+                 AutomationProperties.Name="Original completed job directory" />
+        <TextBlock x:Name="HistoryStatus" TextWrapping="Wrap"
+                   AutomationProperties.Name="Completed job history status" />
+      </StackPanel>
+    </ScrollViewer>
+    <WrapPanel Grid.Row="3" HorizontalAlignment="Right" ItemSpacing="8" LineSpacing="8">
+      <Button x:Name="HistoryImportButton" Content="_Import manifest"
+              AutomationProperties.Name="Import historical render job manifest" />
+      <Button x:Name="HistoryViewButton" Content="_View results" IsEnabled="False"
+              AutomationProperties.Name="View selected historical job results" />
+      <Button x:Name="HistoryCloseButton" Content="Close"
+              AutomationProperties.Name="Close completed job history" />
+    </WrapPanel>
+  </Grid>
+</Window>

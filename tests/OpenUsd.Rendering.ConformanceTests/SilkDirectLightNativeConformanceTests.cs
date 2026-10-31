@@ -23,9 +23,9 @@ public sealed class SilkDirectLightNativeConformanceTests
     private const int Capacity = 128;
     private const int ExtraTag = 1001;
     private const byte ClearGreen = 32;
-    private const uint PageAbi = 24;
+    private const uint PageAbi = 30;
     private const uint SessionAbi = 6;
-    private const int FrameBufferSize = 15296;
+    private const int FrameBufferSize = 17344;
     private const string RequiredVariable = "OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED";
     private const string HardwareVariable = "OPENUSD_DIRECT_LIGHT_HARDWARE_REQUIRED";
     private const string PluginVariable = "OPENUSD_TEST_PLUGIN_PATH";
@@ -178,6 +178,124 @@ public sealed class SilkDirectLightNativeConformanceTests
         await Assert.That(ReadSingle(bytes, 4332)).IsGreaterThan(0f)
             .Because("Both the -126 normal and -149 subnormal exposure rows must survive selection and float packing.");
         await AssertSteady(capture, result.Captures["steady"]);
+    }
+
+    [Test]
+    [Arguments("distant", "temperature-cool")]
+    [Arguments("sphere", "temperature-warm-clamped")]
+    [Arguments("rect", "temperature-cool")]
+    [Arguments("disk", "temperature-warm-clamped")]
+    [Arguments("cylinder", "temperature-cool")]
+    [Arguments("rect", "temperature-disabled")]
+    public async Task NativeFrameTintsDirectLightsByColorTemperature(string shape, string control)
+    {
+        RunEvidence result = Exercise(
+            SilkGraphicsBackend.D3D12, Scenario.Controls, 1, control, shape);
+        CaptureEvidence capture = result.Captures["initial"];
+        ControlSpec expectedControl = Control(control);
+        Vector3 expected = expectedControl.Color * expectedControl.Tint!.Value;
+        await AssertRun(result);
+        await AssertPublished(capture, 1, [1]);
+        SilkFrameLight light = capture.Frame.Lights.Single();
+        await Assert.That(light.Type).IsEqualTo(Shape(shape).Type);
+        await AssertNear(light.Color, expected);
+        await Assert.That(light.Intensity).IsEqualTo(expectedControl.Intensity);
+        await Assert.That(capture.State.FrameLights[0]).IsEqualTo(light);
+
+        // The tint reaches the bound GPU frame, not only the parsed page.
+        Vector3 bound = new(
+            ReadSingle(capture.State.FrameBytes, 4320),
+            ReadSingle(capture.State.FrameBytes, 4324),
+            ReadSingle(capture.State.FrameBytes, 4328));
+        await AssertNear(bound, expected);
+        await AssertSteady(capture, result.Captures["steady"]);
+    }
+
+    [Test]
+    [Arguments("10000", false)]
+    [Arguments("800", false)]
+    [Arguments("10000", true)]
+    [Arguments("inf", true)]
+    public async Task NativeDomeTintsByColorTemperature(string temperature, bool textured)
+    {
+        SilkGraphicsBackend backend = OperatingSystem.IsWindows()
+            ? SilkGraphicsBackend.D3D12
+            : SilkGraphicsBackend.Vulkan;
+        var profile = new ExecutionProfile(
+            backend, IsEnabled(Environment.GetEnvironmentVariable(RequiredVariable)), false);
+        string? plugins = Environment.GetEnvironmentVariable(PluginVariable);
+        CheckPrerequisites(profile, plugins, Directory.Exists(plugins), SupportedOs(backend));
+        string root = Directory.CreateTempSubdirectory("silk-dome-temperature-").FullName;
+        string path = Path.Combine(root, "scene.usda");
+        string texture = textured
+            ? "asset inputs:texture:file = @environment.ppm@\ntoken inputs:texture:format = \"latlong\""
+            : string.Empty;
+        string scene = $$"""
+            #usda 1.0
+            def DomeLight "Dome" {
+                {{texture}}
+                color3f inputs:color = (0.2, 0.3, 0.4)
+                float inputs:intensity = 0.5
+                float inputs:exposure = 1
+                bool inputs:enableColorTemperature = true
+                float inputs:colorTemperature = {{temperature}}
+            }
+            """;
+        bool finite = temperature != "inf";
+        Vector3 authored = new(0.2f, 0.3f, 0.4f);
+        Vector3 tint = !finite
+            ? Vector3.One
+            : temperature == "800"
+                ? BlackbodyKnot(new Vector3(1.0f, 0.02749f, 0.0f))
+                : BlackbodyKnot(new Vector3(0.609681f, 0.695588f, 1.0f));
+        try
+        {
+            await File.WriteAllTextAsync(path, scene);
+            await File.WriteAllTextAsync(Path.Combine(root, "environment.ppm"), "P3\n1 1\n255\n80 120 180\n");
+            await using UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
+            using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+            using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(plugins!, source);
+            var state = new SilkSceneState();
+            using (OpenUsdSilkPage page = session.Sync(Size, Size, camera: Camera))
+            {
+                _ = state.Apply(page);
+            }
+
+            await Assert.That(state.Frame.DomeCount).IsEqualTo(1u);
+            SilkFrameDome dome = state.Frame.Domes[0];
+            await Assert.That(dome.IsTextured).IsEqualTo(textured);
+            if (textured)
+            {
+                // The tint travels in the environment colour, so the prefilter and
+                // the mean-radiance fallback both see the tinted emission.
+                SilkEnvironmentData environment = state.Environments.Values.Single();
+                await AssertNear(environment.Color, authored * tint);
+                await Assert.That(environment.UnsupportedFeatures &
+                        SilkEnvironmentUnsupportedFeatures.ColorTemperature)
+                    .IsEqualTo(finite
+                        ? SilkEnvironmentUnsupportedFeatures.None
+                        : SilkEnvironmentUnsupportedFeatures.ColorTemperature);
+                await Assert.That(dome.AmbientColor).IsEqualTo(Vector3.Zero);
+            }
+            else
+            {
+                // Storm's unit-dome normalization times intensity and 2^exposure.
+                await AssertNear(dome.AmbientColor, authored * tint * (0.96f * 0.5f * 2f));
+                Vector4 ambient = state.Frame.AmbientLight;
+                await AssertNear(new Vector3(ambient.X, ambient.Y, ambient.Z), dome.AmbientColor);
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static async Task AssertNear(Vector3 actual, Vector3 expected)
+    {
+        await Assert.That(MathF.Abs(actual.X - expected.X)).IsLessThanOrEqualTo(1e-5f);
+        await Assert.That(MathF.Abs(actual.Y - expected.Y)).IsLessThanOrEqualTo(1e-5f);
+        await Assert.That(MathF.Abs(actual.Z - expected.Z)).IsLessThanOrEqualTo(1e-5f);
     }
 
     [Test]
@@ -939,7 +1057,7 @@ public sealed class SilkDirectLightNativeConformanceTests
             if (command.Type == SilkCommandType.Frame)
             {
                 SilkFrameCommand native = command.AsFrame();
-                bool hasLighting = length is 23096 or 23368;
+                bool hasLighting = length is 23096 or 23368 or 25416;
                 var lights = new SilkFrameLight[checked((int)native.LightCount)];
                 for (int light = 0; light < lights.Length; light++)
                 {
@@ -1213,6 +1331,7 @@ public sealed class SilkDirectLightNativeConformanceTests
             float inputs:diffuse = {control.Diffuse}
             float inputs:specular = {control.Specular}
             color3f inputs:color = ({control.Color.X},{control.Color.Y},{control.Color.Z})
+            {control.ExtraAttributes}
             bool inputs:shadow:enable = false
             matrix4d xformOp:transform = ((0,2,0,0),(-3,0,0,0),(0,0,4,0),(1,2,3,1))
             uniform token[] xformOpOrder = ["xformOp:transform"]
@@ -1247,8 +1366,25 @@ public sealed class SilkDirectLightNativeConformanceTests
         "exposure" => new(new Vector3(0.2f, 0.3f, 0.4f), 0.5f, 2, 0.75f, 0.25f, 2),
         "near-zero" => new(Vector3.One, 1, -126, 1, 1, 1.17549435E-38f),
         "subnormal" => new(Vector3.One, 1, -149, 1, 1, float.Epsilon),
+        // Both temperatures land exactly on a UsdLux blackbody knot (u_seg 0),
+        // so the tint is that knot scaled to unit Rec.709 luminance. 800 K is
+        // below the table and clamps to its 1000 K end; 10000 K is its top end.
+        "temperature-cool" => new(new Vector3(0.2f, 0.3f, 0.4f), 0.5f, 0, 0.75f, 0.25f, 0.5f,
+            "bool inputs:enableColorTemperature = true\nfloat inputs:colorTemperature = 10000",
+            BlackbodyKnot(new Vector3(0.609681f, 0.695588f, 1.0f))),
+        "temperature-warm-clamped" => new(new Vector3(0.2f, 0.3f, 0.4f), 0.5f, 0, 0.75f, 0.25f, 0.5f,
+            "bool inputs:enableColorTemperature = true\nfloat inputs:colorTemperature = 800",
+            BlackbodyKnot(new Vector3(1.0f, 0.02749f, 0.0f))),
+        // An authored temperature without enableColorTemperature leaves the
+        // authored colour untouched, as it does in Storm.
+        "temperature-disabled" => new(new Vector3(0.2f, 0.3f, 0.4f), 0.5f, 0, 0.75f, 0.25f, 0.5f,
+            "bool inputs:enableColorTemperature = false\nfloat inputs:colorTemperature = 2000",
+            Vector3.One),
         _ => throw new ArgumentOutOfRangeException(nameof(control), control, "Unknown meaningful control.")
     };
+
+    private static Vector3 BlackbodyKnot(Vector3 knot) =>
+        knot / Vector3.Dot(knot, new Vector3(0.2126f, 0.7152f, 0.0722f));
 
     private static bool IsEnabled(string? value) =>
         value == "1" || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
@@ -1404,7 +1540,7 @@ public sealed class SilkDirectLightNativeConformanceTests
             await Assert.That(capture.Frame.RawLightCount).IsEqualTo(capture.Frame.LightCount);
             await Assert.That(capture.Frame.Reserved544).IsEqualTo(0u);
             await Assert.That(capture.Frame.Reserved548).IsEqualTo(0u);
-            await Assert.That(capture.Frame.WireSize is 272 or 536 or 23096 or 23368).IsTrue();
+            await Assert.That(capture.Frame.WireSize is 272 or 536 or 23096 or 23368 or 25416).IsTrue();
             if (capture.Frame.WireSize is 272 or 536)
             {
                 await Assert.That(capture.Frame.LightCount).IsEqualTo(0u);
@@ -1880,7 +2016,7 @@ public sealed class SilkDirectLightNativeConformanceTests
         string message = failure?.Message ?? string.Empty;
         await Assert.That(message.Contains(RequiredVariable, StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains(backend.ToString(), StringComparison.Ordinal)).IsTrue();
-        await Assert.That(message.Contains("page ABI 24/session ABI 6", StringComparison.Ordinal)).IsTrue();
+        await Assert.That(message.Contains("page ABI 30/session ABI 6", StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains(PluginVariable, StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains("staged", StringComparison.Ordinal)).IsTrue();
         await Assert.That(failure?.GetType().Name == "SkipTestException").IsFalse();
@@ -1971,7 +2107,8 @@ public sealed class SilkDirectLightNativeConformanceTests
     private sealed record ShapeSpec(
         uint Type, string Schema, string Attributes, float ShapeX, float ShapeY, float Radius);
     private sealed record ControlSpec(
-        Vector3 Color, float Intensity, float Exposure, float Diffuse, float Specular, float Exposed);
+        Vector3 Color, float Intensity, float Exposure, float Diffuse, float Specular, float Exposed,
+        string ExtraAttributes = "", Vector3? Tint = null);
     private sealed record FrameEvidence(
         uint LightCount, uint RawLightCount, uint Flags, uint Reserved544, uint Reserved548,
         uint DomeCount, int WireSize, SilkFrameLight[] Lights);

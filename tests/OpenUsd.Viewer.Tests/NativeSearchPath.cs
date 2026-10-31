@@ -19,6 +19,16 @@ internal static class NativeSearchPath
     [ModuleInitializer]
     internal static void Initialize()
     {
+        ConfigureSearchPath();
+        if (Environment.GetEnvironmentVariable("OPENUSD_VIEWER_TEST_NATIVE_ROOT") is not null)
+        {
+            UsdPluginRegistry.Register(ViewerNativeTestStages.RequirePluginPathOrSkip());
+            _ = UsdResolver.PrimaryTypeName;
+        }
+    }
+
+    private static void ConfigureSearchPath()
+    {
         if (!OperatingSystem.IsWindows())
         {
             return;

@@ -12,6 +12,9 @@ namespace OpenUsd.Rendering.Silk.D3D12;
 [SupportedOSPlatform("windows")]
 public sealed unsafe partial class D3D12SilkGraphicsDevice
 {
+    private long _submissionDescriptorHeapCreations;
+    internal long SubmissionDescriptorHeapCreations => Interlocked.Read(ref _submissionDescriptorHeapCreations);
+
     /// <inheritdoc/>
     public ISilkGraphicsTexture CreateTexture2D(
         uint width,
@@ -207,8 +210,10 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         format switch
         {
             SilkTextureFormat.Rgba8Unorm => Format.FormatR8G8B8A8Unorm,
+            SilkTextureFormat.R8Unorm => Format.FormatR8Unorm,
             SilkTextureFormat.D32Float => Format.FormatD32Float,
             SilkTextureFormat.R32Float => Format.FormatR32Float,
+            SilkTextureFormat.Rg32Float => Format.FormatR32G32Float,
             SilkTextureFormat.Rgba16Float => Format.FormatR16G16B16A16Float,
             SilkTextureFormat.Rgba32Float => Format.FormatR32G32B32A32Float,
             _ => throw new ArgumentOutOfRangeException(nameof(format))
@@ -394,6 +399,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         var leases = new List<IDisposable>();
         var uploadResources = new List<D3D12StagingResource>();
         var materialHeaps = new List<nint>();
+        var materialViews = new SubmissionDescriptorArena(this, DescriptorHeapType.CbvSrvUav, materialHeaps);
+        var materialSamplers = new SubmissionDescriptorArena(this, DescriptorHeapType.Sampler, materialHeaps);
         ID3D12CommandAllocator* allocator = null;
         ID3D12GraphicsCommandList* nativeCommands = null;
         ID3D12Fence* completionFence = null;
@@ -634,8 +641,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                                 ->GetGPUDescriptorHandleForHeapStart());
                         nativeCommands->SetGraphicsRootConstantBufferView(
                             2,
-                            displayTransformBinding.Parameters.Resource
-                                ->GetGPUVirtualAddress());
+                            displayTransformBinding.Parameters.GpuVirtualAddress);
                         continue;
                     case D3D12DisplayTransformCommandKind.DrawFullscreenTriangle:
                         if (!rendering ||
@@ -778,8 +784,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                                 ->GetGPUDescriptorHandleForHeapStart());
                         nativeCommands->SetGraphicsRootConstantBufferView(
                             2,
-                            selectionOutlineBinding.Parameters.Resource
-                                ->GetGPUVirtualAddress());
+                            selectionOutlineBinding.Parameters.GpuVirtualAddress);
                         continue;
                     case D3D12SelectionOutlineCommandKind.DrawFullscreenTriangle:
                         if (!rendering ||
@@ -903,6 +908,26 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
 
                 switch (command.Kind)
                 {
+                    case SilkGraphicsCommandKind.CopyRenderTarget:
+                        D3D12SilkGraphicsTexture copySource = command.Texture!;
+                        D3D12SilkGraphicsTexture copyDestination = command.DepthTexture!;
+                        copySource.ThrowIfDisposed();
+                        copyDestination.ThrowIfDisposed();
+                        Transition(nativeCommands, copySource.Resource,
+                            GetCurrentState(finalStates, copySource), ResourceStates.CopySource);
+                        Transition(nativeCommands, copyDestination.Resource,
+                            GetCurrentState(finalStates, copyDestination), ResourceStates.CopyDest);
+                        var copySourceLocation = new TextureCopyLocation(
+                            copySource.Resource, TextureCopyType.SubresourceIndex);
+                        var copyDestinationLocation = new TextureCopyLocation(
+                            copyDestination.Resource, TextureCopyType.SubresourceIndex);
+                        nativeCommands->CopyTextureRegion(
+                            &copyDestinationLocation, 0, 0, 0, &copySourceLocation, null);
+                        Transition(nativeCommands, copyDestination.Resource,
+                            ResourceStates.CopyDest, ResourceStates.CopySource);
+                        finalStates[copySource] = ResourceStates.CopySource;
+                        finalStates[copyDestination] = ResourceStates.CopySource;
+                        break;
                     case SilkGraphicsCommandKind.UploadTexture:
                         D3D12SilkGraphicsTexture uploadTexture = command.Texture!;
                         uploadTexture.ThrowIfDisposed();
@@ -913,7 +938,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             uploadTexture,
                             command.Data!,
                             out D3D12StagingResource upload,
-                            out PlacedSubresourceFootprint[] footprints);
+                            out PlacedSubresourceFootprint[] footprints,
+                            command.TextureRows);
                         uploadResources.Add(upload);
                         Transition(
                             nativeCommands,
@@ -932,12 +958,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                                 uploadTexture.Resource,
                                 TextureCopyType.SubresourceIndex)
                             {
-                                SubresourceIndex = checked((uint)level)
+                                SubresourceIndex = command.TextureRows?.MipLevel ?? checked((uint)level)
                             };
                             nativeCommands->CopyTextureRegion(
                                 &destinationLocation,
                                 0,
-                                0,
+                                command.TextureRows?.FirstRow ?? 0,
                                 0,
                                 &sourceLocation,
                                 null);
@@ -1134,7 +1160,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             vertexBuffer,
                             ResourceStates.VertexAndConstantBuffer);
                         var vertexView = new VertexBufferView(
-                            vertexBuffer.Resource->GetGPUVirtualAddress(),
+                            vertexBuffer.GpuVirtualAddress,
                             checked((uint)vertexBuffer.Size),
                             vertexStride);
                         nativeCommands->IASetVertexBuffers(0, 1, &vertexView);
@@ -1149,7 +1175,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             indexBuffer,
                             ResourceStates.IndexBuffer);
                         var indexView = new IndexBufferView(
-                            indexBuffer.Resource->GetGPUVirtualAddress(),
+                            indexBuffer.GpuVirtualAddress,
                             checked((uint)indexBuffer.Size),
                             Format.FormatR32Uint);
                         nativeCommands->IASetIndexBuffer(&indexView);
@@ -1169,7 +1195,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         {
                             nativeCommands->SetGraphicsRootConstantBufferView(
                                 0,
-                                uniformBuffer.Resource->GetGPUVirtualAddress());
+                                uniformBuffer.GpuVirtualAddress);
                         }
                         break;
                     case SilkGraphicsCommandKind.SetTexture:
@@ -1218,7 +1244,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         }
                         nativeCommands->SetGraphicsRootConstantBufferView(
                             0,
-                            uniformBuffer.Resource->GetGPUVirtualAddress());
+                            uniformBuffer.GpuVirtualAddress);
                         if (pipeline is not null)
                         {
                             IReadOnlyList<D3D12MaterialBinding> bindingsForDraw = materialBindings;
@@ -1246,7 +1272,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                                 descriptorHeaps,
                                 pipeline,
                                 bindingsForDraw,
-                                materialHeaps);
+                                materialViews,
+                                materialSamplers);
                         }
                         if (pickPipeline is not null)
                         {
@@ -1512,7 +1539,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                             SilkComputeSlot computeSlot = computeLayout.Slots[slot];
                             ulong address = computeBuffers[
                                 (computeSlot.Set, computeSlot.Binding)]
-                                .Resource->GetGPUVirtualAddress();
+                                .GpuVirtualAddress;
                             switch (computeSlot.Kind)
                             {
                                 case SilkComputeSlotKind.ReadWriteStructured:
@@ -1743,10 +1770,18 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         D3D12SilkGraphicsTexture texture,
         ReadOnlySpan<byte> source,
         out D3D12StagingResource upload,
-        out PlacedSubresourceFootprint[] footprints)
+        out PlacedSubresourceFootprint[] footprints,
+        SilkTextureRowUpload? region = null)
     {
-        uint mipLevelCount = texture.MipLevelCount;
+        uint mipLevelCount = region.HasValue ? 1 : texture.MipLevelCount;
         ResourceDesc textureDescription = texture.Resource->GetDesc();
+        if (region is { } rows)
+        {
+            SilkMipLevelLayout layout = rows.GetLayout(texture);
+            textureDescription.Width = layout.Width;
+            textureDescription.Height = layout.Height;
+            textureDescription.MipLevels = 1;
+        }
         var nativeFootprints = new PlacedSubresourceFootprint[mipLevelCount];
         var rowCounts = new uint[mipLevelCount];
         var rowSizes = new ulong[mipLevelCount];
@@ -1790,11 +1825,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             SilkMarshal.ThrowHResult(nativeUpload->Map(0, &readRange, &mapped));
             try
             {
-                SilkMipLevelLayout[] sourceLevels = SilkMipChainLayout.Create(
-                    texture.Width,
-                    texture.Height,
-                    texture.Format,
-                    mipLevelCount);
+                SilkMipLevelLayout[] sourceLevels = region is { } part ? [part.GetLayout(texture)] :
+                    SilkMipChainLayout.Create(texture.Width, texture.Height, texture.Format, mipLevelCount);
                 for (int level = 0; level < mipLevelCount; level++)
                 {
                     SilkMipLevelLayout sourceLevel = sourceLevels[level];
@@ -1866,65 +1898,19 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ID3D12DescriptorHeap** descriptorHeaps,
         D3D12SilkGraphicsPipeline pipeline,
         IReadOnlyList<D3D12MaterialBinding> bindings,
-        List<nint> retainedHeaps)
+        SubmissionDescriptorArena views,
+        SubmissionDescriptorArena samplers)
     {
         D3D12RootBindingPlan plan = pipeline.RootBindingPlan;
-        bool hasStorageBinding = false;
+        var textureSources = new CpuDescriptorHandle[plan.SampledTextureCount];
+        var samplerSources = new CpuDescriptorHandle[plan.SamplerCount];
         foreach (D3D12MaterialBinding binding in bindings)
         {
-            hasStorageBinding |= binding.Kind == SilkBindingKind.StorageBuffer;
-        }
-        if (!hasStorageBinding && MaterialDescriptorTables is { } descriptorTables &&
-            TryBindSharedMaterialDescriptorTables(
-                commands,
-                descriptorHeaps,
-                descriptorTables,
-                plan,
-                bindings))
-        {
-            return;
-        }
-
-        uint viewCount = plan.SampledTextureCount;
-        uint samplerCount = plan.SamplerCount;
-        ID3D12DescriptorHeap* viewHeap =
-            viewCount == 0 ? null : CreateShaderVisibleHeap(
-                DescriptorHeapType.CbvSrvUav,
-                viewCount,
-                retainedHeaps);
-        ID3D12DescriptorHeap* samplerHeap =
-            samplerCount == 0 ? null : CreateShaderVisibleHeap(
-                DescriptorHeapType.Sampler,
-                samplerCount,
-                retainedHeaps);
-        uint heapCount = 0;
-        if (viewHeap != null)
-        {
-            descriptorHeaps[heapCount++] = viewHeap;
-        }
-        if (samplerHeap != null)
-        {
-            descriptorHeaps[heapCount++] = samplerHeap;
-        }
-        if (heapCount != 0)
-        {
-            commands->SetDescriptorHeaps(heapCount, descriptorHeaps);
-        }
-        uint viewIncrement = _device->GetDescriptorHandleIncrementSize(
-            DescriptorHeapType.CbvSrvUav);
-        uint samplerIncrement = _device->GetDescriptorHandleIncrementSize(
-            DescriptorHeapType.Sampler);
-        foreach (D3D12MaterialBinding binding in bindings)
-        {
-            uint rootParameter = plan.GetRootParameter(
-                0,
-                binding.Binding,
-                binding.Kind);
             if (binding.Kind == SilkBindingKind.StorageBuffer)
             {
                 commands->SetGraphicsRootShaderResourceView(
-                    rootParameter,
-                    binding.Buffer!.Resource->GetGPUVirtualAddress());
+                    plan.GetRootParameter(0, binding.Binding, binding.Kind),
+                    binding.Buffer!.GpuVirtualAddress);
                 continue;
             }
             if (binding.Kind == SilkBindingKind.SampledTexture)
@@ -1933,40 +1919,41 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                     0,
                     binding.Binding,
                     binding.Kind);
-                CpuDescriptorHandle destination = new(
-                    viewHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
-                    (descriptorOffset * viewIncrement));
-                _device->CopyDescriptorsSimple(
-                    1,
-                    destination,
-                    binding.Texture!.ShaderResourceView,
-                    DescriptorHeapType.CbvSrvUav);
+                textureSources[descriptorOffset] = binding.Texture!.ShaderResourceView;
                 continue;
             }
             uint samplerOffset = plan.GetDescriptorOffset(
                 0,
                 binding.Binding,
                 binding.Kind);
-            CpuDescriptorHandle samplerDestination = new(
-                samplerHeap->GetCPUDescriptorHandleForHeapStart().Ptr +
-                (samplerOffset * samplerIncrement));
-            _device->CopyDescriptorsSimple(
-                1,
-                samplerDestination,
-                binding.Sampler!.Heap->GetCPUDescriptorHandleForHeapStart(),
-                DescriptorHeapType.Sampler);
+            samplerSources[samplerOffset] = binding.Sampler!.Heap->GetCPUDescriptorHandleForHeapStart();
         }
-        if (viewHeap != null)
+        SubmissionDescriptorTable textureTable = views.Resolve(textureSources);
+        SubmissionDescriptorTable samplerTable = samplers.Resolve(samplerSources);
+        uint heapCount = 0;
+        if (textureTable.Heap != 0)
+        {
+            descriptorHeaps[heapCount++] = (ID3D12DescriptorHeap*)textureTable.Heap;
+        }
+        if (samplerTable.Heap != 0)
+        {
+            descriptorHeaps[heapCount++] = (ID3D12DescriptorHeap*)samplerTable.Heap;
+        }
+        if (heapCount != 0)
+        {
+            commands->SetDescriptorHeaps(heapCount, descriptorHeaps);
+        }
+        if (textureTable.Heap != 0)
         {
             commands->SetGraphicsRootDescriptorTable(
                 plan.SampledTextureRootParameter,
-                viewHeap->GetGPUDescriptorHandleForHeapStart());
+                textureTable.Start);
         }
-        if (samplerHeap != null)
+        if (samplerTable.Heap != 0)
         {
             commands->SetGraphicsRootDescriptorTable(
                 plan.SamplerRootParameter,
-                samplerHeap->GetGPUDescriptorHandleForHeapStart());
+                samplerTable.Start);
         }
     }
 
@@ -1985,76 +1972,6 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         return false;
     }
 
-    private bool TryBindSharedMaterialDescriptorTables(
-        ID3D12GraphicsCommandList* commands,
-        ID3D12DescriptorHeap** descriptorHeaps,
-        D3D12DescriptorIndexedTextureTables descriptorTables,
-        D3D12RootBindingPlan plan,
-        IReadOnlyList<D3D12MaterialBinding> bindings)
-    {
-        if (bindings.Count == 0)
-        {
-            return true;
-        }
-
-        var textureSources = new CpuDescriptorHandle[plan.SampledTextureCount];
-        var samplerSources = new CpuDescriptorHandle[plan.SamplerCount];
-        int textureCount = 0;
-        int samplerCount = 0;
-        foreach (D3D12MaterialBinding binding in bindings)
-        {
-            uint offset = plan.GetDescriptorOffset(0, binding.Binding, binding.Kind);
-            if (binding.Kind == SilkBindingKind.SampledTexture)
-            {
-                textureSources[offset] = binding.Texture!.ShaderResourceView;
-                textureCount++;
-            }
-            else
-            {
-                samplerSources[offset] =
-                    binding.Sampler!.Heap->GetCPUDescriptorHandleForHeapStart();
-                samplerCount++;
-            }
-        }
-        if (textureCount != textureSources.Length ||
-            samplerCount != samplerSources.Length)
-        {
-            return false;
-        }
-        GpuDescriptorHandle textureTable = default;
-        GpuDescriptorHandle samplerTable = default;
-        if (textureSources.Length != 0 &&
-            !descriptorTables.TryCopySampledTextures(
-                textureSources,
-                out textureTable))
-        {
-            return false;
-        }
-        if (samplerSources.Length != 0 &&
-            !descriptorTables.TryCopySamplers(
-                samplerSources,
-                out samplerTable))
-        {
-            return false;
-        }
-
-        uint heapCount = descriptorTables.FillDescriptorHeaps(descriptorHeaps);
-        commands->SetDescriptorHeaps(heapCount, descriptorHeaps);
-        if (textureSources.Length != 0)
-        {
-            commands->SetGraphicsRootDescriptorTable(
-                plan.SampledTextureRootParameter,
-                textureTable);
-        }
-        if (samplerSources.Length != 0)
-        {
-            commands->SetGraphicsRootDescriptorTable(
-                plan.SamplerRootParameter,
-                samplerTable);
-        }
-        return true;
-    }
-
     private ID3D12DescriptorHeap* CreateShaderVisibleHeap(
         DescriptorHeapType type,
         uint count,
@@ -2071,7 +1988,16 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             &description,
             &heapId,
             (void**)&heap));
-        retainedHeaps.Add((nint)heap);
+        Interlocked.Increment(ref _submissionDescriptorHeapCreations);
+        try
+        {
+            retainedHeaps.Add((nint)heap);
+        }
+        catch
+        {
+            Release(ref heap);
+            throw;
+        }
         return heap;
     }
 
@@ -2137,6 +2063,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             SilkSamplerAddressMode.ClampToEdge => TextureAddressMode.Clamp,
             SilkSamplerAddressMode.Repeat => TextureAddressMode.Wrap,
             SilkSamplerAddressMode.MirrorRepeat => TextureAddressMode.Mirror,
+            SilkSamplerAddressMode.ClampToBorder => TextureAddressMode.Border,
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 
@@ -2158,7 +2085,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
 
     internal void Readback(
         D3D12SilkGraphicsTexture texture,
-        Span<byte> destination)
+        Span<byte> destination,
+        uint mipLevel = 0)
     {
         ObjectDisposedException.ThrowIf(_device == null || _queue == null, this);
         texture.ThrowIfDisposed();
@@ -2170,7 +2098,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ulong totalSize = 0;
         _device->GetCopyableFootprints(
             &sourceDescription,
-            0,
+            mipLevel,
             1,
             0,
             &footprint,
@@ -2241,7 +2169,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             var sourceLocation = new TextureCopyLocation(
                 texture.Resource,
                 TextureCopyType.SubresourceIndex);
-            sourceLocation.SubresourceIndex = 0;
+            sourceLocation.SubresourceIndex = mipLevel;
             commands->CopyTextureRegion(
                 &destinationLocation,
                 0,
@@ -2269,11 +2197,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             SilkMarshal.ThrowHResult(readback->Map(0, &readRange, &mapped));
             try
             {
+                (uint width, uint height) = SilkMipChainLayout.GetLevelExtent(texture.Width, texture.Height, mipLevel);
                 int destinationRowPitch = checked(
-                    (int)(texture.Width *
+                    (int)(width *
                         SilkTextureFormats.GetBytesPerPixel(texture.Format)));
                 int sourceRowPitch = checked((int)footprint.Footprint.RowPitch);
-                for (int row = 0; row < texture.Height; row++)
+                for (int row = 0; row < height; row++)
                 {
                     new ReadOnlySpan<byte>(
                         (byte*)mapped + checked(row * sourceRowPitch),
@@ -2333,7 +2262,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
 }
 
 [SupportedOSPlatform("windows")]
-internal sealed unsafe class D3D12SilkGraphicsTexture : SilkGraphicsTextureBase
+internal sealed unsafe class D3D12SilkGraphicsTexture : SilkGraphicsTextureBase, ISilkMaterialMipReadback
 {
     private readonly D3D12SilkGraphicsDevice _device;
     private ID3D12Resource* _resource;
@@ -2378,6 +2307,13 @@ internal sealed unsafe class D3D12SilkGraphicsTexture : SilkGraphicsTextureBase
         ThrowIfDisposed();
         ValidateReadback(destination.Length);
         _device.Readback(this, destination);
+    }
+
+    public void ReadMipForTesting(uint mipLevel, Span<byte> destination)
+    {
+        ThrowIfDisposed();
+        SilkTextureRowUpload.ValidateReadback(this, mipLevel, destination.Length);
+        _device.Readback(this, destination, mipLevel);
     }
 
     public override void ReadbackForTesting(Span<float> destination)
@@ -2432,7 +2368,9 @@ internal sealed unsafe class D3D12SilkGraphicsSampler(
 
 [SupportedOSPlatform("windows")]
 internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevice device)
-    : ISilkGraphicsCommandList, ISilkVolumeTextureCommandList, ISilkShadowGraphicsCommandList
+    : ISilkGraphicsCommandList, ISilkVolumeTextureCommandList, ISilkShadowGraphicsCommandList,
+      ISilkTextureCopyGraphicsCommandList,
+      ISilkTextureRowUploadCommandList
 {
     private readonly List<D3D12GraphicsCommand> _commands = [];
     private List<IDisposable>? _pixelCopies;
@@ -2463,6 +2401,15 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
 
     internal bool ContainsPickCopy => _pickReadbackDestination is not null;
 
+    public void CopyRenderTarget(ISilkGraphicsTexture source, ISilkGraphicsTexture destination)
+    {
+        ThrowIfOutsideRendering();
+        D3D12SilkGraphicsTexture from = ValidateTexture(source);
+        D3D12SilkGraphicsTexture to = ValidateTexture(destination);
+        SilkRenderTargetCopy.Validate(from, to);
+        _commands.Add(D3D12GraphicsCommand.CopyRenderTarget(from, to));
+    }
+
     public void UploadTexture(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
     {
         ThrowIfOutsideRendering();
@@ -2487,6 +2434,18 @@ internal sealed partial class D3D12SilkGraphicsCommandList(D3D12SilkGraphicsDevi
         _commands.EnsureCapacity(checked(_commands.Count + 1));
         _commands.Add(D3D12GraphicsCommand.Upload(
             d3d12Texture, Device.CopyTextureCommandData(source, ref _pixelCopies)));
+    }
+
+    public void UploadTextureRows(
+        ISilkGraphicsTexture texture, SilkTextureRowUpload region, ReadOnlySpan<byte> source)
+    {
+        ThrowIfOutsideRendering();
+        D3D12SilkGraphicsTexture target = ValidateTexture(texture);
+        region.Validate(target, source.Length);
+        _commands.EnsureCapacity(checked(_commands.Count + 1));
+        _commands.Add(D3D12GraphicsCommand.Upload(
+            target, Device.CopyTextureCommandData(source, ref _pixelCopies)) with
+        { TextureRows = region });
     }
 
     public unsafe void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
@@ -3069,6 +3028,12 @@ internal readonly record struct D3D12GraphicsCommand(
     uint ElementCount,
     uint GroupCount)
 {
+    internal SilkTextureRowUpload? TextureRows { get; init; }
+
+    internal static D3D12GraphicsCommand CopyRenderTarget(
+        D3D12SilkGraphicsTexture source, D3D12SilkGraphicsTexture destination) =>
+        Create(SilkGraphicsCommandKind.CopyRenderTarget, texture: source, depthTexture: destination);
+
     internal static D3D12GraphicsCommand Upload(
         D3D12SilkGraphicsTexture texture,
         byte[] data) =>

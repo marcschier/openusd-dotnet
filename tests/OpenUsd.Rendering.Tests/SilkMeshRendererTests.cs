@@ -9,6 +9,273 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkMeshRendererTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task GeometryCacheReusesTexturedInstancesWithEquivalentVertexLayouts(bool tangents)
+    {
+        static SilkMeshData mesh(int instance, float u = 1) => new(
+            instance + 1, "/Prototype", 1, instance, instance, SilkTopologyKind.TriangleList, 1,
+            [0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, instance, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, [0, 0, 1, 0, 0, 1, 0, 0, 1], "/Material",
+            [new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2, [0, 0, u, 0, 0, 1])]);
+        SilkMeshData first = mesh(0);
+        SilkMeshGpuGeometryKey key = SilkMeshGpuGeometryKey.Create(first, "st", tangents,
+            uvFingerprint: SilkMeshGpuGeometryKey.HashAttribute(first.FindTexCoord("st")));
+        SilkVertexLayoutDescriptor layout = tangents
+            ? SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent
+            : SilkVertexLayoutDescriptor.PositionNormalTexCoord;
+        using var device = new TestGraphicsDevice();
+        using var geometry = new SilkMeshGpuGeometryResource(key, first, 3, layout, "st", tangents,
+            device.CreateBuffer(3 * layout.Stride, SilkBufferUsage.Vertex),
+            device.CreateBuffer(12, SilkBufferUsage.Index));
+        await Assert.That(geometry.HasSameGeometry(first)).IsTrue();
+        await Assert.That(geometry.HasSameGeometry(mesh(1))).IsTrue();
+        await Assert.That(geometry.HasSameGeometry(mesh(1, 0.5f))).IsFalse();
+    }
+
+    [Test]
+    public async Task AuthoredNormalsAvoidUnusedNormalWorkspace()
+    {
+        const int pointCount = 10000;
+        var points = new float[pointCount * 3];
+        var normals = new float[points.Length];
+        var indices = new uint[(pointCount - 2) * 3];
+        for (int i = 0; i < pointCount; i++)
+        {
+            points[i * 3] = i;
+            normals[i * 3 + 2] = 2;
+        }
+        for (int i = 0; i < indices.Length; i++)
+        {
+            indices[i] = (uint)(i % pointCount);
+        }
+        var mesh = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            points, indices, new int[indices.Length / 3], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, normals, "", []);
+        for (int iteration = 0; iteration < 64; iteration++)
+        {
+            _ = SilkMeshGeometryBuilder.Build(mesh);
+        }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long outputBytes = ((long)geometry.Vertices.Length + geometry.Indices.Length) * sizeof(float);
+        await Assert.That(allocated).IsLessThan(outputBytes + 4096);
+        await Assert.That(geometry.Vertices.Length).IsEqualTo(pointCount * 6);
+        await Assert.That(geometry.Indices.AsSpan().SequenceEqual(indices)).IsTrue();
+        for (int i = 0; i < pointCount; i++)
+        {
+            await Assert.That(geometry.Vertices[i * 6]).IsEqualTo((float)i);
+            await Assert.That(geometry.Vertices[i * 6 + 3]).IsEqualTo(0f);
+            await Assert.That(geometry.Vertices[i * 6 + 4]).IsEqualTo(0f);
+            await Assert.That(geometry.Vertices[i * 6 + 5]).IsEqualTo(1f);
+        }
+    }
+
+    [Test]
+    [Arguments(false, false, 24)]
+    [Arguments(false, true, 24)]
+    [Arguments(true, false, 32)]
+    [Arguments(true, true, 48)]
+    public async Task MaterialVertexLayoutUsesThePredictedFullPrecisionPayload(
+        bool hasUv, bool normalMap, int stride)
+    {
+        SilkVertexAttributeData[] attributes = hasUv
+            ? [new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                [0, 0, 1, 0, 0, 1])] : [];
+        var mesh = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            [0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, [0, 0, 1, 0, 0, 1, 0, 0, 1], "", attributes);
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh, "st", normalMap);
+        await Assert.That(geometry.VertexLayout.Stride).IsEqualTo((uint)stride);
+        await Assert.That(geometry.Vertices.Length * sizeof(float)).IsEqualTo(3 * stride);
+        await Assert.That(geometry.Indices.Length * sizeof(uint)).IsEqualTo(12);
+        await Assert.That(geometry.HasTangents).IsEqualTo(hasUv && normalMap);
+    }
+
+    [Test]
+    [Arguments(false, false, 40)]
+    [Arguments(true, false, 56)]
+    [Arguments(true, true, 56)]
+    public async Task ASecondTextureCoordinateSetFollowsThePrimaryPayload(
+        bool normalMap, bool tangentsFromSecondary, int stride)
+    {
+        var mesh = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            [0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, [0, 0, 1, 0, 0, 1, 0, 0, 1], "",
+            [
+                new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                    [0, 0, 1, 0, 0, 1]),
+                new("st1", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                    [0.5f, 0.25f, 0.5f, 1.25f, -0.5f, 0.25f]),
+            ]);
+
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
+            mesh, "st", normalMap, secondaryUvPrimvar: "st1",
+            tangentsFromSecondary: tangentsFromSecondary);
+
+        int floats = stride / sizeof(float);
+        await Assert.That(geometry.VertexLayout.Stride).IsEqualTo((uint)stride);
+        geometry.VertexLayout.Validate();
+        await Assert.That(geometry.VertexLayout.HasTangent).IsEqualTo(normalMap);
+        await Assert.That(geometry.SecondaryUvPrimvar).IsEqualTo("st1");
+        await Assert.That(geometry.Vertices.Length).IsEqualTo(3 * floats);
+        float[] secondary = [0.5f, 0.25f, 0.5f, 1.25f, -0.5f, 0.25f];
+        float[] primary = [0, 0, 1, 0, 0, 1];
+        for (int point = 0; point < 3; point++)
+        {
+            int vertex = point * floats;
+            await Assert.That(geometry.Vertices[vertex + 6]).IsEqualTo(primary[point * 2]);
+            await Assert.That(geometry.Vertices[vertex + 7]).IsEqualTo(primary[(point * 2) + 1]);
+            await Assert.That(geometry.Vertices[vertex + floats - 2]).IsEqualTo(secondary[point * 2]);
+            await Assert.That(geometry.Vertices[vertex + floats - 1])
+                .IsEqualTo(secondary[(point * 2) + 1]);
+        }
+        if (normalMap)
+        {
+            // The primary set runs U along +X; the second set runs U along -Y,
+            // so the tangent shows which set the frame was derived from.
+            float tangentX = geometry.Vertices[8];
+            float tangentY = geometry.Vertices[9];
+            await Assert.That(tangentX).IsEqualTo(tangentsFromSecondary ? 0f : 1f).Within(1e-6f);
+            await Assert.That(tangentY).IsEqualTo(tangentsFromSecondary ? -1f : 0f).Within(1e-6f);
+        }
+    }
+
+    [Test]
+    [Arguments("")]
+    [Arguments("st")]
+    public async Task ASecondSetNamingNothingNewKeepsTheSingleSetPayload(string secondaryUvPrimvar)
+    {
+        var mesh = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            [0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, [0, 0, 1, 0, 0, 1, 0, 0, 1], "",
+            [new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                [0, 0, 1, 0, 0, 1])]);
+
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
+            mesh, "st", secondaryUvPrimvar: secondaryUvPrimvar);
+        SilkMeshGeometry untextured = SilkMeshGeometryBuilder.Build(
+            mesh, secondaryUvPrimvar: "st1");
+
+        await Assert.That(geometry.VertexLayout.Stride).IsEqualTo(32u);
+        await Assert.That(geometry.SecondaryUvPrimvar).IsEqualTo("");
+        await Assert.That(untextured.VertexLayout.Stride).IsEqualTo(24u);
+        await Assert.That(untextured.SecondaryUvPrimvar).IsEqualTo("");
+    }
+
+    [Test]
+    public async Task AMissingSecondSetReadsZeroCoordinates()
+    {
+        var mesh = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            [0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 1, 2], [0], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, [0, 0, 1, 0, 0, 1, 0, 0, 1], "",
+            [new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                [0, 0, 1, 0, 0, 1])]);
+
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
+            mesh, "st", secondaryUvPrimvar: "st1");
+
+        await Assert.That(geometry.VertexLayout.Stride).IsEqualTo(40u);
+        for (int point = 0; point < 3; point++)
+        {
+            await Assert.That(geometry.Vertices[(point * 10) + 8]).IsEqualTo(0f);
+            await Assert.That(geometry.Vertices[(point * 10) + 9]).IsEqualTo(0f);
+        }
+    }
+
+    [Test]
+    public async Task GeometryCacheRetainsImmutableNumericOwnersWithoutCopyingTheirPayloads()
+    {
+        float[] points = new float[300000];
+        uint[] indices = new uint[300000];
+        points[3] = 1;
+        points[7] = 1;
+        for (int index = 0; index < indices.Length; index++)
+        {
+            indices[index] = (uint)(index % 3);
+        }
+        float[] color = [1, 1, 1, 1];
+        double[] transform = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+        int[] subprims = new int[indices.Length / 3];
+        var mesh = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            points, indices, subprims, color, transform);
+        SilkMeshGpuGeometryKey key = SilkMeshGpuGeometryKey.Create(mesh, "", false);
+        SilkVertexLayoutDescriptor layout = SilkVertexLayoutDescriptor.PositionNormal;
+        using var device = new TestGraphicsDevice();
+        ISilkGraphicsBuffer vertex = device.CreateBuffer(16, SilkBufferUsage.Vertex);
+        ISilkGraphicsBuffer indexBuffer = device.CreateBuffer(16, SilkBufferUsage.Index);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        using var geometry = new SilkMeshGpuGeometryResource(key, mesh, (uint)indices.Length,
+            layout, "", false, vertex, indexBuffer);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        await Assert.That(allocated).IsLessThan(4096);
+        points[0] = 9;
+        indices[0] = 2;
+        await Assert.That(mesh.Points.Span[0]).IsEqualTo(0f);
+        await Assert.That(mesh.Indices.Span[0]).IsEqualTo(0u);
+        await Assert.That(geometry.HasSameGeometry(mesh)).IsTrue();
+        var replacement = new SilkMeshData(1, "/Mesh", 1, 0, 0, SilkTopologyKind.TriangleList, 2,
+            points, indices, subprims, color, transform);
+        await Assert.That(geometry.HasSameGeometry(replacement)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(1)]
+    [Arguments(2)]
+    [Arguments(3)]
+    public async Task StoredUpdateFailureRetainsReplayUntilTheWholeFrameCanBePrepared(int failure)
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        byte[] bytes = [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])];
+        using OpenUsdSilkPage page = SilkCommandStorageTests.Stored(bytes, 2, 37, out var storage);
+        if (failure <= 2)
+        {
+            storage.FailPass = failure;
+        }
+        else
+        {
+            device.BufferFailureCountdown = 0;
+        }
+        await Assert.That(() => renderer.ApplyPage(page)).ThrowsException();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(0ul);
+        await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(0);
+        await Assert.That(renderer.GpuResources.Meshes.Count).IsEqualTo(0);
+        page.Dispose();
+        await Assert.That(storage.Disposals).IsEqualTo(0);
+        storage.FailPass = 0;
+        device.BufferFailureCountdown = null;
+        using var next = new OpenUsdSilkPage(30, 8, CreateFrameCommand(), 1);
+        renderer.ApplyPage(next);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(8ul);
+        await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(1);
+        await Assert.That(renderer.GpuResources.Meshes.Count).IsEqualTo(1);
+        await Assert.That(storage.Disposals).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task RendererDisposalReleasesItsRejectedStoredUpdate()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using OpenUsdSilkPage page = SilkCommandStorageTests.Stored(
+            [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2, 37, out var storage);
+        storage.FailPass = 1;
+        await Assert.That(() => renderer.ApplyPage(page)).Throws<IOException>();
+        page.Dispose();
+        await Assert.That(storage.Disposals).IsEqualTo(0);
+        renderer.Dispose();
+        await Assert.That(storage.Disposals).IsEqualTo(1);
+    }
+
+    [Test]
     [Arguments(false, false)]
     [Arguments(true, false)]
     [Arguments(false, true)]
@@ -20,7 +287,7 @@ public sealed class SilkMeshRendererTests
         using var renderer = new SilkMeshRenderer(device);
         using var color = new ValidationTexture(4, 4, SilkTextureFormat.Rgba8Unorm);
         using var depth = new ValidationTexture(invalidOptions ? 4u : 2u, 4, SilkTextureFormat.D32Float);
-        using var page = new OpenUsdSilkPage(24, 1,
+        using var page = new OpenUsdSilkPage(30, 1,
             [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
         SilkMeshRenderOptions options = invalidOptions
             ? SilkMeshRenderOptions.Default with { ClearDepth = float.NaN }
@@ -91,7 +358,7 @@ public sealed class SilkMeshRendererTests
         byte[] removal = CreateRemoval("/Removed");
         byte[] movedFrame = CreateFrameCommand();
         BinaryPrimitives.WriteDoubleLittleEndian(movedFrame.AsSpan(16 + 12 * sizeof(double)), 2);
-        using var page = new OpenUsdSilkPage(24, 2, [.. movedFrame, .. replacement, .. tint, .. added, .. removal], 5);
+        using var page = new OpenUsdSilkPage(30, 2, [.. movedFrame, .. replacement, .. tint, .. added, .. removal], 5);
         SilkSceneDelta delta = coordinated ? default : scene.Apply(page);
         device.BufferFailureCountdown = failWrite ? null : failure;
         device.WriteFailureCountdown = failWrite ? failure : null;
@@ -133,9 +400,9 @@ public sealed class SilkMeshRendererTests
     {
         using var device = new TestGraphicsDevice();
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(24, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
+        using var first = new OpenUsdSilkPage(30, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
         renderer.ApplyPage(first);
-        using var quiet = new OpenUsdSilkPage(24, 2, CreateFrameCommand(), 1);
+        using var quiet = new OpenUsdSilkPage(30, 2, CreateFrameCommand(), 1);
         SilkMeshGpuResource original = renderer.GpuResources.Meshes[7];
         int created = device.Buffers.Count;
         for (int index = 0; index < 1000; index++)

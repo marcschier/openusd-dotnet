@@ -909,6 +909,44 @@ def Xform "World"
     }
 
     [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task RenderProductOverridesMatchAuthoredRasterOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("D3D12 product capture requires Windows.");
+            return;
+        }
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+            await RenderProductRasterConformance.OverriddenRasterMatchesAuthoredRaster(device, ResolvePluginPath());
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("render-product override D3D12", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
+
+    [Test]
+    public async Task RenderProductOverridesMatchAuthoredRasterOnVulkan()
+    {
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await RenderProductRasterConformance.OverriddenRasterMatchesAuthoredRaster(device, ResolvePluginPath());
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("render-product override Vulkan", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
+
+    [Test]
     public async Task SilkComplexityMediumChangesPointPage()
     {
         MeshPageStats lowStats;
@@ -1753,6 +1791,211 @@ def Xform "World"
     }
 
     [Test]
+    public async Task OpenPbrProjectionMatchesPreviewPixelReferenceOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(VulkanSilkGraphicsDevice.Create);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("OpenPBR Vulkan pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "vulkan");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    public async Task OpenPbrBaseColorMapMatchesPreviewTextureOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                VulkanSilkGraphicsDevice.Create,
+                "materialx/materialx-openpbr-base-color-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("OpenPBR base-color map Vulkan pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "vulkan", "openpbr-base-color-map-equivalence");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    public async Task OpenPbrRoughnessMapMatchesPreviewTextureOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                VulkanSilkGraphicsDevice.Create,
+                "materialx/materialx-openpbr-roughness-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("OpenPBR roughness map Vulkan pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "vulkan", "openpbr-roughness-map-equivalence");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    public async Task OpenPbrNormalMapMatchesPreviewTextureOnVulkan()
+    {
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                VulkanSilkGraphicsDevice.Create,
+                "materialx/materialx-openpbr-normal-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("OpenPBR normal map Vulkan pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "vulkan", "openpbr-normal-map-equivalence");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task OpenPbrProjectionMatchesPreviewPixelReferenceOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                static () => D3D12SilkGraphicsDevice.Create(useWarp: true));
+        }
+        catch (Exception exception) when (exception is
+            DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
+        {
+            SkipOrFail("OpenPBR D3D12 pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "d3d12");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task OpenPbrBaseColorMapMatchesPreviewTextureOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                static () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+                "materialx/materialx-openpbr-base-color-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is
+            DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
+        {
+            SkipOrFail("OpenPBR base-color map D3D12 pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "d3d12", "openpbr-base-color-map-equivalence");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task OpenPbrRoughnessMapMatchesPreviewTextureOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                static () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+                "materialx/materialx-openpbr-roughness-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is
+            DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
+        {
+            SkipOrFail("OpenPBR roughness map D3D12 pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "d3d12", "openpbr-roughness-map-equivalence");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task OpenPbrNormalMapMatchesPreviewTextureOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        ParityImage image;
+        try
+        {
+            image = CaptureOpenPbrPixelEquivalence(
+                static () => D3D12SilkGraphicsDevice.Create(useWarp: true),
+                "materialx/materialx-openpbr-normal-map-equivalence.usda");
+        }
+        catch (Exception exception) when (exception is
+            DllNotFoundException or DirectoryNotFoundException or PlatformNotSupportedException)
+        {
+            SkipOrFail("OpenPBR normal map D3D12 pixel equivalence", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        AssertOpenPbrPixelEquivalence(image, "d3d12", "openpbr-normal-map-equivalence");
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        await Assert.That(maxChannelDelta).IsLessThanOrEqualTo(MaximumShadedChannelDelta);
+        await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(MaximumShadedMeanChannelDelta);
+    }
+
+    [Test]
     public async Task MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnVulkan()
     {
         ParityImage image;
@@ -1953,6 +2196,34 @@ def Xform "World"
         }
 
         WriteEvidence("texture-wrap-divergence.txt", evidence);
+    }
+
+    [Test]
+    public async Task UseMetadataPixelsMatchObservedPerAxisWrapsOnVulkan()
+    {
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await AssertObservedMetadataWrapsMatch(device);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("useMetadata observed wraps Vulkan", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+    }
+
+    [Test]
+    public async Task UseMetadataPixelsMatchObservedPerAxisWrapsOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await AssertObservedMetadataWrapsMatch(device);
     }
 
     [Test]
@@ -2695,6 +2966,42 @@ def Xform "World"
     }
 
     [Test]
+    public async Task ShapedRectLightWithFullConeMatchesUnshapedRectOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-shaping-full-cone",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.ShapingWideConeEquivalent),
+            expectDivergence: false);
+    }
+
+    [Test]
+    public async Task ShapedRectLightNarrowConeDivergesFromFullConeOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-shaping-narrow-cone",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.ShapingNarrowConeDivergence),
+            expectDivergence: true);
+    }
+
+    [Test]
+    public async Task ShapedDiskLightFocusDivergesFromUnfocusedDiskOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-shaping-focus",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.ShapingFocusDivergence),
+            expectDivergence: true);
+    }
+
+    [Test]
+    public async Task ShapedRectLightBackSideMatchesUnlitSceneOnVulkan()
+    {
+        await AssertLightSelfConsistency(
+            "light-shaping-rect-back-side",
+            CaptureSyntheticAreaLightSelfConsistency(AreaLightGate.ShapingRectBackSideEquivalent),
+            expectDivergence: false);
+    }
+
+    [Test]
     public async Task FifthDirectLightContributesOnVulkan()
     {
         ParityImage image = CaptureSyntheticFifthDirectLight();
@@ -3160,6 +3467,10 @@ def Xform "World"
         DiskDivergence,
         CylinderEquivalent,
         CylinderDivergence,
+        ShapingWideConeEquivalent,
+        ShapingNarrowConeDivergence,
+        ShapingFocusDivergence,
+        ShapingRectBackSideEquivalent,
     }
 
     private static string FormatSelfConsistencyMetrics(
@@ -3195,6 +3506,73 @@ def Xform "World"
                 [1, 0, 1, 1],
                 "st"),
             textureCoordinates);
+
+    private static async Task AssertObservedMetadataWrapsMatch(ISilkGraphicsDevice device)
+    {
+        foreach (bool outsideU in new[] { true, false })
+        {
+            ParityImage image = CaptureSyntheticMetadataTextureWrap(device, outsideU);
+            (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+            await Assert.That(CountNonBlackPixels(image)).IsGreaterThan(100);
+            await Assert.That(maxChannelDelta).IsLessThanOrEqualTo((byte)3);
+            await Assert.That(meanChannelDelta).IsLessThanOrEqualTo(0.500);
+        }
+    }
+
+    private static ParityImage CaptureSyntheticMetadataTextureWrap(
+        ISilkGraphicsDevice device,
+        bool outsideU)
+    {
+        float[] coordinates = outsideU
+            ? [1.25f, 0.25f, 1.25f, 0.25f, 1.25f, 0.25f, 1.25f, 0.25f]
+            : [0.25f, 1.25f, 0.25f, 1.25f, 0.25f, 1.25f, 0.25f, 1.25f];
+        SilkTextureWrap referenceWrap = outsideU ? SilkTextureWrap.Repeat : SilkTextureWrap.Clamp;
+        byte[] reference = CreateTexturedMaterialCommand(
+            "/Reference",
+            "metadata-wrap",
+            SilkMaterialParameter.DiffuseColor,
+            referenceWrap,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st");
+        byte[] candidate = CreateTexturedMaterialCommand(
+            "/Metadata",
+            "metadata-wrap",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.UseMetadata,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st");
+        return CaptureSyntheticMaterialPair(
+            device,
+            reference,
+            candidate,
+            coordinates,
+            requireImagePlugins: false,
+            imageDecoder: static (_, _) => new SilkDecodedImage(
+                2,
+                2,
+                [
+                    255, 0, 0, 255,
+                    0, 255, 0, 255,
+                    255, 255, 0, 255,
+                    0, 0, 255, 255,
+                ]),
+            imageDescriber: static _ => new SilkImageDescription(
+                2,
+                2,
+                SilkTextureFormat.Rgba8Unorm,
+                4,
+                SilkImageObservation.Queried |
+                    SilkImageObservation.AddressU |
+                    SilkImageObservation.AddressV,
+                AddressU: SilkImageAddressObservation.Repeat,
+                AddressV: SilkImageAddressObservation.ClampToEdge));
+    }
 
     private static ParityImage CaptureSyntheticMixedTextureWrapSelfConsistency(
         ISilkGraphicsDevice device)
@@ -3433,6 +3811,40 @@ def Xform "World"
         await Assert.That(rotatedMaxDelta).IsLessThanOrEqualTo((byte)3);
         await Assert.That(rotatedMeanDelta).IsLessThanOrEqualTo(0.500);
 
+        ParityImage pivoted = CaptureSyntheticFoldedUvTransform(
+            device,
+            [0f, 1f, -1f, 0f, 0f, 1f],
+            [1f, 0f, 0f]);
+        (byte pivotedMaxDelta, double pivotedMeanDelta) =
+            CompareTranslatedHalves(pivoted);
+        string pivotedLine = FormatSelfConsistencyMetrics(
+            $"uv-transform-place2d-pivot-{backend}",
+            pivotedMaxDelta,
+            pivotedMeanDelta);
+        Console.WriteLine(pivotedLine);
+        WriteEvidence($"uv-transform-{backend}-place2d-pivot.txt", [pivotedLine]);
+        await Assert.That(CountNonBlackPixels(pivoted)).IsGreaterThan(100);
+        await Assert.That(pivotedMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(pivotedMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        // The native probe checks both place2d operation orders; this affine
+        // checks that scale and pivot terms reach the shader unchanged.
+        ParityImage scaledPivoted = CaptureSyntheticFoldedUvTransform(
+            device,
+            [0.5f, 0f, 0f, 0.5f, 0.625f, 0.625f],
+            TranslatedTexel);
+        (byte scaledMaxDelta, double scaledMeanDelta) =
+            CompareTranslatedHalves(scaledPivoted);
+        string scaledLine = FormatSelfConsistencyMetrics(
+            $"uv-transform-place2d-scale-pivot-{backend}",
+            scaledMaxDelta,
+            scaledMeanDelta);
+        Console.WriteLine(scaledLine);
+        WriteEvidence($"uv-transform-{backend}-place2d-scale-pivot.txt", [scaledLine]);
+        await Assert.That(CountNonBlackPixels(scaledPivoted)).IsGreaterThan(100);
+        await Assert.That(scaledMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(scaledMeanDelta).IsLessThanOrEqualTo(0.500);
+
         ParityImage untransformed = CaptureSyntheticFoldedUvTransform(
             device,
             [1f, 0f, 0f, 1f, 0f, 0f],
@@ -3446,6 +3858,39 @@ def Xform "World"
         Console.WriteLine(divergence);
         WriteEvidence($"uv-transform-{backend}-divergence.txt", [divergence]);
         await Assert.That(identityMaxDelta).IsGreaterThan((byte)32);
+
+        // A second place2d: the primary affine is the quarter turn, and only the
+        // masked base colour samples through the translation. Reading the
+        // translated texel proves the shader chose the alternate rows per slot.
+        float[] quarterTurn = [0f, -1f, 1f, 0f, 1f, 0f];
+        float[] translation = [1f, 0f, 0f, 1f, 0.5f, 0.5f];
+        ParityImage alternate = CaptureSyntheticFoldedUvTransform(
+            device,
+            quarterTurn,
+            TranslatedTexel,
+            1u << (int)SilkMaterialParameter.DiffuseColor,
+            translation);
+        (byte alternateMaxDelta, double alternateMeanDelta) = CompareTranslatedHalves(alternate);
+        string alternateLine = FormatSelfConsistencyMetrics(
+            $"uv-transform-alternate-{backend}",
+            alternateMaxDelta,
+            alternateMeanDelta);
+        Console.WriteLine(alternateLine);
+        WriteEvidence($"uv-transform-{backend}-alternate.txt", [alternateLine]);
+        await Assert.That(CountNonBlackPixels(alternate)).IsGreaterThan(100);
+        await Assert.That(alternateMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(alternateMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        // Non-vacuity: the same transforms with an empty mask read the quarter
+        // turn's texel, so they must diverge from the translated reference.
+        ParityImage unmasked = CaptureSyntheticFoldedUvTransform(
+            device,
+            quarterTurn,
+            TranslatedTexel,
+            0,
+            translation);
+        (byte unmaskedMaxDelta, _) = CompareTranslatedHalves(unmasked);
+        await Assert.That(unmaskedMaxDelta).IsGreaterThan((byte)32);
     }
 
     /// <summary>
@@ -3488,6 +3933,33 @@ def Xform "World"
         await AssertSyntheticMaterialXAddressModes(device, "d3d12");
     }
 
+    [Test]
+    public async Task MaterialXTexcoordIndexSelectsSecondUvSetOnVulkan()
+    {
+        try
+        {
+            using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+            await AssertMaterialXSecondUvSet(device, "vulkan");
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            SkipOrFail("MaterialX second UV set Vulkan sampling", exception.ToString());
+        }
+    }
+
+    [Test]
+    public async Task MaterialXTexcoordIndexSelectsSecondUvSetOnD3D12()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await AssertMaterialXSecondUvSet(device, "d3d12");
+    }
+
     /// <summary>
     /// Pixel evidence that the wrap value hdSilk resolves from a MaterialX
     /// address mode reaches the sampler and selects a different texel.
@@ -3495,18 +3967,13 @@ def Xform "World"
     /// <remarks>
     /// MaterialX defaults <c>uaddressmode</c>/<c>vaddressmode</c> to
     /// <c>periodic</c>, while UsdUVTexture's unauthored <c>wrap</c> resolves to
-    /// black. hdSilk read the UsdUVTexture names from MaterialX image nodes, found
-    /// nothing, and published black for every one of them, which the renderer
-    /// resolves to clamp-to-edge. A MaterialX texture the graph tiles was
-    /// therefore smeared from its edge column of texels.
+    /// black. hdSilk reads MaterialX's address names and publishes the selected
+    /// sampler mode.
     ///
-    /// The captures use a coordinate of 1.25 on a 2x2 image, which is the smallest
-    /// case that separates the two: periodic wraps it to the 0.25 texel centre and
-    /// reads the first column, clamp-to-edge reads the last. Both land exactly on
-    /// a texel centre, so neither reads a filtered blend and the comparison is
-    /// against an exact constant colour rather than a tolerance band. The third
-    /// capture is what makes this non-vacuous: black matching the *clamped* texel
-    /// proves the divergence is clamping and not a dropped texture.
+    /// At coordinate 1.25 on a 2x2 image, periodic wraps to the 0.25 texel centre
+    /// and reads the first column, clamp reads the last column, and black reads
+    /// the transparent border. These exact samples prove the texture is bound and
+    /// distinguish the modes without filtering blends.
     ///
     /// The native half of the claim -- that an unauthored MaterialX image resolves
     /// to periodic in the first place -- is
@@ -3533,28 +4000,84 @@ def Xform "World"
 
         ParityImage clamped = CaptureSyntheticAddressModeTexel(
             device,
-            SilkTextureWrap.Black,
+            SilkTextureWrap.Clamp,
             ClampedTexel);
         (byte clampedMaxDelta, double clampedMeanDelta) = CompareTranslatedHalves(clamped);
         string clamping = FormatSelfConsistencyMetrics(
-            $"address-mode-constant-{backend}",
+            $"address-mode-clamp-{backend}",
             clampedMaxDelta,
             clampedMeanDelta);
         Console.WriteLine(clamping);
-        WriteEvidence($"address-mode-{backend}-constant.txt", [clamping]);
+        WriteEvidence($"address-mode-{backend}-clamp.txt", [clamping]);
         await Assert.That(CountNonBlackPixels(clamped)).IsGreaterThan(100);
         await Assert.That(clampedMaxDelta).IsLessThanOrEqualTo((byte)3);
 
-        // The mode that hdSilk published for every MaterialX image before it read
-        // uaddressmode does not select the texel periodic addressing selects.
+        ParityImage blackBorder = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.Black,
+            [0.0f, 0.0f, 0.0f]);
+        (byte borderMaxDelta, double borderMeanDelta) =
+            CompareTranslatedHalves(blackBorder);
+        string border = FormatSelfConsistencyMetrics(
+            $"address-mode-black-border-{backend}",
+            borderMaxDelta,
+            borderMeanDelta);
+        Console.WriteLine(border);
+        WriteEvidence($"address-mode-{backend}-black-border.txt", [border]);
+        await Assert.That(borderMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(borderMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        ParityImage metadataBorder = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.UseMetadata,
+            [0.0f, 0.0f, 0.0f]);
+        (byte metadataMaxDelta, double metadataMeanDelta) =
+            CompareTranslatedHalves(metadataBorder);
+        string metadata = FormatSelfConsistencyMetrics(
+            $"address-mode-metadata-border-{backend}",
+            metadataMaxDelta,
+            metadataMeanDelta);
+        Console.WriteLine(metadata);
+        WriteEvidence($"address-mode-{backend}-metadata-border.txt", [metadata]);
+        await Assert.That(metadataMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(metadataMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        // MaterialX constant reads the authored default outside the unit range.
+        // The texture spec's default is magenta, which no texel of the image
+        // carries, so a match proves the ring rather than an edge texel.
+        ParityImage constantBorder = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.Constant,
+            [1.0f, 0.0f, 1.0f]);
+        (byte constantMaxDelta, double constantMeanDelta) =
+            CompareTranslatedHalves(constantBorder);
+        string constant = FormatSelfConsistencyMetrics(
+            $"address-mode-constant-border-{backend}",
+            constantMaxDelta,
+            constantMeanDelta);
+        Console.WriteLine(constant);
+        WriteEvidence($"address-mode-{backend}-constant-border.txt", [constant]);
+        await Assert.That(CountNonBlackPixels(constantBorder)).IsGreaterThan(100);
+        await Assert.That(constantMaxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(constantMeanDelta).IsLessThanOrEqualTo(0.500);
+
+        // Non-vacuity: the same constant capture compared with the black border
+        // must diverge, or the ring never reached the sample.
+        ParityImage constantAgainstBlack = CaptureSyntheticAddressModeTexel(
+            device,
+            SilkTextureWrap.Constant,
+            [0.0f, 0.0f, 0.0f]);
+        (byte constantDivergence, _) = CompareTranslatedHalves(constantAgainstBlack);
+        await Assert.That(constantDivergence).IsGreaterThan(MinimumTextureDivergenceChannelDelta);
+
         ParityImage divergent = CaptureSyntheticAddressModeTexel(
             device,
             SilkTextureWrap.Black,
-            WrappedTexel);
+            ClampedTexel);
         (byte divergentMaxDelta, double divergentMeanDelta) =
             CompareTranslatedHalves(divergent);
         string divergence = FormatSelfConsistencyMetrics(
-            $"address-mode-divergence-{backend}",
+            $"address-mode-border-divergence-{backend}",
             divergentMaxDelta,
             divergentMeanDelta);
         Console.WriteLine(divergence);
@@ -3802,10 +4325,86 @@ def Xform "World"
                 ]));
     }
 
+    private static async Task AssertMaterialXSecondUvSet(
+        ISilkGraphicsDevice device,
+        string backend)
+    {
+        float[] firstSet =
+        [
+            0.25f, 0.25f,
+            0.25f, 0.25f,
+            0.25f, 0.25f,
+            0.25f, 0.25f,
+        ];
+        float[] secondSet =
+        [
+            0.75f, 0.25f,
+            0.75f, 0.25f,
+            0.75f, 0.25f,
+            0.75f, 0.25f,
+        ];
+        MaterialScalarSpec[] referenceScalars =
+        [
+            new(SilkMaterialParameter.DiffuseColor, [0.0f, 0.0f, 1.0f]),
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialScalarSpec[] texturedScalars =
+        [
+            new(SilkMaterialParameter.Roughness, [1.0f]),
+            new(SilkMaterialParameter.Metallic, [0.0f]),
+        ];
+        MaterialTextureSpec secondUvTexture = new(
+            "address-mode-quadrants",
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Clamp,
+            SilkColorSpace.Raw,
+            [1, 1, 1, 1],
+            [0, 0, 0, 0],
+            [1, 0, 1, 1],
+            "st1",
+            SilkTextureChannel.Rgb);
+
+        ParityImage image = CaptureSyntheticMaterialPair(
+            device,
+            CreateMaterialCommandWithScalars(
+                "/Repeat",
+                SilkSurfaceKind.PreviewSurface,
+                referenceScalars),
+            CreateTexturedMaterialCommand(
+                "/Candidate",
+                [secondUvTexture],
+                texturedScalars),
+            firstSet,
+            requireImagePlugins: false,
+            imageDecoder: static (_, _) => new SilkDecodedImage(
+                2,
+                2,
+                [
+                    255, 0, 0, 255,
+                    0, 255, 0, 255,
+                    255, 255, 0, 255,
+                    0, 0, 255, 255,
+                ]),
+            secondTextureCoordinates: secondSet);
+        (byte maxDelta, double meanDelta) = CompareTranslatedHalves(image);
+        string evidence = FormatSelfConsistencyMetrics(
+            $"materialx-second-uv-set-{backend}",
+            maxDelta,
+            meanDelta);
+        Console.WriteLine(evidence);
+        WriteEvidence($"materialx-second-uv-set-{backend}.txt", [evidence]);
+        await Assert.That(CountNonBlackPixels(image)).IsGreaterThan(100);
+        await Assert.That(maxDelta).IsLessThanOrEqualTo((byte)3);
+        await Assert.That(meanDelta).IsLessThanOrEqualTo(0.500);
+    }
+
     private static ParityImage CaptureSyntheticFoldedUvTransform(
         ISilkGraphicsDevice device,
         float[] uvTransform,
-        float[] expectedColor)
+        float[] expectedColor,
+        uint alternateUvMask = 0,
+        float[]? alternateUvTransform = null)
     {
         MaterialScalarSpec[] referenceScalars =
         [
@@ -3848,7 +4447,9 @@ def Xform "World"
                 "/Candidate",
                 [placed],
                 texturedScalars,
-                uvTransform),
+                uvTransform,
+                alternateUvMask,
+                alternateUvTransform),
             textureCoordinates,
             requireImagePlugins: false,
             imageDecoder: static (_, _) => new SilkDecodedImage(
@@ -4527,7 +5128,9 @@ def Xform "World"
         ReadOnlySpan<float> textureCoordinates = default,
         bool requireImagePlugins = true,
         Func<string, bool, SilkDecodedImage>? imageDecoder = null,
-        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null)
+        Func<string, IReadOnlyList<SilkUdimTile>>? udimResolver = null,
+        Func<string, SilkImageDescription>? imageDescriber = null,
+        ReadOnlySpan<float> secondTextureCoordinates = default)
     {
         if (requireImagePlugins)
         {
@@ -4554,7 +5157,8 @@ def Xform "World"
                     _ => throw new ArgumentOutOfRangeException(nameof(device))
                 },
                 imageDecoder,
-                udimResolver);
+                udimResolver,
+                imageDescriber: imageDescriber);
         SilkMeshRendererConformance.Apply(
             renderer,
             revision: 1,
@@ -4564,8 +5168,10 @@ def Xform "World"
                 IdentityMatrix()),
             leftMaterial,
             rightMaterial,
-            CreateTexturedMeshCommand(1, "/LeftMesh", "/Repeat", -0.5f, textureCoordinates),
-            CreateTexturedMeshCommand(2, "/RightMesh", "/Candidate", 0.5f, textureCoordinates));
+            CreateTexturedMeshCommand(
+                1, "/LeftMesh", "/Repeat", -0.5f, textureCoordinates, secondTextureCoordinates),
+            CreateTexturedMeshCommand(
+                2, "/RightMesh", "/Candidate", 0.5f, textureCoordinates, secondTextureCoordinates));
         var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
         _ = renderer.Render(color, depth, options);
         _ = renderer.Render(color, depth, options);
@@ -4742,6 +5348,85 @@ def Xform "World"
         byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
         color.ReadbackForTesting(pixels);
         return new ParityImage(Width, Height, pixels);
+    }
+
+    private static ParityImage CaptureOpenPbrPixelEquivalence(
+        Func<ISilkGraphicsDevice> createDevice,
+        string fixture = "materialx/materialx-openpbr-pixel-equivalence.usda")
+    {
+        string stagePath = ResolveTestAsset(fixture);
+        string pluginPath = ResolvePluginPath();
+        PrependHdSilkNativeSearchPath();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stagePath);
+        using OpenUsdSilkPage page = session.Sync(
+            Width,
+            Height,
+            TimeCode,
+            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+        EnsureOpenPbrAndPreviewMaterialsPublished(page);
+
+        using ISilkGraphicsDevice device = createDevice();
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)Width),
+                checked((uint)Height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(checked((uint)Width), checked((uint)Height)));
+        using var renderer = new SilkMeshRenderer(device);
+        var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
+        for (int attempt = 0; attempt < 60; attempt++)
+        {
+            _ = renderer.ApplyAndRender(page, color, depth, options);
+            Thread.Sleep(10);
+        }
+
+        byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+        color.ReadbackForTesting(pixels);
+        return new ParityImage(Width, Height, pixels);
+    }
+
+    private static void EnsureOpenPbrAndPreviewMaterialsPublished(OpenUsdSilkPage page)
+    {
+        bool projected = false;
+        bool preview = false;
+        using SilkCommandEnumerator commands = page.GetEnumerator();
+        while (commands.MoveNext())
+        {
+            if (commands.Current.Type != SilkCommandType.MaterialUpsert)
+            {
+                continue;
+            }
+
+            SilkSurfaceKind kind = commands.Current.AsMaterialUpsert().SurfaceKind;
+            projected |= kind == SilkSurfaceKind.MaterialXProjected;
+            preview |= kind == SilkSurfaceKind.PreviewSurface;
+        }
+
+        if (!projected || !preview)
+        {
+            throw new InvalidOperationException(
+                $"The pixel fixture did not publish both material paths (projected={projected}, preview={preview}).");
+        }
+    }
+
+    private static void AssertOpenPbrPixelEquivalence(
+        ParityImage image,
+        string backend,
+        string evidencePrefix = "openpbr-preview-pixel-equivalence")
+    {
+        (byte maxChannelDelta, double meanChannelDelta) = CompareTranslatedHalves(image);
+        string line = FormatSelfConsistencyMetrics(
+            $"{evidencePrefix}-{backend}",
+            maxChannelDelta,
+            meanChannelDelta);
+        Console.WriteLine(line);
+        WriteEvidence($"{evidencePrefix}-{backend}.txt", [line]);
+        if (CountNonBlackPixels(image) <= 100)
+        {
+            throw new InvalidOperationException("The OpenPBR pixel reference rendered no visible material pixels.");
+        }
     }
 
     private static void EnsureGeneratedMaterialPublished(OpenUsdSilkPage page)
@@ -5273,7 +5958,9 @@ def Xform "World"
         string path,
         ReadOnlySpan<MaterialTextureSpec> textures,
         ReadOnlySpan<MaterialScalarSpec> scalars,
-        ReadOnlySpan<float> uvTransform)
+        ReadOnlySpan<float> uvTransform,
+        uint alternateUvMask = 0,
+        float[]? alternateUvTransform = null)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         int textureByteCount = 0;
@@ -5334,14 +6021,24 @@ def Xform "World"
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset + sizeof(uint)), 0);
         WriteUvTransform(bytes.AsSpan(generatedOffset + (2 * sizeof(uint))), uvTransform);
+        int alternateOffset = generatedOffset + (2 * sizeof(uint)) + (6 * sizeof(float));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(alternateOffset), alternateUvMask);
+        for (int index = 0; index < 6 && alternateUvTransform is not null; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(alternateOffset + sizeof(uint) + (index * sizeof(float))),
+                alternateUvTransform[index]);
+        }
         return bytes;
     }
 
     /// <summary>The affine hdSilk publishes when no MaterialX place2d was folded.</summary>
     private static ReadOnlySpan<float> IdentityUvTransform => [1f, 0f, 0f, 1f, 0f, 0f];
 
-    private const int UvTransformByteCount = 6 * sizeof(float);
+    /// <summary>The primary affine, the alternate texture mask and the alternate affine.</summary>
+    private const int UvTransformByteCount = (12 * sizeof(float)) + sizeof(uint);
 
+    /// <summary>Writes the primary affine and an empty alternate tail (no masked texture, identity affine).</summary>
     private static void WriteUvTransform(Span<byte> bytes, ReadOnlySpan<float> uvTransform)
     {
         for (int index = 0; index < 6; index++)
@@ -5349,6 +6046,13 @@ def Xform "World"
             BinaryPrimitives.WriteSingleLittleEndian(
                 bytes[(index * sizeof(float))..],
                 uvTransform[index]);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes[(6 * sizeof(float))..], 0);
+        for (int index = 0; index < 6; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes[((7 + index) * sizeof(float))..],
+                IdentityUvTransform[index]);
         }
     }
 
@@ -5375,7 +6079,8 @@ def Xform "World"
         string path,
         string materialPath,
         float x,
-        ReadOnlySpan<float> textureCoordinates = default)
+        ReadOnlySpan<float> textureCoordinates = default,
+        ReadOnlySpan<float> secondTextureCoordinates = default)
     {
         float[] defaultTextureCoordinates =
         [
@@ -5405,14 +6110,26 @@ def Xform "World"
             SilkAttributeInterpolation.Vertex,
             "st",
             resolvedTextureCoordinates);
-        Array.Resize(ref mesh, mesh.Length + materialBytes.Length + attributes.Length);
+        byte[] secondAttributes = secondTextureCoordinates.IsEmpty
+            ? []
+            : CreateAttribute(
+                SilkAttributeSemantic.TexCoord,
+                2,
+                SilkAttributeInterpolation.Vertex,
+                "st1",
+                secondTextureCoordinates);
+        Array.Resize(
+            ref mesh,
+            mesh.Length + materialBytes.Length + attributes.Length + secondAttributes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(4), (uint)mesh.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(mesh.AsSpan(208), ComputeStableHash(materialPath));
         BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(216), (uint)materialBytes.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(220), 1);
-        int materialOffset = mesh.Length - materialBytes.Length - attributes.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(220), secondAttributes.Length == 0 ? 1u : 2u);
+        int materialOffset =
+            mesh.Length - materialBytes.Length - attributes.Length - secondAttributes.Length;
         materialBytes.CopyTo(mesh.AsSpan(materialOffset));
         attributes.CopyTo(mesh.AsSpan(materialOffset + materialBytes.Length));
+        secondAttributes.CopyTo(mesh.AsSpan(materialOffset + materialBytes.Length + attributes.Length));
         return mesh;
     }
 
@@ -5445,7 +6162,12 @@ def Xform "World"
 
     private static byte[] CreateAreaLightFrameCommand(AreaLightGate gate)
     {
-        const int lightingSize = 23096;
+        // Shaping gates use the page ABI 28 table after the dome block; the
+        // original gates keep the 23096-byte tier, whose rect lights stay
+        // two-sided because a frame without the table carries no cone.
+        const int shapingTableOffset = 23368;
+        bool shaped = gate >= AreaLightGate.ShapingWideConeEquivalent;
+        int lightingSize = shaped ? shapingTableOffset + (128 * 16) : 23096;
         const int lightCountOffset = 536;
         const int lightTableOffset = 552;
         const int lightEntrySize = 176;
@@ -5460,6 +6182,17 @@ def Xform "World"
         AreaLightSpec right = CreateRightAreaLight(gate);
         WriteAreaLight(bytes, lightTableOffset, left);
         WriteAreaLight(bytes, lightTableOffset + lightEntrySize, right);
+        if (shaped)
+        {
+            AreaLightSpec[] lights = [left, right];
+            for (int light = 0; light < lights.Length; light++)
+            {
+                int entry = shapingTableOffset + (light * 16);
+                BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry), lights[light].ShapingCone);
+                BinaryPrimitives.WriteSingleLittleEndian(
+                    bytes.AsSpan(entry + 4), lights[light].ShapingFocus);
+            }
+        }
         return bytes;
     }
 
@@ -5490,6 +6223,12 @@ def Xform "World"
                 new(2, 0, 0, 0, 0, new Vector3(0, 1, 0), -0.5f, 0),
             AreaLightGate.DiskDivergence =>
                 new(4, 0, 0, 0, 0.12f, new Vector3(0, 1, 0), -0.5f, 0),
+            AreaLightGate.ShapingWideConeEquivalent or AreaLightGate.ShapingNarrowConeDivergence =>
+                new(3, 0.85f, 0.65f, 0, 0.12f, new Vector3(0, 0, 1), -0.5f, 0, 180, 0),
+            AreaLightGate.ShapingFocusDivergence =>
+                new(4, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), -0.5f, 0, 90, 0),
+            AreaLightGate.ShapingRectBackSideEquivalent =>
+                new(2, 0, 0, 0, 0, new Vector3(0, 0, 1), -0.5f, 0),
             _ => new(2, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), -0.5f, 0),
         };
 
@@ -5503,7 +6242,15 @@ def Xform "World"
             AreaLightGate.DiskEquivalent =>
                 new(4, 0, 0, 0, 0.12f, new Vector3(0, 1, 0), 0.5f, 0),
             AreaLightGate.DiskDivergence =>
-                new(4, 0, 0, 0, 0.12f, new Vector3(0, 0, -1), 0.5f, 0),
+                new(4, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0),
+            AreaLightGate.ShapingWideConeEquivalent =>
+                new(3, 0.85f, 0.65f, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0, 180, 6),
+            AreaLightGate.ShapingNarrowConeDivergence =>
+                new(3, 0.85f, 0.65f, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0, 15, 0),
+            AreaLightGate.ShapingFocusDivergence =>
+                new(4, 0, 0, 0, 0.12f, new Vector3(0, 0, 1), 0.5f, 0, 90, 12),
+            AreaLightGate.ShapingRectBackSideEquivalent =>
+                new(3, 0.85f, 0.65f, 0, 0.12f, new Vector3(0, 0, -1), 0.5f, 0, 90, 0),
             AreaLightGate.CylinderEquivalent =>
                 new(5, 0, 0, 0.16f, 0.12f, new Vector3(1, 0, 0), 0.5f, 0),
             AreaLightGate.CylinderDivergence =>
@@ -5557,7 +6304,9 @@ def Xform "World"
         float Intensity,
         Vector3 Direction,
         float X,
-        float Y);
+        float Y,
+        float ShapingCone = 180,
+        float ShapingFocus = 0);
 
     private static byte[] CreateAttribute(
         SilkAttributeSemantic semantic,
@@ -6109,7 +6858,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_892, 15_892, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_972, 17_972, 0)),
             },
             new ParityScene(
                 "clip-plane-asymmetric",
@@ -6127,7 +6876,7 @@ def Xform "World"
             {
                 ClipPlanes = [new Vector4(1, 0, 0, 0.12f)],
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 15_936, 15_936, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_016, 18_016, 0)),
             },
             new ParityScene(
                 "depth-overlap-multiprim",
@@ -6144,7 +6893,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(3, 3, 3, 3, 3, 3, 16_100, 16_100, 0)),
+                    ParityPerformanceBudget.FromMeasured(3, 3, 3, 3, 3, 3, 18_180, 18_180, 0)),
             },
             new ParityScene(
                 "material-normals-uv",
@@ -6162,7 +6911,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_796, 15_796, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_876, 17_876, 0)),
             },
             new ParityScene(
                 "materials-textures",
@@ -6180,7 +6929,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(
-                        1, 1, 1, 1, 1, 1, 15_812, 15_812, TexturedPennantMipChainBytes)),
+                        1, 1, 1, 1, 1, 1, 17_892, 17_892, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "primvar-st-varying-texture",
@@ -6199,7 +6948,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(
-                        1, 1, 1, 1, 1, 1, 15_812, 15_812, TexturedPennantMipChainBytes)),
+                        1, 1, 1, 1, 1, 1, 17_892, 17_892, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "primvar-st-facevarying-texture",
@@ -6218,7 +6967,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(
-                        1, 1, 1, 1, 1, 1, 15_812, 15_812, TexturedPennantMipChainBytes)),
+                        1, 1, 1, 1, 1, 1, 17_892, 17_892, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "primvar-st-uniform-texture",
@@ -6237,7 +6986,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "preview-surface-textures"],
                 PerformanceBudgets = CurrentBackendBudgets(
                     ParityPerformanceBudget.FromMeasured(
-                        1, 1, 1, 1, 1, 1, 15_940, 15_940, TexturedPennantMipChainBytes)),
+                        1, 1, 1, 1, 1, 1, 18_020, 18_020, TexturedPennantMipChainBytes)),
             },
             new ParityScene(
                 "material-metallic-workflow",
@@ -6255,7 +7004,7 @@ def Xform "World"
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 16_212, 16_212, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_324, 18_324, 0)),
             },
             new ParityScene(
                 "materialx-standard-surface-constant",
@@ -6272,7 +7021,7 @@ def Xform "World"
                 RequiredAdjustedIou: null)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 16_284, 16_284, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_396, 18_396, 0)),
             },
             new ParityScene(
                 "materialx-standard-surface-preview-equivalent",
@@ -6289,7 +7038,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_796, 15_796, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_876, 17_876, 0)),
             },
             new ParityScene(
                 "light-distant-exposure",
@@ -6308,7 +7057,7 @@ def Xform "World"
                 SceneLightSensitivityStagePath =
                     Path.Combine(assetRoot, "parity-light-distant-exposure-double.usda"),
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_892, 15_892, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_972, 17_972, 0)),
             },
             new ParityScene(
                 "light-distant-specular",
@@ -6325,7 +7074,7 @@ def Xform "World"
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_892, 15_892, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_972, 17_972, 0)),
             },
             new ParityScene(
                 "light-sphere-point",
@@ -6342,7 +7091,7 @@ def Xform "World"
             {
                 UseSceneLights = true,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_892, 15_892, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_972, 17_972, 0)),
             },
             new ParityScene(
                 "light-dome-ambient",
@@ -6358,7 +7107,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_796, 15_796, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_876, 17_876, 0)),
             },
             new ParityScene(
                 "light-distant-shadow",
@@ -6381,7 +7130,7 @@ def Xform "World"
                 ShadowDisabledStagePath =
                     Path.Combine(assetRoot, "parity-light-distant-shadow-disabled.usda"),
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 16_260, 16_260, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_372, 18_372, 0)),
             },
             new ParityScene(
                 "point-instancer-cluster",
@@ -6399,7 +7148,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 4, 1, 1, 1, 4, 15_940, 15_940, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 4, 1, 1, 1, 4, 18_020, 18_020, 0)),
             },
             new ParityScene(
                 "points-asymmetric",
@@ -6417,7 +7166,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 18_696, 18_696, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 20_776, 20_776, 0)),
             },
             new ParityScene(
                 "cards-draw-mode",
@@ -6436,7 +7185,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 16_336, 16_336, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 18_416, 18_416, 0)),
             },
             new ParityScene(
                 "single-sided-winding",
@@ -6459,7 +7208,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 15_900, 15_900, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 17_980, 17_980, 0)),
             },
             new ParityScene(
                 "bounds-draw-mode",
@@ -6475,7 +7224,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 16_288, 16_288, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 18_368, 18_368, 0)),
             },
             new ParityScene(
                 "origin-draw-mode",
@@ -6491,7 +7240,7 @@ def Xform "World"
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_784, 15_784, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_864, 17_864, 0)),
             },
             new ParityScene(
                 "time-varying-transform-primvar",
@@ -6509,7 +7258,7 @@ def Xform "World"
             {
                 TimeCode = 2,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 15_900, 15_900, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 17_980, 17_980, 0)),
             },
             new ParityScene(
                 "subdivision-catmull-clark",
@@ -6528,7 +7277,7 @@ def Xform "World"
                 RequiredAdjustedIou: null)
             {
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 16_152, 16_152, 0)),
+                    ParityPerformanceBudget.FromMeasured(2, 2, 2, 2, 2, 2, 18_232, 18_232, 0)),
             },
             new ParityScene(
                 "skinned-pennant",
@@ -6547,7 +7296,7 @@ def Xform "World"
                 FeatureIds = ["storm-hdsilk-parity", "cpu-skinning"],
                 TimeCode = 2,
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 15_808, 15_808, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 17_888, 17_888, 0)),
             },
         ];
         // parity-curve-width-probe.usda is a diagnostic and is never gated: it
@@ -7142,7 +7891,7 @@ def Xform "World"
 
         private static ulong SceneBufferBudget(ulong measured)
         {
-            const ulong fixedFrameBytes = 15_296;
+            const ulong fixedFrameBytes = 17_344;
             if (SilkFrameUniformWriter.ByteSize != fixedFrameBytes || measured < fixedFrameBytes)
             {
                 throw new InvalidOperationException(

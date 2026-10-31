@@ -32,8 +32,10 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -47,6 +49,7 @@ using openusd_physx_support::WriteError;
 
 constexpr size_t kQueryTouchBuffer = 256;
 constexpr PxU32 kContactPointBuffer = 8;
+using MeshGeometryKey = std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float>;
 
 struct WorldActor
 {
@@ -212,6 +215,7 @@ struct openusd_physx_world
     PxMaterial* default_material = nullptr;
     std::vector<PxConvexMesh*> convex_meshes;
     std::vector<PxTriangleMesh*> triangle_meshes;
+    std::map<MeshGeometryKey, PxGeometryHolder> mesh_geometry;
     std::vector<PxHeightField*> height_fields;
     std::vector<WorldActor> actors;
     std::vector<WorldJoint> joints;
@@ -460,6 +464,7 @@ void TeardownContent(openusd_physx_world& world) noexcept
     world.actors.clear();
     world.actor_by_id.clear();
     world.shape_ids.clear();
+    world.mesh_geometry.clear();
 
     for (PxTriangleMesh* mesh : world.triangle_meshes)
     {
@@ -710,6 +715,17 @@ bool MakeGeometry(
     case OPENUSD_PHYSX_SHAPE_CONVEX_MESH:
     case OPENUSD_PHYSX_SHAPE_TRIANGLE_MESH:
     {
+        // The page's shared ranges identify geometry within this build; scale is baked by cooking.
+        // Units, SDK identity and cooking parameters are fixed for the lifetime of this world.
+        const MeshGeometryKey key{
+            shape.type, shape.point_offset, shape.point_count, shape.index_offset, shape.index_count,
+            scale.x, scale.y, scale.z};
+        const auto cached = world.mesh_geometry.find(key);
+        if (cached != world.mesh_geometry.end())
+        {
+            holder = cached->second;
+            break;
+        }
         std::vector<PxVec3> points(shape.point_count);
         for (size_t point = 0; point < shape.point_count; ++point)
         {
@@ -732,6 +748,7 @@ bool MakeGeometry(
             }
             world.convex_meshes.push_back(mesh);
             StoreGeometry(holder, PxConvexMeshGeometry(mesh));
+            world.mesh_geometry.emplace(key, holder);
             break;
         }
         std::vector<uint32_t> indices(shape.index_count);
@@ -755,6 +772,7 @@ bool MakeGeometry(
         }
         world.triangle_meshes.push_back(mesh);
         StoreGeometry(holder, PxTriangleMeshGeometry(mesh));
+        world.mesh_geometry.emplace(key, holder);
         break;
     }
     default:
@@ -4701,6 +4719,85 @@ openusd_physx_status openusd_physx_world_query(
         result->rejected_request_count = 0;
         const std::lock_guard<std::mutex> lock(world->mutex);
         return RunQueries(*world, *desc, *result, error);
+    });
+}
+
+openusd_physx_status openusd_physx_world_copy_shape_identities(
+    const openusd_physx_world* world,
+    openusd_physx_shape_identity* identities,
+    uint32_t capacity,
+    openusd_physx_shape_snapshot_info* info,
+    openusd_physx_error_buffer* error)
+{
+    return Guard(error, [&]() -> openusd_physx_status
+    {
+        if (world == nullptr || info == nullptr || (capacity != 0 && identities == nullptr) ||
+            capacity > OPENUSD_PHYSX_MAX_RESULT_CAPACITY)
+        {
+            WriteError(error, "Invalid bounded shape snapshot arguments.");
+            return OPENUSD_PHYSX_STATUS_INVALID_ARGUMENT;
+        }
+        if (info->struct_size != sizeof(openusd_physx_shape_snapshot_info) ||
+            info->version != OPENUSD_PHYSX_SHAPE_SNAPSHOT_VERSION)
+        {
+            WriteError(error, "Shape snapshot interface version or size mismatch.");
+            return OPENUSD_PHYSX_STATUS_VERSION_MISMATCH;
+        }
+        const std::lock_guard<std::mutex> lock(world->mutex);
+        info->actor_count = 0;
+        info->shape_count = 0;
+        info->convex_mesh_count = 0;
+        info->triangle_mesh_count = 0;
+        if (!world->articulations.empty() || !world->controllers.empty() || !world->vehicles.empty())
+        {
+            WriteError(error, "This shape inspection profile supports rigid actors only.");
+            return OPENUSD_PHYSX_STATUS_UNSUPPORTED;
+        }
+        std::vector<openusd_physx_shape_identity> snapshot;
+        PxShape* shapes[64]{};
+        for (const WorldActor& actor : world->actors)
+        {
+            if (actor.actor == nullptr)
+            {
+                WriteError(error, "A retained actor has no SDK object.");
+                return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
+            }
+            const PxU32 total = actor.actor->getNbShapes();
+            for (PxU32 start = 0; start < total;)
+            {
+                const PxU32 count = actor.actor->getShapes(shapes, 64, start);
+                if (count == 0 || snapshot.size() + count > OPENUSD_PHYSX_MAX_RESULT_CAPACITY)
+                {
+                    WriteError(error, "The actual shape snapshot exceeds its bounded capacity or made no progress.");
+                    return OPENUSD_PHYSX_STATUS_CAPACITY_EXCEEDED;
+                }
+                for (PxU32 index = 0; index < count; ++index)
+                {
+                    const uint64_t shape = ShapeIdOf(*world, shapes[index]);
+                    if (shape == OPENUSD_PHYSX_INVALID_ID)
+                    {
+                        WriteError(error, "An attached SDK shape has no project-owned identity.");
+                        return OPENUSD_PHYSX_STATUS_NATIVE_ERROR;
+                    }
+                    snapshot.push_back({actor.id, shape});
+                }
+                start += count;
+            }
+        }
+        info->actor_count = static_cast<uint32_t>(world->actors.size());
+        info->shape_count = static_cast<uint32_t>(snapshot.size());
+        info->convex_mesh_count = static_cast<uint32_t>(world->convex_meshes.size());
+        info->triangle_mesh_count = static_cast<uint32_t>(world->triangle_meshes.size());
+        if (capacity < snapshot.size())
+        {
+            WriteError(error, "The caller buffer is smaller than the complete shape snapshot.");
+            return OPENUSD_PHYSX_STATUS_BUFFER_TOO_SMALL;
+        }
+        if (!snapshot.empty())
+        {
+            std::memcpy(identities, snapshot.data(), snapshot.size() * sizeof(openusd_physx_shape_identity));
+        }
+        return OPENUSD_PHYSX_STATUS_OK;
     });
 }
 

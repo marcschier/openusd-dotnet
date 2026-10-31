@@ -28,6 +28,12 @@ public sealed class PreviewSilkFrameSourceFactory(
     private readonly PreviewGraphicsDeviceOptions _graphicsOptions =
         graphicsOptions ?? throw new ArgumentNullException(nameof(graphicsOptions));
 
+    /// <summary>Gets shared texture-preparation pools applied before every preview or product device is used.</summary>
+    public SilkTexturePreparationBudgets? TexturePreparationBudgets { get; init; }
+
+    /// <summary>Gets whether captures stream full-resolution material working sets.</summary>
+    public bool StreamMaterialTextures { get; init; }
+
     public IPreviewFrameSource Create(
         PreviewCaptureRequest request,
         CancellationToken cancellationToken = default)
@@ -42,7 +48,9 @@ public sealed class PreviewSilkFrameSourceFactory(
                 ?? throw new InvalidOperationException("The stage source factory returned null."),
             CreateDevice,
             source => OpenUsdSilkRuntime.Create(_pluginPath, source, preparationLimits),
-            device => new SilkFrameCapturer(device),
+            device => new SilkFrameCapturer(device, new SilkTextureResidencyOptions(
+                SilkTextureResidencyOptions.DefaultMaxDecodedCpuBytes,
+                SilkTextureResidencyOptions.DefaultMaxGpuBytes, StreamMaterialTextures)),
             static (source, device, session, capturer) =>
                 new PreviewSilkFrameSource(source, device, session, capturer));
     }
@@ -54,6 +62,7 @@ public sealed class PreviewSilkFrameSourceFactory(
         try
         {
             gpuBufferBudget?.ConfigureDevice(device);
+            TexturePreparationBudgets?.ConfigureDevice(device);
             return device;
         }
         catch (Exception configurationFailure)
@@ -65,7 +74,7 @@ public sealed class PreviewSilkFrameSourceFactory(
             catch (Exception cleanupFailure)
             {
                 throw new AggregateException(
-                    "GPU buffer admission failed and the created device could not be released.",
+                    "Resource admission failed and the created device could not be released.",
                     configurationFailure, cleanupFailure);
             }
             throw;
@@ -136,9 +145,9 @@ public sealed class PreviewSilkFrameSourceFactory(
     }
 }
 
-internal sealed class PreviewSilkFrameSource
+internal sealed partial class PreviewSilkFrameSource
     : IPreviewFrameSource, IPreviewDiagnosticSource, IPreviewDepthFrameSource, IPreviewHdrFrameSource,
-        IPreviewProductFrameSource
+        IPreviewProductFrameSource, IPreviewBackendSource
 {
     private readonly Func<CaptureView, int, int, CapturedFrame> _capture;
     private readonly Func<CaptureView, int, int, long, CancellationToken, RenderJobImage>? _captureDepth;
@@ -176,6 +185,11 @@ internal sealed class PreviewSilkFrameSource
             device,
             source)
     {
+        RenderBackendIdentity backend = BackendIdentity(device.Backend);
+        Backend = backend;
+        _recordingSource = source;
+        _recordingCapturer = capturer;
+        _recordingSession = session;
         _captureDepth = (view, width, height, maximumBytes, cancellationToken) =>
         {
             SilkFrameCaptureResult result = capturer.CaptureWithDepth(
@@ -191,7 +205,8 @@ internal sealed class PreviewSilkFrameSource
             return new RenderJobImage(result.Width, result.Height, result.Rgba, Rgba8RowOrder.TopDown)
             {
                 DeviceDepth = new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values),
-                Diagnostics = result.Diagnostics
+                Diagnostics = result.Diagnostics,
+                Backend = backend
             };
         };
         _captureHdr = (view, width, height, maximumBytes, includeDepth, cancellationToken) =>
@@ -216,7 +231,8 @@ internal sealed class PreviewSilkFrameSource
                 HdrColor = new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float),
                 DeviceDepth = result.Depth is { } values
                     ? new RenderJobDeviceDepth(values.Width, values.Height, values.Values) : null,
-                Diagnostics = result.Diagnostics
+                Diagnostics = result.Diagnostics,
+                Backend = backend
             };
         };
         SilkSceneIngestionOptions? productOptions = null;
@@ -228,6 +244,7 @@ internal sealed class PreviewSilkFrameSource
             {
                 throw new NotSupportedException("The MCP product adapter requires its explicit presentation settings.");
             }
+            RequirePrimIdDevice(plan, device);
             var ingestion = new SilkSceneIngestionOptions(plan.IncludedPurposes, plan.MaterialBindingPurpose);
             RequireProductRevision(source, plan);
             productOptions = ingestion;
@@ -245,13 +262,25 @@ internal sealed class PreviewSilkFrameSource
             int height = state.Viewport.Height;
             SilkFrameCaptureResult result = plan.IncludeHdrColor
                 ? capturer.CaptureWithHdrColor(session, width, height, state.RenderSettings, productOptions,
-                    new SilkHdrColorCaptureOptions(plan.IncludeDeviceDepth, maximumReadbackBytes: maximumBytes),
+                    new SilkHdrColorCaptureOptions(plan.IncludeDeviceDepth, maximumReadbackBytes: maximumBytes)
+                    {
+                        IncludePrimId = plan.IncludePrimId,
+                        IncludeInstanceId = plan.IncludeInstanceId,
+                        IncludeNormal = plan.IncludeNormal,
+                        IncludeElementId = plan.IncludeElementId
+                    },
                     state.Time.TimeCode, state.Camera, cancellationToken)
                 : capturer.CaptureWithDepth(session, width, height, state.RenderSettings, productOptions,
-                    new SilkDepthCaptureOptions(maximumReadbackBytes: maximumBytes),
+                    new SilkDepthCaptureOptions(maximumReadbackBytes: maximumBytes)
+                    {
+                        IncludePrimId = plan.IncludePrimId,
+                        IncludeInstanceId = plan.IncludeInstanceId,
+                        IncludeNormal = plan.IncludeNormal,
+                        IncludeElementId = plan.IncludeElementId
+                    },
                     state.Time.TimeCode, state.Camera, cancellationToken);
             RequireProductRevision(source, plan);
-            return ProductImage(result, plan);
+            return ProductImage(result, plan, backend);
         };
     }
 
@@ -278,6 +307,8 @@ internal sealed class PreviewSilkFrameSource
         _device = device ?? throw new ArgumentNullException(nameof(device));
         _source = source ?? throw new ArgumentNullException(nameof(source));
     }
+
+    public RenderBackendIdentity? Backend { get; }
 
     public RenderDiagnosticsState Diagnostics { get; private set; } =
         RenderDiagnosticsState.Empty;
@@ -338,6 +369,14 @@ internal sealed class PreviewSilkFrameSource
         return image;
     }
 
+    internal static RenderBackendIdentity BackendIdentity(SilkGraphicsBackend backend) => backend switch
+    {
+        SilkGraphicsBackend.D3D12 => new(RenderBackendKind.D3D12, "hdSilk / Direct3D 12"),
+        SilkGraphicsBackend.Vulkan => new(RenderBackendKind.Vulkan, "hdSilk / Vulkan"),
+        SilkGraphicsBackend.Metal => new(RenderBackendKind.Metal, "hdSilk / Metal"),
+        _ => throw new NotSupportedException($"Unsupported Silk graphics backend '{backend}'.")
+    };
+
     private static void RequireProductRevision(UsdStageRenderSource source, RenderProductJobPlan plan)
     {
         if (plan.SourceStageRevision is not { } expected)
@@ -351,10 +390,39 @@ internal sealed class PreviewSilkFrameSource
         }
     }
 
-    private static RenderJobImage ProductImage(SilkFrameCaptureResult result, RenderProductJobPlan plan)
+    internal static void RequirePrimIdDevice(RenderProductJobPlan plan, ISilkGraphicsDevice device)
     {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(device);
+        if (plan.IncludePrimId && device is not ISilkPickingGraphicsDevice)
+        {
+            throw new NotSupportedException(
+                "The MCP capture graphics device cannot run the pick pass needed for the primId identity plane.");
+        }
+        if (plan.IncludeInstanceId && device is not ISilkPickingGraphicsDevice)
+        {
+            throw new NotSupportedException(
+                "The MCP capture graphics device cannot run the pick pass needed for the instanceId identity plane.");
+        }
+        if (plan.IncludeElementId && device is not ISilkPickingGraphicsDevice)
+        {
+            throw new NotSupportedException(
+                "The MCP capture graphics device cannot run the pick pass needed for the elementId identity plane.");
+        }
+    }
+
+    private static RenderJobImage ProductImage(
+        SilkFrameCaptureResult result, RenderProductJobPlan plan, RenderBackendIdentity backend)
+    {
+        // A primId-, instanceId-, elementId- or normal-only product uses the color-and-depth path,
+        // whose depth plane is not an admitted output.
+        bool depthOnlyCarrier = !plan.IncludeHdrColor && !plan.IncludeDeviceDepth;
         if (plan.IncludeHdrColor != (result.HdrColor is not null) ||
-            plan.IncludeDeviceDepth != (result.Depth is not null))
+            (!depthOnlyCarrier && plan.IncludeDeviceDepth != (result.Depth is not null)) ||
+            plan.IncludePrimId != (result.PrimId is not null) ||
+            plan.IncludeInstanceId != (result.InstanceId is not null) ||
+            plan.IncludeNormal != (result.Normal is not null) ||
+            plan.IncludeElementId != (result.ElementId is not null))
         {
             throw new InvalidDataException("The product capture did not return exactly its admitted planes.");
         }
@@ -368,10 +436,29 @@ internal sealed class PreviewSilkFrameSource
         {
             HdrColor = result.HdrColor is { } hdr
                 ? new RenderJobHdrColor(hdr.Width, hdr.Height, hdr.Rgba16Float) : null,
-            DeviceDepth = result.Depth is { } depth
+            DeviceDepth = plan.IncludeDeviceDepth && result.Depth is { } depth
                 ? new RenderJobDeviceDepth(depth.Width, depth.Height, depth.Values) : null,
-            Diagnostics = result.Diagnostics
+            PrimId = result.PrimId is { } primId ? ToJobPrimId(primId) : null,
+            InstanceId = result.InstanceId is { } instanceId
+                ? new RenderJobInstanceId(instanceId.Width, instanceId.Height, instanceId.Values) : null,
+            Normal = result.Normal is { } normal
+                ? new RenderJobNormal(normal.Width, normal.Height, normal.Values) : null,
+            ElementId = result.ElementId is { } elementId
+                ? new RenderJobElementId(elementId.Width, elementId.Height, elementId.Values) : null,
+            Diagnostics = result.Diagnostics,
+            Backend = backend
         };
+    }
+
+    private static RenderJobPrimId ToJobPrimId(SilkPrimIdCaptureResult primId)
+    {
+        var identities = new RenderJobPrimIdentity[primId.Identities.Count];
+        for (int index = 0; index < identities.Length; index++)
+        {
+            SilkPrimIdentity identity = primId.Identities[index];
+            identities[index] = new RenderJobPrimIdentity(identity.Path, identity.InstanceIndex);
+        }
+        return new RenderJobPrimId(primId.Width, primId.Height, primId.Values, identities);
     }
 
     public void Dispose()

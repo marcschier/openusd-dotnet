@@ -2,6 +2,8 @@
 
 #include "internal/common.h"
 
+#include <array>
+
 namespace
 {
 template <typename T>
@@ -354,59 +356,58 @@ openusd_status openusd_decode_image_rgba8(
                 return OPENUSD_STATUS_BUFFER_TOO_SMALL;
             }
 
-            std::vector<uint8_t> source(pixel_count * static_cast<size_t>(source_components));
             HioImage::StorageSpec storage;
             storage.width = width;
             storage.height = height;
             storage.depth = 1;
             storage.format = source_format;
             storage.flipped = false;
-            storage.data = source.data();
+            storage.data = rgba;
             if (!image->Read(storage))
             {
                 WriteError(error, std::string("Could not read image: ") + asset_path);
                 return OPENUSD_STATUS_NATIVE_ERROR;
             }
 
-            for (size_t pixel = 0; pixel < pixel_count; ++pixel)
+            // Hio writes tightly packed source channels into the admitted destination.
+            // Expand backwards, caching the whole pixel before overlapping writes.
+            for (size_t remaining = pixel_count; remaining != 0; --remaining)
             {
+                const size_t pixel = remaining - 1u;
                 const uint8_t* input =
-                    source.data() + (pixel * static_cast<size_t>(source_components));
+                    rgba + (pixel * static_cast<size_t>(source_components));
+                const uint8_t red = input[0];
+                const uint8_t green = source_components >= 3 ? input[1] : red;
+                const uint8_t blue = source_components >= 3 ? input[2] : red;
+                const uint8_t alpha = source_components == 2 ? input[1] :
+                    source_components == 4 ? input[3] : 255;
                 uint8_t* output = rgba + (pixel * 4u);
-                if (source_components == 1)
-                {
-                    output[0] = input[0];
-                    output[1] = input[0];
-                    output[2] = input[0];
-                    output[3] = 255;
-                }
-                else if (source_components == 2)
-                {
-                    output[0] = input[0];
-                    output[1] = input[0];
-                    output[2] = input[0];
-                    output[3] = input[1];
-                }
-                else
-                {
-                    output[0] = input[0];
-                    output[1] = input[1];
-                    output[2] = input[2];
-                    output[3] = source_components == 4 ? input[3] : 255;
-                }
+                output[0] = red;
+                output[1] = green;
+                output[2] = blue;
+                output[3] = alpha;
             }
             if (convert_srgb_to_linear != 0)
             {
-                for (size_t index = 0; index < required; index += 4)
+                static const std::array<uint8_t, 256> linearBytes = []
                 {
-                    for (size_t component = 0; component < 3; ++component)
+                    std::array<uint8_t, 256> values{};
+                    for (size_t value = 0; value < values.size(); ++value)
                     {
-                        const double srgb = static_cast<double>(rgba[index + component]) / 255.0;
+                        const double srgb = static_cast<double>(value) / 255.0;
                         const double linear = srgb <= 0.04045
                             ? srgb / 12.92
                             : std::pow((srgb + 0.055) / 1.055, 2.4);
                         const long rounded = std::lround(std::max(0.0, std::min(1.0, linear)) * 255.0);
-                        rgba[index + component] = static_cast<uint8_t>(rounded);
+                        values[value] = static_cast<uint8_t>(rounded);
+                    }
+                    return values;
+                }();
+                for (size_t index = 0; index < required; index += 4)
+                {
+                    for (size_t component = 0; component < 3; ++component)
+                    {
+                        rgba[index + component] = linearBytes[rgba[index + component]];
                     }
                 }
             }
@@ -535,6 +536,40 @@ openusd_status openusd_decode_image_rgba32f(
             {
                 WriteError(error, std::string("Could not read image: ") + asset_path);
                 return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+
+            if (source_type == HioTypeUnsignedByte || source_type == HioTypeUnsignedByteSRGB)
+            {
+                static const std::array<float, 256> rawBytes = []
+                {
+                    std::array<float, 256> values{};
+                    for (size_t value = 0; value < values.size(); ++value)
+                    {
+                        values[value] = static_cast<float>(value) / 255.0f;
+                    }
+                    return values;
+                }();
+                static const std::array<float, 256> linearBytes = []
+                {
+                    std::array<float, 256> values{};
+                    for (size_t value = 0; value < values.size(); ++value)
+                    {
+                        values[value] = SrgbToLinear(static_cast<float>(value) / 255.0f);
+                    }
+                    return values;
+                }();
+                const auto& colorBytes = convert_srgb_to_linear != 0 ? linearBytes : rawBytes;
+                for (size_t pixel = 0; pixel < pixel_count; ++pixel)
+                {
+                    const uint8_t* input = source.data() + (pixel * source_pixel_size);
+                    float* output = rgba + (pixel * 4u);
+                    output[0] = colorBytes[input[0]];
+                    output[1] = colorBytes[source_components >= 3 ? input[1] : input[0]];
+                    output[2] = colorBytes[source_components >= 3 ? input[2] : input[0]];
+                    output[3] = source_components == 2 ? rawBytes[input[1]] :
+                        source_components == 4 ? rawBytes[input[3]] : 1.0f;
+                }
+                return OPENUSD_STATUS_OK;
             }
 
             for (size_t pixel = 0; pixel < pixel_count; ++pixel)

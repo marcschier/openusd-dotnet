@@ -13,6 +13,8 @@
 #include "pxr/base/tf/diagnostic.h"
 
 #include <mutex>
+#include <cmath>
+#include <memory>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -588,6 +590,21 @@ TryMapSurfaceInput(uint32_t surfaceInput, uint32_t* parameter)
         case OPENUSD_MDL_SURFACE_OCCLUSION:
             *parameter = OPENUSD_SILK_MATERIAL_OCCLUSION;
             return true;
+        case OPENUSD_MDL_SURFACE_DIFFUSE_TEXTURE_LUMINANCE_MIX:
+            *parameter = OPENUSD_SILK_MATERIAL_DIFFUSE_TEXTURE_LUMINANCE_MIX;
+            return true;
+        case OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL:
+            *parameter = OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL;
+            return true;
+        case OPENUSD_MDL_SURFACE_DETAIL_NORMAL:
+            *parameter = OPENUSD_SILK_MATERIAL_DETAIL_NORMAL;
+            return true;
+        case OPENUSD_MDL_SURFACE_DETAIL_UV_ROW0:
+            *parameter = OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0;
+            return true;
+        case OPENUSD_MDL_SURFACE_DETAIL_UV_ROW1:
+            *parameter = OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW1;
+            return true;
         default:
             return false;
     }
@@ -634,6 +651,15 @@ TryMapChannel(uint32_t channel, uint32_t* out)
             return true;
         case OPENUSD_MDL_CHANNEL_RGB:
             *out = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
+            return true;
+        case OPENUSD_MDL_CHANNEL_AVERAGE_RGB:
+            *out = OPENUSD_SILK_TEXTURE_CHANNEL_AVERAGE_RGB;
+            return true;
+        case OPENUSD_MDL_CHANNEL_LUMINANCE_RGB:
+            *out = OPENUSD_SILK_TEXTURE_CHANNEL_LUMINANCE_RGB;
+            return true;
+        case OPENUSD_MDL_CHANNEL_MAXIMUM_RGB:
+            *out = OPENUSD_SILK_TEXTURE_CHANNEL_MAXIMUM_RGB;
             return true;
         default:
             return false;
@@ -751,9 +777,12 @@ HdSilkMdlAdapter::Distill(
             std::to_string(status) + ")";
         return distillation;
     }
+    const auto release = [&cache](const openusd_mdl_distilled_material* owned) {
+        cache.binding.releaseResult(cache.binding.instance, owned);
+    };
+    const std::unique_ptr<const openusd_mdl_distilled_material, decltype(release)> ownedResult(result, release);
     if (result->struct_size != sizeof(openusd_mdl_distilled_material))
     {
-        cache.binding.releaseResult(cache.binding.instance, result);
         distillation.diagnostic =
             "the openusd_mdl adapter returned a result of an unexpected size";
         return distillation;
@@ -774,11 +803,19 @@ HdSilkMdlAdapter::Distill(
                 "the openusd_mdl adapter refused the material (status " +
                 std::to_string(status) + ")";
         }
-        cache.binding.releaseResult(cache.binding.instance, result);
         return distillation;
     }
 
-    bool mapped = true;
+    bool mapped = result->has_uv_transform <= 1 &&
+        result->uv_transform_origin <= OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION;
+    if (result->has_uv_transform == 1)
+    {
+        for (size_t component = 0; component < 6; ++component)
+        {
+            mapped = mapped && std::isfinite(result->uv_transform[component]);
+            distillation.uvTransform[component] = result->uv_transform[component];
+        }
+    }
     for (uint32_t index = 0; index < result->scalar_count && mapped; ++index)
     {
         const openusd_mdl_distilled_scalar& source = result->scalars[index];
@@ -790,6 +827,35 @@ HdSilkMdlAdapter::Distill(
             break;
         }
         scalar.componentCount = source.component_count;
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_NORMAL ||
+            ((scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0 ||
+                scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW1) &&
+                (scalar.componentCount != 3 || !std::isfinite(source.value[0]) ||
+                    !std::isfinite(source.value[1]) || !std::isfinite(source.value[2]))))
+        {
+            mapped = false;
+            break;
+        }
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL &&
+            (scalar.componentCount != 1 || !std::isfinite(source.value[0]) ||
+                source.value[0] < 0 || source.value[0] > 1))
+        {
+            mapped = false;
+            break;
+        }
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_TEXTURE_LUMINANCE_MIX)
+        {
+            float sum = 0;
+            mapped = scalar.componentCount == 4;
+            for (uint32_t component = 0; component < 4 && mapped; ++component)
+            {
+                mapped = std::isfinite(source.value[component]) &&
+                    (component == 3 || (source.value[component] >= 0 && source.value[component] <= 1));
+                if (component < 3) { sum += source.value[component]; }
+            }
+            mapped = mapped && std::fabs(sum - 1) <= 0.000001F;
+            if (!mapped) { break; }
+        }
         for (uint32_t component = 0; component < scalar.componentCount; ++component)
         {
             scalar.value[component] = source.value[component];
@@ -801,16 +867,25 @@ HdSilkMdlAdapter::Distill(
         const openusd_mdl_distilled_texture& source = result->textures[index];
         HdSilkMdlDistilledTexture texture;
         if (!TryMapSurfaceInput(source.surface_input, &texture.parameter) ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_TEXTURE_LUMINANCE_MIX ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0 ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW1 ||
             !TryMapWrap(source.wrap_s, &texture.wrapS) ||
             !TryMapWrap(source.wrap_t, &texture.wrapT) ||
             !TryMapChannel(source.output_channel, &texture.outputChannel) ||
             !TryMapColorSpace(source.color_space, &texture.colorSpace) ||
+            source.composite_operator > OPENUSD_MDL_COMPOSITE_MULTIPLY ||
+            (source.composite_operator == OPENUSD_MDL_COMPOSITE_MULTIPLY &&
+                source.surface_input != OPENUSD_MDL_SURFACE_EMISSIVE_COLOR) ||
             source.component_count == 0 || source.component_count > 4)
         {
             mapped = false;
             break;
         }
         texture.componentCount = source.component_count;
+        texture.compositeOperator = source.composite_operator == OPENUSD_MDL_COMPOSITE_MULTIPLY
+            ? OPENUSD_SILK_COMPOSITE_MULTIPLY : OPENUSD_SILK_COMPOSITE_NONE;
         for (size_t component = 0; component < 4; ++component)
         {
             texture.scale[component] = source.scale[component];
@@ -825,7 +900,7 @@ HdSilkMdlAdapter::Distill(
         distillation.textures.push_back(std::move(texture));
     }
 
-    cache.binding.releaseResult(cache.binding.instance, result);
+    distillation.diagnostic = ToStdString(result->diagnostic);
 
     if (!mapped)
     {

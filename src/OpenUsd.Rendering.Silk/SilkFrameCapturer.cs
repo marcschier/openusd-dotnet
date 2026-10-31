@@ -32,10 +32,64 @@ public sealed partial class SilkFrameCapturer : IDisposable
     /// <param name="device">The graphics device that renders and reads back frames.</param>
     /// <exception cref="ArgumentNullException"><paramref name="device"/> is <c>null</c>.</exception>
     public SilkFrameCapturer(ISilkGraphicsDevice device)
+        : this(device, SilkTextureResidencyOptions.Default)
+    {
+    }
+
+    /// <summary>Creates a retained capturer with an explicit material texture residency policy.</summary>
+    public SilkFrameCapturer(ISilkGraphicsDevice device, SilkTextureResidencyOptions textureResidencyOptions)
     {
         ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(textureResidencyOptions);
         _device = device;
-        _renderer = new SilkMeshRenderer(device);
+        _renderer = new SilkMeshRenderer(device, textureResidencyOptions);
+    }
+
+    /// <summary>Gets or sets bounded transform overrides used by subsequent captures.</summary>
+    /// <remarks>Staged publications resolve against the post-sync scene. The caller owns the table.</remarks>
+    public SilkPhysicsTransformOverrides? PhysicsOverrides
+    {
+        get
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return _renderer.PhysicsOverrides;
+            }
+        }
+        set
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _renderer.PhysicsOverrides = value;
+            }
+        }
+    }
+
+    /// <summary>Gets or sets bounded deformation storage used by subsequent captures.</summary>
+    /// <remarks>
+    /// The caller owns the table and must preserve its inputs or use its copying update.
+    /// Capture an empty batch to restore authored geometry before removing the table, or dispose this capturer.
+    /// </remarks>
+    public SilkPhysicsDeformations? PhysicsDeformations
+    {
+        get
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return _renderer.PhysicsDeformations;
+            }
+        }
+        set
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _renderer.PhysicsDeformations = value;
+            }
+        }
     }
 
     /// <summary>

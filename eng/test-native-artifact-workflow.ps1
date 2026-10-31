@@ -38,6 +38,7 @@ foreach ($rid in @('win-x64', 'linux-x64', 'osx-arm64'))
 }
 foreach ($required in @(
     'runs-on: ${{ matrix.runner }}',
+    './eng/test-native-download.ps1',
     './eng/test-render-native-archive.ps1',
     './eng/native-install-metadata.ps1',
     './eng/run-native-probe.ps1',
@@ -46,6 +47,94 @@ foreach ($required in @(
     'retention-days: 30'))
 {
     Assert-Contains $nativeWorkflow $required 'Native artifact workflow'
+}
+$ciWorkflow = Get-Content (Join-Path $repoRoot '.github/workflows/ci.yml') -Raw
+$mcpStep = [regex]::Match(
+    $nativeWorkflow, '(?ms)^      - name: Run Windows native MCP integration\r?\n.*?(?=^      - name:|\z)').Value
+Assert-Contains $mcpStep "OPENUSD_EXR_EXECUTION_REQUIRED: '1'" 'Native MCP EXR execution gate'
+$diskOutputStep = [regex]::Match(
+    $renderWorkflow, '(?ms)^      - name: Execute native disk output contracts\r?\n.*?(?=^      - name:|\z)').Value
+foreach ($required in @(
+    "if: steps.native-ready.outputs.ready == 'true'",
+    "OPENUSD_EXR_EXECUTION_REQUIRED: '1'",
+    '$env:OPENUSD_PARITY_RUNTIME_ROOT = $runtime',
+    'RenderProductJobPlanTests',
+    'RenderDiskJobTests',
+    'RenderDiskJobPublicationTests',
+    'RenderDiskJobHdrTests',
+    'RenderDiskJobExrTests',
+    '$env:OPENUSD_TEST_PLUGIN_PATH = $env:OPENUSD_PLUGIN_PATH',
+    'RenderProductRequestNativeTests',
+    '-ReportAssembly OpenUsd.Rendering.Tests',
+    '-ReportAssembly OpenUsd.Rendering.ConformanceTests',
+    '-RequireNoSkips $true',
+    'Invoke-ManagedWorkflowScenario'))
+{
+    Assert-Contains $diskOutputStep $required 'Native disk output workflow step'
+}
+$mdlJob = [regex]::Match(
+    $nativeWorkflow, '(?ms)^  mdl-adapter:\r?\n.*?(?=^  [\w-]+:\r?$|\z)').Value
+foreach ($required in @(
+    'name: ${{ matrix.rid }} standalone MDL adapter',
+    'rid: win-x64',
+    'rid: linux-x64',
+    'rid: osx-arm64',
+    'cmake -S native/openusd_mdl -B artifacts/mdl-standalone',
+    '--config Release --target mdl_sdk_probe',
+    '-R "^mdl_adapter_probe$" --no-tests=error --output-on-failure'))
+{
+    Assert-Contains $mdlJob $required 'Standalone MDL adapter job'
+}
+if ($mdlJob -match '(?m)^    needs:' -or $mdlJob.Contains('fetch-native') -or
+    $mdlJob.Contains('OPENUSD_MDL_SDK_ROOT'))
+{
+    throw 'The standalone authored adapter gate must not require a native archive or an MDL SDK.'
+}
+$mdlSdkJob = [regex]::Match(
+    $nativeWorkflow, '(?ms)^  mdl-sdk-adapter:\r?\n.*?(?=^  [\w-]+:\r?$|\z)').Value
+foreach ($required in @(
+    'name: ${{ matrix.rid }} standalone MDL SDK ${{ matrix.qualification }}',
+    'rid: win-x64',
+    'rid: linux-x64',
+    'rid: osx-arm64',
+    'qualification: compile-only',
+    'qualification: module tests',
+    './eng/fetch-mdl-sdk.ps1 -Rid ${{ matrix.rid }}',
+    'python ./eng/fetch_simready_mdl.py --data-root $dataRoot',
+    'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }',
+    '-DOPENUSD_MDL_SDK_ROOT=$sdkRoot',
+    '-DOPENUSD_MDL_SDK_RUNTIME_DIR=$sdkRoot/runtime',
+    '-DOPENUSD_MDL_REAL_MODULE_ROOT=$moduleRoot',
+    'cmake --build artifacts/mdl-sdk-standalone --config Release',
+    'ctest --test-dir artifacts/mdl-sdk-standalone -C Release',
+    '--no-tests=error --output-on-failure'))
+{
+    Assert-Contains $mdlSdkJob $required 'Standalone MDL SDK adapter job'
+}
+Assert-Contains $mdlSdkJob @'
+      - name: Test standalone MDL SDK adapter and real modules
+        if: runner.os == 'macOS'
+'@ 'SDK module execution admission'
+if ($mdlSdkJob -match '(?m)^    needs:' -or $mdlSdkJob.Contains('fetch-native') -or
+    $mdlSdkJob.Contains('upload-artifact'))
+{
+    throw 'The SDK adapter gate must not require a native archive or publish acquired dependencies.'
+}
+foreach ($path in @(
+    'eng/fetch_simready_mdl.py',
+    'eng/simready_warehouse.py',
+    'eng/datasets/simready-mdl-core.json',
+    'test-assets/mdl/**'))
+{
+    if ([regex]::Matches($nativeWorkflow, "(?m)^      - '$([regex]::Escape($path))'$").Count -ne 2)
+    {
+        throw "MDL input '$path' must trigger both native push and pull-request qualification."
+    }
+}
+Assert-Contains $ciWorkflow './eng/test-native-download.ps1' 'Managed CI workflow'
+if ([regex]::Matches($nativeWorkflow, "(?m)^      - 'eng/test-native-download\.ps1'$").Count -ne 2)
+{
+    throw 'Native download contract must trigger both native push and pull-request qualification.'
 }
 
 foreach ($workflow in @($packageWorkflow, $renderWorkflow))

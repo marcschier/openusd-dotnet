@@ -50,10 +50,17 @@ The server serializes service operations and keeps OpenUSD C++ objects behind th
 project-owned C ABI and scheduler. Tool results are detached, bounded DTOs; scene or render
 hot paths do not perform per-element P/Invoke.
 
+The stdio host loads ordinary .NET JSON configuration at startup but does not watch
+configuration files by default. File watching can scan a large working tree before
+protocol initialization. Startup configuration and command-line content-root selection
+remain available. Set `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=true` only when the host
+needs live configuration reload; MCP scene/render options and quotas are still startup
+snapshots and do not become reloadable.
+
 ## Prerequisites
 
 - The **.NET 10 SDK or runtime** for the `OpenUsd.Mcp.Tool` package. Repository source builds
-  require the pinned **.NET SDK 10.0.401**; `global.json` disables roll-forward.
+  require the pinned **.NET SDK 10.0.403**; `global.json` disables roll-forward.
 - One supported host/RID: `win-x64`, `linux-x64`, or `osx-arm64`.
 - For actual scene operations, a matching Core and Imaging native runtime. The .NET tool package
   does not embed Core, Imaging, hdSilk, or OpenUSD plugin assets. A repository source run uses
@@ -67,7 +74,7 @@ hot paths do not perform per-element P/Invoke.
 
 Install .NET 10 from the official .NET distribution for tool-package use. For repository work,
 run `./eng/install-dotnet.ps1` on Windows or `bash ./eng/install-dotnet.sh` on Linux/macOS if
-`dotnet --version` is not `10.0.401`.
+`dotnet --version` is not `10.0.403`.
 
 Restore and build before using the source command:
 
@@ -428,6 +435,25 @@ separate Viewer root; it is not included in either the tool package or MCP RID b
 
 ### Environment variables
 
+- **`OPENUSD_D3D12_GPU_UPLOAD_HEAPS`:** explicit `true`/`false` opt-in for GPU-local,
+  CPU-writable D3D12 upload buffers. Unset is disabled. Requires Windows hardware,
+  `OPENUSD_MCP_USE_WARP=false`, `OPENUSD_SILK_GPU_BUFFER_BYTES`, and adapter Options16
+  GPU-upload support; incompatible requests fail rather than falling back to WARP.
+  Previews, sequences and products receive the same graphics options. Child Viewers
+  receive only the effective flag after any ambient value is removed, and cannot
+  bypass the policy by selecting Storm, Vulkan or Metal. This changes memory placement,
+  not private-commit charges or logical quotas; see
+  [GPU-local upload heaps](rendering.md#optional-d3d12-gpu-local-upload-heaps).
+
+- **`OPENUSD_SILK_STREAM_MATERIAL_TEXTURES`:** opt-in full-resolution material working-set
+  streaming for previews, sequences and products. Accepts `true`/`false` (case-insensitive)
+  or `1`/`0`; other values fail startup. Unset is disabled. Requires
+  `OPENUSD_SILK_GPU_BUFFER_BYTES` for transactional frame publication. CPU texture,
+  GPU texture and staging admission remain separately configurable. The effective
+  choice is forwarded to child Viewers; unrelated ambient streaming settings are removed.
+  Each material must still fit its budgets, and repeated decode/upload work can increase latency.
+  `HDSILK_MATERIAL_TEXTURE_STREAMING` capture diagnostics confirm that the policy is active.
+
 - **`OPENUSD_SILK_GPU_BUFFER_BYTES`:** optional positive invariant decimal ceiling for
   logical RHI buffer payload bytes. The process shares one pool across its preview/
   sequence/product devices; submission-held and replacement buffers remain charged.
@@ -436,6 +462,18 @@ separate Viewer root; it is not included in either the tool package or MCP RID b
   The maximum is forwarded explicitly to a launched Viewer, whose pool is independent
   because it runs in another process. Unsupported devices and Storm cannot bypass it.
   Stable `HDSILK_GPU_BUFFER_ADMISSION` information appears in capture diagnostics.
+
+- **`OPENUSD_SILK_CPU_TEXTURE_BYTES`, `OPENUSD_SILK_GPU_TEXTURE_BYTES`, and
+  `OPENUSD_SILK_GPU_STAGING_BYTES`:** independent optional positive invariant decimal
+  ceilings for owned managed texture pixels/command copies, owned RHI textures, and
+  backend upload/readback payloads. One configured set is shared by preview, sequence
+  and product devices in the MCP process. Invalid values fail startup; unset domains
+  stay unbounded. Stable `HDSILK_CPU_TEXTURE_ADMISSION`, `HDSILK_GPU_TEXTURE_ADMISSION`
+  and `HDSILK_GPU_STAGING_ADMISSION` diagnostics identify enabled domains. Child Viewers
+  receive effective maxima, not shared parent credit, and cannot inherit unrelated
+  ambient limits. Storm cannot enforce these policies. Source/SDK/geometry memory,
+  detached captures, native codec/OCIO scratch, imported images and driver overhead
+  remain excluded; these settings are not a whole-process memory cap.
 
 These managed bindings require an hdSilk runtime with explicit page acknowledgement.
 An older session-6/page-24 library without that extension fails session creation.
@@ -453,6 +491,13 @@ See [native-to-managed page acknowledgement](rendering.md#native-to-managed-page
   Successful captures include `HDSILK_PREPARATION_ADMISSION` information; native refusals
   retain the existing `render_failure` protocol classification and original inner diagnostic.
   Choose measured limits rather than treating these as a complete warehouse memory budget.
+- **`OPENUSD_SILK_STORAGE_LIVE_BYTES`, `OPENUSD_SILK_STORAGE_UPDATE_BYTES`,
+  `OPENUSD_SILK_STORAGE_COMMAND_BYTES`, `OPENUSD_SILK_STORAGE_TRANSFER_BYTES`:** opt-in
+  bounded file-backed updates. All four and the mesh/page pair are required. Files share
+  a per-native-session live-byte pool, not a process-wide pool. Preview and product
+  captures reuse the same atomic rendering/replay path. Launched Viewers receive only
+  the effective settings, with their own independent pools; ambient storage settings
+  are removed. See [file-backed command updates](rendering.md#file-backed-command-updates).
 - **`OPENUSD_MCP_SOURCE_ROOT`:** defaults to the client process current directory. It is
   the existing canonical read-only root for `open_scene` relative paths.
 - **`OPENUSD_MCP_OUTPUT_ROOT`:** defaults to
@@ -552,8 +597,39 @@ All tools take one top-level `request` object. Every successful result contains 
 content plus one summary text block bounded to 2048 characters. Artifact-producing tools add
 at most 16 image/resource-link blocks, with at most 17 content blocks total.
 
+The four render tools accept an optional MCP `_meta.progressToken`, outside the `request`
+object. With a token, the server sends request-level progress `0/1` before admission and
+revision checks, then `1/1` after constructing a successful result. The messages are
+`Request started; admission and revision checks pending.` and `Result ready.` A refused or
+cancelled request does not report completion. The final tool response remains authoritative.
+
+`render_preview` also reports validated captured views with progress
+`completedViews / (totalViews + 1)` and total `1`. Its message states that artifact
+registration is not confirmed. For a contact sheet, all views must still be assembled
+and PNG-encoded before the artifact can be registered; a captured view is not a
+completed PNG or an available resource.
+
+`render_sequence`, `render_product` and `render_physics_sequence` also report completed
+encoded frames. A frame counts only after its PNG and all requested depth/HDR planes have
+been written and closed in private staging. Intermediate progress is
+`completedFrames / (totalFrames + 1)` with total `1`, reserving `1/1` for the successful
+result. The message carries the exact frame count and states that publication is not
+confirmed. These events do not measure elapsed time or native preparation, and even the
+last encoded frame does not establish that the job manifest has been published.
+
+Start and result-ready writes are awaited directly. Intermediate notifications use one owned
+delivery task with at most one pending count; a slow transport replaces that pending
+count with the newest count rather than blocking the renderer. Delivery drains before
+result readiness. A transport failure requests cancellation and waits for active rendering
+cleanup before returning an error; already-published output is not rolled back.
+Clients must retain their notification handler while consuming progress and send MCP
+cancellation notifications to cancel server work;
+cancelling only a local wait does not establish that rendering has stopped. Once cancellation
+reaches an active capture, the existing service cleanup still drains before releasing its resources.
+
 - **`open_scene`:** requires no active session and one confined relative USD `sourcePath`.
-  It creates one overlay session. Errors are `invalid_argument`, `path_denied`, or
+  It creates one overlay session. Optional `stageSettings` explicitly authors root-layer
+  units, axis and timeline without converting source coordinates. Errors are `invalid_argument`, `path_denied`, or
   `native_failure`.
 - **`close_scene`:** requires the exact session and revision. It disposes render/native
   state before persisting `SessionClosed`; failed teardown permits only close retry.
@@ -584,15 +660,25 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
 - **`render_sequence`:** current unreleased source adds disk-backed PNG sequences with exact revision,
   sampled camera/time, up to 4096 frames and generated session-confined paths. Only completed jobs
   are published. Errors include malformed/stale requests, path, render and quota failures.
+  Each camera batch must match its requested samples exactly; empty, short or extra batches return
+  `render_failure` before frame capture, disk-output creation or history publication, including
+  failures in the final partial batch. Correcting camera preparation permits an unchanged request retry.
 - **`render_product`:** a bounded authored-product execution route using the shared job planner. It
   preserves selected settings, variable order, camera samples and scene filters rather than treating
   a viewport capture as a product. It requires a matching ingestion-capable native runtime.
+- **`render_physics_sequence`:** records a fresh CPU rigid-body/joint world through exact fixed-step
+  publications, complete renderer acknowledgements and atomic disk output. It requires explicit
+  workspace units/up-axis expectations, a complete noninstanced extraction and the native physics shim.
+  It shares sequence quotas and gallery retrieval; unsupported or partial physics never produces a job.
 - **`read_sequence_frame`:** exposes one completed job frame through the existing immutable resource
   store after verifying its recorded length and SHA256. Historical frames retain their original
   revision. Unknown jobs, changed files, invalid indexes and exhausted artifact quotas are refused.
 - **`read_sequence_sheet`:** makes one bounded PNG contact sheet from verified completed-job frames,
   without rendering or touching the active scene. Up to 16 ordered cells retain original frame/time
   metadata and fit images without cropping.
+- **`list_sequence_jobs`:** discovers up to eight original completed-job descriptors retained by
+  this process, including closed scenes. It needs no active scene, renders nothing and reads no
+  output files; frame/sheet retrieval still verifies selected bytes.
 - **`analyze_scene`:** requires the exact revision and bounded finite observations. It
   replaces the proposal set with at most 128 revision-bound proposals. Errors are
   `invalid_argument`, `no_session`, `stale_session`, `stale_revision`, or `native_failure`.
@@ -602,7 +688,7 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
   `stale_revision`, `quota_exceeded`, or `native_failure`.
 - **`finalize_scene`:** requires the exact revision; previews are optional. It publishes
   overlay, flattened stage, reports, manifest, and media with at most three report resources
-  and 16 returned failures. Errors are `invalid_argument`, `no_session`, `stale_session`,
+  and 23 returned failures. Errors are `invalid_argument`, `no_session`, `stale_session`,
   `stale_revision`, `native_failure`, or an explicitly reported partial success.
 - **`present_scene`:** requires the exact revision and a successful final stage for that
   revision. It launches the configured Viewer with renderer and optional camera. Errors are
@@ -610,7 +696,8 @@ at most 16 image/resource-link blocks, with at most 17 content blocks total.
 
 ### Revision request
 
-Scene operations other than `open_scene` include the following coordinates. `read_sequence_frame`
+Scene operations other than `open_scene` include the following coordinates. `list_sequence_jobs`
+requires no arguments or active scene. `read_sequence_frame`
 and `read_sequence_sheet` instead use a completed job ID and frame selection, because their
 immutable historical outputs do not depend on the active scene revision.
 
@@ -748,9 +835,26 @@ one PNG), and `turntable` (one PNG per view, at most 16). View names are bounded
 characters and sanitized only for artifact IDs. When `cameraPath` is supplied, each finite
 `timeCode` samples that `UsdGeomCamera`. Without `cameraPath`, still/contact-sheet captures use
 automatic framing and turntable views are distributed around a bounds-framed orbit in list order.
+Contact sheets use `ceil(sqrt(viewCount))` columns and enough rows for every view. Each cell must
+have at least one pixel in both dimensions; impossible grids return `invalid_argument` before
+camera preparation or frame-source creation. Cameras use the actual integer-divided cell raster,
+not the whole sheet, so camera conformance and automatic framing match the captured tile aspect.
+Unused cells and trailing rows or columns remain transparent.
+Camera preparation must return exactly one camera for every requested view. Missing or extra
+camera samples return `render_failure` before capture or artifact publication; they are not
+silently truncated or reported as an invalid client argument.
 
 Default quotas are 4096x4096, 16 views, 64 MiB generated bytes per capture, a capture queue
 capacity of 8, 128 process-local artifact resources, and 64 MiB total artifact-store bytes.
+Canceling queued previews or disk jobs returns promptly without running them. Cancelled entries
+retain their queue slot until dequeued, so repeated cancellation cannot bypass queue capacity.
+Once capture starts, cancellation
+keeps the scene-operation gate until the actual capture drains, so edits cannot race the retained
+scene. Canceled captures publish no new artifacts; capture failures remain visible even when
+cancellation was requested. Caller-cancelled disk tasks retain the original caller token; worker
+shutdown uses its cancelled internal token when the caller did not request cancellation.
+Native rendering still requires cooperative completion, not forced
+termination of a hung driver.
 Windows preview selects D3D12 WARP by default. Set the host environment variable
 `OPENUSD_MCP_USE_WARP=false` to request the first enumerated D3D12 adapter instead;
 `true` retains the deterministic software default. Invalid values fail startup rather than
@@ -763,12 +867,19 @@ There is no tool input for choosing a preview backend. Preview output uses the r
 presentation preset with a `-6` stop exposure; strict Storm/hdSilk parity captures continue to use
 identity output instead. The result's bounded `diagnostics` array reports unresolved or unsupported
 materials, missing or invalid texture assets, and authored fallback use with stable machine-readable
-codes. An empty array means the retained preview renderer reported no current material or texture
-degradation; material changes clear stale entries before the next capture.
+codes. Still, turntable, candidate-sweep and contact-sheet results retain diagnostics from every
+captured view, deduplicated by severity, code and message in first-occurrence order. Each frame
+and the complete capture allow at most 128 entries (distinct entries for the complete capture);
+codes allow 128 characters and messages 4096. Exceeding a limit returns `quota_exceeded` before
+any preview artifact is published, rather than silently dropping diagnostics. An empty array means
+the renderer reported no degradation in any captured view; separate requests do not inherit
+diagnostics from previous captures.
+Unknown renderer diagnostic severities return `render_failure` before artifact publication;
+they are not mapped to a guessed severity or discovered only when serializing the response.
 
 ### `render_sequence` and `read_sequence_frame`
 
-These tools are unreleased source additions. The current source exposes 16 tools; the published
+These tools are unreleased source additions. The current source exposes 18 tools; the published
 `0.14.0-alpha` tool does not include disk-sequence execution.
 
 ```json
@@ -790,7 +901,9 @@ These tools are unreleased source additions. The current source exposes 16 tools
 `render_sequence` uses the shared renderer-neutral disk-job engine, not an enlarged in-memory preview.
 It samples the camera at each requested time, renders sequentially on the existing owned capture
 thread, and writes generated `frame-000000.png` names and `manifest.json`. The manifest records exact
-requested time, camera, display/colour settings and encoded image hashes. A scene-authored output name
+requested time, camera, display/colour settings and encoded image hashes. Each frame entry also has
+a `backend` object naming the hdSilk graphics API that rendered it, such as kind `Vulkan` with name
+`hdSilk / Vulkan`; the names match the ones the Viewer writes. A scene-authored output name
 or RenderPass command is never filesystem or executable authority.
 
 The job admits 1-4096 frames, at most 4096 pixels per side and 64 MiB of RGBA/encoded data per frame.
@@ -826,7 +939,7 @@ planes count toward the existing output quotas. This is raw HDR data, not an EXR
 
 To encode that plane as lossless half EXR, add `"hdrColorFormat":"exr"` alongside
 `"includeHdrColor":true`. The default is `"raw"`; other values, or EXR without HDR, are
-invalid before scene inspection. EXR currently requires Windows x64 and the matching Data ABI 24
+invalid before scene inspection. EXR currently requires Windows x64 and the matching Data ABI 26
 Core runtime. It preserves the same working values and stored alpha, with origin-zero equal
 windows, square pixels and unspecified primaries/alpha association. It neither applies a display
 transform nor uses scene-authored product filenames. PNG, depth and the actual EXR encoded extent
@@ -844,16 +957,86 @@ The response contains one PNG resource link accepted by the existing `openusd://
 Existing resource-count, byte and response quotas apply. A cached resource remains immutable even if
 an external process later changes the output file. No caller-supplied path is accepted.
 
+`cameraRequest` retains the selected frame's original submitted camera: `mode` is
+`"matrices"` or `"automatic"`. Matrix mode includes sixteen row-major `view` and
+`projection` floats and zero to eight `clipPlanes`, each a view-space `(x,y,z,w)`
+equation. Automatic mode returns null matrices and an empty plane list because
+the renderer-selected camera was not recorded; it does not invent one from default
+matrices. These are original request values, not effective backend state, a camera-prim/
+optics receipt or independent source verification. Reading them does not query the
+current scene, including after the producing scene has closed or another scene opens.
+
+`renderRequest` retains the source frame's submitted dimensions, purpose flags, visibility,
+draw mode and render settings: samples per pixel, lighting, shadows, backface culling, scene
+materials, complexity, output transform, exposure and linear clear RGBA. Enum values use the
+renderer-neutral names, such as `"Default, Proxy, Render"`, `"SmoothShaded"` and `"Reinhard"`.
+An optional `displayTransform` records the OCIO config path, source colour space, display,
+view, look, lattice size and log2 shaper bounds. Null display/view names request defaults;
+they do not record which defaults the backend resolved. A null transform means none was
+requested; a null `renderRequest` means the producer supplied no request metadata.
+Reading these values opens no config or source file. They describe the recorded request,
+not effective backend settings, authenticated source content or a complete request identity.
+
+For authored products, `productRaster` retains each frame's prepared `fullWidth` and
+`fullHeight` before crop or overscan, integer `dataWindowMinX` and `dataWindowMinY`,
+conformed `pixelAspectRatio` and `aspectRatioConformPolicy` after explicit overrides.
+`dataWindowOriginConvention` is `"bottom-left"`; negative origins preserve overscan.
+This metadata describes the original product raster, independently of top-down PNG
+coordinates. It can differ between sampled cameras within one job and remains available
+after scene close without sampling a camera or reading the manifest again. It is not
+verified effective backend state. Viewport jobs and producers without this metadata return null.
+
+`productCamera` retains sampled shutter offsets (`shutterOpen`, `shutterClose`) in USD time
+codes, camera `exposure` in stops, `exposureIso`, `exposureTime` in seconds,
+`exposureFStop`, `exposureResponsivity` and the computed `linearExposureScale`.
+Its sampled optics `focusDistance` and `fStop` are separate from exposure settings.
+`disableMotionBlur` and `disableDepthOfField` retain the product's effect-disable flags.
+`accumulationSampleCount` is the number of equal-weight camera samples averaged into the frame:
+eight for motion blur alone, sixteen with depth of field, or zero when neither was rendered.
+These are copied per-frame inputs, not verified effective backend state or a complete camera
+identity. Historical reads query no scene or manifest and do not apply exposure again.
+Viewport jobs and producers without camera samples return null. A product job applies
+`linearExposureScale` once, at render time: it multiplies the HDR red, green and blue channels
+and adds the scale's log2 stops to the PNG companion's display exposure. A zero scale, or one
+that moves a stored channel outside the binary16 range, fails the job before publication.
+An open shutter with motion blur enabled renders eight stratified samples and stores their box-filter
+mean; the job manifest lists their time codes in each frame's `productAccumulation`.
+A nonzero `fStop` with depth of field enabled renders sixteen thin-lens samples on a perspective
+camera with a positive `focusDistance`; `productAccumulation` then also carries `lensModel` and
+the camera-space `sampleLensOffsets`. Orthographic or unfocused cameras with an active aperture
+are refused. Accumulated frames refuse depth output and rasters above 4096 × 4096.
+
 For a job captured with depth, the response also contains a verified `deviceDepth` raw-data resource.
 It uses the same recorded size/SHA256 checks and existing resource limits. HDR jobs additionally
 return a verified `hdrColor` resource and its `hdrColorFormat` (`"raw"` or `"exr"`).
 Raw binary16 uses `application/octet-stream`; EXR uses `image/x-exr` and a generated `.hdr.exr`
 identifier. EXR is a resource link, not an inline PNG substitute.
-At most three resource links accompany the selected frame;
+Product jobs with identity planes also return `primId` and `primIdTable` (raw int32 indices and
+their JSON prim table), `instanceId` (raw int32 instance indices) and `elementId` (raw int32
+authored face indices), with the same checks.
+A job with a `normal` plane returns `normal` (raw float32 world-space normals).
+At most eight resource links accompany the selected frame;
 the rest of the sequence remains on disk. All uncached planes
 are admitted and verified before their descriptors and quota charges are committed together.
 A missing/changed depth or HDR file, cancellation or insufficient capacity cannot leave only a newly
 registered PNG behind. Existing cached resources stay available and are not charged again.
+
+### `list_sequence_jobs`
+
+Call `list_sequence_jobs` with `{}` to recover job IDs without keeping an active
+scene open. The result's `jobs` array contains at most eight original completed-job
+descriptors in ordinal job-ID order, not chronological order. It includes ordinary
+sequences, authored products and physics recordings and preserves their captured
+session/generation/stage revision, output-root-relative paths, frame count, bytes,
+diagnostics and optional product/simulation metadata.
+
+Listing consumes no job or artifact slots, opens no USD stage and reads no output
+files. Descriptors describe original completion, not current file availability,
+current scene state or fresh integrity checks. Use `read_sequence_frame` or
+`read_sequence_sheet` to verify and present selected outputs. Missing or changed
+files still fail those reads even when their original descriptor is listed.
+Discovery is process-local: it does not scan arbitrary directories, accept paths,
+restore a previous server process or implement the Viewer historical-job browser.
 
 ### `read_sequence_sheet`
 
@@ -872,11 +1055,127 @@ is queried, and no HDR/depth plane is relabeled as a display image.
 
 The result returns one immutable PNG resource plus the original session/revision and at most 16
 cell rectangles with frame indices and time codes. It remains usable after the source session
-closes. Only the resulting artifact consumes artifact capacity, not another render-job slot;
+closes. For authored-product jobs, `authoredProduct` retains the original settings/product/camera
+paths, execution profile, material-binding purpose and requested variable metadata, matching `read_sequence_frame`;
+it is null for ordinary viewport sequences. This is captured job context, not a query of the
+current scene and not a claim that the contact-sheet PNG contains HDR/depth planes.
+Each physics-recording tile also retains its original `simulation` metadata, matching
+`read_sequence_frame`: epoch, scenario, source/publication revisions, completed step,
+simulated seconds, fixed step, binding revision and complete body/deformation counts.
+The optional `reviewIdentity` is preserved from the original host publication in both frame
+and tile metadata, or null when not supplied. It is a host attestation, not independent
+verification of source or review-layer contents.
+Frames without recorded simulation have null tile metadata; a USD time code alone is not
+treated as evidence of a physics publication.
+Each tile's `cameraRequest` retains the same original submitted camera metadata as
+`read_sequence_frame`, in the selected source-frame order. Matrices describe that
+original source raster, not the resized/letterboxed contact-sheet cell. No camera
+is sampled or reconstructed to create this metadata.
+Each tile also retains its source frame's `renderRequest`, including the original dimensions
+rather than the resized cell dimensions. Display/output values and unresolved OCIO defaults
+remain historical requests; generating a sheet does not apply those transforms again.
+Each tile's `productRaster` retains the corresponding source frame's prepared product
+metadata, not the resized cell dimensions or origin. Reordering frames preserves that association.
+Each tile also retains its source frame's `productCamera`, including the sampled settings
+and effect-disable flags. Creating a sheet does not activate disabled effects or render another frame.
+Only the resulting artifact consumes artifact capacity, not another render-job slot;
 repeated calls create new resources. Invalid selections, changed files, cancellation and exhausted
 artifact quotas cannot register a partial sheet. Encoded sheet output is limited to 8 MiB. Input
 decoding is separately bounded by the original 64-MiB-per-frame PNG/raster limits; those limits
 do not describe whole-process memory.
+
+### `render_physics_sequence`
+
+This command advances physics, unlike authored-time `render_sequence`. It builds a new nonlooping
+world at the workspace's authored start, then advances 1-8 whole fixed steps per capture.
+The actual step frequency comes from the workspace timeline. Up to 4096 frames share the existing
+8-job/4-GiB process quota and 64-MiB per-frame policy; HDR or depth charges 20 bytes per raster pixel.
+PNG, optional raw binary16 HDR and normalized float32 depth are published together. Use the returned
+job ID with `read_sequence_frame` or `read_sequence_sheet`.
+
+```json
+{
+  "request": {
+    "sessionId": "<id>",
+    "generation": 1,
+    "stageRevision": 2,
+    "scenarioIdentity": "rigid-drop-v1",
+    "expectedMetersPerUnit": 0.01,
+    "expectedUpAxis": "Y",
+    "frameCount": 24,
+    "stepsPerFrame": 1,
+    "width": 512,
+    "height": 512,
+    "includeDeviceDepth": true,
+    "includeHdrColor": true
+  }
+}
+```
+
+Units and up axis must match the **workspace stage**, not an assumption about its source file.
+Stage-root metadata is not implicitly inherited from the source sublayer. For a metre/kg/Z-up,
+60-Hz scenario such as the removable Warehouse-01 demonstration, explicitly initialize the
+workspace when opening it:
+
+```json
+{
+  "request": {
+    "sourcePath": "warehouse-box-drop.usda",
+    "stageSettings": {
+      "metersPerUnit": 1,
+      "kilogramsPerUnit": 1,
+      "upAxis": "Z",
+      "startTimeCode": 0,
+      "endTimeCode": 240,
+      "timeCodesPerSecond": 60,
+      "framesPerSecond": 60
+    }
+  }
+}
+```
+
+When `stageSettings` is present, all seven fields are required. Units and rates must be positive
+and finite, `upAxis` is `Y` or `Z`, and the finite end must be at or after the finite start with
+a finite duration. These settings author only the new overlay root, survive checkpoint/rollback
+and final export, and interpret existing coordinates; they do not rescale geometry, mass,
+velocity or time samples. Omitting the object retains the previous source-sublayer behavior.
+No source metadata is copied implicitly, and no arbitrary USDA or metadata key is accepted.
+
+Use matching `expectedMetersPerUnit` and `expectedUpAxis` in the recording request. A mismatch
+still fails before simulation, including the actual units/axis. The scenario label identifies
+an already-authored setup; the recording command does not create bodies, author motion, or
+modify the original file.
+
+The default profile admits CPU rigid bodies, static colliders and joints. Instanced extractions,
+articulated/controller/vehicle/particle/deformable domains, disabled objects and any extraction
+truncation are refused. Default extraction remains bounded to 4096 objects, 1,048,576 collider
+points and 3,145,728 indices.
+
+`"fullScenePhysics": true` explicitly selects a larger rigid-scene profile: up to 65,536
+extracted objects, 32,768 actors and 65,536 collision shapes. The existing 512-MiB extraction
+page and geometry ceilings remain unchanged. Static instances are retained; moving subtrees
+must be de-instanced in the scenario. A body may drive multiple noninstanced descendant meshes
+through an authored reference pose, preserving every child's offset, scale and shear. At most
+4096 render mesh targets can receive overrides. Missing, conflicting or over-capacity targets
+cannot acknowledge a complete recording; a compound body's meshes are not applied as a prefix.
+These are explicit structural bounds, not whole-process memory or full-warehouse image claims.
+
+The workspace retains at most one complete prepared physics page, bounded by the same page
+ceiling. Repeated recordings and render retries reuse it only while the stage revision,
+start time and selected profile match; each recording still creates a fresh solver world.
+Authored edits invalidate the cache, and closing the workspace releases it. Incorrect unit
+expectations are refused using metadata before expensive mesh preparation.
+
+Every image carries its recording epoch, exact physics publication and step/time identities,
+source revision and complete body/deformation counts in the job manifest. The source stages poses
+before native scene synchronization and resolves them afterwards, preserving the current authored
+scale/shear. It acknowledges consumed counts only after capture finishes. Restoration is drained
+before job publication; cancellation drains and resets the capture source, disposes the owned world,
+and leaves no partial directory. The native integration fixture verifies moving poses, depth/HDR,
+contact-sheet retrieval, cancellation/retry and an unchanged authored preview.
+
+The matching CPU physics shim is an additional loader-path prerequisite on Windows/Linux. The
+managed dotnet tool still contains no native runtime, and no macOS physics build is supplied.
 
 ### `render_product`
 
@@ -886,6 +1185,32 @@ RenderPass commands. Supply `settingsPath` explicitly when the workspace overlay
 default; stage-root metadata is not implicitly inherited from its source sublayer. Omitting
 `productPath` is accepted only when the selected settings contain exactly one product.
 
+Optional `width` and `height` override the full raster through the shared product planner.
+Supply both within 1-4096 pixels, or omit both to retain the authored resolution. This does
+not edit the product. The effective data window applies, so cropping or overscan
+can change the resulting PNG dimensions. Existing frame/job quotas and
+encoding restrictions remain unchanged; an over-budget result is refused, not resized.
+
+`pixelAspectRatio` optionally overrides the pixel width-to-height ratio; it must be finite
+and positive. `aspectRatioConformPolicy` accepts `expandAperture`, `cropAperture`,
+`adjustApertureWidth`, `adjustApertureHeight` or `adjustPixelAspectRatio`. Omitting either
+retains its authored value. The shared planner applies these before cropping;
+`adjustPixelAspectRatio` derives the effective ratio from the camera aperture and full
+raster instead of using the requested ratio. The manifest records the effective ratio
+and policy without editing the product. With `"hdrColorFormat":"exr"`, the file stores the
+effective ratio as its pixel aspect; a ratio outside 1/65536..65536 is refused before rendering.
+
+`dataWindowNdc` optionally overrides the data window as `[minX, minY, maxX, maxY]`,
+with bottom-left and top-right coordinates in the full raster's normalized space. Supply
+exactly four finite values with increasing bounds on each axis, or omit the field to retain
+the authored window. Coordinates outside 0-1 preserve overscan; they are not clamped.
+The shared planner selects pixels by their centres, including the minimum and excluding
+the maximum. A window containing no pixel centres is refused before output creation.
+The manifest retains the effective raster origin, including negative origins, and frame
+dimensions describe the actual crop or overscan. An EXR file records the same region as
+its data window inside a full-raster display window, using EXR's downward Y axis. Existing
+MCP capture-dimension and output-byte quotas still apply.
+
 ```json
 {
   "request": {
@@ -894,6 +1219,11 @@ default; stage-root metadata is not implicitly inherited from its source sublaye
     "stageRevision": 1,
     "settingsPath": "/Render/Settings",
     "productPath": "/Render/Product",
+    "width": 512,
+    "height": 512,
+    "pixelAspectRatio": 1,
+    "aspectRatioConformPolicy": "expandAperture",
+    "dataWindowNdc": [0.25, 0, 0.75, 1],
     "frameCount": 3,
     "startTimeCode": 0,
     "timeStep": 1,
@@ -902,10 +1232,17 @@ default; stage-root metadata is not implicitly inherited from its source sublaye
 }
 ```
 
-The initial admitted profile is raw `half4` / `color` and/or `float` / `depth`, one variable per
-plane. Depth is normalized device depth, not camera-space distance. Named rendering color spaces,
-unevaluated settings, other variable types, non-unit camera exposure and active shutter/DOF
-requirements are refused. Native adapters must apply the exact purpose mask and material-binding
+The admitted profile is raw `half4` / `color`, `float` / `depth`, `int` / `primId`,
+`int` / `instanceId`, `int` / `elementId` and `normal3f` / `normal`, one variable per plane and at
+most six bindings. Depth is normalized device depth, not camera-space distance; `normal` is the
+world-space unit shading normal. The identity planes need a graphics device that can run
+the hdSilk pick pass; other devices are refused. Named rendering color spaces,
+unevaluated settings and other variable types are refused. An open shutter or active
+depth-of-field aperture is accumulated as described for `productCamera`; with either, depth,
+identity and normal output are refused.
+Camera exposure is applied, not refused; the HDR binding convention
+`renderer-working-composited-camera-exposed-before-display` records that. Native adapters must apply
+the exact purpose mask and material-binding
 purpose, preserve retained state when returning to viewport jobs, and pass actual pixel cases.
 The current explicit hdSilk profile requires session ABI 6, masks containing `default` and a single
 `full` or `preview` binding purpose. Filter changes repopulate from current USD data rather than
@@ -917,6 +1254,13 @@ Their response includes `authoredProduct` and ordered variable bindings. PNG is 
 companion, not a substitute for the requested raw/EXR variable. Source revision is checked during
 preparation and before/after capture; all output planes publish together. This source interface
 must not be mistaken for released or complete general UsdRender execution.
+
+Each manifest frame's `productOutputs` bindings identify the stored `format` independently of
+the requested `dataType`: raw color uses `rgba16float-little-endian`, EXR color uses
+`openexr-rgba16float`, depth uses `float32-little-endian`, `primId`, `instanceId` and
+`elementId` use
+`int32-little-endian`, and `normal` uses `float32x3-little-endian`. The binding's byte extent,
+SHA-256, row order and value convention describe that file, not its PNG display companion.
 
 ### `analyze_scene` and proposals
 
@@ -958,8 +1302,32 @@ Numeric observations must be finite and satisfy their schema ranges. `qualityPre
 128 messages of at most 4096 characters each. Omitted observation properties use schema
 defaults.
 
-Each of at most 128 proposals has a deterministic ID, category, code, title, applicability,
-risk, and explanation. Applicability is:
+The result includes `proposalOffset`, `totalProposalCount` and nullable `nextProposalOffset`.
+Each response contains at most 128 proposals; the total may be higher when validation findings
+and technical recommendations coexist. To read every finding, repeat `analyze_scene` with the same
+revision and observations, setting `proposalOffset` to `nextProposalOffset` until it is null.
+The default offset is zero. An offset equal to the total returns an empty terminal page;
+negative offsets and offsets beyond the total are rejected. Arbitrary interior offsets are allowed.
+Each call revalidates the active revision, recomputes the deterministic complete set and replaces
+the prior analysis only after successful page admission. Changing observations starts a different
+analysis, not a continuation; offsets alone are not persisted cursors.
+
+Each proposal has a deterministic ID, category, code, title, applicability,
+risk, and explanation. It also retains the analyzer's `operation`, `arguments` and `evidence`
+(ordered `{ "name": "...", "value": "..." }` pairs), `expectedMetrics`
+(`name`, `current`, `expected`, `unit`), `advisory` and nullable `rendererId`.
+Each argument, evidence and metric list has at most 16 entries; empty lists remain empty.
+Arguments are sorted by name, evidence by name/value and metrics by name/unit.
+For example, `camera.clipping` can recommend `inspect-camera-clipping` with `near`/`far`
+arguments, while `camera.framing` reports the submitted coverage and proposed coverage target.
+
+These details preserve the submitted observations and analyzer thresholds, not independently
+verified native measurements or achieved improvements. The composition analyzer currently receives
+an explicitly unavailable snapshot through this tool. It returns diagnostic-only
+`composition.unavailable` with `availability=not-collected`, without layer/node/depth counts or
+flattening/muting recommendations. Missing data is not an inspected empty stage or a native census.
+The operation and arguments are guidance, not an executable command or permission to apply an edit.
+Applicability remains authoritative:
 
 - `overlay_applicable`: may be selected by `apply_proposals`;
 - `flatten_only`: informs final output but cannot be represented safely as a typed overlay edit;
@@ -1026,10 +1394,17 @@ artifact/failure inventory. Preview files are copied only from verified artifact
 created by the latest captures retained for the current revision. Any edit, proposal application,
 or rollback invalidates the preview selections used by finalization; the older immutable resources
 remain readable until the server exits.
+Finalization matches each returned preview's ID, URI, media type, length and SHA-256 against the
+selected descriptor as well as verifying the returned bytes. A self-consistent resource with
+different selected metadata is an explicit partial failure: no preview file or resource link is
+claimed for that role. A later exact selection may succeed without modifying the refused output.
 
 Previews are optional: absent hero/contact-sheet/turntable inputs are explicit partial failures,
-not fabricated media. Export/publication failures can also return `partial: true` with at most
-16 bounded messages while reports and manifest are still produced. The tool publishes at most
+not fabricated media. Preview read-limit or I/O refusals and export/publication failures return
+`partial: true` while reports and manifest are still produced. Every failure is returned, bounded to
+23 messages: 16 turntable frames, hero, sheet, stage, overlay and three report publications.
+Cancellation and path-containment refusals still abort instead of being converted to partial success.
+The tool publishes at most
 three MCP resources: manifest, JSON report, and Markdown report. Their bytes are streamed into the
 artifact store's SHA-256-addressed disk cache; overlay and flattened-stage bytes are never loaded
 into or published through the in-memory resource store. Overlay, flattened stage, and media remain
@@ -1070,7 +1445,11 @@ openusd://artifact/{id}
 ```
 
 The identifier is process-local, percent-decoded, at most 1024 characters, and cannot contain
-control characters or path separators. Text, JSON, XML, and `+json`/`+xml` media types return
+control characters or path separators, or consist of the dot segments `.` or `..`.
+Publication and resource reads share the same identifier rules. Preview capture validates the
+complete generated names before creating or invoking a frame source, including mode suffixes and
+sanitized view names; an unreadable output ID cannot consume capture work or publish a resource.
+Text, JSON, XML, and `+json`/`+xml` media types return
 strict UTF-8 text resources; other types return base64 MCP blobs. Unknown IDs return
 `artifact_not_found`; invalid text returns `artifact_invalid_text`.
 
@@ -1088,6 +1467,22 @@ The store defaults to **128 resources** and **64 MiB** total logical content. Ev
 by the SDK. An oversized read returns `artifact_too_large`; a changed disk-backed cache entry
 returns `artifact_integrity_error`. `OPENUSD_MCP_MAX_ARTIFACT_STORE_BYTES` changes the total store
 budget. These limits are checked as 64-bit values before any response buffer is allocated.
+In-memory batch publication snapshots and validates descriptors, duplicate identities and available
+count/byte capacity before copying or hashing payloads. Publication rechecks capacity and identities
+atomically, so racing publishers cannot overfill the registry. This avoids payload-sized allocations
+for batches already known to be inadmissible; it is not an aggregate heap bound on simultaneous
+in-flight publishers, caller-owned payloads, inline base64 or SDK serialization.
+File publication also rejects duplicate identities, unavailable count capacity and inadmissible
+verified lengths before opening any source. Unverified file lengths are not guessed: actual
+extents and hashes are still checked after opening, and final publication rechecks capacity and
+identity atomically. Preflight does not reserve capacity against concurrent in-memory publishers.
+
+Preview PNG encoding enforces the remaining request-wide encoded-byte budget while streaming
+compression, rather than encoding a full oversized image before refusing it. Separate views share
+that budget; contact sheets encode directly from their owned canvas without another full-canvas
+copy. Cancellation is checked after capture and during encoding. No partial artifact batch is
+published on quota refusal or cancellation, and the retained source remains available for retry.
+These bounds do not include caller/source pixels, the contact-sheet canvas or total process RAM.
 
 ## Error envelope
 
@@ -1152,7 +1547,7 @@ or contact sheet, then call `finalize_scene` and `present_scene` for the same re
   by Copilot. For a local manifest run `dotnet tool restore` and configure
   `dotnet tool run openusd-mcp` instead of the bare command.
 - **The tool cannot start:** run `dotnet --list-runtimes` and install a .NET 10 runtime. Repository
-  source builds specifically require SDK 10.0.401.
+  source builds specifically require SDK 10.0.403.
 - **Copilot lists no `openusd` server:** run `copilot mcp list` and
   `copilot mcp get openusd`. For project configuration, confirm folder trust and the
   `.mcp.json` or `.github/mcp.json` precedence.
@@ -1204,7 +1599,7 @@ security boundary.
 
 ## Testing
 
-Use SDK 10.0.401 and the repository's Microsoft.Testing.Platform runner:
+Use SDK 10.0.403 and the repository's Microsoft.Testing.Platform runner:
 
 ```powershell
 dotnet build OpenUsd.slnx -c Release
@@ -1224,11 +1619,17 @@ dotnet build OpenUsd.slnx -c Release
   )
 ```
 
-The MCP protocol tests use the official in-memory MCP client/server transports to discover all 12
-tools and their schemas, invoke a tool, and read an artifact resource. A separate actual-process
-stdio test performs initialization, `tools/list`, `resources/list`, resource-template discovery,
-and a safe no-session invocation; the official transport rejects non-protocol stdout and captures
-host logs from stderr. Native overlay/checkpoint/rollback and retained-capture integration tests run
+The MCP protocol tests use the official in-memory MCP client/server transports to discover all 18
+tools and their schemas, invoke a tool, and read an artifact resource. The suite also checks
+token-correlated lifecycle notifications for all four render tools, including immediate results,
+refusal, cancellation during a blocked capture cleanup and cancellation before dispatch. It uses
+persistent notification handlers because SDK callbacks can run concurrently with response processing,
+and sends an explicit MCP cancellation notification to prove server drain.
+A separate actual-process stdio test performs initialization, `tools/list`, `resources/list`,
+resource-template discovery, and safe no-session scene and empty process-local job-history invocations.
+It verifies the same 18-tool catalog, including `list_sequence_jobs`; the official transport rejects
+non-protocol stdout and captures host logs from stderr. Native overlay/checkpoint/rollback and
+retained-capture integration tests run
 when the repository Core/Imaging runtime layout is present and otherwise skip with the missing path
 reported explicitly. Package tests assert the tool-package identity and command plus the RID
 script's Core/Imaging/plugin/exclusion and fail-before-mutation contracts. Creating a real bundle

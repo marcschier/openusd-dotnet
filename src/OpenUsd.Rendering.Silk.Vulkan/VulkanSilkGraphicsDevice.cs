@@ -263,6 +263,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         ? descriptorIndexedTextureTablesDiagnostic
                         : null,
                 MaxSamplerAnisotropy = maxSamplerAnisotropy,
+                MaxTextureDimension2D = properties.Limits.MaxImageDimension2D,
                 // Dynamic rendering with no colour attachment and a pipeline whose
                 // fragment stage writes no colour are both core Vulkan 1.2 plus
                 // VK_KHR_dynamic_rendering, which this device already requires.

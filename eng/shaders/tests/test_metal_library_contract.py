@@ -11,6 +11,7 @@ contract is pure data, so it can and should be checked everywhere.
 
 import json
 import pathlib
+import re
 import sys
 import unittest
 
@@ -89,6 +90,25 @@ class MetalLibraryContractTests(unittest.TestCase):
         authored = {program["name"] for program in self.manifest["programs"]}
         expanded = {program["name"] for program in self.checked["programs"]}
         self.assertTrue(authored < expanded)
+
+    def test_combined_library_has_no_duplicate_external_helper_symbols(self) -> None:
+        # metallib links every checked .metal source into one library, so a
+        # helper Slang emits as an ordinary (external) function in more than
+        # one permutation fails only on macOS with "multiple symbols". Helpers
+        # shared by permutations must be [ForceInline] in the Slang source.
+        definition = re.compile(
+            r"^(?!static\b|inline\b|struct\b|typedef\b|using\b|constant\b|template\b|\[\[|#)"
+            r"[\w:<>]+[\s*&]+(\w+)\s*\(",
+            re.MULTILINE,
+        )
+        owners: dict[str, set[str]] = {}
+        sources = sorted((REPO_ROOT / "eng" / "shaders" / "checked").glob("*.metal"))
+        self.assertTrue(sources)
+        for source in sources:
+            for name in definition.findall(source.read_text(encoding="utf-8")):
+                owners.setdefault(name, set()).add(source.name)
+        duplicates = {name: sorted(files) for name, files in owners.items() if len(files) > 1}
+        self.assertEqual(duplicates, {})
 
 
 if __name__ == "__main__":

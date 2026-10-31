@@ -28,6 +28,7 @@ public sealed class ViewerVisualContractTests
     [Arguments("BridgeConnectionWindow")]
     [Arguments("CommandPaletteWindow")]
     [Arguments("CaptureComparisonWindow")]
+    [Arguments("CompletedJobHistoryWindow")]
     public async Task ViewerWindowsOptIntoLocalStylesWithoutAnApplicationWideInclude(string name)
     {
         XDocument document = await LoadMarkupAsync($"{name}.axaml");

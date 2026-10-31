@@ -13,14 +13,14 @@ namespace OpenUsd.Physics.Extraction;
 internal static class PhysicsExtractAbi
 {
     internal const ulong PageMagic = 0x5458455850445355UL;
-    internal const uint AbiVersion = 1u;
+    internal const uint AbiVersion = 2u;
     internal const uint Alignment = 8u;
     internal const int HeaderBytes = 216;
     internal const ulong PageMaxBytes = 0x20000000UL;
-    internal const uint OptionsVersion = 1u;
+    internal const uint OptionsVersion = 2u;
     internal const uint ViewVersion = 1u;
 
-    internal const int ObjectRecordBytes = 208;
+    internal const int ObjectRecordBytes = 216;
     internal const int PropertyRecordBytes = 40;
     internal const int RelationshipRecordBytes = 24;
     internal const int TargetRecordBytes = 16;
@@ -29,6 +29,7 @@ internal static class PhysicsExtractAbi
     internal const int PointRecordBytes = 12;
     internal const int IndexRecordBytes = 4;
     internal const int DiagnosticRecordBytes = 32;
+    internal const int HullRecordBytes = 8;
 
     internal const int MaxObjects = 1 << 20;
     internal const int MaxProperties = 1 << 22;
@@ -45,6 +46,7 @@ internal static class PhysicsExtractAbi
     internal const uint OptionIncludeUnmapped = 1u << 1;
     internal const uint OptionSkipInvisible = 1u << 2;
     internal const uint OptionSkipGuide = 1u << 3;
+    internal const uint OptionFingerprintMeshData = 1u << 4;
 
     internal const int SectionStrings = 0;
     internal const int SectionObjects = 1;
@@ -56,7 +58,8 @@ internal static class PhysicsExtractAbi
     internal const int SectionPoints = 7;
     internal const int SectionIndices = 8;
     internal const int SectionDiagnostics = 9;
-    internal const int SectionCount = 10;
+    internal const int SectionHulls = 10;
+    internal const int SectionCount = 11;
 
     internal const int OffsetMagic = 0;
     internal const int OffsetAbiVersion = 8;
@@ -91,6 +94,7 @@ internal static class PhysicsExtractAbi
         SectionPoints => PointRecordBytes,
         SectionIndices => IndexRecordBytes,
         SectionDiagnostics => DiagnosticRecordBytes,
+        SectionHulls => HullRecordBytes,
         _ => 0,
     };
 
@@ -109,6 +113,7 @@ internal static class PhysicsExtractAbi
         SectionPoints => MaxPoints,
         SectionIndices => MaxIndices,
         SectionDiagnostics => MaxDiagnostics,
+        SectionHulls => MaxProperties,
         _ => 0,
     };
 
@@ -127,6 +132,7 @@ internal static class PhysicsExtractAbi
         SectionPoints => "points",
         SectionIndices => "indices",
         SectionDiagnostics => "diagnostics",
+        SectionHulls => "prepared hulls",
         _ => "unknown",
     };
 }

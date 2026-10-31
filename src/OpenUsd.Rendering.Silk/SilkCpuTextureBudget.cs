@@ -16,7 +16,7 @@ public interface ISilkCpuTextureAdmissionDevice
 /// <summary>A shared logical ceiling for owned decoded pixels and material/transfer-copy buffers.</summary>
 /// <remarks>
 /// Admission precedes allocation and tracks ownership, not garbage-collector residency.
-/// Includes prefilter working arrays, shared environment pixels and cached displacement height texels.
+/// Includes prefilter/OCIO lattice working arrays, shared environment/display pixels and displacement height texels.
 /// Native codec scratch, per-point displacement amounts and source geometry are separate domains.
 /// </remarks>
 public sealed class SilkCpuTextureBudget

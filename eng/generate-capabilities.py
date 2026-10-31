@@ -25,7 +25,7 @@ CONTRACT_PATTERN = re.compile(
     r"    private const ulong CoreCapabilities = .*?;\n"
     r"    private const ulong SchemaFacadeCapabilities = .*?;\n"
     r".*?public const uint AbiVersion = \d+;\n"
-    r".*?public const ulong RequiredCapabilities = .*?;",
+    r".*?public const ulong RequiredCapabilities\s*=\s*.*?;",
     re.DOTALL,
 )
 PROBE_PATTERN = re.compile(

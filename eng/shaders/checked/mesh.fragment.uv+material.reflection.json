@@ -395,10 +395,78 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "detailUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 240,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "detailUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 256,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "alternateUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 272,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "alternateUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 288,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 240,
+        "elementStride": 304,
         "size": null
       },
       "vulkanLayout": {
@@ -663,10 +731,78 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "detailUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 240,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "detailUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 256,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "alternateUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 272,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "alternateUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 288,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 240,
+        "elementStride": 304,
         "size": null
       }
     },
@@ -924,6 +1060,94 @@
         },
         "vulkan": {
           "binding": 36,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "emissiveValuesTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 23,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 40,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "diffuseValuesTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 22,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 39,
           "set": 0
         }
       },
@@ -1884,6 +2108,23 @@
         "systemValue": false
       },
       "location": 5,
+      "type": {
+        "kind": "vector",
+        "elementCount": 2,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "texCoord1",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 5,
+        "systemValue": false
+      },
+      "location": 6,
       "type": {
         "kind": "vector",
         "elementCount": 2,

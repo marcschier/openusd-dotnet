@@ -59,6 +59,15 @@ internal sealed record CompositionPcpNodeSnapshot
 
 internal sealed record CompositionSnapshot
 {
+    private CompositionSnapshot(bool isAvailable) : this()
+    {
+        IsAvailable = isAvailable;
+    }
+
+    public static CompositionSnapshot Unavailable { get; } = new(false);
+
+    public bool IsAvailable { get; } = true;
+
     public CompositionSnapshot(
         IEnumerable<CompositionLayerSnapshot>? layers = null,
         IEnumerable<CompositionPcpNodeSnapshot>? pcpNodes = null)

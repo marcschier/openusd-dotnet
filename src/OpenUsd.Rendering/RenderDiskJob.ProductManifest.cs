@@ -69,22 +69,91 @@ public static partial class RenderDiskJob
         json.WriteNumber("linearExposureScale", camera.LinearExposureScale);
         json.WriteNumber("focusDistance", frame.SampledCamera.FocusDistance);
         json.WriteNumber("fStop", frame.SampledCamera.FStop);
+        json.WriteNumber("accumulationSampleCount", frame.AccumulationSamples.Count);
         json.WriteEndObject();
+        if (frame.AccumulationSamples.Count != 0)
+        {
+            json.WriteStartObject("productAccumulation");
+            json.WriteString("filter", "box-stratified-subinterval-centers");
+            json.WriteStartArray("sampleTimeCodes");
+            foreach (RenderPreparedFrame sample in frame.AccumulationSamples)
+            {
+                json.WriteNumberValue(sample.TimeCode);
+            }
+            json.WriteEndArray();
+            bool lens = frame.AccumulationSamples[0].LensOffset is not null;
+            if (lens)
+            {
+                json.WriteString("lensModel", "thin-lens-concentric-disk-radius-focalLength-x0.1-over-2fStop");
+                json.WriteStartArray("sampleLensOffsets");
+                foreach (RenderPreparedFrame sample in frame.AccumulationSamples)
+                {
+                    json.WriteStartArray();
+                    json.WriteNumberValue(sample.LensOffset!.Value.X);
+                    json.WriteNumberValue(sample.LensOffset!.Value.Y);
+                    json.WriteEndArray();
+                }
+                json.WriteEndArray();
+            }
+            else
+            {
+                json.WriteNull("lensModel");
+                json.WriteNull("sampleLensOffsets");
+            }
+            json.WriteString("hdrAccumulation", "float-mean-of-binary16-samples-before-camera-exposure");
+            json.WriteString("pngAccumulation", "rounded-mean-of-display-encoded-rgba8-samples");
+            json.WriteEndObject();
+        }
+        else
+        {
+            json.WriteNull("productAccumulation");
+        }
         json.WriteStartArray("productOutputs");
         foreach (RenderProductOutputBinding output in plan.Outputs)
         {
-            bool hdr = output.Plane == RenderProductPlane.HdrColor;
+            (string? file, string format, long bytes, string? sha256, string convention) = output.Plane switch
+            {
+                RenderProductPlane.HdrColor => (result.HdrColorFileName, HdrColorFormatName(result.HdrColorFormat),
+                    result.HdrColorBytes, result.HdrColorSha256,
+                    "renderer-working-composited-camera-exposed-before-display"),
+                RenderProductPlane.DeviceDepth => (result.DepthFileName, "float32-little-endian",
+                    result.DepthBytes, result.DepthSha256, "normalized-device-depth-zero-to-one"),
+                RenderProductPlane.PrimId => (result.PrimIdFileName, "int32-little-endian",
+                    result.PrimIdBytes, result.PrimIdSha256, "visible-prim-identity-index"),
+                RenderProductPlane.InstanceId => (result.InstanceIdFileName, "int32-little-endian",
+                    result.InstanceIdBytes, result.InstanceIdSha256, InstanceIdConvention),
+                RenderProductPlane.Normal => (result.NormalFileName, NormalFormat,
+                    result.NormalBytes, result.NormalSha256, NormalConvention),
+                RenderProductPlane.ElementId => (result.ElementIdFileName, "int32-little-endian",
+                    result.ElementIdBytes, result.ElementIdSha256, ElementIdConvention),
+                _ => throw new InvalidDataException("A product output names an unknown plane.")
+            };
             json.WriteStartObject();
             json.WriteString("variablePath", output.Variable.Path);
             json.WriteString("sourceType", output.Variable.SourceType);
             json.WriteString("sourceName", output.Variable.SourceName);
             json.WriteString("dataType", output.Variable.DataType);
-            json.WriteString("file", hdr ? result.HdrColorFileName : result.DepthFileName);
-            json.WriteNumber("bytes", hdr ? result.HdrColorBytes : result.DepthBytes);
-            json.WriteString("sha256", hdr ? result.HdrColorSha256 : result.DepthSha256);
+            json.WriteString("file", file);
+            json.WriteString("format", format);
+            json.WriteNumber("bytes", bytes);
+            json.WriteString("sha256", sha256);
             json.WriteString("rowOrder", "top-down");
-            json.WriteString("convention", hdr ? "renderer-working-composited-before-exposure-and-display" :
-                "normalized-device-depth-zero-to-one");
+            json.WriteString("convention", convention);
+            if (output.Plane == RenderProductPlane.PrimId)
+            {
+                json.WriteNumber("background", -1);
+                json.WriteString("tableFile", result.PrimIdTableFileName);
+                json.WriteNumber("tableBytes", result.PrimIdTableBytes);
+                json.WriteString("tableSha256", result.PrimIdTableSha256);
+            }
+            else if (output.Plane is RenderProductPlane.InstanceId or RenderProductPlane.ElementId)
+            {
+                json.WriteNumber("background", -1);
+            }
+            else if (output.Plane == RenderProductPlane.Normal)
+            {
+                WriteNormalBackground(json);
+            }
             json.WriteEndObject();
         }
         json.WriteEndArray();

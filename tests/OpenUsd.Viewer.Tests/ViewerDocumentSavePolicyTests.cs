@@ -76,6 +76,138 @@ public sealed class ViewerDocumentSavePolicyTests
     }
 
     [Test]
+    public async Task BusyDocumentRefusesReviewAndOptedInSourceSaves()
+    {
+        var source = new ViewerDocumentLayerState("source", ViewerDocumentLayerRole.Source,
+            Path.Combine(AppContext.BaseDirectory, "source.usda"), 1, true, true);
+        var review = new ViewerDocumentLayerState("review", ViewerDocumentLayerRole.Review,
+            Path.Combine(AppContext.BaseDirectory, "review.usda"), 2, true, true);
+        var document = new ViewerDocumentState(
+            Guid.NewGuid(), source, review, review.Identifier, SourceEditOptIn: true, IsBusy: true);
+
+        foreach (ViewerDocumentSaveAction action in new[]
+        {
+            ViewerDocumentSaveAction.SaveReview,
+            ViewerDocumentSaveAction.SaveSource
+        })
+        {
+            ViewerDocumentSaveDecision decision = ViewerDocumentSavePolicy.Plan(document, action);
+
+            await Assert.That(decision.IsAllowed).IsFalse();
+            await Assert.That(decision.LayerIdentifier).IsNull();
+            await Assert.That(decision.Message).Contains("current document operation");
+        }
+    }
+
+    [Test]
+    public async Task MissingDocumentIdentityRefusesReviewAndOptedInSourceSaves()
+    {
+        var source = new ViewerDocumentLayerState("source", ViewerDocumentLayerRole.Source,
+            Path.Combine(AppContext.BaseDirectory, "source.usda"), 1, true, true);
+        var review = new ViewerDocumentLayerState("review", ViewerDocumentLayerRole.Review,
+            Path.Combine(AppContext.BaseDirectory, "review.usda"), 2, true, true);
+        var document = new ViewerDocumentState(
+            Guid.Empty, source, review, review.Identifier, SourceEditOptIn: true);
+
+        foreach (ViewerDocumentSaveAction action in new[]
+        {
+            ViewerDocumentSaveAction.SaveReview,
+            ViewerDocumentSaveAction.SaveSource
+        })
+        {
+            ViewerDocumentSaveDecision decision = ViewerDocumentSavePolicy.Plan(document, action);
+
+            await Assert.That(decision.IsAllowed).IsFalse();
+            await Assert.That(decision.LayerIdentifier).IsNull();
+            await Assert.That(decision.Message).Contains("document identity");
+        }
+    }
+
+    [Test]
+    public async Task ReadOnlyRequestedLayerIsRefusedWithoutSubstitutingTheWritableLayer()
+    {
+        string sourcePath = Path.Combine(AppContext.BaseDirectory, "source.usda");
+        string reviewPath = Path.Combine(AppContext.BaseDirectory, "review.usda");
+        var writableSource = new ViewerDocumentLayerState(
+            "source", ViewerDocumentLayerRole.Source, sourcePath, 1, false, true);
+        var readOnlyReview = new ViewerDocumentLayerState(
+            "review", ViewerDocumentLayerRole.Review, reviewPath, 2, true, false);
+        var reviewDocument = new ViewerDocumentState(
+            Guid.NewGuid(), writableSource, readOnlyReview, readOnlyReview.Identifier);
+        var readOnlySource = writableSource with { IsWritable = false };
+        var writableReview = readOnlyReview with { IsWritable = true };
+        var sourceDocument = new ViewerDocumentState(
+            Guid.NewGuid(), readOnlySource, writableReview, writableReview.Identifier, SourceEditOptIn: true);
+
+        ViewerDocumentSaveDecision reviewDecision = ViewerDocumentSavePolicy.Plan(
+            reviewDocument, ViewerDocumentSaveAction.SaveReview);
+        ViewerDocumentSaveDecision sourceDecision = ViewerDocumentSavePolicy.Plan(
+            sourceDocument, ViewerDocumentSaveAction.SaveSource);
+
+        foreach (ViewerDocumentSaveDecision decision in new[] { reviewDecision, sourceDecision })
+        {
+            await Assert.That(decision.IsAllowed).IsFalse();
+            await Assert.That(decision.LayerIdentifier).IsNull();
+            await Assert.That(decision.Message).Contains("requested layer is read-only");
+        }
+    }
+
+    [Test]
+    public async Task RelativeLayerPathsAreRefusedForReviewAndSourcePublication()
+    {
+        var source = new ViewerDocumentLayerState(
+            "source", ViewerDocumentLayerRole.Source, "relative/source.usda", 1, true, true);
+        var review = new ViewerDocumentLayerState(
+            "review", ViewerDocumentLayerRole.Review, "relative/review.usda", 2, true, true);
+        var document = new ViewerDocumentState(
+            Guid.NewGuid(), source, review, review.Identifier, SourceEditOptIn: true);
+
+        ViewerDocumentSaveDecision reviewDecision = ViewerDocumentSavePolicy.Plan(
+            document, ViewerDocumentSaveAction.SaveReview);
+        ViewerDocumentSaveDecision sourceDecision = ViewerDocumentSavePolicy.Plan(
+            document, ViewerDocumentSaveAction.SaveSource);
+
+        foreach (ViewerDocumentSaveDecision decision in new[] { reviewDecision, sourceDecision })
+        {
+            await Assert.That(decision.IsAllowed).IsFalse();
+            await Assert.That(decision.LayerIdentifier).IsNull();
+            await Assert.That(decision.Message).Contains("must be resolved");
+        }
+    }
+
+    [Test]
+    public async Task AnonymousSourceCannotBeSavedEvenWhenSourceEditingIsOptedIn()
+    {
+        var source = new ViewerDocumentLayerState("anonymous-source", ViewerDocumentLayerRole.Source,
+            null, 1, true, true);
+        var review = new ViewerDocumentLayerState("review", ViewerDocumentLayerRole.Review,
+            Path.Combine(AppContext.BaseDirectory, "review.usda"), 2, false, true);
+        var document = new ViewerDocumentState(
+            Guid.NewGuid(), source, review, review.Identifier, SourceEditOptIn: true);
+
+        ViewerDocumentSaveDecision decision = ViewerDocumentSavePolicy.Plan(
+            document, ViewerDocumentSaveAction.SaveSource);
+
+        await Assert.That(decision.IsAllowed).IsFalse();
+        await Assert.That(decision.Role).IsEqualTo(ViewerDocumentLayerRole.Source);
+        await Assert.That(decision.LayerIdentifier).IsNull();
+        await Assert.That(decision.Message).Contains("anonymous source");
+    }
+
+    [Test]
+    public async Task InvalidSaveActionIsRejected()
+    {
+        var source = new ViewerDocumentLayerState("source", ViewerDocumentLayerRole.Source,
+            Path.Combine(AppContext.BaseDirectory, "source.usda"), 1, false, true);
+        var review = new ViewerDocumentLayerState("review", ViewerDocumentLayerRole.Review,
+            Path.Combine(AppContext.BaseDirectory, "review.usda"), 2, false, true);
+        var document = new ViewerDocumentState(Guid.NewGuid(), source, review, review.Identifier);
+
+        await Assert.That(() => ViewerDocumentSavePolicy.Plan(
+            document, (ViewerDocumentSaveAction)int.MaxValue)).Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task ReviewSaveNeverPublishesOverTheSourceEvenWithGeneralSourceOptIn(bool sourceOptIn)

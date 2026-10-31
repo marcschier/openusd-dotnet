@@ -1600,8 +1600,8 @@ It also generates the separate EXR mirror from `openusd_image_exr.h`.
 CI fails if either generated mirror is stale.
 Data ABI v15 preserves every v14 export and capability and adds explicit `color3f[]`,
 `bool[]`, `token[]`, and `string[]` attribute array accessors through
-`OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). The managed required mask is
-`0x1FFFFFFFF`.
+`OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). The current managed required mask is
+`0x3FFFFFFFF`.
 
 The additive `OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION` capability (`0x40000`)
 adds allocation-free prim-count and total-path-byte preflight before packed path
@@ -1632,7 +1632,11 @@ Data ABI v24 adds `OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT` (`0x100000000`) for boun
 raw-working RGBA16Float EXR output through one synchronous bulk call. This guarded API has
 a dedicated encoding-status domain and an initial Windows x64 regular-file profile; see
 [EXR output](image-exr-output.md) for ownership, cancellation and native-heap limitations.
-Current managed startup requires the v24 `0x1FFFFFFFF` mask and rejects
+Data ABI v25 adds `OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS` (`0x200000000`) and the
+`openusd_stage_set_vec4f_array`/`openusd_stage_get_vec4f_array` pair for `float4[]` attributes.
+`UsdPrim.SetVec4fArray` authors `float4[]`; `UsdPrim.GetVec4fArray` also reads `color4f[]`, which
+shares the layout. Render product preparation uses the reader for camera `clippingPlanes`.
+Current managed startup requires the v25 `0x3FFFFFFFF` mask and rejects
 older runtimes or runtimes missing required exports. The data-query/status-returning
 exports execute their complete body inside the common exception/TfError guard, so C++ exceptions and
 unconsumed OpenUSD diagnostics never cross C. Access-end alone performs its already-validated

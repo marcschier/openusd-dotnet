@@ -4,6 +4,8 @@
 
 #include "pxr/usd/sdf/listOp.h"
 #include "pxr/usd/usd/tokens.h"
+#include "pxr/usd/usdGeom/metrics.h"
+#include "pxr/usd/usdGeom/tokens.h"
 
 openusd_status openusd_stage_open(
     const char* path,
@@ -924,6 +926,70 @@ openusd_status openusd_stage_set_time_codes_per_second(
                 WriteError(error, message.empty() ? "Could not set time codes per second." : message);
                 return OPENUSD_STATUS_NATIVE_ERROR;
             }
+            return OPENUSD_STATUS_OK;
+        });
+
+    });
+}
+
+openusd_status openusd_stage_get_linear_units(
+    const openusd_stage* stage,
+    openusd_stage_linear_units* units,
+    openusd_error_buffer* error)
+{
+    // OUTER_ABI_GUARD
+    return GuardStage(stage, error, [&]() -> openusd_status
+    {
+        // ABI_OUTPUT_INITIALIZATION
+        ResetAbiOutput(units);
+        if (stage == nullptr || !stage->value || units == nullptr)
+        {
+            WriteError(error, "A valid stage and linear units output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+
+        return Guard(error, [&]()
+        {
+            TfErrorMark mark;
+            const UsdStageWeakPtr weakStage(stage->value);
+            const double metersPerUnit = UsdGeomGetStageMetersPerUnit(weakStage);
+            const bool metersPerUnitAuthored = UsdGeomStageHasAuthoredMetersPerUnit(weakStage);
+            const TfToken upAxis = UsdGeomGetStageUpAxis(weakStage);
+            const bool upAxisAuthored = stage->value->HasAuthoredMetadata(UsdGeomTokens->upAxis);
+            if (!mark.IsClean())
+            {
+                std::string message = ConsumeErrors(mark);
+                WriteError(error, message.empty() ? "Could not read stage linear units." : message);
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+
+            uint32_t axis = 0;
+            if (upAxis == UsdGeomTokens->y)
+            {
+                axis = OPENUSD_STAGE_UP_AXIS_Y;
+            }
+            else if (upAxis == UsdGeomTokens->z)
+            {
+                axis = OPENUSD_STAGE_UP_AXIS_Z;
+            }
+            else
+            {
+                WriteError(error, "The stage upAxis must be Y or Z.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+
+            if (!std::isfinite(metersPerUnit) || metersPerUnit <= 0)
+            {
+                WriteError(error, "The stage metersPerUnit must be positive and finite.");
+                return OPENUSD_STATUS_NATIVE_ERROR;
+            }
+
+            openusd_stage_linear_units result{};
+            result.meters_per_unit = metersPerUnit;
+            result.meters_per_unit_authored = metersPerUnitAuthored ? 1u : 0u;
+            result.up_axis = axis;
+            result.up_axis_authored = upAxisAuthored ? 1u : 0u;
+            *units = result;
             return OPENUSD_STATUS_OK;
         });
 

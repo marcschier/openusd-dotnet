@@ -9,8 +9,17 @@ internal static class CompletedRenderFrameReader
     internal static PngRgba8Image ReadThumbnail(
         Stream input, RenderDiskFrameResult frame, int width, int height, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(frame);
+        return ReadThumbnail(input, frame.State.Viewport, frame.Bytes, frame.Sha256,
+            width, height, cancellationToken);
+    }
+
+    internal static PngRgba8Image ReadThumbnail(
+        Stream input, ViewportDimensions dimensions, long recordedBytes, string recordedSha256,
+        int width, int height, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(recordedSha256);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(width, 1024);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
@@ -21,15 +30,15 @@ internal static class CompletedRenderFrameReader
             throw new ArgumentException(
                 "A completed PNG requires a readable stream with an exact extent.", nameof(input));
         }
-        int sourceWidth = frame.State.Viewport.Width;
-        int sourceHeight = frame.State.Viewport.Height;
+        int sourceWidth = dimensions.Width;
+        int sourceHeight = dimensions.Height;
         if (sourceWidth is < 1 or > 8192 || sourceHeight is < 1 or > 8192 ||
             (long)sourceWidth * sourceHeight * 4 > RenderDiskJobLimits.Default.MaximumFrameBytes)
         {
             throw new InvalidDataException("The completed PNG dimensions exceed the recorded frame limit.");
         }
         long length = input.Length;
-        if (length != frame.Bytes || length < 1 || length > RenderDiskJobLimits.Default.MaximumFrameBytes)
+        if (length != recordedBytes || length < 1 || length > RenderDiskJobLimits.Default.MaximumFrameBytes)
         {
             throw new InvalidDataException("The completed PNG extent has changed or exceeds its frame limit.");
         }
@@ -43,8 +52,8 @@ internal static class CompletedRenderFrameReader
             offset += count;
         }
         cancellationToken.ThrowIfCancellationRequested();
-        if (input.ReadByte() != -1 || input.Length != frame.Bytes ||
-            !Convert.ToHexString(SHA256.HashData(bytes)).Equals(frame.Sha256, StringComparison.OrdinalIgnoreCase))
+        if (input.ReadByte() != -1 || input.Length != recordedBytes ||
+            !Convert.ToHexString(SHA256.HashData(bytes)).Equals(recordedSha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("The completed PNG no longer matches its recorded SHA256.");
         }

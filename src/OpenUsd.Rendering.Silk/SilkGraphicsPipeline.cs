@@ -192,7 +192,10 @@ public enum SilkShaderFeatures
     ClearcoatRoughnessMap = 1024,
 
     /// <summary>An index-of-refraction texture is bound.</summary>
-    IorMap = 2048
+    IorMap = 2048,
+
+    /// <summary>An independently transformed detail normal is bound.</summary>
+    DetailNormalMap = 4096
 }
 
 /// <summary>Stable mesh shader permutation identifier.</summary>
@@ -202,6 +205,7 @@ public readonly record struct SilkShaderPermutationId
         SilkShaderFeatures.Uv |
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
+        SilkShaderFeatures.DetailNormalMap |
         SilkShaderFeatures.RoughnessMetallicMap |
         SilkShaderFeatures.EmissiveMap |
         SilkShaderFeatures.MetallicMap |
@@ -214,6 +218,7 @@ public readonly record struct SilkShaderPermutationId
     private const SilkShaderFeatures MapFeatures =
         SilkShaderFeatures.BaseColorMap |
         SilkShaderFeatures.NormalMap |
+        SilkShaderFeatures.DetailNormalMap |
         SilkShaderFeatures.RoughnessMetallicMap |
         SilkShaderFeatures.EmissiveMap |
         SilkShaderFeatures.MetallicMap |
@@ -296,11 +301,11 @@ public readonly record struct SilkShaderPermutationId
                 SilkBindingLayoutDescriptor.IorSamplerBinding,
                 SilkBindingLayoutDescriptor.IorTextureBinding);
         }
-        AddTextureSlots(
-            slots,
-            SilkShaderFeatures.NormalMap,
-            SilkBindingLayoutDescriptor.NormalSamplerBinding,
-            SilkBindingLayoutDescriptor.NormalTextureBinding);
+        if ((Features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
+        {
+            AddTextureSlots(slots, SilkBindingLayoutDescriptor.NormalSamplerBinding,
+                SilkBindingLayoutDescriptor.NormalTextureBinding);
+        }
         if ((Features & MapFeatures) != 0)
         {
             // The material's single composite image, declared for every
@@ -314,7 +319,31 @@ public readonly record struct SilkShaderPermutationId
                 SilkBindingLayoutDescriptor.CompositeSamplerBinding,
                 SilkBindingLayoutDescriptor.CompositeTextureBinding);
         }
-        return SilkBindingLayoutDescriptor.ForMaterial(slots);
+        SilkBindingLayoutDescriptor layout = SilkBindingLayoutDescriptor.ForMaterial(slots);
+        if ((Features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
+        {
+            // Append after shared resources to preserve every existing descriptor offset.
+            var extended = new List<SilkBindingSlot>(layout.MaterialSlots);
+            AddTextureSlots(extended, SilkBindingLayoutDescriptor.DetailNormalSamplerBinding,
+                SilkBindingLayoutDescriptor.DetailNormalTextureBinding);
+            extended.Add(new(0, SilkBindingLayoutDescriptor.NormalValuesTextureBinding,
+                SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment));
+            extended.Add(new(0, SilkBindingLayoutDescriptor.DetailNormalValuesTextureBinding,
+                SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment));
+            layout = layout with { MaterialSlots = extended };
+        }
+        if ((Features & MapFeatures) != 0)
+        {
+            layout = layout with
+            {
+                MaterialSlots = [.. layout.MaterialSlots,
+                    new(0, SilkBindingLayoutDescriptor.DiffuseValuesTextureBinding,
+                        SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+                    new(0, SilkBindingLayoutDescriptor.EmissiveValuesTextureBinding,
+                        SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment)]
+            };
+        }
+        return layout;
     }
 
     internal SilkShaderPermutationId CanonicalizeForPipeline()
@@ -326,7 +355,7 @@ public readonly record struct SilkShaderPermutationId
 
         SilkShaderFeatures canonical =
             SilkShaderFeatures.Uv | SilkShaderFeatures.BaseColorMap;
-        if ((Features & SilkShaderFeatures.NormalMap) != 0)
+        if ((Features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
         {
             canonical |= SilkShaderFeatures.NormalMap;
         }
@@ -358,7 +387,7 @@ public readonly record struct SilkShaderPermutationId
 
         var suffix = new StringBuilder();
         AppendToken(suffix, Features, SilkShaderFeatures.Uv, "uv");
-        AppendToken(suffix, Features, SilkShaderFeatures.NormalMap, "normal");
+        AppendToken(suffix, Features, SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap, "normal");
         return $"{baseName}.{suffix}";
     }
 
@@ -375,7 +404,7 @@ public readonly record struct SilkShaderPermutationId
         {
             suffix.Append("+material");
         }
-        if ((Features & SilkShaderFeatures.NormalMap) != 0)
+        if ((Features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
         {
             suffix.Append("+normal");
         }
@@ -399,20 +428,6 @@ public readonly record struct SilkShaderPermutationId
             SilkBindingKind.SampledTexture,
             0,
             SilkShaderStageVisibility.Fragment));
-    }
-
-    private void AddTextureSlots(
-        List<SilkBindingSlot> slots,
-        SilkShaderFeatures feature,
-        uint samplerBinding,
-        uint textureBinding)
-    {
-        if ((Features & feature) == 0)
-        {
-            return;
-        }
-
-        AddTextureSlots(slots, samplerBinding, textureBinding);
     }
 
     private static void AppendToken(
@@ -617,6 +632,14 @@ public readonly record struct SilkBindingLayoutDescriptor(
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
 
+    // Normal-mapped surfaces and density volumes use disjoint shader permutations.
+    internal const uint DetailNormalSamplerBinding = VolumeSamplerBinding;
+    internal const uint DetailNormalTextureBinding = VolumeDensityTextureBinding;
+    internal const uint NormalValuesTextureBinding = 37;
+    internal const uint DetailNormalValuesTextureBinding = 38;
+    internal const uint DiffuseValuesTextureBinding = 39;
+    internal const uint EmissiveValuesTextureBinding = 40;
+
     private static IReadOnlyList<SilkBindingSlot> SharedMeshSlots =>
     [
         new(
@@ -806,6 +829,35 @@ public readonly record struct SilkBindingLayoutDescriptor(
         ]
     };
 
+    /// <summary>
+    /// Creates the world-space normal capture layout.
+    /// </summary>
+    /// <remarks>
+    /// Binds the per-mesh instance table the vertex stage projects with and the
+    /// raw frame block both stages read: the vertex stage recovers the
+    /// object-to-world transform from it and the fragment stage honours the
+    /// authored clip planes. No material, surface or shadow resource is
+    /// declared, because the normal programs reference none.
+    /// </remarks>
+    internal static SilkBindingLayoutDescriptor NormalParameters => SceneParameters with
+    {
+        MaterialSlots =
+        [
+            new(
+                0,
+                6,
+                SilkBindingKind.StorageBuffer,
+                0,
+                SilkShaderStageVisibility.Vertex),
+            new(
+                0,
+                FrameParametersBinding,
+                SilkBindingKind.StorageBuffer,
+                0,
+                SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment)
+        ]
+    };
+
     internal static (uint Sampler, uint Texture) GetMaterialTextureBindings(
         SilkMaterialParameter parameter) =>
         parameter switch
@@ -814,6 +866,8 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 (BaseColorSamplerBinding, BaseColorTextureBinding),
             SilkMaterialParameter.Normal =>
                 (NormalSamplerBinding, NormalTextureBinding),
+            SilkMaterialParameter.DetailNormal =>
+                (DetailNormalSamplerBinding, DetailNormalTextureBinding),
             SilkMaterialParameter.Roughness =>
                 (RoughnessMetallicSamplerBinding, RoughnessMetallicTextureBinding),
             SilkMaterialParameter.Metallic =>
@@ -997,7 +1051,13 @@ public enum SilkVertexSemantic
     TexCoord,
 
     /// <summary>Object-space tangent and bitangent sign.</summary>
-    Tangent
+    Tangent,
+
+    /// <summary>
+    /// Second surface texture coordinate. Layouts without a second coordinate set alias it to the primary
+    /// coordinate so every UV pipeline sees the same vertex input interface.
+    /// </summary>
+    SecondaryTexCoord
 }
 
 /// <summary>Vertex element formats.</summary>
@@ -1039,7 +1099,8 @@ public readonly record struct SilkVertexLayoutDescriptor(
         [
             new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
             new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
-            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2)
+            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.SecondaryTexCoord, 3, 24, SilkVertexFormat.Float2)
         ]);
 
     /// <summary>Gets the checked POSITION/NORMAL/TEXCOORD/TANGENT layout.</summary>
@@ -1049,8 +1110,34 @@ public readonly record struct SilkVertexLayoutDescriptor(
             new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
             new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
             new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2),
-            new(SilkVertexSemantic.Tangent, 3, 32, SilkVertexFormat.Float4)
+            new(SilkVertexSemantic.SecondaryTexCoord, 3, 24, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.Tangent, 4, 32, SilkVertexFormat.Float4)
         ]);
+
+    /// <summary>Gets the checked layout with two distinct surface coordinate sets.</summary>
+    internal static SilkVertexLayoutDescriptor PositionNormalTexCoordSecondary => new(
+        40,
+        [
+            new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.SecondaryTexCoord, 3, 32, SilkVertexFormat.Float2)
+        ]);
+
+    /// <summary>Gets the checked tangent layout with two distinct surface coordinate sets.</summary>
+    internal static SilkVertexLayoutDescriptor PositionNormalTexCoordTangentSecondary => new(
+        56,
+        [
+            new(SilkVertexSemantic.Position, 0, 0, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.Normal, 1, 12, SilkVertexFormat.Float3),
+            new(SilkVertexSemantic.TexCoord, 2, 24, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.SecondaryTexCoord, 3, 48, SilkVertexFormat.Float2),
+            new(SilkVertexSemantic.Tangent, 4, 32, SilkVertexFormat.Float4)
+        ]);
+
+    /// <summary>Gets whether this layout carries a tangent attribute.</summary>
+    internal bool HasTangent =>
+        Matches(PositionNormalTexCoordTangent) || Matches(PositionNormalTexCoordTangentSecondary);
 
     /// <summary>Validates the checked mesh vertex layout.</summary>
     public void Validate()
@@ -1058,15 +1145,18 @@ public readonly record struct SilkVertexLayoutDescriptor(
         ArgumentNullException.ThrowIfNull(Attributes);
         if (!Matches(PositionNormal) &&
             !Matches(PositionNormalTexCoord) &&
-            !Matches(PositionNormalTexCoordTangent))
+            !Matches(PositionNormalTexCoordTangent) &&
+            !Matches(PositionNormalTexCoordSecondary) &&
+            !Matches(PositionNormalTexCoordTangentSecondary))
         {
             throw new ArgumentException(
-                "The checked mesh shader requires a known position/normal layout, optionally with UV and tangent.",
+                "The checked mesh shader requires a known position/normal layout, optionally with UV, " +
+                "a second UV set, and tangent.",
                 nameof(Attributes));
         }
     }
 
-    private bool Matches(SilkVertexLayoutDescriptor expected)
+    internal bool Matches(SilkVertexLayoutDescriptor expected)
     {
         if (Stride != expected.Stride || Attributes.Count != expected.Attributes.Count)
         {
@@ -1375,6 +1465,49 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         }
     }
 
+    /// <summary>Gets or creates the checked world-space normal capture pipeline.</summary>
+    /// <remarks>
+    /// Renders into an <see cref="SilkTextureFormat.Rgba32Float"/> target with a
+    /// <see cref="SilkTextureFormat.D32Float"/> depth buffer, the only formats the
+    /// normal plane is captured with.
+    /// </remarks>
+    internal ISilkGraphicsPipeline GetOrCreateNormalPipeline(
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTopologyKind topologyKind,
+        SilkCullMode cullMode = SilkCullMode.None)
+    {
+        DeviceGenerationKey generation = ReadDeviceGeneration(_device);
+        PipelineCacheKey key = new(
+            "world-normal",
+            CreateVertexLayoutKey(vertexLayout),
+            SilkTextureFormat.Rgba32Float,
+            SilkTextureFormat.D32Float,
+            cullMode,
+            topologyKind,
+            SilkBlendMode.None,
+            DepthWriteEnabled: true,
+            _shaderFormat,
+            generation);
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (generation != _generation)
+            {
+                DisposeEntries();
+                _generation = generation;
+            }
+
+            if (!_entries.TryGetValue(key, out CachedPipelineEntry? entry))
+            {
+                entry = CreateNormalEntry(vertexLayout, topologyKind, cullMode);
+                _entries.Add(key, entry);
+            }
+
+            return entry.AcquireLease();
+        }
+    }
+
     /// <summary>Gets or creates a runtime material pipeline from compiled shader descriptors.</summary>
     internal ISilkGraphicsPipeline GetOrCreateMaterialPipeline(
         SilkMaterialShaderProgram materialProgram,
@@ -1540,6 +1673,53 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
             {
                 DepthOnly = true,
             });
+            return new CachedPipelineEntry(
+                vertexShader,
+                fragmentShader,
+                bindingLayout,
+                program,
+                pipeline);
+        }
+        catch
+        {
+            pipeline?.Dispose();
+            program?.Dispose();
+            bindingLayout?.Dispose();
+            fragmentShader?.Dispose();
+            vertexShader?.Dispose();
+            throw;
+        }
+    }
+
+    private CachedPipelineEntry CreateNormalEntry(
+        SilkVertexLayoutDescriptor vertexLayout,
+        SilkTopologyKind topologyKind,
+        SilkCullMode cullMode)
+    {
+        ISilkGraphicsShaderModule? vertexShader = null;
+        ISilkGraphicsShaderModule? fragmentShader = null;
+        ISilkGraphicsBindingLayout? bindingLayout = null;
+        ISilkGraphicsShaderProgram? program = null;
+        ISilkGraphicsPipeline? pipeline = null;
+        try
+        {
+            vertexShader = _device.CreateShaderModule(
+                SilkCheckedShaderAssets.LoadNormalVertex(_shaderFormat));
+            fragmentShader = _device.CreateShaderModule(
+                SilkCheckedShaderAssets.LoadNormalFragment(_shaderFormat));
+            bindingLayout = _device.CreateBindingLayout(
+                SilkBindingLayoutDescriptor.NormalParameters);
+            program = _device.CreateShaderProgram(new SilkShaderProgramDescriptor(
+                vertexShader,
+                fragmentShader,
+                bindingLayout));
+            pipeline = _device.CreateGraphicsPipeline(new SilkGraphicsPipelineDescriptor(
+                program,
+                vertexLayout,
+                SilkTextureFormat.Rgba32Float,
+                SilkTextureFormat.D32Float,
+                cullMode,
+                topologyKind));
             return new CachedPipelineEntry(
                 vertexShader,
                 fragmentShader,
@@ -1968,6 +2148,24 @@ public static partial class SilkCheckedShaderAssets
             SilkShaderStage.Fragment,
             format,
             "shadowFragmentMain");
+
+    /// <summary>Loads the checked world-space normal capture vertex module.</summary>
+    public static SilkShaderModuleDescriptor LoadNormalVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModule(
+            "normal",
+            SilkShaderStage.Vertex,
+            format,
+            "normalVertexMain");
+
+    /// <summary>Loads the checked world-space normal capture fragment module.</summary>
+    public static SilkShaderModuleDescriptor LoadNormalFragment(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModule(
+            "normal",
+            SilkShaderStage.Fragment,
+            format,
+            "normalFragmentMain");
 
     /// <summary>Loads the checked fill compute module.</summary>
     public static SilkShaderModuleDescriptor LoadComputeFill(

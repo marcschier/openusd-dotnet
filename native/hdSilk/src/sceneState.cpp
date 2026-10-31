@@ -7,7 +7,10 @@
 #include "pageWriter.h"
 
 #include "pxr/base/tf/diagnostic.h"
+#include "pxr/base/arch/hash.h"
 #include "pxr/base/gf/vec3d.h"
+#include "pxr/base/gf/vec3f.h"
+#include "pxr/usd/usdLux/blackbody.h"
 
 #include <algorithm>
 #include <atomic>
@@ -17,6 +20,7 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -487,6 +491,24 @@ void AppendLight(
     AppendF32(payload, record->radius);
 }
 
+/// Appends one ABI v28 shaping entry. A published light always carries a cone
+/// within [0, 180] and a non-negative focus, so the consumer never has to
+/// reinterpret an out-of-range authored value. An unpublished slot is zero.
+void AppendLightShaping(
+    HdSilkCommandPayload& payload,
+    const HdSilkLightRecord* record)
+{
+    const bool shaped = record != nullptr &&
+        (record->type == OPENUSD_SILK_LIGHT_RECT || record->type == OPENUSD_SILK_LIGHT_DISK);
+    AppendF32(
+        payload,
+        record == nullptr ? 0.0f :
+        shaped ? std::clamp(record->shapingConeAngle, 0.0f, 180.0f) : 180.0f);
+    AppendF32(payload, shaped ? std::max(record->shapingFocus, 0.0f) : 0.0f);
+    AppendU32(payload, 0);
+    AppendU32(payload, 0);
+}
+
 /// Rebuilds the point-origin table of a mesh the points draw mode has just
 /// indexed every emitted vertex of.
 ///
@@ -691,6 +713,12 @@ void ValidateDirectLight(const HdSilkLightRecord& light)
     validate(light.radius, "radius");
     validate(light.shapeX, "shape_x");
     validate(light.shapeY, "shape_y");
+    validate(light.shapingConeAngle, "shaping:cone:angle");
+    validate(light.shapingFocus, "shaping:focus");
+    if (light.colorTemperatureEnabled)
+    {
+        validate(light.colorTemperature, "colorTemperature");
+    }
     for (float component : light.color)
     {
         validate(component, "color");
@@ -775,9 +803,23 @@ void SelectDirectLights(
                 // color, intensity, exposure, and diffuse contribution.
                 const float exposed =
                     0.96f * light.intensity * std::pow(2.0f, light.exposure) * light.diffuse;
-                dome.ambientColor[0] = light.color[0] * exposed;
-                dome.ambientColor[1] = light.color[1] * exposed;
-                dome.ambientColor[2] = light.color[2] * exposed;
+                GfVec3f color(light.color[0], light.color[1], light.color[2]);
+                if (light.colorTemperatureEnabled)
+                {
+                    color = GfCompMult(
+                        color, UsdLuxBlackbodyTemperatureAsRgb(light.colorTemperature));
+                }
+                else if ((light.unsupportedFeatures &
+                             OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_COLOR_TEMPERATURE) != 0u)
+                {
+                    TF_WARN(
+                        "hdSilk ignores the non-finite colorTemperature on the "
+                        "untextured dome light '%s' and keeps its authored colour.",
+                        light.path.c_str());
+                }
+                dome.ambientColor[0] = color[0] * exposed;
+                dome.ambientColor[1] = color[1] * exposed;
+                dome.ambientColor[2] = color[2] * exposed;
 
                 // Accumulated from the very floats the dome entry carries, in
                 // the order the dome table publishes them. Summing the per-dome
@@ -808,6 +850,18 @@ void SelectDirectLights(
         if (outDirectLights->size() < OPENUSD_SILK_MAX_FRAME_LIGHTS)
         {
             outDirectLights->push_back(light);
+            if (light.colorTemperatureEnabled)
+            {
+                // The same luminance-normalized Catmull-Rom blackbody table
+                // Storm's area-light approximation uses, so the tint matches
+                // it exactly and never changes the light's luminance.
+                const GfVec3f tint = UsdLuxBlackbodyTemperatureAsRgb(light.colorTemperature);
+                HdSilkLightRecord& published = outDirectLights->back();
+                for (int channel = 0; channel < 3; ++channel)
+                {
+                    published.color[channel] *= tint[channel];
+                }
+            }
         }
     }
     if (directLightCount > OPENUSD_SILK_MAX_FRAME_LIGHTS)
@@ -863,7 +917,8 @@ void AppendFrame(
         (static_cast<size_t>(OPENUSD_SILK_MAX_FRAME_LIGHTS) * 176) +
         16 +
         16 +
-        (static_cast<size_t>(OPENUSD_SILK_MAX_DOME_LIGHTS) * 32));
+        (static_cast<size_t>(OPENUSD_SILK_MAX_DOME_LIGHTS) * 32) +
+        (static_cast<size_t>(OPENUSD_SILK_MAX_FRAME_LIGHTS) * 16));
     AppendI32(payload, frame.width);
     AppendI32(payload, frame.height);
     for (double value : frame.viewMatrix)
@@ -912,6 +967,10 @@ void AppendFrame(
         AppendU32(payload, 0);
         AppendU32(payload, 0);
         AppendU32(payload, 0);
+    }
+    for (size_t i = 0; i < OPENUSD_SILK_MAX_FRAME_LIGHTS; ++i)
+    {
+        AppendLightShaping(payload, i < directLights.size() ? &directLights[i] : nullptr);
     }
     payload.Complete();
 }
@@ -1787,11 +1846,85 @@ uint64_t PresentationTopologyRevision(
     return mixed;
 }
 
+std::vector<const HdSilkMaterialTexture*> MissingCoordinateFallbacks(
+    const HdSilkMeshRecord& mesh, const HdSilkMaterialRecord* material)
+{
+    std::vector<const HdSilkMaterialTexture*> result;
+    if (material == nullptr || mesh.points.empty())
+    {
+        return result;
+    }
+    for (const HdSilkMaterialTexture& texture : material->textures)
+    {
+        if (!texture.hasUvFallback || texture.uvPrimvar.empty())
+        {
+            continue;
+        }
+        const HdSilkMeshAttributes& attributes = mesh.attributes;
+        if (std::any_of(attributes.begin(), attributes.end(), [&](const HdSilkMeshAttribute& attribute)
+            { return attribute.name == texture.uvPrimvar; }))
+        {
+            continue;
+        }
+        const auto duplicate = std::find_if(result.begin(), result.end(),
+            [&](const HdSilkMaterialTexture* previous) { return previous->uvPrimvar == texture.uvPrimvar; });
+        if (duplicate != result.end())
+        {
+            if ((*duplicate)->uvFallback[0] != texture.uvFallback[0] ||
+                (*duplicate)->uvFallback[1] != texture.uvFallback[1])
+            {
+                throw std::invalid_argument("A missing coordinate has conflicting reader fallbacks.");
+            }
+            continue;
+        }
+        if (!std::isfinite(texture.uvFallback[0]) || !std::isfinite(texture.uvFallback[1]))
+        {
+            throw std::invalid_argument("A coordinate fallback must be finite.");
+        }
+        result.push_back(&texture);
+    }
+    return result;
+}
+
+bool SameCoordinateFallbacks(const HdSilkMaterialRecord& left, const HdSilkMaterialRecord& right)
+{
+    auto a = left.textures.begin();
+    auto b = right.textures.begin();
+    for (;;)
+    {
+        while (a != left.textures.end() && !a->hasUvFallback) { ++a; }
+        while (b != right.textures.end() && !b->hasUvFallback) { ++b; }
+        if (a == left.textures.end() || b == right.textures.end())
+        {
+            return a == left.textures.end() && b == right.textures.end();
+        }
+        if (a->uvPrimvar != b->uvPrimvar ||
+            a->uvFallback[0] != b->uvFallback[0] || a->uvFallback[1] != b->uvFallback[1])
+        {
+            return false;
+        }
+        ++a;
+        ++b;
+    }
+}
+
+size_t CoordinateFallbackBytes(const std::vector<const HdSilkMaterialTexture*>& fallbacks)
+{
+    size_t bytes = 0;
+    for (const HdSilkMaterialTexture* texture : fallbacks)
+    {
+        bytes = CheckedAdd(bytes, CheckedAdd(MeshAttributeFixedSize + 2 * sizeof(float),
+            texture->uvPrimvar.size(), "coordinate fallback"), "coordinate fallbacks");
+    }
+    return bytes;
+}
+
 void AppendMeshUpsert(
     HdSilkPageWriter& buffer,
     HdSilkMeshRecord record,
     uint32_t complexity,
-    uint32_t sourceTopologyKind)
+    uint32_t sourceTopologyKind,
+    const HdSilkMaterialRecord* material)
 {
     const uint64_t sourceRevision = record.topologyRevision;
     HdSilkMeshRecord presented =
@@ -1812,9 +1945,10 @@ void AppendMeshUpsert(
         presentedDensity);
     const HdSilkMeshRecord& complexRecord = presented;
     const MeshWireCounts counts = ValidateMesh(complexRecord);
+    const auto fallbacks = MissingCoordinateFallbacks(complexRecord, material);
 
     HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_MESH_UPSERT);
-    payload.reserve(counts.payloadSize);
+    payload.reserve(CheckedAdd(counts.payloadSize, CoordinateFallbackBytes(fallbacks), "mesh payload"));
 
     AppendU64(payload, ComputeStableHash(complexRecord.path));
     AppendI32(payload, complexRecord.primId);
@@ -1840,7 +1974,8 @@ void AppendMeshUpsert(
         payload,
         complexRecord.materialPath.empty() ? 0ull : ComputeStableHash(complexRecord.materialPath));
     AppendU32(payload, CheckedCount(complexRecord.materialPath.size(), "material path byte count"));
-    AppendU32(payload, CheckedCount(complexRecord.attributes.size(), "attribute count"));
+    AppendU32(payload, CheckedCount(
+        CheckedAdd(complexRecord.attributes.size(), fallbacks.size(), "attribute count"), "attribute count"));
     AppendU32(payload, complexRecord.deformation.published
         ? complexRecord.deformation.flags
         : 0u);
@@ -1885,6 +2020,17 @@ void AppendMeshUpsert(
         {
             AppendF32(payload, value);
         }
+    }
+    for (const HdSilkMaterialTexture* texture : fallbacks)
+    {
+        AppendU32(payload, OPENUSD_SILK_ATTRIBUTE_TEXCOORD);
+        AppendU32(payload, 2);
+        AppendU32(payload, OPENUSD_SILK_INTERPOLATION_CONSTANT);
+        AppendU32(payload, CheckedCount(texture->uvPrimvar.size(), "coordinate name"));
+        AppendU32(payload, 1);
+        AppendBytes(payload, texture->uvPrimvar.data(), texture->uvPrimvar.size());
+        AppendF32(payload, texture->uvFallback[0]);
+        AppendF32(payload, texture->uvFallback[1]);
     }
     if (complexRecord.deformation.published)
     {
@@ -1959,25 +2105,89 @@ void AppendMaterialUpsert(
     {
         throw std::invalid_argument("The hdSilk material surface kind is unknown.");
     }
+    bool hasLuminanceMix = false;
+    bool hasSpecularLevel = false;
+    bool hasDetailRow0 = false;
+    bool hasDetailRow1 = false;
     for (const HdSilkMaterialScalar& scalar : record.scalars)
     {
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_NORMAL)
+        {
+            throw std::invalid_argument("A detail normal requires a texture.");
+        }
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0 ||
+            scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW1)
+        {
+            bool& seen = scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0
+                ? hasDetailRow0 : hasDetailRow1;
+            if (seen || scalar.componentCount != 3 || !std::isfinite(scalar.value[0]) ||
+                !std::isfinite(scalar.value[1]) || !std::isfinite(scalar.value[2]))
+            {
+                throw std::invalid_argument("Invalid or duplicate detail normal UV row.");
+            }
+            seen = true;
+        }
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL)
+        {
+            if (hasSpecularLevel || scalar.componentCount != 1 || !std::isfinite(scalar.value[0]) ||
+                scalar.value[0] < 0 || scalar.value[0] > 1)
+            {
+                throw std::invalid_argument("Invalid or duplicate OmniPBR specular level.");
+            }
+            hasSpecularLevel = true;
+        }
         if (scalar.parameter == 0 ||
             scalar.componentCount == 0 || scalar.componentCount > 4)
         {
             throw std::invalid_argument(
                 "An hdSilk material scalar needs a parameter and 1 to 4 components.");
         }
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_TEXTURE_LUMINANCE_MIX)
+        {
+            bool valid = !hasLuminanceMix && scalar.componentCount == 4;
+            float sum = 0;
+            for (uint32_t component = 0; component < 4 && valid; ++component)
+            {
+                valid = std::isfinite(scalar.value[component]) &&
+                    (component == 3 || (scalar.value[component] >= 0 && scalar.value[component] <= 1));
+                if (component < 3) { sum += scalar.value[component]; }
+            }
+            if (!valid || std::fabs(sum - 1) > 0.000001F)
+            {
+                throw std::invalid_argument("Invalid or duplicate hdSilk diffuse texture luminance mix.");
+            }
+            hasLuminanceMix = true;
+        }
     }
+    if (hasDetailRow0 != hasDetailRow1)
+    {
+        throw std::invalid_argument("Detail normal UV transforms require both rows.");
+    }
+    bool hasDetailNormal = false;
     for (const HdSilkMaterialTexture& texture : record.textures)
     {
-        if (texture.parameter == 0 ||
+        if (texture.parameter == OPENUSD_SILK_MATERIAL_DETAIL_NORMAL)
+        {
+            if (hasDetailNormal || texture.componentCount != 3 ||
+                texture.outputChannel != OPENUSD_SILK_TEXTURE_CHANNEL_RGB ||
+                texture.compositeOp != OPENUSD_SILK_COMPOSITE_NONE ||
+                record.surfaceKind == OPENUSD_SILK_SURFACE_VOLUME_DENSITY)
+            {
+                throw std::invalid_argument("Invalid or duplicate detail normal texture.");
+            }
+            hasDetailNormal = true;
+        }
+        if (texture.parameter == 0 || texture.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_TEXTURE_LUMINANCE_MIX ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0 ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW1 ||
             texture.componentCount == 0 || texture.componentCount > 4)
         {
             throw std::invalid_argument(
                 "An hdSilk material texture needs a parameter and 1 to 4 components.");
         }
-        if (texture.wrapS > OPENUSD_SILK_WRAP_USE_METADATA ||
-            texture.wrapT > OPENUSD_SILK_WRAP_USE_METADATA ||
+        if (texture.wrapS > OPENUSD_SILK_WRAP_CONSTANT ||
+            texture.wrapT > OPENUSD_SILK_WRAP_CONSTANT ||
             texture.sourceColorSpace > OPENUSD_SILK_COLOR_SPACE_SRGB)
         {
             throw std::invalid_argument(
@@ -1988,7 +2198,9 @@ void AppendMaterialUpsert(
             throw std::invalid_argument(
                 "An hdSilk material texture requires a resolved asset path.");
         }
-        if (texture.outputChannel > OPENUSD_SILK_TEXTURE_CHANNEL_RGB)
+        if (texture.outputChannel > OPENUSD_SILK_TEXTURE_CHANNEL_MAXIMUM_RGB ||
+            (texture.outputChannel > OPENUSD_SILK_TEXTURE_CHANNEL_RGB &&
+                texture.parameter != OPENUSD_SILK_MATERIAL_OPACITY))
         {
             throw std::invalid_argument(
                 "An hdSilk material texture has an unresolved or unknown "
@@ -2061,11 +2273,30 @@ void AppendMaterialUpsert(
 
     for (size_t index = 0; index < 6; ++index)
     {
-        if (!std::isfinite(record.uvTransform[index]))
+        if (!std::isfinite(record.uvTransform[index]) ||
+            !std::isfinite(record.alternateUvTransform[index]))
         {
             throw std::invalid_argument(
                 "An hdSilk material UV transform must be finite.");
         }
+    }
+    // Every masked parameter must be a surface texture this record publishes:
+    // a bit naming nothing, naming displacement (sampled on the CPU through the
+    // primary transform), or naming the detail normal (which has its own rows)
+    // would be a transform no consumer reads.
+    uint32_t publishedSurfaceTextures = 0;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (texture.parameter < 32 && texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT &&
+            texture.parameter != OPENUSD_SILK_MATERIAL_DETAIL_NORMAL)
+        {
+            publishedSurfaceTextures |= 1u << texture.parameter;
+        }
+    }
+    if ((record.alternateUvParameterMask & ~publishedSurfaceTextures) != 0)
+    {
+        throw std::invalid_argument(
+            "An hdSilk material alternate UV transform names a parameter with no surface texture.");
     }
 
     const uint32_t pathByteCount = CheckedCount(record.path.size(), "path byte count");
@@ -2138,6 +2369,11 @@ void AppendMaterialUpsert(
     for (size_t index = 0; index < 6; ++index)
     {
         AppendF32(payload, record.uvTransform[index]);
+    }
+    AppendU32(payload, record.alternateUvParameterMask);
+    for (size_t index = 0; index < 6; ++index)
+    {
+        AppendF32(payload, record.alternateUvTransform[index]);
     }
 
     payload.Complete();
@@ -2978,6 +3214,70 @@ HdSilkSceneState::_ResolveShadowTable(
 }
 
 void
+HdSilkSceneState::ShareMeshAttributes(HdSilkMeshAttributes* attributes)
+{
+    if (attributes->empty()) { return; }
+    uint64_t hash = 0;
+    const HdSilkMeshAttributes& input = *attributes;
+    for (const HdSilkMeshAttribute& attribute : input)
+    {
+        hash = ArchHash64(attribute.name.data(), attribute.name.size(), hash);
+        const uint32_t metadata[] = {
+            attribute.semantic, attribute.componentCount, attribute.interpolation};
+        hash = ArchHash64(reinterpret_cast<const char*>(metadata), sizeof(metadata), hash);
+        if (!attribute.data.empty())
+        {
+            hash = ArchHash64(reinterpret_cast<const char*>(attribute.data.data()),
+                attribute.data.size() * sizeof(float), hash);
+        }
+    }
+    std::lock_guard<std::mutex> lock(_meshArraySharingMutex);
+    _sharedMeshAttributes.Intern(*attributes, hash,
+        [](const HdSilkMeshAttributes& left, const HdSilkMeshAttributes& right)
+        {
+            if (left.size() != right.size()) { return false; }
+            for (size_t index = 0; index < left.size(); ++index)
+            {
+                const HdSilkMeshAttribute& a = left[index];
+                const HdSilkMeshAttribute& b = right[index];
+                if (a.name != b.name || a.semantic != b.semantic ||
+                    a.componentCount != b.componentCount || a.interpolation != b.interpolation ||
+                    a.data.size() != b.data.size() ||
+                    (!a.data.empty() && std::memcmp(a.data.data(), b.data.data(),
+                        a.data.size() * sizeof(float)) != 0))
+                {
+                    return false;
+                }
+            }
+            return true;
+        });
+}
+
+void
+HdSilkSceneState::ShareMeshIndices(VtArray<uint32_t>* indices)
+{
+    if (indices->empty()) { return; }
+    const uint64_t hash = ArchHash64(reinterpret_cast<const char*>(indices->cdata()),
+        indices->size() * sizeof(uint32_t));
+    std::lock_guard<std::mutex> lock(_meshArraySharingMutex);
+    _sharedMeshIndices.Intern(*indices, hash,
+        [](const VtArray<uint32_t>& left, const VtArray<uint32_t>& right)
+        {
+            return left.size() == right.size() &&
+                (left.cdata() == right.cdata() ||
+                    std::memcmp(left.cdata(), right.cdata(), left.size() * sizeof(uint32_t)) == 0);
+        });
+}
+
+void
+HdSilkSceneState::ClearMeshArraySharing()
+{
+    std::lock_guard<std::mutex> lock(_meshArraySharingMutex);
+    _sharedMeshAttributes.Clear();
+    _sharedMeshIndices.Clear();
+}
+
+void
 HdSilkSceneState::ReplaceMeshInstances(
     const std::string& path,
     std::vector<HdSilkMeshRecord> records)
@@ -3161,6 +3461,7 @@ HdSilkSceneState::ResetForSceneIngestionChange()
 {
     std::lock_guard<std::mutex> lock(_mutex);
     _RequirePublicationResolved();
+    ClearMeshArraySharing();
     // The consumer retains published tables across imaging rebuilds. Preserve
     // their snapshots so the next page can emit replacements and retirements.
     for (const auto& entry : _meshes)
@@ -3206,6 +3507,21 @@ HdSilkSceneState::HasMeshPath(const std::string& path) const
     return _instancesByPath.find(path) != _instancesByPath.end();
 }
 
+bool
+HdSilkSceneState::TryGetMeshSourceIdentity(
+    const HdSilkMeshKey& key, int32_t* primId, int32_t* sourcePickIndex) const
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    const auto entry = _meshes.find(key);
+    if (entry == _meshes.end())
+    {
+        return false;
+    }
+    *primId = entry->second.record.primId;
+    *sourcePickIndex = entry->second.record.sourcePickIndex;
+    return true;
+}
+
 void
 HdSilkSceneState::SetMeshMaterialPath(
     const std::string& path,
@@ -3218,6 +3534,7 @@ HdSilkSceneState::SetMeshMaterialPath(
     {
         return;
     }
+
     for (int32_t instanceIndex : instances->second)
     {
         const HdSilkMeshKey key{path, instanceIndex};
@@ -3251,6 +3568,26 @@ HdSilkSceneState::GetMaterialBindingGeneration() const
 }
 
 void
+HdSilkSceneState::_DirtyMaterialCoordinateMeshes(const std::string& materialPath)
+{
+    std::unordered_set<std::string> paths;
+    for (const auto& entry : _meshes)
+    {
+        if (entry.second.record.materialPath == materialPath)
+        {
+            paths.insert(entry.second.record.path);
+        }
+    }
+    for (auto& entry : _meshes)
+    {
+        if (paths.find(entry.second.record.path) != paths.end())
+        {
+            entry.second.dirty = true;
+        }
+    }
+}
+
+void
 HdSilkSceneState::ReplaceMaterial(HdSilkMaterialRecord record)
 {
     if (record.path.empty())
@@ -3260,6 +3597,17 @@ HdSilkSceneState::ReplaceMaterial(HdSilkMaterialRecord record)
     std::lock_guard<std::mutex> lock(_mutex);
     _RequirePublicationResolved();
     const std::string path = record.path;
+    const auto previous = _materials.find(path);
+    const auto hasFallback = [](const HdSilkMaterialRecord& material)
+    {
+        return std::any_of(material.textures.begin(), material.textures.end(),
+            [](const HdSilkMaterialTexture& texture) { return texture.hasUvFallback; });
+    };
+    if (previous == _materials.end() ? hasFallback(record) :
+        !SameCoordinateFallbacks(previous->second.record, record))
+    {
+        _DirtyMaterialCoordinateMeshes(path);
+    }
     _MaterialEntry& entry = _materials[path];
     entry.record = std::move(record);
     entry.dirty = true;
@@ -3278,6 +3626,13 @@ HdSilkSceneState::RemoveMaterial(const std::string& path)
 {
     std::lock_guard<std::mutex> lock(_mutex);
     _RequirePublicationResolved();
+    const auto previous = _materials.find(path);
+    if (previous != _materials.end() &&
+        std::any_of(previous->second.record.textures.begin(), previous->second.record.textures.end(),
+            [](const HdSilkMaterialTexture& texture) { return texture.hasUvFallback; }))
+    {
+        _DirtyMaterialCoordinateMeshes(path);
+    }
     if (_materials.erase(path) != 0)
     {
         _pendingMaterialRemovals.push_back(path);
@@ -3306,6 +3661,18 @@ HdSilkMakeEnvironmentSnapshot(const HdSilkLightRecord& record, uint32_t domeInde
     snapshot.color[0] = record.color[0];
     snapshot.color[1] = record.color[1];
     snapshot.color[2] = record.color[2];
+    if (record.colorTemperatureEnabled)
+    {
+        // Storm's dome light multiplies its colour by the same blackbody tint
+        // as its area lights. Resolving it here keeps the environment's colour
+        // the effective emission, so the image bake, the mean-radiance fallback
+        // and the diffuse/specular scales all see the tinted value.
+        const GfVec3f tint = UsdLuxBlackbodyTemperatureAsRgb(record.colorTemperature);
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            snapshot.color[channel] *= tint[channel];
+        }
+    }
     snapshot.intensity = record.intensity;
     snapshot.exposure = record.exposure;
     snapshot.diffuse = record.diffuse;
@@ -3342,14 +3709,33 @@ std::vector<uint8_t>
 HdSilkSceneState::BuildPage(
     uint64_t* outRevision, uint32_t* outCommandCount, size_t maximumPageBytes, bool awaitAcknowledgement)
 {
+    HdSilkPageWriter buffer(maximumPageBytes);
+    _BuildPage(buffer, outRevision, outCommandCount, awaitAcknowledgement);
+    return buffer.Take();
+}
+
+size_t
+HdSilkSceneState::BuildPageTo(
+    HdSilkCommandSink& sink, size_t maximumUpdateBytes, size_t maximumCommandBytes,
+    uint64_t* outRevision, uint32_t* outCommandCount, bool awaitAcknowledgement)
+{
+    HdSilkPageWriter buffer(maximumUpdateBytes, sink, maximumCommandBytes);
+    _BuildPage(buffer, outRevision, outCommandCount, awaitAcknowledgement);
+    return buffer.size();
+}
+
+void
+HdSilkSceneState::_BuildPage(
+    HdSilkPageWriter& buffer, uint64_t* outRevision, uint32_t* outCommandCount, bool awaitAcknowledgement)
+{
     std::lock_guard<std::mutex> lock(_mutex);
+    ClearMeshArraySharing();
     _RequirePublicationResolved();
     if (_revision == std::numeric_limits<uint64_t>::max())
     {
         throw std::overflow_error("The hdSilk page revision is exhausted.");
     }
 
-    HdSilkPageWriter buffer(maximumPageBytes);
     auto publication = std::make_unique<_Publication>();
     auto& dirtyEntries = publication->dirtyMeshes;
     dirtyEntries.reserve(_meshes.size());
@@ -3522,6 +3908,10 @@ HdSilkSceneState::BuildPage(
             ++appendedCommands;
             publishedEnvironments[*path] = environments.at(*path);
         }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
+        }
         catch (const std::bad_alloc&)
         {
             throw;
@@ -3547,6 +3937,10 @@ HdSilkSceneState::BuildPage(
             AppendEnvironmentRemove(buffer, path);
             ++appendedCommands;
             publishedEnvironments.erase(path);
+        }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
         }
         catch (const std::bad_alloc&)
         {
@@ -3595,6 +3989,10 @@ HdSilkSceneState::BuildPage(
             AppendMaterialUpsert(buffer, entry->record);
             ++appendedCommands;
         }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
+        }
         catch (const std::bad_alloc&)
         {
             throw;
@@ -3618,6 +4016,10 @@ HdSilkSceneState::BuildPage(
             AppendMaterialRemove(buffer, path);
             ++appendedCommands;
         }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
+        }
         catch (const std::bad_alloc&)
         {
             throw;
@@ -3629,6 +4031,61 @@ HdSilkSceneState::BuildPage(
                 "hdSilk skipped removal of material '%s': %s",
                 path.c_str(),
                 error.what());
+        }
+    }
+
+    // Unchanged triangle payloads can be measured before copying any large point
+    // buffer. Invalid records still follow the established per-path diagnostic path.
+    if (_drawMode != OPENUSD_SILK_DRAW_MODE_WIREFRAME &&
+        _drawMode != OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME &&
+        _drawMode != OPENUSD_SILK_DRAW_MODE_POINTS)
+    {
+        size_t additional = 0;
+        size_t largestMesh = 0;
+        bool measurable = true;
+        try
+        {
+            for (const _Entry* entry : dirtyEntries)
+            {
+                if (entry->record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST)
+                {
+                    measurable = false;
+                    break;
+                }
+                const auto material = _materials.find(entry->record.materialPath);
+                const auto fallbacks = MissingCoordinateFallbacks(entry->record,
+                    material == _materials.end() ? nullptr : &material->second.record);
+                const size_t bytes = CheckedAdd(
+                    CheckedAdd(8, ValidateMesh(entry->record).payloadSize, "mesh command"),
+                    CoordinateFallbackBytes(fallbacks), "mesh command");
+                largestMesh = std::max(largestMesh, bytes);
+                additional = CheckedAdd(additional, bytes, "page");
+            }
+            if (measurable)
+            {
+                for (const HdSilkMeshKey& key : removals)
+                {
+                    ValidatePath(key.path);
+                    if (key.path.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 24)
+                    {
+                        measurable = false;
+                        break;
+                    }
+                    additional = CheckedAdd(additional, CheckedAdd(24, key.path.size(), "mesh removal"), "page");
+                }
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            throw;
+        }
+        catch (const std::exception&)
+        {
+            measurable = false;
+        }
+        if (measurable)
+        {
+            buffer.CheckAdditional(additional, largestMesh);
         }
     }
 
@@ -3664,12 +4121,18 @@ HdSilkSceneState::BuildPage(
                 ValidateMeshShape(entry->record);
                 HdSilkMeshRecord modeRecord =
                     ApplyDrawMode(entry->record, _drawMode);
+                const auto material = _materials.find(modeRecord.materialPath);
                 AppendMeshUpsert(
                     buffer,
                     std::move(modeRecord),
                     _complexity,
-                    entry->record.topologyKind);
+                    entry->record.topologyKind,
+                    material == _materials.end() ? nullptr : &material->second.record);
                 ++appendedCommands;
+            }
+            catch (const HdSilkCommandStorageError&)
+            {
+                throw;
             }
             catch (const std::bad_alloc&)
             {
@@ -3701,6 +4164,10 @@ HdSilkSceneState::BuildPage(
             AppendMeshRemove(buffer, key);
             ++appendedCommands;
         }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
+        }
         catch (const std::bad_alloc&)
         {
             throw;
@@ -3718,6 +4185,7 @@ HdSilkSceneState::BuildPage(
     const uint32_t commandCount =
         CheckedCount(appendedCommands, "page command count");
 
+    buffer.Finish();
     if (awaitAcknowledgement)
     {
         _pendingPublication = std::move(publication);
@@ -3736,8 +4204,6 @@ HdSilkSceneState::BuildPage(
     {
         *outCommandCount = commandCount;
     }
-
-    return buffer.Take();
 }
 
 void

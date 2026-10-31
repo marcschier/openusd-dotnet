@@ -1258,7 +1258,7 @@ public readonly record struct SilkPickIdentity
     private readonly SilkInstancerContextEntry[]? _instancerContext;
 
     /// <summary>Initializes one resolved identity.</summary>
-    /// <param name="path">The authoritative absolute prim path.</param>
+    /// <param name="path">The authoritative retained Hydra prim path.</param>
     /// <param name="primId">Hydra's explicit Rprim identifier.</param>
     /// <param name="stableHash">The FNV-1a path hash, an index only.</param>
     /// <param name="instanceId">The diagnostic-only owning instancer hash.</param>
@@ -1330,7 +1330,8 @@ public readonly record struct SilkPickIdentity
             instancerContext is { Length: > 0 } ? instancerContext : null;
     }
 
-    /// <summary>Gets the authoritative absolute prim path.</summary>
+    /// <summary>Gets the authoritative retained Hydra prim path.</summary>
+    /// <remarks>Resolve authored source paths with <see cref="OpenUsdSilkSession.ResolveSourceIdentities"/>.</remarks>
     public string Path { get; init; }
 
     /// <summary>Gets Hydra's explicit Rprim identifier.</summary>

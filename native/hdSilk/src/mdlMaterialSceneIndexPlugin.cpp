@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 #include "mdlMaterialSceneIndexPlugin.h"
+#include "mdlIdentifier.h"
 
 #include "pxr/base/tf/staticTokens.h"
 #include "pxr/imaging/hd/materialFilteringSceneIndexBase.h"
@@ -23,12 +24,6 @@ namespace
 {
 // Must match the "displayName" in resources/plugInfo.json.in.
 const char* const _pluginDisplayName = "Silk.NET";
-
-/// The prefix hdSilk stamps on a synthesized MDL node identifier. It is not a
-/// registered Sdr identifier and is not meant to be one: it exists so the
-/// material resolver can tell an MDL node from a UsdPreviewSurface node in a
-/// network that carries neither an Sdr node nor a source asset field.
-const char* const _identifierPrefix = "mdl:";
 
 std::string
 ReadAssetPath(const VtValue& value)
@@ -95,7 +90,7 @@ _ResolveMdlNodeIdentifiers(HdMaterialNetworkInterface* network)
             nodeName, _hdSilkMdlMaterialTokens->mdlSubIdentifier));
         network->SetNodeType(
             nodeName,
-            TfToken(_identifierPrefix + module + ":" + material));
+            TfToken(HdSilkEncodeMdlIdentifier(module, material)));
     }
 }
 

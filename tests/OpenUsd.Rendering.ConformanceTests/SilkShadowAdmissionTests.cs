@@ -33,4 +33,26 @@ public sealed class SilkShadowAdmissionTests
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
         await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
     }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task ConstantOpacityThresholdChangesShadowCoverageAndReleasesResources(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuTextureBudget(67_108_864);
+        budget.ConfigureDevice(device);
+        await SilkShadowConformance.ConstantOpacityThresholdChangesCasterCoverage(device);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task ConstantOpacityThresholdChangesShadowCoverageWithoutAdmission(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        await SilkShadowConformance.ConstantOpacityThresholdChangesCasterCoverage(device);
+    }
 }

@@ -33,6 +33,11 @@ internal interface IPreviewDiagnosticSource
     RenderDiagnosticsState Diagnostics { get; }
 }
 
+internal interface IPreviewBackendSource
+{
+    RenderBackendIdentity? Backend { get; }
+}
+
 public sealed partial class PreviewCaptureProcessor :
     IPreviewCaptureProcessor,
     IResettablePreviewCaptureProcessor,
@@ -92,16 +97,19 @@ public sealed partial class PreviewCaptureProcessor :
             ??= _frameSourceFactory.Create(request, cancellationToken)
                 ?? throw new InvalidOperationException("The preview frame source factory returned null.");
 
+        var diagnostics = new List<RenderDiagnostic>();
         List<EncodedArtifact> encoded = request.Kind == CaptureKind.ContactSheet
             ? EncodeContactSheet(
                 frameSource,
                 request,
                 _limits.MaximumTotalArtifactBytes,
+                diagnostics,
                 cancellationToken)
             : EncodeSeparateFrames(
                 frameSource,
                 request,
                 _limits.MaximumTotalArtifactBytes,
+                diagnostics,
                 cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -119,9 +127,7 @@ public sealed partial class PreviewCaptureProcessor :
             request.Width,
             request.Height,
             artifacts,
-            frameSource is IPreviewDiagnosticSource diagnosticSource
-                ? diagnosticSource.Diagnostics.Entries
-                : []);
+            diagnostics);
     }
 
     internal void Reset()
@@ -172,6 +178,7 @@ public sealed partial class PreviewCaptureProcessor :
         IPreviewFrameSource frameSource,
         PreviewCaptureRequest request,
         long maximumTotalArtifactBytes,
+        List<RenderDiagnostic> diagnostics,
         CancellationToken cancellationToken)
     {
         var encoded = new List<EncodedArtifact>(request.Views.Count);
@@ -181,17 +188,13 @@ public sealed partial class PreviewCaptureProcessor :
             cancellationToken.ThrowIfCancellationRequested();
             CaptureView view = request.Views[index];
             ImageRgba8 image = frameSource.Capture(view, request.Width, request.Height);
+            cancellationToken.ThrowIfCancellationRequested();
             ValidateCapturedDimensions(image, request.Width, request.Height);
-            string id = request.Kind == CaptureKind.Still
-                ? string.Concat(request.RequestId, ".png")
-                : string.Concat(
-                    request.RequestId,
-                    "-",
-                    index.ToString("D2", System.Globalization.CultureInfo.InvariantCulture),
-                    "-",
-                    SanitizeArtifactName(view.Name),
-                    ".png");
-            byte[] png = PngRgba8Encoder.Encode(image);
+            CollectDiagnostics(frameSource, diagnostics);
+            request.ViewCaptured?.Invoke(index + 1, request.Views.Count);
+            string id = CreateArtifactId(request, index);
+            byte[] png = EncodePng(image.Width, image.Height, image.Pixels.Span,
+                maximumTotalArtifactBytes - totalBytes, cancellationToken);
             totalBytes = AddArtifactBytes(totalBytes, png.Length, maximumTotalArtifactBytes);
             encoded.Add(new EncodedArtifact(id, png));
         }
@@ -203,18 +206,12 @@ public sealed partial class PreviewCaptureProcessor :
         IPreviewFrameSource frameSource,
         PreviewCaptureRequest request,
         long maximumTotalArtifactBytes,
+        List<RenderDiagnostic> diagnostics,
         CancellationToken cancellationToken)
     {
-        int columns = checked((int)Math.Ceiling(Math.Sqrt(request.Views.Count)));
-        int rows = checked((request.Views.Count + columns - 1) / columns);
+        (int columns, int rows) = GetContactSheetGrid(request.Width, request.Height, request.Views.Count);
         int cellWidth = request.Width / columns;
         int cellHeight = request.Height / rows;
-        if (cellWidth == 0 || cellHeight == 0)
-        {
-            throw new ArgumentException(
-                "Contact sheet dimensions are too small for the requested views.",
-                nameof(request));
-        }
 
         byte[] sheet = new byte[ImageRgba8.GetByteCount(request.Width, request.Height)];
         for (int index = 0; index < request.Views.Count; index++)
@@ -224,7 +221,10 @@ public sealed partial class PreviewCaptureProcessor :
                 request.Views[index],
                 cellWidth,
                 cellHeight);
+            cancellationToken.ThrowIfCancellationRequested();
             ValidateCapturedDimensions(image, cellWidth, cellHeight);
+            CollectDiagnostics(frameSource, diagnostics);
+            request.ViewCaptured?.Invoke(index + 1, request.Views.Count);
             CopyTile(
                 image,
                 sheet,
@@ -233,15 +233,61 @@ public sealed partial class PreviewCaptureProcessor :
                 (index / columns) * cellHeight);
         }
 
-        var contactSheet = new ImageRgba8(request.Width, request.Height, sheet);
-        byte[] png = PngRgba8Encoder.Encode(contactSheet);
+        byte[] png = EncodePng(request.Width, request.Height, sheet,
+            maximumTotalArtifactBytes, cancellationToken);
         _ = AddArtifactBytes(0, png.Length, maximumTotalArtifactBytes);
         return
         [
             new EncodedArtifact(
-                string.Concat(request.RequestId, "-contact-sheet.png"),
+                CreateArtifactId(request, 0),
                 png),
         ];
+    }
+
+    private static void CollectDiagnostics(IPreviewFrameSource frameSource, List<RenderDiagnostic> diagnostics)
+    {
+        if (frameSource is not IPreviewDiagnosticSource source)
+        {
+            return;
+        }
+        IReadOnlyList<RenderDiagnostic> entries = source.Diagnostics.Entries;
+        if (entries.Count > 128)
+        {
+            throw new RenderOutputQuotaExceededException("A preview frame exceeds the diagnostic count limit.");
+        }
+        foreach (RenderDiagnostic diagnostic in entries)
+        {
+            if (diagnostic.Severity is not (RenderDiagnosticSeverity.Information or
+                RenderDiagnosticSeverity.Warning or RenderDiagnosticSeverity.Error))
+            {
+                throw new InvalidDataException("A renderer diagnostic has an unsupported severity.");
+            }
+            if (diagnostic.Code.Length > 128 || diagnostic.Message.Length > 4096)
+            {
+                throw new RenderOutputQuotaExceededException("A renderer diagnostic exceeds its text limit.");
+            }
+            if (!diagnostics.Contains(diagnostic))
+            {
+                if (diagnostics.Count == 128)
+                {
+                    throw new RenderOutputQuotaExceededException("The preview exceeds its distinct diagnostic limit.");
+                }
+                diagnostics.Add(diagnostic);
+            }
+        }
+    }
+
+    private static byte[] EncodePng(
+        int width, int height, ReadOnlySpan<byte> pixels, long maximumBytes, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (maximumBytes <= 0)
+        {
+            throw new RenderOutputQuotaExceededException("Capture artifacts exceed the output byte budget.");
+        }
+        using var output = new MemoryStream();
+        _ = PngRgba8Writer.Write(output, width, height, pixels, maximumBytes, cancellationToken);
+        return output.ToArray();
     }
 
     private static long AddArtifactBytes(
@@ -293,6 +339,28 @@ public sealed partial class PreviewCaptureProcessor :
         return new string(characters);
     }
 
+    private static string CreateArtifactId(PreviewCaptureRequest request, int index) =>
+        request.Kind switch
+        {
+            CaptureKind.Still => string.Concat(request.RequestId, ".png"),
+            CaptureKind.ContactSheet => string.Concat(request.RequestId, "-contact-sheet.png"),
+            _ => string.Concat(request.RequestId, "-",
+                index.ToString("D2", System.Globalization.CultureInfo.InvariantCulture), "-",
+                SanitizeArtifactName(request.Views[index].Name), ".png")
+        };
+
+    internal static (int Columns, int Rows) GetContactSheetGrid(int width, int height, int viewCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(viewCount);
+        int columns = checked((int)Math.Ceiling(Math.Sqrt(viewCount)));
+        int rows = checked((viewCount + columns - 1) / columns);
+        if (width < columns || height < rows)
+        {
+            throw new ArgumentException("Contact sheet dimensions are too small for the requested views.");
+        }
+        return (columns, rows);
+    }
+
     private static void ValidateCapturedDimensions(
         ImageRgba8 image,
         int expectedWidth,
@@ -334,6 +402,15 @@ public sealed partial class PreviewCaptureProcessor :
         if (!Enum.IsDefined(request.Kind))
         {
             throw new ArgumentOutOfRangeException(nameof(request));
+        }
+        if (request.Kind == CaptureKind.ContactSheet)
+        {
+            _ = GetContactSheetGrid(request.Width, request.Height, request.Views.Count);
+        }
+        int artifacts = request.Kind == CaptureKind.ContactSheet ? 1 : request.Views.Count;
+        for (int index = 0; index < artifacts; index++)
+        {
+            _ = ArtifactResourceUri.Create(CreateArtifactId(request, index));
         }
     }
 

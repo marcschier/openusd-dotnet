@@ -13,28 +13,75 @@
   <Window.Styles>
     <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
   </Window.Styles>
-  <DockPanel Margin="{DynamicResource ViewerDialogPadding}">
-    <TextBlock
-        x:Name="BridgeProviderText"
-        DockPanel.Dock="Top"
-        AutomationProperties.Name="Bridge provider"
-        Text="Bridge provider"
-        Classes="viewer-heading"
-        TextTrimming="CharacterEllipsis"
-        Margin="0,0,0,4" />
-    <TextBlock
-        DockPanel.Dock="Top"
-        AutomationProperties.Name="Bridge credential notice"
-        Classes="viewer-secondary"
-        Text="The endpoint and its credential are configured by the embedding host. The Viewer never reads, stores, or displays them."
-        TextWrapping="Wrap"
-        Margin="0,0,0,12" />
-    <StackPanel
-        DockPanel.Dock="Bottom"
-        Orientation="Horizontal"
-        HorizontalAlignment="Right"
-        Spacing="8"
-        Margin="0,12,0,0">
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="*,Auto" RowSpacing="12">
+    <ScrollViewer x:Name="BridgeBodyScroll" Focusable="True"
+                  AutomationProperties.Name="Scrollable Bridge connection details"
+                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <TextBlock
+            x:Name="BridgeProviderText"
+            AutomationProperties.Name="Bridge provider"
+            Text="Bridge provider"
+            Classes="viewer-heading"
+            TextTrimming="CharacterEllipsis"
+            Margin="0,0,0,4" />
+        <TextBlock
+            AutomationProperties.Name="Bridge credential notice"
+            Classes="viewer-secondary"
+            Text="The endpoint and its credential are configured by the embedding host. The Viewer never reads, stores, or displays them."
+            TextWrapping="Wrap"
+            Margin="0,0,0,12" />
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="Auto,*" ColumnSpacing="8" RowSpacing="8">
+          <TextBlock
+              Grid.Row="0"
+              Grid.Column="0"
+              VerticalAlignment="Center"
+              Text="Session" />
+          <ComboBox
+              x:Name="BridgeSessionSelector"
+              Grid.Row="0"
+              Grid.Column="1"
+              AutomationProperties.Name="Omniverse Bridge session"
+              HorizontalAlignment="Stretch"
+              ToolTip.Tip="Choose one of the sessions the host offers. Leave empty to use the host default." />
+          <TextBlock
+              Grid.Row="1"
+              Grid.Column="0"
+              VerticalAlignment="Center"
+              Text="Status" />
+          <TextBlock
+              x:Name="BridgeStatusText"
+              Grid.Row="1"
+              Grid.Column="1"
+              AutomationProperties.Name="Omniverse Bridge status"
+              TextWrapping="Wrap"
+              Text="Bridge: disconnected" />
+          <TextBlock
+              Grid.Row="2"
+              Grid.Column="0"
+              VerticalAlignment="Top"
+              Text="Counters" />
+          <TextBlock
+              x:Name="BridgeCountersText"
+              Classes="viewer-secondary"
+              Grid.Row="2"
+              Grid.Column="1"
+              AutomationProperties.Name="Omniverse Bridge counters"
+              TextWrapping="Wrap"
+              Text="Attempts: 0 · Applied: 0 · Pending: 0" />
+          <TextBlock
+              x:Name="BridgeErrorText"
+              Grid.Row="3"
+              Grid.Column="0"
+              Grid.ColumnSpan="2"
+              AutomationProperties.Name="Omniverse Bridge error"
+              TextWrapping="Wrap"
+              IsVisible="False"
+              Classes="viewer-error" />
+        </Grid>
+      </StackPanel>
+    </ScrollViewer>
+    <WrapPanel Grid.Row="1" HorizontalAlignment="Right" ItemSpacing="8" LineSpacing="8">
       <Button
           x:Name="BridgeConnectButton"
           Classes="accent"
@@ -60,54 +107,6 @@
           Content="Close"
           IsCancel="True"
           MinWidth="88" />
-    </StackPanel>
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" ColumnDefinitions="Auto,*" ColumnSpacing="8" RowSpacing="8">
-      <TextBlock
-          Grid.Row="0"
-          Grid.Column="0"
-          VerticalAlignment="Center"
-          Text="Session" />
-      <ComboBox
-          x:Name="BridgeSessionSelector"
-          Grid.Row="0"
-          Grid.Column="1"
-          AutomationProperties.Name="Omniverse Bridge session"
-          HorizontalAlignment="Stretch"
-          ToolTip.Tip="Choose one of the sessions the host offers. Leave empty to use the host default." />
-      <TextBlock
-          Grid.Row="1"
-          Grid.Column="0"
-          VerticalAlignment="Center"
-          Text="Status" />
-      <TextBlock
-          x:Name="BridgeStatusText"
-          Grid.Row="1"
-          Grid.Column="1"
-          AutomationProperties.Name="Omniverse Bridge status"
-          TextWrapping="Wrap"
-          Text="Bridge: disconnected" />
-      <TextBlock
-          Grid.Row="2"
-          Grid.Column="0"
-          VerticalAlignment="Top"
-          Text="Counters" />
-      <TextBlock
-          x:Name="BridgeCountersText"
-          Classes="viewer-secondary"
-          Grid.Row="2"
-          Grid.Column="1"
-          AutomationProperties.Name="Omniverse Bridge counters"
-          TextWrapping="Wrap"
-          Text="Attempts: 0 · Applied: 0 · Pending: 0" />
-      <TextBlock
-          x:Name="BridgeErrorText"
-          Grid.Row="3"
-          Grid.Column="0"
-          Grid.ColumnSpan="2"
-          AutomationProperties.Name="Omniverse Bridge error"
-          TextWrapping="Wrap"
-          IsVisible="False"
-          Classes="viewer-error" />
-    </Grid>
-  </DockPanel>
+    </WrapPanel>
+  </Grid>
 </Window>

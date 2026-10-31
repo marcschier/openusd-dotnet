@@ -23,7 +23,7 @@
     "properties": [
       {
         "name": "openusd:input:Directory.Packages.props:sha256",
-        "value": "37db0d6615a9a6e354151a72f651e04ebdab4402659d21f424fd75cd219d62fa"
+        "value": "d497c413d09b1950222278a2749fd972b1607af1a46f7a5c54e93df41aa4d695"
       },
       {
         "name": "openusd:input:eng/cesium.lock.json:sha256",
@@ -35,11 +35,11 @@
       },
       {
         "name": "openusd:input:eng/generate-sbom.py:sha256",
-        "value": "75487cdf5fcd3b7d326d2ea3cebf886bc711d4e0036437126c16f4cf6641a8ce"
+        "value": "0249e068e3307703c7c331e6c58e284c7c45e652e88365d1ce3df42c0fad1882"
       },
       {
         "name": "openusd:input:eng/mdl.lock.json:sha256",
-        "value": "cef8931283c495043bac1a503a8a341b832231ab58270614a4c545f60352e665"
+        "value": "e8f2efc0430aeccc247d760255611a2be2d459599a28e1f0fb4a2b8a2d0f993b"
       },
       {
         "name": "openusd:input:eng/openusd-runtime-patches.lock.json:sha256",
@@ -55,7 +55,7 @@
       },
       {
         "name": "openusd:input:eng/pack-packages.ps1:sha256",
-        "value": "d94516dacdbe05d698704144f3ef2391d0dc424fe73b38ccbcd77a6308210951"
+        "value": "cf296145664a5d5e12035975d10ea366f60178d157df3cbbe1e2aebcc6242ee8"
       },
       {
         "name": "openusd:input:eng/patches/openusd/render-product-hash-adl.patch:sha256",
@@ -110,8 +110,12 @@
         "value": "bf01cd837d2c9dbbc7d2713771dae3be24b882991eaaec8f6c88e53cd8ed7fd7"
       },
       {
+        "name": "openusd:input:eng/vhacd.lock.json:sha256",
+        "value": "6a3903d20d3b0cdce183ed3b0d842a20000417a34a64687a328aa52de4b70914"
+      },
+      {
         "name": "openusd:input:global.json:sha256",
-        "value": "b5c918f4ada3b34583ff5c442038f433712346c2ccd496b660e4f53560377559"
+        "value": "5ef38ae01755c757028ab3d3c96d09cc867836d3c7977843d772749b9dab4b79"
       },
       {
         "name": "openusd:input:version.json:sha256",
@@ -139,7 +143,7 @@
         },
         {
           "name": "openusd:unresolved",
-          "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.401 but does not record the restored runtime pack version."
+          "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.403 but does not record the restored runtime pack version."
         }
       ]
     },
@@ -806,6 +810,44 @@
     },
     {
       "type": "library",
+      "bom-ref": "native:V-HACD",
+      "name": "V-HACD",
+      "version": "4.1.0",
+      "purl": "pkg:github/kmammou/v-hacd@22ec20a7f8ea221ab600df869369b9c6a258cb10",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/kmammou/v-hacd"
+        }
+      ],
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "eng/vhacd.lock.json"
+        },
+        {
+          "name": "openusd:release-scope",
+          "value": "CPU collider preparation, statically linked into openusd_physx; threading disabled"
+        },
+        {
+          "name": "openusd:release-rids",
+          "value": "win-x64,linux-x64"
+        },
+        {
+          "name": "openusd:header-sha256",
+          "value": "02314C575909D656DC67D6E3C38CEFC49C4403E8CA1DCB0AB4B05800CEE61E1C"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "native:Vulkan-Headers:6802bb4733b63ed5efd3adb308a6c885ef180ea1",
       "name": "Vulkan-Headers",
       "version": "6802bb4733b63ed5efd3adb308a6c885ef180ea1",
@@ -1375,8 +1417,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Grpc.Tools",
       "name": "Grpc.Tools",
-      "version": "2.84.0",
-      "purl": "pkg:nuget/Grpc.Tools@2.84.0",
+      "version": "2.85.0",
+      "purl": "pkg:nuget/Grpc.Tools@2.85.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1414,8 +1456,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.Extensions.Hosting",
       "name": "Microsoft.Extensions.Hosting",
-      "version": "10.0.12",
-      "purl": "pkg:nuget/Microsoft.Extensions.Hosting@10.0.12",
+      "version": "10.0.14",
+      "purl": "pkg:nuget/Microsoft.Extensions.Hosting@10.0.14",
       "properties": [
         {
           "name": "openusd:source",
@@ -1427,8 +1469,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.SourceLink.GitHub",
       "name": "Microsoft.SourceLink.GitHub",
-      "version": "10.0.401",
-      "purl": "pkg:nuget/Microsoft.SourceLink.GitHub@10.0.401",
+      "version": "10.0.403",
+      "purl": "pkg:nuget/Microsoft.SourceLink.GitHub@10.0.403",
       "properties": [
         {
           "name": "openusd:source",
@@ -1453,8 +1495,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:ModelContextProtocol",
       "name": "ModelContextProtocol",
-      "version": "2.2.0",
-      "purl": "pkg:nuget/ModelContextProtocol@2.2.0",
+      "version": "2.3.0",
+      "purl": "pkg:nuget/ModelContextProtocol@2.3.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1620,10 +1662,23 @@
     },
     {
       "type": "library",
+      "bom-ref": "nuget-dependency:System.IO.Hashing",
+      "name": "System.IO.Hashing",
+      "version": "10.0.14",
+      "purl": "pkg:nuget/System.IO.Hashing@10.0.14",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "nuget-dependency:TUnit",
       "name": "TUnit",
-      "version": "1.73.19",
-      "purl": "pkg:nuget/TUnit@1.73.19",
+      "version": "1.76.28",
+      "purl": "pkg:nuget/TUnit@1.76.28",
       "properties": [
         {
           "name": "openusd:source",
@@ -1741,6 +1796,19 @@
       "name": "OpenUsd.Rendering",
       "version": "0.15.0-alpha",
       "purl": "pkg:nuget/OpenUsd.Rendering@0.15.0-alpha",
+      "properties": [
+        {
+          "name": "openusd:release-artifact",
+          "value": "nupkg"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget:OpenUsd.Rendering.Physics",
+      "name": "OpenUsd.Rendering.Physics",
+      "version": "0.15.0-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Physics@0.15.0-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2937,6 +3005,7 @@
         "nuget:OpenUsd.Rendering.Storm",
         "nuget:OpenUsd.Cesium",
         "nuget:OpenUsd.Physics",
+        "nuget:OpenUsd.Rendering.Physics",
         "nuget:OpenUsd.Viewer",
         "nuget:OpenUsd.Viewer.Bridge.Grpc",
         "nuget:OpenUsd.Mcp.Tool",
@@ -2984,6 +3053,7 @@
         "nuget-dependency:Silk.NET.Vulkan.Loader.Native",
         "nuget-dependency:SPIRV-Cross.NET",
         "nuget-dependency:Stride.Dependencies.SwiftShader",
+        "nuget-dependency:System.IO.Hashing",
         "nuget-dependency:TUnit",
         "dotnet-runtime:Microsoft.NETCore.App",
         "native:OpenUSD",
@@ -3055,6 +3125,7 @@
         "vcpkg:zlib-ng",
         "vcpkg:zstd",
         "native:PhysX",
+        "native:V-HACD",
         "native-input:PhysXGpu_64",
         "native-input:PhysXDevice64",
         "shader-toolchain:Slang",
@@ -3112,6 +3183,10 @@
     },
     {
       "ref": "nuget:OpenUsd.Physics",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget:OpenUsd.Rendering.Physics",
       "dependsOn": []
     },
     {
@@ -3300,6 +3375,10 @@
     },
     {
       "ref": "nuget-dependency:Stride.Dependencies.SwiftShader",
+      "dependsOn": []
+    },
+    {
+      "ref": "nuget-dependency:System.IO.Hashing",
       "dependsOn": []
     },
     {
@@ -3584,6 +3663,10 @@
     },
     {
       "ref": "native:PhysX",
+      "dependsOn": []
+    },
+    {
+      "ref": "native:V-HACD",
       "dependsOn": []
     },
     {

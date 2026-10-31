@@ -132,6 +132,15 @@ REQUIRED_CHECKED_INPUTS = (
     "src/OpenUsd.Viewer/MainWindow.CameraBookmarks.cs",
     "src/OpenUsd.Viewer/MainWindow.axaml.cs",
     "src/OpenUsd.Viewer/ViewerCameraNavigationUi.cs",
+    "src/OpenUsd.Rendering.Silk/SilkSceneState.cs",
+    "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.TexturePreparation.cs",
+    "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.SplitDiffuse.cs",
+    "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.IndexedNormals.cs",
+    "src/OpenUsd.Rendering.Silk/SilkGraphicsPipeline.cs",
+    "src/OpenUsd.Rendering.Silk/SilkSurfaceUniformWriter.cs",
+    "src/OpenUsd.Rendering.Silk.D3D12/D3D12ShaderRegisters.cs",
+    "src/OpenUsd.Rendering.Silk.Metal/MetalShaderResourceIndices.cs",
+    "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.Udim.cs",
     "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
 )
 

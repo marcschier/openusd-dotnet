@@ -225,7 +225,7 @@ public sealed class SilkCrossBackendParityTests
     /// Builds one instance record of a prototype: the path stays authoritative, the instance
     /// index distinguishes the record, and a non-zero instancer id identifies the owner.
     /// </summary>
-    private static byte[] CreateInstanceCommand(
+    internal static byte[] CreateInstanceCommand(
         ulong id,
         string path,
         int instanceIndex,

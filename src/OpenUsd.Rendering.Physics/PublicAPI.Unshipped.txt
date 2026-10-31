@@ -1,0 +1,23 @@
+#nullable enable
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext.PhysicsRenderRecordingContext(string! scenarioIdentity, ulong sourceRevision, string? reviewIdentity = null) -> void
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext.ScenarioIdentity.get -> string!
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext.SourceRevision.get -> ulong
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext.ReviewIdentity.get -> string?
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingFrame
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingFrame.Identity.get -> OpenUsd.Rendering.RenderSimulationFrameIdentity!
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingFrame.Bindings.get -> OpenUsd.Rendering.PhysicsRenderBindingTable!
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingFrame.Transforms.get -> OpenUsd.Rendering.PhysicsRenderOverrideView
+OpenUsd.Rendering.Physics.PhysicsRenderRecordingFrame.Deformations.get -> OpenUsd.Rendering.PhysicsRenderDeformationView
+OpenUsd.Rendering.Physics.PhysicsRenderCaptureResult
+OpenUsd.Rendering.Physics.PhysicsRenderCaptureResult.PhysicsRenderCaptureResult(OpenUsd.Rendering.RenderJobImage! image, ulong publicationRevision, int appliedBodies, int appliedDeformations) -> void
+OpenUsd.Rendering.Physics.PhysicsRenderCaptureResult.Image.get -> OpenUsd.Rendering.RenderJobImage!
+OpenUsd.Rendering.Physics.PhysicsRenderCaptureResult.PublicationRevision.get -> ulong
+OpenUsd.Rendering.Physics.PhysicsRenderCaptureResult.AppliedBodies.get -> int
+OpenUsd.Rendering.Physics.PhysicsRenderCaptureResult.AppliedDeformations.get -> int
+OpenUsd.Rendering.Physics.IPhysicsRenderRecordingSource
+OpenUsd.Rendering.Physics.IPhysicsRenderRecordingSource.Validate(OpenUsd.Rendering.RenderDiskJobRequest! request, OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext! context, System.Threading.CancellationToken cancellationToken) -> void
+OpenUsd.Rendering.Physics.IPhysicsRenderRecordingSource.Capture(OpenUsd.Rendering.StageRenderState! state, OpenUsd.Rendering.Physics.PhysicsRenderRecordingFrame! frame, System.Threading.CancellationToken cancellationToken) -> OpenUsd.Rendering.Physics.PhysicsRenderCaptureResult!
+OpenUsd.Rendering.Physics.IPhysicsRenderRecordingSource.ClearOverrides() -> void
+OpenUsd.Rendering.Physics.PhysicsRenderRecording
+static OpenUsd.Rendering.Physics.PhysicsRenderRecording.Execute(OpenUsd.Rendering.RenderDiskJobRequest! request, OpenUsd.Physics.UsdPhysicsTransport! transport, OpenUsd.Rendering.PhysicsRenderBindingTable! bindings, OpenUsd.Rendering.PhysicsRenderCapacities capacities, OpenUsd.Rendering.Physics.IPhysicsRenderRecordingSource! source, OpenUsd.Rendering.Physics.PhysicsRenderRecordingContext! context, int stepsPerFrame = 1, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> OpenUsd.Rendering.RenderDiskJobResult!

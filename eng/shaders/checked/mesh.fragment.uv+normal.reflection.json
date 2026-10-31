@@ -395,10 +395,78 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "detailUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 240,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "detailUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 256,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "alternateUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 272,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "alternateUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 288,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 240,
+        "elementStride": 304,
         "size": null
       },
       "vulkanLayout": {
@@ -663,10 +731,78 @@
                 "elementStride": 4,
                 "matrixStride": null
               }
+            },
+            {
+              "name": "detailUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 240,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "detailUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 256,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "alternateUvTransformRow0",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 272,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "alternateUvTransformRow1",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 288,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
             }
           ]
         },
-        "elementStride": 240,
+        "elementStride": 304,
         "size": null
       }
     },
@@ -1031,6 +1167,168 @@
         "elementStride": null,
         "size": null
       }
+    },
+    {
+      "name": "detailNormalSampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 4,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 13,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "detailNormalTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 9,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 9,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "normalValuesTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 20,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 37,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "detailNormalValuesTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 21,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 38,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
     }
   ],
   "stageInputs": [
@@ -1181,6 +1479,23 @@
       "type": {
         "kind": "vector",
         "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "texCoord1",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 5,
+        "systemValue": false
+      },
+      "location": 8,
+      "type": {
+        "kind": "vector",
+        "elementCount": 2,
         "elementType": {
           "kind": "scalar",
           "scalarType": "float32"

@@ -90,16 +90,62 @@ constants, package validation, and tests must be updated together.
 
 | Boundary | Current contract | Runtime check |
 | --- | ---: | --- |
-| Data shim `openusd_dotnet` | ABI 24, required capabilities `0x1FFFFFFFF` | Managed runtime validates both. |
+| Data shim `openusd_dotnet` | ABI 26, required capabilities `0x1FFFFFFFFF` | Managed runtime validates both. |
 | Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 9 | Managed child runtime requires the exact locked version. |
 | hdSilk session API | ABI 6 | Session/page exports are required and checked before creation. |
-| hdSilk command page | ABI 24 | Every managed page is validated before parsing. |
-| Retained physics `openusd_physx` | ABI 7 | Negotiated exactly, including every record size. |
-| Physics extraction page | ABI 1 | Every managed page is validated before parsing. |
+| hdSilk command page | ABI 30 | Every managed page is validated before parsing. |
+| Optional `openusd_mdl` / `openusd_mdl_sdk` | ABI 7 | hdSilk checks the exact adapter version and result size. |
+| Retained physics `openusd_physx` | ABI 8 | Exact; checks every record size and the CPU mesh preparation exports. |
+| Physics extraction page | ABI 2 | Validated geometry windows, source fingerprints and detached prepared hull ranges. |
 
-The data capability mask is part of compatibility. A native library with ABI 24 but an older capability
+The data capability mask is part of compatibility. A native library with ABI 26 but an older capability
 mask is rejected, as is an older ABI that happens to report newer capability bits.
+
+Optional MDL ABI 4 adds a diffuse texture luminance-mix scalar, carried by hdSilk
+page ABI 25. Its four values are RGB luminance weights and the mix amount. Although
+table layouts are unchanged, the new versions prevent older consumers from silently
+ignoring this operation. The material-wide UV affine introduced in optional ABI 3
+is retained. Deploy the adapter, hdSilk loader and managed parser together; the
+page-24 input must be refused. Data ABI 24 and session
+ABI 6 remain unchanged.
+
+Optional MDL ABI 5 adds a named `composite_operator` to each distilled texture,
+allowing an emissive color texture and mask to remain distinct operands. The
+loader rejects the prior ABI 4 before reading results and maps the explicit
+multiply to the existing page-25 composite field. No base page/session/data
+layout or public renderer interface changes for this optional-adapter addition.
+
+Optional MDL ABI 6 and hdSilk page ABI 26 add `OmniPbrSpecularLevel`, a scalar
+that selects the independently weighted dielectric curve in the renderer. Both
+versions are required even though the scalar-table byte layout is unchanged:
+an older consumer must not silently discard the weight or approximate it through
+IOR. The surface GPU block remains 240 bytes and uses previously reserved slots.
+Deploy matching adapter, hdSilk loader, managed parser and checked shaders together.
+Data ABI 24 and session ABI 6 are unchanged.
+
+Optional MDL ABI 7 and hdSilk page ABI 27 add a separate `DetailNormal` texture
+and paired, finite three-component `DetailUvRow0`/`DetailUvRow1` scalars.
+The existing emission composite remains independent. The GPU surface block grows
+from 240 to 272 bytes, and normal-map shader permutations additionally bind the
+detail texture/sampler at the volume-only registers, which those permutations
+previously left unused. Density-volume materials cannot carry a detail normal.
+Deploy matching adapter, native loader, managed parser, RHI libraries and checked
+shaders together; older page and adapter versions are explicitly refused.
+The source-identity JSONL schema remains unchanged, so placement reconciliation
+accepts both historical page-26 inventories and new page-27 inventories.
+
+hdSilk page ABI 28 appends a 2048-byte `UsdLuxShapingAPI` table to the lighting
+tier, raising the full native frame to 25416 bytes and the GPU frame to 17344
+bytes. Rect and disk lights apply its cone and focus; a frame without the table
+renders those lights unshaped. Deploy the native library, managed parser and
+checked shaders together; a page-27 library is refused.
+
+hdSilk page ABI 29 adds texture wrap value 5, MaterialX `constant` addressing. Page ABI 28 published `constant` as
+black; the version changes because a page-28 consumer does not know value 5. No table layout changes. The surface
+block uses the reserved lanes after the dome mask for the per-axis constant-border masks, and the checked mesh
+fragment permutations read them. Deploy the native library, managed parser and checked shaders together;
+a page-28 library is refused.
 
 Direct Storm ABI 9 adds the owned bulk AOV contract in `openusd_storm_aov.h`:
 `openusd_storm_aov_capture`, `openusd_storm_aov_get_view`, and `openusd_storm_aov_release`.
@@ -112,6 +158,38 @@ satisfy it. Neither addition changes the hdSilk contracts. The published `0.14.0
 Storm runtime remains ABI 8 and cannot serve these unreleased APIs. Native output formats,
 snapshot-local identity, known-copy budgets and explicit unsupported outputs are described in
 [Rendering](rendering.md#native-storm-aov-snapshots).
+
+Data ABI 26 adds `OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS` (`0x400000000`) and the
+`openusd_stage_get_linear_units` export, appended at Windows ordinal 402. The export returns the
+24-byte `openusd_stage_linear_units` record: composed `metersPerUnit`, `upAxis`, and whether each
+is authored or the UsdGeom fallback. Units-aware pick measurement needs it, because a world-space
+pick position is in scene units and no earlier export reported the stage's scale or whether it
+was authored. A runtime without the capability is rejected at startup. Every ABI 25 export and
+capability is preserved, and the hdSilk, Storm and physics contracts are unchanged.
+
+Data ABI 26 remains unchanged. Capability bit 35, `OPENUSD_CAPABILITY_REVIEW_STAGE_ADOPTION`
+(`0x800000000`), adds `openusd_stage_review_adopt` at Windows ordinal 403.
+`UsdReviewDocumentExtensions.AdoptIntoReview` verifies source and dependency bytes plus resolver
+and composition state, then moves compatible authored opinions from the session and existing owned
+review layer into a source-anchored review layer. It replaces the session data with a clean
+container; source files are never written. Conflicting or unsupported state is refused without
+changing the stage, and transaction failures roll back owned state. On success, the Viewer binds
+the stage to its verified source and starts a fresh Undo/Redo history baseline; prior history is
+discarded. Verified adoption is currently Windows-only.
+
+Data ABI 26 also requires capability bit 36, `OPENUSD_CAPABILITY_REVIEW_SOURCE_PUBLICATION`
+(`0x1000000000`), and `openusd_stage_review_source_acknowledge_publication` at Windows ordinal 404.
+The export acknowledges a caller-published root replacement; it writes no files and refreshes the
+verified source and dependency baseline only after admission. The Viewer supports explicit Windows
+text-USD publication after per-document opt-in and root ownership, revision and fingerprint checks.
+Generic or implicit source writes and publication of other layers remain unsupported.
+
+Data ABI 25 adds `OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS` (`0x200000000`) and the
+`openusd_stage_set_vec4f_array`/`openusd_stage_get_vec4f_array` exports, appended at Windows
+ordinals 400 and 401. Render product preparation needs them to read authored camera
+`clippingPlanes`, a `float4[]` attribute that no earlier accessor could transfer. A runtime
+without the capability is rejected at startup, not degraded to dropping the planes. Every ABI 24
+export and capability is preserved, and the hdSilk, Storm and physics contracts are unchanged.
 
 Data ABI 24 adds `OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT` (`0x100000000`) and the bulk
 `openusd_image_encode_exr_rgba16f_v1` export. Its portable header and guarded capability do
@@ -160,8 +238,8 @@ Original source graphs/files/root metadata remain unchanged. The verified-open i
 currently requires Windows filesystem read stability and the bounded USDA/text-USD/concrete-asset
 profile; non-Windows verified opening, crate/custom/template/package/URI portability and
 inherit/specialize/relocate/value-clip composition explicitly refuse. Normal Open/render support
-for other formats is not reduced. Source/root saving and silent legacy-session rebinding are not
-provided. See [portable review documents](data-api.md#portable-review-documents).
+for other formats is not reduced. ABI 20 alone does not provide source/root saving or silent
+legacy-session rebinding. See [portable review documents](data-api.md#portable-review-documents).
 
 ABI 19 is additive over ABI 18. `OPENUSD_CAPABILITY_LAYER_AUTHORED_EDIT_TRANSACTIONS`
 (`0x8000000`) adds the version-1 UED1 authored-layer packet contract in `openusd_layer_edit.h`.
@@ -225,6 +303,20 @@ The version-1 explicit scene-ingestion request and page ABI 24 are independent e
 session interface. Page ABI 24 expands direct lighting to 128 entries and four-word direct/shadow
 masks without changing session ABI 6.
 Earlier session-5 libraries do not satisfy this interface and must not be mixed with these bindings.
+
+The optional version-1 source-identity batch extension is additive to session 6/page 26.
+Its request/result layout and hard count/path/result limits are declared in `openusd_hdsilk.h`.
+It binds lookups to a successful page revision and unchanged source-stage serial; it does not
+change mesh records or reinterpret stable instance indices. Calling
+`OpenUsdSilkSession.ResolveSourceIdentities` against a library without the new export fails
+explicitly, while unrelated session operations retain their existing compatibility contract.
+
+`SilkTextureFormat.R8Unorm` is appended as value 5; existing texture-format values
+are unchanged. It is a sampled single-channel RHI format with D3D12/Vulkan/Metal
+mapping, not a new native command-page format. Streamed scalar material maps use
+it or existing `R32Float` only after their original channel/value processing.
+The retained path and checked shader binaries are unchanged; package execution
+verifies the new sampled format and mip upload.
 
 The Storm child ABI also participates in native filename policy. Linux packages use the ABI-9 SONAME and
 validated symlink chain; Windows and macOS packages validate the corresponding exported contract.
@@ -318,7 +410,7 @@ When diagnosing or reviewing a deployment, verify:
 2. the publish RID is one of the current runtime RIDs;
 3. all managed and runtime OpenUsd packages use the same version;
 4. Imaging's exact Core dependency resolved without override;
-5. data ABI 17 and capabilities `0x3FFFFFF` are reported;
+5. data ABI 26 and required capabilities `0x1FFFFFFFFF` are reported;
 6. any selected rendering path has its matching ABI and plugin assets;
 7. `usd/**` and `plugin/usd/**` retain their directory structure, and any third-party resolver tree
    keeps its own directory and `plugInfo.json` beside them;

@@ -285,12 +285,12 @@ public sealed class SilkPageAbiVersionContractTests
     }
 
     [Test]
-    public async Task DeclaredPageAndSessionAbiContractsAre24And6()
+    public async Task DeclaredPageAndSessionAbiContractsAre30And6()
     {
         uint page = SilkCommandParser.PageAbiVersion;
         uint session = RenderNativeAbiVersions.SilkSessionAbi;
         uint loader = OpenUsdSilkRuntime.RequiredSilkSessionAbiVersion;
-        await Assert.That(page).IsEqualTo(24u);
+        await Assert.That(page).IsEqualTo(30u);
         await Assert.That(session).IsEqualTo(6u);
         await Assert.That(loader).IsEqualTo(6u);
     }
@@ -298,7 +298,13 @@ public sealed class SilkPageAbiVersionContractTests
     [Test]
     [Arguments(22u)]
     [Arguments(23u)]
+    [Arguments(24u)]
     [Arguments(25u)]
+    [Arguments(26u)]
+    [Arguments(27u)]
+    [Arguments(28u)]
+    [Arguments(29u)]
+    [Arguments(31u)]
     public async Task ParserRejectsAdjacentAndStalePageAbiVersions(uint rejectedVersion)
     {
         byte[] page = new byte[272];
@@ -316,7 +322,7 @@ public sealed class SilkPageAbiVersionContractTests
         }
 
         (int width, int height, double viewDiagonal, bool finished) =
-            ReadVersionedFrame(page, 24u);
+            ReadVersionedFrame(page, 30u);
         await Assert.That(width).IsEqualTo(123);
         await Assert.That(height).IsEqualTo(47);
         await Assert.That(viewDiagonal).IsEqualTo(1d);

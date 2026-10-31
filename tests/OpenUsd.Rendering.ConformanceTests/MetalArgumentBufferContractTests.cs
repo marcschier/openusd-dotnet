@@ -155,13 +155,14 @@ public sealed class MetalArgumentBufferContractTests
             .GetFiles(checkedRoot, "*.metal")
             .Order(StringComparer.Ordinal)];
 
-        // Twenty-seven checked programs expand from the manifest, including the
+        // Twenty-nine checked programs expand from the manifest, including the
         // two display-transform programs, the subprim pick vertex stage, the two
-        // unbiased whole-resource stages, and the occluded selection-mask
+        // unbiased whole-resource stages, the occluded selection-mask
         // fragment stage the one-pass x-ray composite reads its second
-        // silhouette channel from. A glob that silently matched fewer files
-        // would make the loop below vacuous.
-        await Assert.That(sources.Length).IsEqualTo(27);
+        // silhouette channel from, and the two world-space normal capture
+        // stages. A glob that silently matched fewer files would make the loop
+        // below vacuous.
+        await Assert.That(sources.Length).IsEqualTo(29);
 
         var directBindingPrograms = new List<string>();
         foreach (string source in sources)

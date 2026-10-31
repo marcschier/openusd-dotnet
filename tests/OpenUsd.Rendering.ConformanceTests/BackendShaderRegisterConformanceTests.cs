@@ -47,6 +47,10 @@ public sealed class BackendShaderRegisterConformanceTests
         ("clearcoatTexture", SilkBindingKind.SampledTexture, 23),
         ("clearcoatRoughnessTexture", SilkBindingKind.SampledTexture, 25),
         ("iorTexture", SilkBindingKind.SampledTexture, 27),
+        ("normalValuesTexture", SilkBindingKind.SampledTexture, 37),
+        ("detailNormalValuesTexture", SilkBindingKind.SampledTexture, 38),
+        ("diffuseValuesTexture", SilkBindingKind.SampledTexture, 39),
+        ("emissiveValuesTexture", SilkBindingKind.SampledTexture, 40),
     ];
 
     // The shadow atlas and the two prefiltered environment maps are declared by
@@ -211,6 +215,28 @@ public sealed class BackendShaderRegisterConformanceTests
                 SilkBindingKind.Sampler, roughnessSampler))
             .IsNotEqualTo(MetalShaderResourceIndices.Map(
                 SilkBindingKind.Sampler, metallicSampler));
+    }
+
+    [Test]
+    public async Task NormalValueTablesAreAdditiveAndDisjointFromAuthoredMaps()
+    {
+        var permutation = new SilkShaderPermutationId(SilkShaderFeatures.Uv |
+            SilkShaderFeatures.BaseColorMap | SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap |
+            SilkShaderFeatures.RoughnessMetallicMap | SilkShaderFeatures.MetallicMap);
+        SilkBindingLayoutDescriptor layout = permutation.CreateMeshBindingLayout();
+        layout.Validate();
+        await Assert.That(layout.MaterialSlots.TakeLast(4).Select(slot => slot.Binding))
+            .IsEquivalentTo([37u, 38u, 39u, 40u]);
+        foreach (uint binding in new[] { 4u, 15u, 37u, 38u, 39u, 40u })
+        {
+            SilkBindingSlot slot = layout.MaterialSlots.Single(slot => slot.Binding == binding);
+            await Assert.That(slot.Kind).IsEqualTo(SilkBindingKind.SampledTexture);
+            await Assert.That(slot.Set).IsEqualTo(0u);
+            await Assert.That(slot.Visibility).IsEqualTo(SilkShaderStageVisibility.Fragment);
+        }
+        await Assert.That(layout.MaterialSlots.Where(slot => slot.Kind == SilkBindingKind.SampledTexture)
+            .Select(D3D12ShaderRegisters.Map).Distinct().Count())
+            .IsEqualTo(layout.MaterialSlots.Count(slot => slot.Kind == SilkBindingKind.SampledTexture));
     }
 
     private static Dictionary<

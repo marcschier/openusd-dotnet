@@ -30,6 +30,14 @@ internal static class ViewerCaptureComparison
             return new ViewerCapturePair(firstImage, secondImage);
         }, cancellationToken);
 
+    internal static Task<ViewerCaptureImage> LoadImageAsync(string path, CancellationToken cancellationToken) =>
+        Task.Run(async () =>
+        {
+            await using FileStream stream = OpenCapture(path);
+            CaptureInfo info = await ReadInfoAsync(stream, cancellationToken).ConfigureAwait(false);
+            return await DecodeAsync(stream, info, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken);
+
     private static FileStream OpenCapture(string path) =>
         new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096,
             FileOptions.Asynchronous | FileOptions.SequentialScan);

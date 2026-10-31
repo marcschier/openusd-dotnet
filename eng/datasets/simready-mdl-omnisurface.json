@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "simready-mdl-omnisurface",
+  "scope": "Optional external OmniSurface module closure from the public Slang fork of NVIDIA MDL-SDK; not a first-party NVIDIA distribution, no Kit installation, and no module sources or SDK binaries are packaged.",
+  "license": "NVIDIA BSD-3-Clause notices are embedded in every unmodified MDL source and retained in full.",
+  "sourceRepository": "shader-slang/MDL-SDK",
+  "sourceRepositoryParent": "NVIDIA/MDL-SDK",
+  "files": [
+    {
+      "path": "OmniSurface.mdl",
+      "repository": "shader-slang/MDL-SDK",
+      "revision": "446562493bed1b175e7cf105425ca3596764652f",
+      "sourcePath": "examples/mdl/nvidia/test-materials/OmniSurface.mdl",
+      "size": 62427,
+      "gitBlobSha1": "156f8d39944e8dd313cca90a0c0b1c2d750fa81b"
+    },
+    {
+      "path": "OmniSurface/OmniImage.mdl",
+      "repository": "shader-slang/MDL-SDK",
+      "revision": "446562493bed1b175e7cf105425ca3596764652f",
+      "sourcePath": "examples/mdl/nvidia/test-materials/OmniSurface/OmniImage.mdl",
+      "size": 20632,
+      "gitBlobSha1": "9c9d4bbc836ea13e8c94f217494dd93557f76fba"
+    },
+    {
+      "path": "OmniSurface/OmniShared.mdl",
+      "repository": "shader-slang/MDL-SDK",
+      "revision": "446562493bed1b175e7cf105425ca3596764652f",
+      "sourcePath": "examples/mdl/nvidia/test-materials/OmniSurface/OmniShared.mdl",
+      "size": 18238,
+      "gitBlobSha1": "e96cf72e36c889378f6f209125a5dfa6bbb7d2de"
+    },
+    {
+      "path": "OmniSurface/OmniSurfaceBase.mdl",
+      "repository": "shader-slang/MDL-SDK",
+      "revision": "446562493bed1b175e7cf105425ca3596764652f",
+      "sourcePath": "examples/mdl/nvidia/test-materials/OmniSurface/OmniSurfaceBase.mdl",
+      "size": 31081,
+      "gitBlobSha1": "881f81b72552c19d365c0fd680ca107acdbe29b4"
+    }
+  ]
+}

@@ -76,6 +76,7 @@ internal sealed partial class ViewerRenderCoordinator
                 original.RenderSettings,
                 request.SettingsPath,
                 request.ProductPath,
+                request.Overrides,
                 expectedStageRevision: serial,
                 cancellationToken: token);
             if (backend.GetRenderProductUnsupportedReason(original, plan, request.HdrColorFormat) is { } unsupported)
@@ -150,7 +151,8 @@ internal sealed partial class ViewerRenderCoordinator
             }
             try
             {
-                return await ViewerRenderSequenceRunner.ExecuteAsync(job, capture, restore, report, token, validate);
+                return await ViewerRenderSequenceRunner.ExecuteAsync(
+                    job, capture, restore, report, token, validate, backend.Identity);
             }
             finally
             {

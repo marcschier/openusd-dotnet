@@ -12,6 +12,12 @@ internal sealed class SilkHdrColorReadbackDevice : ISilkGraphicsDevice
 
     internal Action? AfterHdrReadback { get; set; }
 
+    internal Action? AfterDepthReadback { get; set; }
+
+    internal int LiveTextures { get; private set; }
+
+    internal int CreatedTextures { get; private set; }
+
     public SilkGraphicsBackend Backend => SilkGraphicsBackend.Vulkan;
 
     public SilkGraphicsCapabilities Capabilities { get; } =
@@ -23,7 +29,13 @@ internal sealed class SilkHdrColorReadbackDevice : ISilkGraphicsDevice
         uint width, uint height, SilkTextureFormat format = SilkTextureFormat.Rgba8Unorm) =>
         throw new NotSupportedException();
 
-    public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor) => new Texture(this, descriptor);
+    public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor)
+    {
+        var texture = new Texture(this, descriptor);
+        LiveTextures++;
+        CreatedTextures++;
+        return texture;
+    }
 
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor) => throw new NotSupportedException();
 
@@ -83,11 +95,10 @@ internal sealed class SilkHdrColorReadbackDevice : ISilkGraphicsDevice
             _ = ValidateDepthReadback(destination.Length);
             destination.Fill(1);
             owner.DepthReadbacks++;
+            owner.AfterDepthReadback?.Invoke();
         }
 
-        protected override void ReleaseNative()
-        {
-        }
+        protected override void ReleaseNative() => owner.LiveTextures--;
     }
 
     private sealed class Buffer(nuint size, SilkBufferUsage usage) : SilkGraphicsBufferBase(size, usage)
