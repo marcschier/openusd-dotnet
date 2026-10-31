@@ -55,7 +55,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "12749fa813bcb478dc971780b5801f025d0e9d2e7f890948d89bad4c600bf835"
+      "sha256": "e799b3ff280290fca6fd4f96037e71eabe51ebfc2e5af714d86ecdb3183b6cb6"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -183,7 +183,7 @@
     },
     {
       "path": "eng/shaders/checked/executed-commands.json",
-      "sha256": "4d3e73b4349db0ea114258d719a14a1ad9799a46f474ab0aebae9bd89041b3a8"
+      "sha256": "d397d5546aad5cb9ac712cbb2352ceabed1af2540a0b4e68fbefef7fddb505ea"
     },
     {
       "path": "eng/shaders/expand-verified-archive.ps1",
@@ -219,7 +219,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "836a87cc7305f12f3f6284835ac6c07eebbb23548932bd41eff8e0b18c1f7ae1"
+      "sha256": "c0a429dd55471bc809adb8c3acbebc274efe396e44211e29f760d4a8ea78bace"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -235,7 +235,7 @@
     },
     {
       "path": "eng/shaders/shader-manifest.json",
-      "sha256": "97dc32b025458a7595f7152aedbdb47b62a4e70be064bef67431cd8ed4489725"
+      "sha256": "4de8948fa4ec23d98e1aa318fb94cd78bf98da8779f211564de4ed8d51eb54f5"
     },
     {
       "path": "eng/shaders/sources/compute.slang",
@@ -254,8 +254,12 @@
       "sha256": "af197dd8a527dec63d5801454645fe46abe20556506253a6329facb63d8f227d"
     },
     {
+      "path": "eng/shaders/sources/material.surface.slang",
+      "sha256": "1e6f52d1d367a524efd44abb13392435f31b00903c1141af01f3ffcff84d5494"
+    },
+    {
       "path": "eng/shaders/sources/mesh.slang",
-      "sha256": "ea3846dbfebbfc7b042fc26f301db7324c55e04316677f4940dfbcd9111a6883"
+      "sha256": "bd19737d7739c5145c6de7563cc9c237395ac4f1d4b7372e037db0f4e98436fd"
     },
     {
       "path": "eng/shaders/sources/normal.fragment.slang",
@@ -314,8 +318,12 @@
       "sha256": "96ba063045596a1a85224eb6bde755d47f261a0e90395b0b1b84f29737da08b1"
     },
     {
+      "path": "eng/shaders/sources/shadow.mask.fragment.slang",
+      "sha256": "a154475f6271da0f22b19f155c1abefb09e903b80850c9558e1cd02d40f2694e"
+    },
+    {
       "path": "eng/shaders/sources/shadow.vertex.slang",
-      "sha256": "6169029775fe2f2e1d9270580f9634c32685a408c07d105a8c9eadc895d94240"
+      "sha256": "a653d47da303a818280fa358cbe48227d0b45d04cb8459c52e45070c1ecca81c"
     },
     {
       "path": "eng/shaders/test-checked-corruption.ps1",
@@ -415,11 +423,11 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk.Metal/OpenUsd.Rendering.Silk.Metal.csproj",
-      "sha256": "c8d1a352503b08ed19272539d9ef2b42b85707d2afcbb9a16ddf8948fe5c233c"
+      "sha256": "0df647fad065be49c732ab929b49e4c451bb58fb7802d35c9a82d46ef8ab6e8a"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkGraphicsPipeline.cs",
-      "sha256": "75fd9597e65ecbd5575a474fe63c100dfe228656c2953a2a1d57efdeffbff0ca"
+      "sha256": "326a7d24702bb5392051badc755b8e170056654c5c1d573629b0c250a243514c"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.IndexedNormals.cs",
@@ -431,7 +439,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.TexturePreparation.cs",
-      "sha256": "eea1f918e5ee0a4d94a9e14a84281f00f0c945cd78cf0aec2ef1cb7a4c55cdac"
+      "sha256": "0267be7f3bf2b7e9e7ccc4e6693acf175207a484d32e9e5b4af1c1cec968e67d"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.Udim.cs",
@@ -439,7 +447,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneState.cs",
-      "sha256": "d6d8a8f64ca7dded5dc7048e512d823c1f98a9a2de1cb569cf3ed611c0bac7d5"
+      "sha256": "0fb972ba110ecdc3bea03e10cd6bdb057d437e09138c0d84d37e4735568dec2b"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSurfaceUniformWriter.cs",
@@ -463,7 +471,7 @@
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
-      "sha256": "880fea27d334d639258ffeda3e00653c133a6eb2437a8ff6606f380217e15384"
+      "sha256": "4745e6f290934b825f6e59a0cd4af6c8fa11a51c8a5e38b39b69017b7f0daf19"
     }
   ],
   "programs": [
@@ -2190,7 +2198,7 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.dxil",
-          "sha256": "81f457307161a512fcdccc2d30b7e2317be013c4193ba161e74168ac3fdd1d6f",
+          "sha256": "3a67df1a9afd95ddc8f5c508a5c07e161f82b7478bc0e71ba9235660318e4caa",
           "size": 69420
         },
         "spv": {
@@ -2200,8 +2208,8 @@
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.metal",
-          "sha256": "8e69cd42a167d03882676a6ff976bc4717d8858c7109e24d09552df371025024",
-          "size": 300446
+          "sha256": "753084ec4bc9be2dcf1d9961ab82f6c79ea53ae3abd376c3862f5ad79d7f7ba2",
+          "size": 302153
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material.reflection.json",
@@ -3251,8 +3259,8 @@
         },
         "metal": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.metal",
-          "sha256": "2de68c5114daa75402e979706ca833c95b838f8cfb6c023ef903235933704fc0",
-          "size": 330847
+          "sha256": "7e777b4f2a902e6c518fa96ee7487ccfd69d3ab0c1e66224625f04e8c7057737",
+          "size": 332547
         },
         "reflection.json": {
           "path": "eng/shaders/checked/mesh.fragment.uv+material+normal.reflection.json",
@@ -3864,6 +3872,374 @@
           "path": "eng/shaders/checked/shadow.fragment.reflection.json",
           "sha256": "e32e32a109eb61d2ade1811853addf9de367b65656e81686c91c4fb52fdd1e22",
           "size": 626
+        }
+      }
+    },
+    {
+      "name": "shadow.mask.vertex",
+      "source": "eng/shaders/sources/shadow.vertex.slang",
+      "entryPoint": "shadowMaskedVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resourceContract": [
+        {
+          "name": "shadowInstanceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
+        }
+      ],
+      "executedCommands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.vertex.slang",
+            "-entry",
+            "shadowMaskedVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "vs_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.mask.vertex.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.mask.vertex.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.vertex.slang",
+            "-entry",
+            "shadowMaskedVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "vs_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.mask.vertex.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.mask.vertex.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.vertex.slang",
+            "-entry",
+            "shadowMaskedVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "vs_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.mask.vertex.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.mask.vertex.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.mask.vertex.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/shadow.mask.vertex.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "shadow.mask.vertex"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/shadow.mask.vertex.spv"
+          ]
+        }
+      },
+      "artifacts": {
+        "dxil": {
+          "path": "eng/shaders/checked/shadow.mask.vertex.dxil",
+          "sha256": "d6dc7205d06c09f2cfc1f2977d70e873e556ca84445ad80842eee19e58ffc2c3",
+          "size": 5180
+        },
+        "spv": {
+          "path": "eng/shaders/checked/shadow.mask.vertex.spv",
+          "sha256": "263cb5e5b6757026e19b8ac4cf6f5c361cd46ccc57a92729828fe85cbff2e14c",
+          "size": 1652
+        },
+        "metal": {
+          "path": "eng/shaders/checked/shadow.mask.vertex.metal",
+          "sha256": "6cfb78c85e2fba2b93fce4ab5772a996773b335000fd8663ff5c2780f477e9f5",
+          "size": 2480
+        },
+        "reflection.json": {
+          "path": "eng/shaders/checked/shadow.mask.vertex.reflection.json",
+          "sha256": "e0dc2850c7569623bf81195ac2206b6763a612f4a414c1ae0411255264753d3a",
+          "size": 5873
+        }
+      }
+    },
+    {
+      "name": "shadow.mask.fragment",
+      "source": "eng/shaders/sources/shadow.mask.fragment.slang",
+      "entryPoint": "shadowMaskedFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resourceContract": [
+        {
+          "name": "surfaceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 7,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 7,
+            "set": 0
+          }
+        },
+        {
+          "name": "opacitySampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 16,
+            "set": 0
+          }
+        },
+        {
+          "name": "opacityTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 5,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 17,
+            "set": 0
+          }
+        },
+        {
+          "name": "compositeSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 12,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 28,
+            "set": 0
+          }
+        },
+        {
+          "name": "compositeTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 15,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 29,
+            "set": 0
+          }
+        }
+      ],
+      "executedCommands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.mask.fragment.slang",
+            "-entry",
+            "shadowMaskedFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.mask.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.mask.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.mask.fragment.slang",
+            "-entry",
+            "shadowMaskedFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.mask.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.mask.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.mask.fragment.slang",
+            "-entry",
+            "shadowMaskedFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.mask.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.mask.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.mask.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/shadow.mask.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "shadow.mask.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/shadow.mask.fragment.spv"
+          ]
+        }
+      },
+      "artifacts": {
+        "dxil": {
+          "path": "eng/shaders/checked/shadow.mask.fragment.dxil",
+          "sha256": "8ee0b35f37ed12c7c8265abb9077f2212b694224a3d6d6c2950b782a2eb23c67",
+          "size": 9896
+        },
+        "spv": {
+          "path": "eng/shaders/checked/shadow.mask.fragment.spv",
+          "sha256": "73a821242fb011acb5cddc77b736ad8ee38f4f55ee5bc692e00e41720ca1a223",
+          "size": 20648
+        },
+        "metal": {
+          "path": "eng/shaders/checked/shadow.mask.fragment.metal",
+          "sha256": "c17b0568cebc2ff5eb288988adf12f42c440d924881cf361e2922a26bfb726ea",
+          "size": 23951
+        },
+        "reflection.json": {
+          "path": "eng/shaders/checked/shadow.mask.fragment.reflection.json",
+          "sha256": "276e5e08598894f072fd38ff9b4c304788c68fff06d3c5b4c3dee21279c4315f",
+          "size": 23854
         }
       }
     },

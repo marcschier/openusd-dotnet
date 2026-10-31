@@ -16,6 +16,104 @@ public sealed partial class SilkSceneGpuResources
 
     internal bool StreamsMaterialTextures => _residencyOptions.StreamMaterialTextures;
 
+    internal void PrepareShadowOpacityTextures(
+        SilkMaterialData material, HashSet<TextureDependency> dependencies)
+    {
+        SilkMaterialTexture primary = material.GetTexture(SilkMaterialParameter.Opacity) ??
+            throw new InvalidDataException($"Material '{material.Path}' has no opacity texture.");
+        TextureCacheEntry first = RequireTexture(material, primary);
+        SilkMaterialTexture? composite = material.GetCompositeTexture();
+        TextureCacheEntry? second = composite is { Parameter: SilkMaterialParameter.Opacity } opacityComposite
+            ? RequireTexture(material, opacityComposite)
+            : null;
+        if (first.Dependencies is { } primaryDependencies)
+        {
+            dependencies.UnionWith(primaryDependencies);
+        }
+        if (second?.Dependencies is { } compositeDependencies)
+        {
+            dependencies.UnionWith(compositeDependencies);
+        }
+        if (StreamsMaterialTextures)
+        {
+            if (!first.Uploaded)
+            {
+                UploadStreamedTexture(first, volume: false);
+            }
+            if (second is { Uploaded: false })
+            {
+                UploadStreamedTexture(second, volume: false);
+            }
+            return;
+        }
+
+        bool uploadFirst = !first.Uploaded;
+        bool uploadSecond = second is { Uploaded: false } && !ReferenceEquals(first, second);
+        if (!uploadFirst && !uploadSecond)
+        {
+            return;
+        }
+        using ISilkGraphicsCommandList commands = _device.CreateCommandList();
+        if (uploadFirst)
+        {
+            RecordTextureUpload(commands, first, volume: false);
+        }
+        if (uploadSecond)
+        {
+            RecordTextureUpload(commands, second!, volume: false);
+        }
+        using ISilkGraphicsSubmission submission = _device.Submit(commands);
+        submission.Wait();
+        if (uploadFirst)
+        {
+            _textureUploadBytes += checked((ulong)first.Pixels.Length);
+            first.Uploaded = true;
+        }
+        if (uploadSecond)
+        {
+            _textureUploadBytes += checked((ulong)second!.Pixels.Length);
+            second.Uploaded = true;
+        }
+    }
+
+    internal void BindShadowOpacityTextures(ISilkGraphicsCommandList commands, SilkMaterialData material)
+    {
+        SilkMaterialTexture primary = material.GetTexture(SilkMaterialParameter.Opacity) ??
+            throw new InvalidDataException($"Material '{material.Path}' has no opacity texture.");
+        SilkMaterialTexture? composite = material.GetCompositeTexture();
+        bind(primary, SilkBindingLayoutDescriptor.OpacitySamplerBinding,
+            SilkBindingLayoutDescriptor.OpacityTextureBinding);
+        bind(composite is { Parameter: SilkMaterialParameter.Opacity } opacityComposite ? opacityComposite : primary,
+            SilkBindingLayoutDescriptor.CompositeSamplerBinding,
+            SilkBindingLayoutDescriptor.CompositeTextureBinding);
+
+        void bind(SilkMaterialTexture texture, uint samplerBinding, uint textureBinding)
+        {
+            TextureCacheEntry entry = RequireTexture(material, texture);
+            if (!entry.Uploaded)
+            {
+                throw new InvalidOperationException(
+                    $"Opacity texture for material '{material.Path}' changed after shadow preparation.");
+            }
+            commands.SetSampler(0, samplerBinding,
+                RequireSampler(material, texture, entry.Texture.Format, entry,
+                    entry.IsUdim, entry.Texture.MipLevelCount));
+            commands.SetTexture(0, textureBinding, entry.Texture);
+        }
+    }
+
+    internal PreparedShadowTextures? PrepareShadowTextureUpdate() =>
+        _texturePreparation is null ? new(this) : null;
+
+    internal sealed class PreparedShadowTextures(SilkSceneGpuResources owner) : IDisposable
+    {
+        private readonly PreparedTextureUpdate _update = new(owner);
+
+        internal void Commit() => _update.Commit();
+
+        public void Dispose() => _update.Dispose();
+    }
+
     private TextureCacheEntry CreateStreamedUdimEntry(
         TextureCacheKey key, SilkMaterialData material, SilkMaterialTexture materialTexture, SilkColorSpace colorSpace)
     {

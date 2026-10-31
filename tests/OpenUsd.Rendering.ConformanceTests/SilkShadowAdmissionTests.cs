@@ -57,6 +57,224 @@ public sealed class SilkShadowAdmissionTests
     }
 
     [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, true)]
+    public async Task TexturedCutoffCastsRetainedAndUpdatedShadows(
+        SilkGraphicsBackend backend, bool admission, bool streaming)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var textureBudget = admission ? new SilkGpuTextureBudget(67_108_864) : null;
+        var bufferBudget = streaming ? new SilkGpuBufferBudget(4_194_304) : null;
+        textureBudget?.ConfigureDevice(device);
+        bufferBudget?.ConfigureDevice(device);
+        await SilkShadowConformance.TexturedOpacityChangesCasterCoverage(device, backend, streaming);
+        if (textureBudget is not null)
+        {
+            await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That(textureBudget.Usage.ReservationCount).IsEqualTo(0ul);
+        }
+        if (bufferBudget is not null)
+        {
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false, false, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, false, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, true, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, false, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, false, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, true, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, false, false, true)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, false, true)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, true, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, false, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, false, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, true, true)]
+    public async Task InPlaceOpacityEditsInvalidateRetainedShadowsAndRetry(
+        SilkGraphicsBackend backend, bool admission, bool streaming, bool udim)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var textureBudget = admission ? new SilkGpuTextureBudget(67_108_864) : null;
+        var bufferBudget = streaming ? new SilkGpuBufferBudget(4_194_304) : null;
+        textureBudget?.ConfigureDevice(device);
+        bufferBudget?.ConfigureDevice(device);
+        await SilkShadowConformance.InPlaceOpacityEditsInvalidateRetainedShadows(
+            device, backend, streaming, udim, textureBudget);
+        if (textureBudget is not null)
+        {
+            await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That(textureBudget.Usage.ReservationCount).IsEqualTo(0ul);
+        }
+        if (bufferBudget is not null)
+        {
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false, false, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, false, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, true, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, false, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, false, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, true, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, false, false, true)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, false, true)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, true, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, false, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, false, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, true, true)]
+    public async Task RetryingFailedOpacityRebuildsRetainedShadows(
+        SilkGraphicsBackend backend, bool admission, bool streaming, bool withScene)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var textureBudget = admission ? new SilkGpuTextureBudget(67_108_864) : null;
+        var bufferBudget = streaming ? new SilkGpuBufferBudget(4_194_304) : null;
+        textureBudget?.ConfigureDevice(device);
+        bufferBudget?.ConfigureDevice(device);
+        await SilkShadowConformance.RetryingFailedOpacityRebuildsRetainedShadows(
+            device, backend, streaming, withScene);
+        if (textureBudget is not null)
+        {
+            await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That(textureBudget.Usage.ReservationCount).IsEqualTo(0ul);
+        }
+        if (bufferBudget is not null)
+        {
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, true)]
+    public async Task MaskedInstancesAndMaterialGroupsKeepTheirOwnCoverage(
+        SilkGraphicsBackend backend, bool admission, bool streaming)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var textureBudget = admission ? new SilkGpuTextureBudget(67_108_864) : null;
+        var bufferBudget = streaming ? new SilkGpuBufferBudget(4_194_304) : null;
+        textureBudget?.ConfigureDevice(device);
+        bufferBudget?.ConfigureDevice(device);
+        await SilkShadowConformance.MaskedInstancesAndMaterialGroupsKeepTheirOwnCoverage(device, backend, streaming);
+        if (textureBudget is not null)
+        {
+            await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+        if (bufferBudget is not null)
+        {
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, true)]
+    public async Task MaskedShadowsUseSecondaryUvAndAlternateTransform(
+        SilkGraphicsBackend backend, bool admission, bool streaming)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var textureBudget = admission ? new SilkGpuTextureBudget(67_108_864) : null;
+        var bufferBudget = streaming ? new SilkGpuBufferBudget(4_194_304) : null;
+        textureBudget?.ConfigureDevice(device);
+        bufferBudget?.ConfigureDevice(device);
+        await SilkShadowConformance.MaskedShadowsUseSecondaryUvAndAlternateTransform(device, backend, streaming);
+        if (textureBudget is not null)
+        {
+            await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+        if (bufferBudget is not null)
+        {
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, true)]
+    public async Task MaskedShadowsUseOpacityChannelAffineCompositeAndBorder(
+        SilkGraphicsBackend backend, bool admission, bool streaming)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var textureBudget = admission ? new SilkGpuTextureBudget(67_108_864) : null;
+        var bufferBudget = streaming ? new SilkGpuBufferBudget(4_194_304) : null;
+        textureBudget?.ConfigureDevice(device);
+        bufferBudget?.ConfigureDevice(device);
+        await SilkShadowConformance.MaskedShadowsUseOpacityChannelAffineCompositeAndBorder(
+            device, backend, streaming);
+        if (textureBudget is not null)
+        {
+            await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+        if (bufferBudget is not null)
+        {
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true)]
+    public async Task MaskedShadowCoverageMatchesColorPassAtCutoff(
+        SilkGraphicsBackend backend, bool streaming)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var bufferBudget = streaming ? new SilkGpuBufferBudget(4_194_304) : null;
+        bufferBudget?.ConfigureDevice(device);
+        await SilkShadowConformance.MaskedShadowCoverageMatchesColorPassAtCutoff(device, backend, streaming);
+        if (bufferBudget is not null)
+        {
+            await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false, 0)]
+    [Arguments(SilkGraphicsBackend.D3D12, false, 1)]
+    [Arguments(SilkGraphicsBackend.D3D12, false, 2)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, 0)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, 1)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, 2)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, 0)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, 1)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, 2)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, 0)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, 1)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, 2)]
+    public Task MaskedShadowSubmissionRefusalRestoresPriorFrameAndRetries(
+        SilkGraphicsBackend backend, bool streaming, int successfulSubmissions) =>
+        SilkShadowConformance.MaskedShadowSubmissionRefusalRestoresPriorFrameAndRetries(
+            backend, streaming, successfulSubmissions);
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public Task MaskedShadowSubmissionRefusalWithOnlyBufferAdmissionRestoresTextureState(
+        SilkGraphicsBackend backend) =>
+        SilkShadowConformance.MaskedShadowSubmissionRefusalRestoresPriorFrameAndRetries(
+            backend, streaming: false, successfulSubmissions: 1, textureAdmission: false);
+
+    [Test]
     [Arguments(SilkGraphicsBackend.D3D12, false)]
     [Arguments(SilkGraphicsBackend.D3D12, true)]
     [Arguments(SilkGraphicsBackend.Vulkan, false)]

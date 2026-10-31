@@ -14,11 +14,14 @@ internal sealed class SilkShadowProjectionException(InvalidDataException innerEx
 /// </summary>
 internal readonly record struct SilkShadowCaster(
     SilkMeshGpuResource Mesh,
-    Matrix4x4 ObjectToLightClip);
+    Matrix4x4 ObjectToLightClip,
+    SilkMaterialData? MaskMaterial = null,
+    SilkMeshData? Data = null);
 
 internal enum SilkShadowOpacityCoverage
 {
     Solid,
+    Masked,
     Invisible,
     Unsupported,
 }
@@ -32,9 +35,9 @@ internal enum SilkShadowOpacityCoverage
 /// The atlas is retained across frames on purpose: re-rendering every caster from
 /// every light on a frame where nothing moved is the single largest avoidable
 /// cost of a shadow slice. It is re-rendered exactly when one of the inputs it was
-/// produced from changes -- the published descriptor table, the caster geometry,
-/// the caster restriction, or the device generation -- and reused byte for byte
-/// otherwise.
+/// produced from changes -- the published descriptor table, caster geometry or
+/// materials, caster restriction, device generation, captured opacity-image
+/// dependencies, or explicit texture retry -- and reused byte for byte otherwise.
 /// </para>
 /// <para>
 /// A scene that publishes no descriptor allocates no atlas and submits no pass.
@@ -66,6 +69,7 @@ internal sealed class SilkShadowMapCache : IDisposable
     private readonly List<string> _unsupportedCasters = [];
     private ulong _casterReportRevision;
     private RenderKey? _renderedKey;
+    private SilkSceneGpuResources.TextureDependency[] _renderedDependencies = [];
     private ulong _bindingRevision;
 
     /// <summary>
@@ -142,7 +146,8 @@ internal sealed class SilkShadowMapCache : IDisposable
         uint edge = enabled ? SilkShadowAtlasLayout.Create(descriptors)!.Edge : 0;
         bool renderNeeded = enabled &&
             (_atlas is null || _layout?.Edge != edge ||
-                _renderedKey != CreateKey(scene, generation, useSceneMaterials, displacementPadding));
+                _renderedKey != CreateKey(scene, resources, generation, useSceneMaterials, displacementPadding) ||
+                SilkSceneGpuResources.DependenciesChanged(_renderedDependencies));
         bool atlasNeeded = renderNeeded &&
             (_spareAtlas is null || _spareAtlas.Width != edge || _spareAtlas.Height != edge);
         bool standInNeeded = !enabled && scene.Meshes.Count > 0 && _standIn is null;
@@ -189,6 +194,7 @@ internal sealed class SilkShadowMapCache : IDisposable
         private readonly SilkShadowAtlasLayout? _previousLayout = owner._layout;
         private readonly SilkShadowFrameBinding _previousBinding = owner._binding;
         private readonly RenderKey? _previousKey = owner._renderedKey;
+        private readonly SilkSceneGpuResources.TextureDependency[] _previousDependencies = owner._renderedDependencies;
         private readonly ulong _previousBindingRevision = owner._bindingRevision;
         private readonly ulong _previousRenderCount = owner.RenderCount;
         private readonly string[] _previousUnsupported = [.. owner._unsupportedCasters];
@@ -203,6 +209,8 @@ internal sealed class SilkShadowMapCache : IDisposable
         private SilkShadowAtlasLayout? _layout;
         private SilkShadowFrameBinding? _binding;
         private RenderKey? _key;
+        private readonly HashSet<SilkSceneGpuResources.TextureDependency> _dependencies = [];
+        private SilkSceneGpuResources.PreparedShadowTextures? _textures;
         private readonly List<string> _unsupported = [];
         private bool _committed;
         private bool _activated;
@@ -244,14 +252,15 @@ internal sealed class SilkShadowMapCache : IDisposable
             }
             SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(_descriptors)!;
             SilkShadowFrameBinding binding = SilkShadowFrameBinding.Create(_descriptors, layout);
+            _textures = resources.PrepareShadowTextureUpdate();
             _ = owner.Render(
-                scene, resources, _descriptors, layout, _atlas, _unsupported, writeInstances,
+                scene, resources, _descriptors, layout, _dependencies, _atlas, _unsupported, writeInstances,
                 useSceneMaterials);
             owner._unsupportedCasters.EnsureCapacity(_unsupported.Count);
             _layout = layout;
             _binding = binding;
             _key = CreateKey(
-                scene, owner.ReadDeviceGeneration(), useSceneMaterials, displacementPadding);
+                scene, resources, owner.ReadDeviceGeneration(), useSceneMaterials, displacementPadding);
         }
 
         internal void Activate()
@@ -269,6 +278,7 @@ internal sealed class SilkShadowMapCache : IDisposable
                 owner._spareAtlas = null;
                 owner._layout = null;
                 owner._renderedKey = null;
+                owner._renderedDependencies = [];
                 owner._binding = SilkShadowFrameBinding.None;
                 owner._bindingRevision++;
                 owner._unsupportedCasters.Clear();
@@ -292,6 +302,7 @@ internal sealed class SilkShadowMapCache : IDisposable
                 owner._layout = _layout;
                 owner._binding = _binding!;
                 owner._renderedKey = _key;
+                owner._renderedDependencies = [.. _dependencies];
                 owner._bindingRevision++;
                 owner.RenderCount++;
                 owner._unsupportedCasters.Clear();
@@ -325,6 +336,7 @@ internal sealed class SilkShadowMapCache : IDisposable
                 throw new InvalidOperationException("Shadow capacity was already committed.");
             }
             Activate();
+            _textures?.Commit();
             _committed = true;
         }
 
@@ -352,6 +364,7 @@ internal sealed class SilkShadowMapCache : IDisposable
                 owner._layout = _previousLayout;
                 owner._binding = _previousBinding;
                 owner._renderedKey = _previousKey;
+                owner._renderedDependencies = _previousDependencies;
                 owner._bindingRevision = _previousBindingRevision;
                 owner.RenderCount = _previousRenderCount;
                 owner._unsupportedCasters.Clear();
@@ -369,6 +382,7 @@ internal sealed class SilkShadowMapCache : IDisposable
             DisposeResource(_sampler, ref failures);
             DisposeResource(_retiredSpare, ref failures);
             DisposeResource(_retiredAtlas, ref failures);
+            DisposeResource(_textures, ref failures);
             if (failures is not null)
             {
                 throw new AggregateException("Prepared shadow capacity could not all be released.", failures);
@@ -398,10 +412,11 @@ internal sealed class SilkShadowMapCache : IDisposable
     }
 
     private static RenderKey CreateKey(
-        SilkSceneState scene, ulong generation, bool useSceneMaterials, double displacementPadding) => new(
+        SilkSceneState scene, SilkSceneGpuResources resources, ulong generation,
+        bool useSceneMaterials, double displacementPadding) => new(
         scene.Shadows.Revision, scene.GeometryRevision, scene.MaterialRevision,
-        scene.LightLinks.Revision, scene.DeformationRevision, generation, useSceneMaterials,
-        displacementPadding);
+        scene.LightLinks.Revision, scene.DeformationRevision, generation,
+        resources.TextureRetryRevision, useSceneMaterials, displacementPadding);
 
     private static IReadOnlyList<SilkShadowDescriptor> ExpandShadowDescriptorsForPreparation(
         SilkSceneState scene,
@@ -645,11 +660,12 @@ internal sealed class SilkShadowMapCache : IDisposable
         }
 
         SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(descriptors)!;
-        RenderKey key = CreateKey(scene, generation, useSceneMaterials, displacementPadding);
+        RenderKey key = CreateKey(scene, resources, generation, useSceneMaterials, displacementPadding);
         if (_atlas is not null &&
             _layout is not null &&
             _layout.Edge == layout.Edge &&
-            _renderedKey == key)
+            _renderedKey == key &&
+            !SilkSceneGpuResources.DependenciesChanged(_renderedDependencies))
         {
             resources.ReportUnsupportedShadowCasters(_unsupportedCasters, _casterReportRevision);
             return 0;
@@ -684,9 +700,11 @@ internal sealed class SilkShadowMapCache : IDisposable
         _binding = SilkShadowFrameBinding.Create(descriptors, layout);
         _bindingRevision++;
         _unsupportedCasters.Clear();
-        int draws = Render(scene, resources, descriptors, layout, useSceneMaterials: useSceneMaterials);
+        var dependencies = new HashSet<SilkSceneGpuResources.TextureDependency>();
+        int draws = Render(scene, resources, descriptors, layout, dependencies, useSceneMaterials: useSceneMaterials);
         resources.ReportUnsupportedShadowCasters(_unsupportedCasters, ++_casterReportRevision);
         _renderedKey = key;
+        _renderedDependencies = [.. dependencies];
         RenderCount++;
         return draws;
     }
@@ -703,8 +721,10 @@ internal sealed class SilkShadowMapCache : IDisposable
         SilkShadowAtlasLayout? previousLayout = _layout;
         SilkShadowFrameBinding previousBinding = _binding;
         RenderKey? previousKey = _renderedKey;
+        SilkSceneGpuResources.TextureDependency[] previousDependencies = _renderedDependencies;
         ulong previousBindingRevision = _bindingRevision;
         ulong previousCasterRevision = _casterReportRevision;
+        ulong previousRenderCount = RenderCount;
         ISilkGraphicsSampler? previousSampler = _sampler;
         string[] previousUnsupported = [.. _unsupportedCasters];
         if (_spareAtlas is not null &&
@@ -714,6 +734,7 @@ internal sealed class SilkShadowMapCache : IDisposable
         }
         bool reused = _spareAtlas is not null;
         ISilkGraphicsTexture? candidate = null;
+        SilkSceneGpuResources.PreparedShadowTextures? textures = resources.PrepareShadowTextureUpdate();
         int draws;
         try
         {
@@ -725,12 +746,15 @@ internal sealed class SilkShadowMapCache : IDisposable
             _layout = layout;
             _binding = SilkShadowFrameBinding.Create(descriptors, layout);
             _unsupportedCasters.Clear();
+            var dependencies = new HashSet<SilkSceneGpuResources.TextureDependency>();
             draws = Render(
-                scene, resources, descriptors, layout, useSceneMaterials: useSceneMaterials);
+                scene, resources, descriptors, layout, dependencies, useSceneMaterials: useSceneMaterials);
             resources.ReportUnsupportedShadowCasters(_unsupportedCasters, ++_casterReportRevision);
             _renderedKey = key;
+            _renderedDependencies = [.. dependencies];
             _bindingRevision++;
             RenderCount++;
+            textures?.Commit();
         }
         catch (Exception failure)
         {
@@ -738,8 +762,10 @@ internal sealed class SilkShadowMapCache : IDisposable
             _layout = previousLayout;
             _binding = previousBinding;
             _renderedKey = previousKey;
+            _renderedDependencies = previousDependencies;
             _bindingRevision = previousBindingRevision;
             _casterReportRevision = previousCasterRevision;
+            RenderCount = previousRenderCount;
             _unsupportedCasters.Clear();
             _unsupportedCasters.AddRange(previousUnsupported);
             ISilkGraphicsSampler? pendingSampler = ReferenceEquals(_sampler, previousSampler) ? null : _sampler;
@@ -754,6 +780,7 @@ internal sealed class SilkShadowMapCache : IDisposable
                 DisposeResource(candidate, ref cleanupFailures);
             }
             DisposeResource(pendingSampler, ref cleanupFailures);
+            DisposeResource(textures, ref cleanupFailures);
             try
             {
                 SynchronizeGeneration(ReadDeviceGeneration());
@@ -770,6 +797,7 @@ internal sealed class SilkShadowMapCache : IDisposable
             }
             throw;
         }
+        textures?.Dispose();
         if (previous is not null && previous.Width == layout.Edge && previous.Height == layout.Edge)
         {
             _spareAtlas = previous;
@@ -870,6 +898,7 @@ internal sealed class SilkShadowMapCache : IDisposable
         SilkSceneGpuResources resources,
         IReadOnlyList<SilkShadowDescriptor> descriptors,
         SilkShadowAtlasLayout layout,
+        HashSet<SilkSceneGpuResources.TextureDependency> dependencies,
         ISilkGraphicsTexture? candidate = null,
         List<string>? unsupported = null,
         Func<SilkMeshGpuGeometryResource, IReadOnlyList<SilkShadowCaster>, ISilkGraphicsBuffer>? writeInstances = null,
@@ -890,40 +919,82 @@ internal sealed class SilkShadowMapCache : IDisposable
                 unsupported ?? _unsupportedCasters,
                 useSceneMaterials);
 
-            // Each slot is its own submission, because a caster's light-space
-            // transform is uploaded into the geometry's shadow instance buffer and
-            // a second slot would overwrite it before the first slot's draws ran.
-            // Four submissions is the whole ABI budget, and a frame that reuses its
-            // maps records none of them.
-            using ISilkGraphicsCommandList commands = _device.CreateCommandList();
-            var shadowCommands = commands as ISilkShadowGraphicsCommandList ??
-                throw new InvalidOperationException(
-                    "A raster-shadow-capable device must create shadow-capable command lists.");
-            if (slot == 0)
+            var groups = new Dictionary<string, List<SilkShadowCaster>>(StringComparer.Ordinal);
+            var order = new List<List<SilkShadowCaster>>();
+            foreach (SilkShadowCaster caster in casters)
             {
-                // One clear for the whole atlas, not one per tile: a tile whose
-                // light casts nothing must still read as fully lit rather than as
-                // whatever the previous frame left behind.
-                commands.ClearDepth(candidate ?? _atlas!, 1f);
+                string path = caster.MaskMaterial?.Path ?? string.Empty;
+                if (!groups.TryGetValue(path, out List<SilkShadowCaster>? group))
+                {
+                    group = [];
+                    groups.Add(path, group);
+                    order.Add(group);
+                }
+                group.Add(caster);
             }
-            shadowCommands.BeginShadowRendering(new SilkShadowRenderingDescriptor(candidate ?? _atlas!));
-            SilkShadowTilePlacement tile = layout.Tiles[slot];
-            commands.SetViewport(new SilkViewport(
-                tile.PixelX,
-                tile.PixelY,
-                tile.Resolution,
-                tile.Resolution,
-                0,
-                1));
-            commands.SetScissor(new SilkScissor(
-                (int)tile.PixelX,
-                (int)tile.PixelY,
-                tile.Resolution,
-                tile.Resolution));
-            draws += RecordCasters(commands, casters, resources, writeInstances);
-            commands.EndRendering();
-            using ISilkGraphicsSubmission submission = _device.Submit(commands);
-            submission.Wait();
+            if (order.Count == 0)
+            {
+                order.Add([]);
+            }
+
+            for (int groupIndex = 0; groupIndex < order.Count; groupIndex++)
+            {
+                List<SilkShadowCaster> group = order[groupIndex];
+                SilkMaterialData? material = group.Count == 0 ? null : group[0].MaskMaterial;
+                try
+                {
+                    if (material is not null)
+                    {
+                        resources.PrepareShadowOpacityTextures(material, dependencies);
+                    }
+                    using ISilkGraphicsCommandList commands = _device.CreateCommandList();
+                    var shadowCommands = commands as ISilkShadowGraphicsCommandList ??
+                        throw new InvalidOperationException(
+                            "A raster-shadow-capable device must create shadow-capable command lists.");
+                    if (slot == 0 && groupIndex == 0)
+                    {
+                        commands.ClearDepth(candidate ?? _atlas!, 1f);
+                    }
+                    shadowCommands.BeginShadowRendering(new SilkShadowRenderingDescriptor(candidate ?? _atlas!));
+                    SilkShadowTilePlacement tile = layout.Tiles[slot];
+                    commands.SetViewport(new SilkViewport(
+                        tile.PixelX,
+                        tile.PixelY,
+                        tile.Resolution,
+                        tile.Resolution,
+                        0,
+                        1));
+                    commands.SetScissor(new SilkScissor(
+                        (int)tile.PixelX,
+                        (int)tile.PixelY,
+                        tile.Resolution,
+                        tile.Resolution));
+                    draws += RecordCasters(commands, group, scene, resources, writeInstances);
+                    commands.EndRendering();
+                    using ISilkGraphicsSubmission submission = _device.Submit(commands);
+                    submission.Wait();
+                }
+                catch (Exception error)
+                {
+                    if (material is not null && resources.StreamsMaterialTextures)
+                    {
+                        try
+                        {
+                            resources.ReleaseStreamedTextureWorkingSet();
+                        }
+                        catch (Exception cleanup)
+                        {
+                            throw new AggregateException(
+                                "Shadow rendering and streamed texture cleanup failed.", error, cleanup);
+                        }
+                    }
+                    throw;
+                }
+                if (material is not null && resources.StreamsMaterialTextures)
+                {
+                    resources.ReleaseStreamedTextureWorkingSet();
+                }
+            }
         }
         return draws;
     }
@@ -931,6 +1002,7 @@ internal sealed class SilkShadowMapCache : IDisposable
     private int RecordCasters(
         ISilkGraphicsCommandList commands,
         List<SilkShadowCaster> casters,
+        SilkSceneState scene,
         SilkSceneGpuResources resources,
         Func<SilkMeshGpuGeometryResource, IReadOnlyList<SilkShadowCaster>, ISilkGraphicsBuffer>? writeInstances)
     {
@@ -952,11 +1024,13 @@ internal sealed class SilkShadowMapCache : IDisposable
         foreach (SilkMeshGpuGeometryResource geometry in order)
         {
             List<SilkShadowCaster> batch = batches[geometry];
-            SilkMeshGpuResource first = batch[0].Mesh;
+            SilkShadowCaster caster = batch[0];
+            SilkMeshGpuResource first = caster.Mesh;
             ISilkGraphicsPipeline pipeline = _pipelineCache.GetOrCreateShadowPipeline(
                 first.VertexLayout,
                 SilkTextureFormat.Rgba8Unorm,
-                SilkTextureFormat.D32Float);
+                SilkTextureFormat.D32Float,
+                masked: caster.MaskMaterial is not null);
             commands.SetGraphicsPipeline(pipeline);
             if (pipeline is ISilkGraphicsPipelineLease lease)
             {
@@ -973,6 +1047,17 @@ internal sealed class SilkShadowMapCache : IDisposable
                 writeInstances is null
                     ? geometry.RequireShadowInstanceBuffer(_device, batch) : writeInstances(geometry, batch);
             commands.SetStorageBuffer(0, 6, instances);
+            if (caster.MaskMaterial is { } material)
+            {
+                commands.SetStorageBuffer(
+                    0,
+                    SilkBindingLayoutDescriptor.SurfaceParametersBinding,
+                    resources.RequireSurfaceBuffer(
+                        scene,
+                        caster.Data ?? throw new InvalidOperationException("The masked caster has no mesh data."),
+                        RenderHeadlight.Deterministic));
+                resources.BindShadowOpacityTextures(commands, material);
+            }
             if (batch.Count == 1)
             {
                 commands.DrawIndexed(first.IndexCount);
@@ -1006,7 +1091,7 @@ internal sealed class SilkShadowMapCache : IDisposable
             }
 
             SilkShadowOpacityCoverage coverage = ClassifyOpacity(scene, data, useSceneMaterials);
-            if (coverage != SilkShadowOpacityCoverage.Solid)
+            if (coverage is SilkShadowOpacityCoverage.Invisible or SilkShadowOpacityCoverage.Unsupported)
             {
                 if (coverage == SilkShadowOpacityCoverage.Unsupported && !unsupportedCasters.Contains(data.Path))
                 {
@@ -1028,7 +1113,9 @@ internal sealed class SilkShadowMapCache : IDisposable
                 SilkShadowMatrix.CreateObjectToLightClip(
                     descriptor,
                     data.Transform.Span,
-                    flipClipSpaceY)));
+                    flipClipSpaceY),
+                coverage == SilkShadowOpacityCoverage.Masked ? scene.Materials[data.MaterialPath] : null,
+                data));
         }
     }
 
@@ -1036,7 +1123,8 @@ internal sealed class SilkShadowMapCache : IDisposable
         SilkSceneState scene, SilkMeshGpuResource resource, SilkMeshData mesh, int lightIndex,
         bool useSceneMaterials = true) =>
         IsPotentialCaster(scene, resource, mesh, lightIndex) &&
-        ClassifyOpacity(scene, mesh, useSceneMaterials) == SilkShadowOpacityCoverage.Solid;
+        ClassifyOpacity(scene, mesh, useSceneMaterials) is
+            SilkShadowOpacityCoverage.Solid or SilkShadowOpacityCoverage.Masked;
 
     private static bool IsPotentialCaster(
         SilkSceneState scene, SilkMeshGpuResource resource, SilkMeshData mesh, int lightIndex) =>
@@ -1044,7 +1132,7 @@ internal sealed class SilkShadowMapCache : IDisposable
         scene.LightLinks.Resolve(mesh.Path, mesh.InstanceIndex).CastsShadow(lightIndex);
 
     /// <summary>
-    /// Classifies constant PreviewSurface cutoffs separately from unsupported variable coverage.
+    /// Classifies PreviewSurface cutoffs separately from unsupported blended coverage.
     /// </summary>
     internal static SilkShadowOpacityCoverage ClassifyOpacity(
         SilkSceneState scene, SilkMeshData mesh, bool useSceneMaterials = true)
@@ -1067,7 +1155,9 @@ internal sealed class SilkShadowMapCache : IDisposable
             float constantThreshold = SilkSurfaceUniformWriter.GetOpacityThreshold(material);
             if (material.GetTexture(SilkMaterialParameter.Opacity) is not null)
             {
-                return SilkShadowOpacityCoverage.Unsupported;
+                return constantThreshold > 0
+                    ? SilkShadowOpacityCoverage.Masked
+                    : SilkShadowOpacityCoverage.Unsupported;
             }
             if (constantThreshold > 0)
             {
@@ -1138,6 +1228,7 @@ internal sealed class SilkShadowMapCache : IDisposable
         _atlas = null;
         _layout = null;
         _renderedKey = null;
+        _renderedDependencies = [];
         _binding = SilkShadowFrameBinding.None;
         _bindingRevision++;
         atlas?.Dispose();
@@ -1187,6 +1278,7 @@ internal sealed class SilkShadowMapCache : IDisposable
         ulong LinkRevision,
         ulong DeformationRevision,
         ulong DeviceGeneration,
+        ulong TextureRetryRevision,
         bool UseSceneMaterials,
         double DisplacementPadding);
 }

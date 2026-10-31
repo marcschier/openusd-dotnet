@@ -118,14 +118,15 @@ struct KernelContext_0
     uint index_0;
     FragmentFrameParameters_0 _S2;
     uint4 _S3;
+    float _S4;
     uint sampleIndex_0;
     float3 lightDirection_0;
     float3 lightTangent_0;
     float3 lightBitangent_0;
     float3 color_0;
     float3 sampleDirection_0;
-    bool _S4;
     bool _S5;
+    bool _S6;
     thread KernelContext_0 kernelContext_0;
     (&kernelContext_0)->surfaceParameters_0 = surfaceParameters_1;
     (&kernelContext_0)->frameParameters_0 = frameParameters_1;
@@ -166,15 +167,15 @@ struct KernelContext_0
     (&kernelContext_0)->environmentIrradiance_0 = environmentIrradiance_1;
     (&kernelContext_0)->environmentSampler_0 = environmentSampler_1;
     (&kernelContext_0)->environmentSpecular_0 = environmentSpecular_1;
-    SurfaceParameters_natural_0 device* _S6 = surfaceParameters_1+int(0);
+    SurfaceParameters_natural_0 device* _S7 = surfaceParameters_1+int(0);
     for(;;)
     {
         thread FragmentFrameParameters_0 frame_0;
-        uint _S7 = as_type<uint>((&kernelContext_0)->frameParameters_0[(64U)>>2]);
-        uint _S8 = as_type<uint>((&kernelContext_0)->frameParameters_0[(68U)>>2]);
-        uint _S9 = as_type<uint>((&kernelContext_0)->frameParameters_0[(72U)>>2]);
-        uint _S10 = as_type<uint>((&kernelContext_0)->frameParameters_0[(76U)>>2]);
-        (&frame_0)->clipPlaneCount_0 = uint4(_S7, _S8, _S9, _S10);
+        uint _S8 = as_type<uint>((&kernelContext_0)->frameParameters_0[(64U)>>2]);
+        uint _S9 = as_type<uint>((&kernelContext_0)->frameParameters_0[(68U)>>2]);
+        uint _S10 = as_type<uint>((&kernelContext_0)->frameParameters_0[(72U)>>2]);
+        uint _S11 = as_type<uint>((&kernelContext_0)->frameParameters_0[(76U)>>2]);
+        (&frame_0)->clipPlaneCount_0 = uint4(_S8, _S9, _S10, _S11);
         index_0 = 0U;
         for(;;)
         {
@@ -185,19 +186,19 @@ struct KernelContext_0
             {
                 break;
             }
-            uint _S11 = 80U + index_0 * 16U;
-            float _S12 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S11)>>2]);
-            float _S13 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S11 + 4U)>>2]);
-            float _S14 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S11 + 8U)>>2]);
-            float _S15 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S11 + 12U)>>2]);
-            (&frame_0)->clipPlanes_0[index_0] = float4(_S12, _S13, _S14, _S15);
+            uint _S12 = 80U + index_0 * 16U;
+            float _S13 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S12)>>2]);
+            float _S14 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S12 + 4U)>>2]);
+            float _S15 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S12 + 8U)>>2]);
+            float _S16 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S12 + 12U)>>2]);
+            (&frame_0)->clipPlanes_0[index_0] = float4(_S13, _S14, _S15, _S16);
             index_0 = index_0 + 1U;
         }
-        float _S16 = as_type<float>((&kernelContext_0)->frameParameters_0[(208U)>>2]);
-        float _S17 = as_type<float>((&kernelContext_0)->frameParameters_0[(212U)>>2]);
-        float _S18 = as_type<float>((&kernelContext_0)->frameParameters_0[(216U)>>2]);
-        float _S19 = as_type<float>((&kernelContext_0)->frameParameters_0[(220U)>>2]);
-        (&frame_0)->ambientLight_0 = float4(_S16, _S17, _S18, _S19);
+        float _S17 = as_type<float>((&kernelContext_0)->frameParameters_0[(208U)>>2]);
+        float _S18 = as_type<float>((&kernelContext_0)->frameParameters_0[(212U)>>2]);
+        float _S19 = as_type<float>((&kernelContext_0)->frameParameters_0[(216U)>>2]);
+        float _S20 = as_type<float>((&kernelContext_0)->frameParameters_0[(220U)>>2]);
+        (&frame_0)->ambientLight_0 = float4(_S17, _S18, _S19, _S20);
         (&(&frame_0)->lightPositionType_0)->byteOffset_0 = 224U;
         (&(&frame_0)->lightDirectionRadius_0)->byteOffset_0 = 2272U;
         (&(&frame_0)->lightColorIntensity_0)->byteOffset_0 = 4320U;
@@ -205,26 +206,26 @@ struct KernelContext_0
         (&(&frame_0)->lightTangentShapeX_0)->byteOffset_0 = 8416U;
         (&(&frame_0)->lightBitangentShapeY_0)->byteOffset_0 = 10464U;
         (&(&frame_0)->shadowSlots_0)->byteOffset_0 = 12960U;
-        float _S20 = as_type<float>((&kernelContext_0)->frameParameters_0[(12512U)>>2]);
-        float _S21 = as_type<float>((&kernelContext_0)->frameParameters_0[(12516U)>>2]);
-        float _S22 = as_type<float>((&kernelContext_0)->frameParameters_0[(12520U)>>2]);
-        float _S23 = as_type<float>((&kernelContext_0)->frameParameters_0[(12524U)>>2]);
-        float4 _S24 = float4(_S20, _S21, _S22, _S23);
-        float _S25 = as_type<float>((&kernelContext_0)->frameParameters_0[(12528U)>>2]);
-        float _S26 = as_type<float>((&kernelContext_0)->frameParameters_0[(12532U)>>2]);
-        float _S27 = as_type<float>((&kernelContext_0)->frameParameters_0[(12536U)>>2]);
-        float _S28 = as_type<float>((&kernelContext_0)->frameParameters_0[(12540U)>>2]);
-        float4 _S29 = float4(_S25, _S26, _S27, _S28);
-        float _S30 = as_type<float>((&kernelContext_0)->frameParameters_0[(12544U)>>2]);
-        float _S31 = as_type<float>((&kernelContext_0)->frameParameters_0[(12548U)>>2]);
-        float _S32 = as_type<float>((&kernelContext_0)->frameParameters_0[(12552U)>>2]);
-        float _S33 = as_type<float>((&kernelContext_0)->frameParameters_0[(12556U)>>2]);
-        float4 _S34 = float4(_S30, _S31, _S32, _S33);
-        float _S35 = as_type<float>((&kernelContext_0)->frameParameters_0[(12560U)>>2]);
-        float _S36 = as_type<float>((&kernelContext_0)->frameParameters_0[(12564U)>>2]);
-        float _S37 = as_type<float>((&kernelContext_0)->frameParameters_0[(12568U)>>2]);
-        float _S38 = as_type<float>((&kernelContext_0)->frameParameters_0[(12572U)>>2]);
-        (&frame_0)->eyeToWorld_0 = matrix<float,int(4),int(4)> (_S24, _S29, _S34, float4(_S35, _S36, _S37, _S38));
+        float _S21 = as_type<float>((&kernelContext_0)->frameParameters_0[(12512U)>>2]);
+        float _S22 = as_type<float>((&kernelContext_0)->frameParameters_0[(12516U)>>2]);
+        float _S23 = as_type<float>((&kernelContext_0)->frameParameters_0[(12520U)>>2]);
+        float _S24 = as_type<float>((&kernelContext_0)->frameParameters_0[(12524U)>>2]);
+        float4 _S25 = float4(_S21, _S22, _S23, _S24);
+        float _S26 = as_type<float>((&kernelContext_0)->frameParameters_0[(12528U)>>2]);
+        float _S27 = as_type<float>((&kernelContext_0)->frameParameters_0[(12532U)>>2]);
+        float _S28 = as_type<float>((&kernelContext_0)->frameParameters_0[(12536U)>>2]);
+        float _S29 = as_type<float>((&kernelContext_0)->frameParameters_0[(12540U)>>2]);
+        float4 _S30 = float4(_S26, _S27, _S28, _S29);
+        float _S31 = as_type<float>((&kernelContext_0)->frameParameters_0[(12544U)>>2]);
+        float _S32 = as_type<float>((&kernelContext_0)->frameParameters_0[(12548U)>>2]);
+        float _S33 = as_type<float>((&kernelContext_0)->frameParameters_0[(12552U)>>2]);
+        float _S34 = as_type<float>((&kernelContext_0)->frameParameters_0[(12556U)>>2]);
+        float4 _S35 = float4(_S31, _S32, _S33, _S34);
+        float _S36 = as_type<float>((&kernelContext_0)->frameParameters_0[(12560U)>>2]);
+        float _S37 = as_type<float>((&kernelContext_0)->frameParameters_0[(12564U)>>2]);
+        float _S38 = as_type<float>((&kernelContext_0)->frameParameters_0[(12568U)>>2]);
+        float _S39 = as_type<float>((&kernelContext_0)->frameParameters_0[(12572U)>>2]);
+        (&frame_0)->eyeToWorld_0 = matrix<float,int(4),int(4)> (_S25, _S30, _S35, float4(_S36, _S37, _S38, _S39));
         index_0 = 0U;
         for(;;)
         {
@@ -235,159 +236,159 @@ struct KernelContext_0
             {
                 break;
             }
-            uint _S39 = 12576U + index_0 * 64U;
-            float _S40 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39)>>2]);
-            float _S41 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 4U)>>2]);
-            float _S42 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 8U)>>2]);
-            float _S43 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 12U)>>2]);
-            float4 _S44 = float4(_S40, _S41, _S42, _S43);
-            float _S45 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 16U)>>2]);
-            float _S46 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 20U)>>2]);
-            float _S47 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 24U)>>2]);
-            float _S48 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 28U)>>2]);
-            float4 _S49 = float4(_S45, _S46, _S47, _S48);
-            float _S50 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 32U)>>2]);
-            float _S51 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 36U)>>2]);
-            float _S52 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 40U)>>2]);
-            float _S53 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 44U)>>2]);
-            float4 _S54 = float4(_S50, _S51, _S52, _S53);
-            float _S55 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 48U)>>2]);
-            float _S56 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 52U)>>2]);
-            float _S57 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 56U)>>2]);
-            float _S58 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S39 + 60U)>>2]);
-            (&frame_0)->shadowWorldToLightClip_0[index_0] = matrix<float,int(4),int(4)> (_S44, _S49, _S54, float4(_S55, _S56, _S57, _S58));
-            uint _S59 = index_0 * 16U;
-            uint _S60 = 12832U + _S59;
-            float _S61 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S60)>>2]);
-            float _S62 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S60 + 4U)>>2]);
-            float _S63 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S60 + 8U)>>2]);
-            float _S64 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S60 + 12U)>>2]);
-            (&frame_0)->shadowTile_0[index_0] = float4(_S61, _S62, _S63, _S64);
-            uint _S65 = 12896U + _S59;
-            float _S66 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S65)>>2]);
-            float _S67 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S65 + 4U)>>2]);
-            float _S68 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S65 + 8U)>>2]);
-            float _S69 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S65 + 12U)>>2]);
-            (&frame_0)->shadowControls_0[index_0] = float4(_S66, _S67, _S68, _S69);
+            uint _S40 = 12576U + index_0 * 64U;
+            float _S41 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40)>>2]);
+            float _S42 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 4U)>>2]);
+            float _S43 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 8U)>>2]);
+            float _S44 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 12U)>>2]);
+            float4 _S45 = float4(_S41, _S42, _S43, _S44);
+            float _S46 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 16U)>>2]);
+            float _S47 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 20U)>>2]);
+            float _S48 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 24U)>>2]);
+            float _S49 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 28U)>>2]);
+            float4 _S50 = float4(_S46, _S47, _S48, _S49);
+            float _S51 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 32U)>>2]);
+            float _S52 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 36U)>>2]);
+            float _S53 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 40U)>>2]);
+            float _S54 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 44U)>>2]);
+            float4 _S55 = float4(_S51, _S52, _S53, _S54);
+            float _S56 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 48U)>>2]);
+            float _S57 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 52U)>>2]);
+            float _S58 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 56U)>>2]);
+            float _S59 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S40 + 60U)>>2]);
+            (&frame_0)->shadowWorldToLightClip_0[index_0] = matrix<float,int(4),int(4)> (_S45, _S50, _S55, float4(_S56, _S57, _S58, _S59));
+            uint _S60 = index_0 * 16U;
+            uint _S61 = 12832U + _S60;
+            float _S62 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S61)>>2]);
+            float _S63 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S61 + 4U)>>2]);
+            float _S64 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S61 + 8U)>>2]);
+            float _S65 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S61 + 12U)>>2]);
+            (&frame_0)->shadowTile_0[index_0] = float4(_S62, _S63, _S64, _S65);
+            uint _S66 = 12896U + _S60;
+            float _S67 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S66)>>2]);
+            float _S68 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S66 + 4U)>>2]);
+            float _S69 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S66 + 8U)>>2]);
+            float _S70 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S66 + 12U)>>2]);
+            (&frame_0)->shadowControls_0[index_0] = float4(_S67, _S68, _S69, _S70);
             index_0 = index_0 + 1U;
         }
-        float _S70 = as_type<float>((&kernelContext_0)->frameParameters_0[(15008U)>>2]);
-        float _S71 = as_type<float>((&kernelContext_0)->frameParameters_0[(15012U)>>2]);
-        float _S72 = as_type<float>((&kernelContext_0)->frameParameters_0[(15016U)>>2]);
-        float _S73 = as_type<float>((&kernelContext_0)->frameParameters_0[(15020U)>>2]);
-        (&frame_0)->environmentControls_0 = float4(_S70, _S71, _S72, _S73);
-        float _S74 = as_type<float>((&kernelContext_0)->frameParameters_0[(15024U)>>2]);
-        float _S75 = as_type<float>((&kernelContext_0)->frameParameters_0[(15028U)>>2]);
-        float _S76 = as_type<float>((&kernelContext_0)->frameParameters_0[(15032U)>>2]);
-        float _S77 = as_type<float>((&kernelContext_0)->frameParameters_0[(15036U)>>2]);
-        (&frame_0)->domeControls_0 = float4(_S74, _S75, _S76, _S77);
-        float _S78 = as_type<float>((&kernelContext_0)->frameParameters_0[(15040U)>>2]);
-        float _S79 = as_type<float>((&kernelContext_0)->frameParameters_0[(15044U)>>2]);
-        float _S80 = as_type<float>((&kernelContext_0)->frameParameters_0[(15048U)>>2]);
-        float _S81 = as_type<float>((&kernelContext_0)->frameParameters_0[(15052U)>>2]);
-        float4 _S82 = float4(_S78, _S79, _S80, _S81);
-        float _S83 = as_type<float>((&kernelContext_0)->frameParameters_0[(15056U)>>2]);
-        float _S84 = as_type<float>((&kernelContext_0)->frameParameters_0[(15060U)>>2]);
-        float _S85 = as_type<float>((&kernelContext_0)->frameParameters_0[(15064U)>>2]);
-        float _S86 = as_type<float>((&kernelContext_0)->frameParameters_0[(15068U)>>2]);
-        float4 _S87 = float4(_S83, _S84, _S85, _S86);
-        float _S88 = as_type<float>((&kernelContext_0)->frameParameters_0[(15072U)>>2]);
-        float _S89 = as_type<float>((&kernelContext_0)->frameParameters_0[(15076U)>>2]);
-        float _S90 = as_type<float>((&kernelContext_0)->frameParameters_0[(15080U)>>2]);
-        float _S91 = as_type<float>((&kernelContext_0)->frameParameters_0[(15084U)>>2]);
-        float4 _S92 = float4(_S88, _S89, _S90, _S91);
-        float _S93 = as_type<float>((&kernelContext_0)->frameParameters_0[(15088U)>>2]);
-        float _S94 = as_type<float>((&kernelContext_0)->frameParameters_0[(15092U)>>2]);
-        float _S95 = as_type<float>((&kernelContext_0)->frameParameters_0[(15096U)>>2]);
-        float _S96 = as_type<float>((&kernelContext_0)->frameParameters_0[(15100U)>>2]);
-        float4 _S97 = float4(_S93, _S94, _S95, _S96);
-        float _S98 = as_type<float>((&kernelContext_0)->frameParameters_0[(15104U)>>2]);
-        float _S99 = as_type<float>((&kernelContext_0)->frameParameters_0[(15108U)>>2]);
-        float _S100 = as_type<float>((&kernelContext_0)->frameParameters_0[(15112U)>>2]);
-        float _S101 = as_type<float>((&kernelContext_0)->frameParameters_0[(15116U)>>2]);
-        float4 _S102 = float4(_S98, _S99, _S100, _S101);
-        float _S103 = as_type<float>((&kernelContext_0)->frameParameters_0[(15120U)>>2]);
-        float _S104 = as_type<float>((&kernelContext_0)->frameParameters_0[(15124U)>>2]);
-        float _S105 = as_type<float>((&kernelContext_0)->frameParameters_0[(15128U)>>2]);
-        float _S106 = as_type<float>((&kernelContext_0)->frameParameters_0[(15132U)>>2]);
-        float4 _S107 = float4(_S103, _S104, _S105, _S106);
-        float _S108 = as_type<float>((&kernelContext_0)->frameParameters_0[(15136U)>>2]);
-        float _S109 = as_type<float>((&kernelContext_0)->frameParameters_0[(15140U)>>2]);
-        float _S110 = as_type<float>((&kernelContext_0)->frameParameters_0[(15144U)>>2]);
-        float _S111 = as_type<float>((&kernelContext_0)->frameParameters_0[(15148U)>>2]);
-        float4 _S112 = float4(_S108, _S109, _S110, _S111);
-        float _S113 = as_type<float>((&kernelContext_0)->frameParameters_0[(15152U)>>2]);
-        float _S114 = as_type<float>((&kernelContext_0)->frameParameters_0[(15156U)>>2]);
-        float _S115 = as_type<float>((&kernelContext_0)->frameParameters_0[(15160U)>>2]);
-        float _S116 = as_type<float>((&kernelContext_0)->frameParameters_0[(15164U)>>2]);
-        float4 _S117 = float4(_S113, _S114, _S115, _S116);
-        float _S118 = as_type<float>((&kernelContext_0)->frameParameters_0[(15168U)>>2]);
-        float _S119 = as_type<float>((&kernelContext_0)->frameParameters_0[(15172U)>>2]);
-        float _S120 = as_type<float>((&kernelContext_0)->frameParameters_0[(15176U)>>2]);
-        float _S121 = as_type<float>((&kernelContext_0)->frameParameters_0[(15180U)>>2]);
-        float4 _S122 = float4(_S118, _S119, _S120, _S121);
-        float _S123 = as_type<float>((&kernelContext_0)->frameParameters_0[(15184U)>>2]);
-        float _S124 = as_type<float>((&kernelContext_0)->frameParameters_0[(15188U)>>2]);
-        float _S125 = as_type<float>((&kernelContext_0)->frameParameters_0[(15192U)>>2]);
-        float _S126 = as_type<float>((&kernelContext_0)->frameParameters_0[(15196U)>>2]);
-        float4 _S127 = float4(_S123, _S124, _S125, _S126);
-        float _S128 = as_type<float>((&kernelContext_0)->frameParameters_0[(15200U)>>2]);
-        float _S129 = as_type<float>((&kernelContext_0)->frameParameters_0[(15204U)>>2]);
-        float _S130 = as_type<float>((&kernelContext_0)->frameParameters_0[(15208U)>>2]);
-        float _S131 = as_type<float>((&kernelContext_0)->frameParameters_0[(15212U)>>2]);
-        float4 _S132 = float4(_S128, _S129, _S130, _S131);
-        float _S133 = as_type<float>((&kernelContext_0)->frameParameters_0[(15216U)>>2]);
-        float _S134 = as_type<float>((&kernelContext_0)->frameParameters_0[(15220U)>>2]);
-        float _S135 = as_type<float>((&kernelContext_0)->frameParameters_0[(15224U)>>2]);
-        float _S136 = as_type<float>((&kernelContext_0)->frameParameters_0[(15228U)>>2]);
-        float4 _S137 = float4(_S133, _S134, _S135, _S136);
-        float _S138 = as_type<float>((&kernelContext_0)->frameParameters_0[(15232U)>>2]);
-        float _S139 = as_type<float>((&kernelContext_0)->frameParameters_0[(15236U)>>2]);
-        float _S140 = as_type<float>((&kernelContext_0)->frameParameters_0[(15240U)>>2]);
-        float _S141 = as_type<float>((&kernelContext_0)->frameParameters_0[(15244U)>>2]);
-        float4 _S142 = float4(_S138, _S139, _S140, _S141);
-        float _S143 = as_type<float>((&kernelContext_0)->frameParameters_0[(15248U)>>2]);
-        float _S144 = as_type<float>((&kernelContext_0)->frameParameters_0[(15252U)>>2]);
-        float _S145 = as_type<float>((&kernelContext_0)->frameParameters_0[(15256U)>>2]);
-        float _S146 = as_type<float>((&kernelContext_0)->frameParameters_0[(15260U)>>2]);
-        float4 _S147 = float4(_S143, _S144, _S145, _S146);
-        float _S148 = as_type<float>((&kernelContext_0)->frameParameters_0[(15264U)>>2]);
-        float _S149 = as_type<float>((&kernelContext_0)->frameParameters_0[(15268U)>>2]);
-        float _S150 = as_type<float>((&kernelContext_0)->frameParameters_0[(15272U)>>2]);
-        float _S151 = as_type<float>((&kernelContext_0)->frameParameters_0[(15276U)>>2]);
-        float4 _S152 = float4(_S148, _S149, _S150, _S151);
-        float _S153 = as_type<float>((&kernelContext_0)->frameParameters_0[(15280U)>>2]);
-        float _S154 = as_type<float>((&kernelContext_0)->frameParameters_0[(15284U)>>2]);
-        float _S155 = as_type<float>((&kernelContext_0)->frameParameters_0[(15288U)>>2]);
-        float _S156 = as_type<float>((&kernelContext_0)->frameParameters_0[(15292U)>>2]);
-        float4 _S157 = float4(_S153, _S154, _S155, _S156);
-        (&frame_0)->domeAmbient_0[int(0)] = _S82;
-        (&frame_0)->domeAmbient_0[int(1)] = _S87;
-        (&frame_0)->domeAmbient_0[int(2)] = _S92;
-        (&frame_0)->domeAmbient_0[int(3)] = _S97;
-        (&frame_0)->domeAmbient_0[int(4)] = _S102;
-        (&frame_0)->domeAmbient_0[int(5)] = _S107;
-        (&frame_0)->domeAmbient_0[int(6)] = _S112;
-        (&frame_0)->domeAmbient_0[int(7)] = _S117;
-        (&frame_0)->domeEnvironment_0[int(0)] = _S122;
-        (&frame_0)->domeEnvironment_0[int(1)] = _S127;
-        (&frame_0)->domeEnvironment_0[int(2)] = _S132;
-        (&frame_0)->domeEnvironment_0[int(3)] = _S137;
-        (&frame_0)->domeEnvironment_0[int(4)] = _S142;
-        (&frame_0)->domeEnvironment_0[int(5)] = _S147;
-        (&frame_0)->domeEnvironment_0[int(6)] = _S152;
-        (&frame_0)->domeEnvironment_0[int(7)] = _S157;
+        float _S71 = as_type<float>((&kernelContext_0)->frameParameters_0[(15008U)>>2]);
+        float _S72 = as_type<float>((&kernelContext_0)->frameParameters_0[(15012U)>>2]);
+        float _S73 = as_type<float>((&kernelContext_0)->frameParameters_0[(15016U)>>2]);
+        float _S74 = as_type<float>((&kernelContext_0)->frameParameters_0[(15020U)>>2]);
+        (&frame_0)->environmentControls_0 = float4(_S71, _S72, _S73, _S74);
+        float _S75 = as_type<float>((&kernelContext_0)->frameParameters_0[(15024U)>>2]);
+        float _S76 = as_type<float>((&kernelContext_0)->frameParameters_0[(15028U)>>2]);
+        float _S77 = as_type<float>((&kernelContext_0)->frameParameters_0[(15032U)>>2]);
+        float _S78 = as_type<float>((&kernelContext_0)->frameParameters_0[(15036U)>>2]);
+        (&frame_0)->domeControls_0 = float4(_S75, _S76, _S77, _S78);
+        float _S79 = as_type<float>((&kernelContext_0)->frameParameters_0[(15040U)>>2]);
+        float _S80 = as_type<float>((&kernelContext_0)->frameParameters_0[(15044U)>>2]);
+        float _S81 = as_type<float>((&kernelContext_0)->frameParameters_0[(15048U)>>2]);
+        float _S82 = as_type<float>((&kernelContext_0)->frameParameters_0[(15052U)>>2]);
+        float4 _S83 = float4(_S79, _S80, _S81, _S82);
+        float _S84 = as_type<float>((&kernelContext_0)->frameParameters_0[(15056U)>>2]);
+        float _S85 = as_type<float>((&kernelContext_0)->frameParameters_0[(15060U)>>2]);
+        float _S86 = as_type<float>((&kernelContext_0)->frameParameters_0[(15064U)>>2]);
+        float _S87 = as_type<float>((&kernelContext_0)->frameParameters_0[(15068U)>>2]);
+        float4 _S88 = float4(_S84, _S85, _S86, _S87);
+        float _S89 = as_type<float>((&kernelContext_0)->frameParameters_0[(15072U)>>2]);
+        float _S90 = as_type<float>((&kernelContext_0)->frameParameters_0[(15076U)>>2]);
+        float _S91 = as_type<float>((&kernelContext_0)->frameParameters_0[(15080U)>>2]);
+        float _S92 = as_type<float>((&kernelContext_0)->frameParameters_0[(15084U)>>2]);
+        float4 _S93 = float4(_S89, _S90, _S91, _S92);
+        float _S94 = as_type<float>((&kernelContext_0)->frameParameters_0[(15088U)>>2]);
+        float _S95 = as_type<float>((&kernelContext_0)->frameParameters_0[(15092U)>>2]);
+        float _S96 = as_type<float>((&kernelContext_0)->frameParameters_0[(15096U)>>2]);
+        float _S97 = as_type<float>((&kernelContext_0)->frameParameters_0[(15100U)>>2]);
+        float4 _S98 = float4(_S94, _S95, _S96, _S97);
+        float _S99 = as_type<float>((&kernelContext_0)->frameParameters_0[(15104U)>>2]);
+        float _S100 = as_type<float>((&kernelContext_0)->frameParameters_0[(15108U)>>2]);
+        float _S101 = as_type<float>((&kernelContext_0)->frameParameters_0[(15112U)>>2]);
+        float _S102 = as_type<float>((&kernelContext_0)->frameParameters_0[(15116U)>>2]);
+        float4 _S103 = float4(_S99, _S100, _S101, _S102);
+        float _S104 = as_type<float>((&kernelContext_0)->frameParameters_0[(15120U)>>2]);
+        float _S105 = as_type<float>((&kernelContext_0)->frameParameters_0[(15124U)>>2]);
+        float _S106 = as_type<float>((&kernelContext_0)->frameParameters_0[(15128U)>>2]);
+        float _S107 = as_type<float>((&kernelContext_0)->frameParameters_0[(15132U)>>2]);
+        float4 _S108 = float4(_S104, _S105, _S106, _S107);
+        float _S109 = as_type<float>((&kernelContext_0)->frameParameters_0[(15136U)>>2]);
+        float _S110 = as_type<float>((&kernelContext_0)->frameParameters_0[(15140U)>>2]);
+        float _S111 = as_type<float>((&kernelContext_0)->frameParameters_0[(15144U)>>2]);
+        float _S112 = as_type<float>((&kernelContext_0)->frameParameters_0[(15148U)>>2]);
+        float4 _S113 = float4(_S109, _S110, _S111, _S112);
+        float _S114 = as_type<float>((&kernelContext_0)->frameParameters_0[(15152U)>>2]);
+        float _S115 = as_type<float>((&kernelContext_0)->frameParameters_0[(15156U)>>2]);
+        float _S116 = as_type<float>((&kernelContext_0)->frameParameters_0[(15160U)>>2]);
+        float _S117 = as_type<float>((&kernelContext_0)->frameParameters_0[(15164U)>>2]);
+        float4 _S118 = float4(_S114, _S115, _S116, _S117);
+        float _S119 = as_type<float>((&kernelContext_0)->frameParameters_0[(15168U)>>2]);
+        float _S120 = as_type<float>((&kernelContext_0)->frameParameters_0[(15172U)>>2]);
+        float _S121 = as_type<float>((&kernelContext_0)->frameParameters_0[(15176U)>>2]);
+        float _S122 = as_type<float>((&kernelContext_0)->frameParameters_0[(15180U)>>2]);
+        float4 _S123 = float4(_S119, _S120, _S121, _S122);
+        float _S124 = as_type<float>((&kernelContext_0)->frameParameters_0[(15184U)>>2]);
+        float _S125 = as_type<float>((&kernelContext_0)->frameParameters_0[(15188U)>>2]);
+        float _S126 = as_type<float>((&kernelContext_0)->frameParameters_0[(15192U)>>2]);
+        float _S127 = as_type<float>((&kernelContext_0)->frameParameters_0[(15196U)>>2]);
+        float4 _S128 = float4(_S124, _S125, _S126, _S127);
+        float _S129 = as_type<float>((&kernelContext_0)->frameParameters_0[(15200U)>>2]);
+        float _S130 = as_type<float>((&kernelContext_0)->frameParameters_0[(15204U)>>2]);
+        float _S131 = as_type<float>((&kernelContext_0)->frameParameters_0[(15208U)>>2]);
+        float _S132 = as_type<float>((&kernelContext_0)->frameParameters_0[(15212U)>>2]);
+        float4 _S133 = float4(_S129, _S130, _S131, _S132);
+        float _S134 = as_type<float>((&kernelContext_0)->frameParameters_0[(15216U)>>2]);
+        float _S135 = as_type<float>((&kernelContext_0)->frameParameters_0[(15220U)>>2]);
+        float _S136 = as_type<float>((&kernelContext_0)->frameParameters_0[(15224U)>>2]);
+        float _S137 = as_type<float>((&kernelContext_0)->frameParameters_0[(15228U)>>2]);
+        float4 _S138 = float4(_S134, _S135, _S136, _S137);
+        float _S139 = as_type<float>((&kernelContext_0)->frameParameters_0[(15232U)>>2]);
+        float _S140 = as_type<float>((&kernelContext_0)->frameParameters_0[(15236U)>>2]);
+        float _S141 = as_type<float>((&kernelContext_0)->frameParameters_0[(15240U)>>2]);
+        float _S142 = as_type<float>((&kernelContext_0)->frameParameters_0[(15244U)>>2]);
+        float4 _S143 = float4(_S139, _S140, _S141, _S142);
+        float _S144 = as_type<float>((&kernelContext_0)->frameParameters_0[(15248U)>>2]);
+        float _S145 = as_type<float>((&kernelContext_0)->frameParameters_0[(15252U)>>2]);
+        float _S146 = as_type<float>((&kernelContext_0)->frameParameters_0[(15256U)>>2]);
+        float _S147 = as_type<float>((&kernelContext_0)->frameParameters_0[(15260U)>>2]);
+        float4 _S148 = float4(_S144, _S145, _S146, _S147);
+        float _S149 = as_type<float>((&kernelContext_0)->frameParameters_0[(15264U)>>2]);
+        float _S150 = as_type<float>((&kernelContext_0)->frameParameters_0[(15268U)>>2]);
+        float _S151 = as_type<float>((&kernelContext_0)->frameParameters_0[(15272U)>>2]);
+        float _S152 = as_type<float>((&kernelContext_0)->frameParameters_0[(15276U)>>2]);
+        float4 _S153 = float4(_S149, _S150, _S151, _S152);
+        float _S154 = as_type<float>((&kernelContext_0)->frameParameters_0[(15280U)>>2]);
+        float _S155 = as_type<float>((&kernelContext_0)->frameParameters_0[(15284U)>>2]);
+        float _S156 = as_type<float>((&kernelContext_0)->frameParameters_0[(15288U)>>2]);
+        float _S157 = as_type<float>((&kernelContext_0)->frameParameters_0[(15292U)>>2]);
+        float4 _S158 = float4(_S154, _S155, _S156, _S157);
+        (&frame_0)->domeAmbient_0[int(0)] = _S83;
+        (&frame_0)->domeAmbient_0[int(1)] = _S88;
+        (&frame_0)->domeAmbient_0[int(2)] = _S93;
+        (&frame_0)->domeAmbient_0[int(3)] = _S98;
+        (&frame_0)->domeAmbient_0[int(4)] = _S103;
+        (&frame_0)->domeAmbient_0[int(5)] = _S108;
+        (&frame_0)->domeAmbient_0[int(6)] = _S113;
+        (&frame_0)->domeAmbient_0[int(7)] = _S118;
+        (&frame_0)->domeEnvironment_0[int(0)] = _S123;
+        (&frame_0)->domeEnvironment_0[int(1)] = _S128;
+        (&frame_0)->domeEnvironment_0[int(2)] = _S133;
+        (&frame_0)->domeEnvironment_0[int(3)] = _S138;
+        (&frame_0)->domeEnvironment_0[int(4)] = _S143;
+        (&frame_0)->domeEnvironment_0[int(5)] = _S148;
+        (&frame_0)->domeEnvironment_0[int(6)] = _S153;
+        (&frame_0)->domeEnvironment_0[int(7)] = _S158;
         _S2 = frame_0;
         break;
     }
     for(;;)
     {
         _S3 = _S2.clipPlaneCount_0;
-        uint _S158 = min(_S2.clipPlaneCount_0.x, 8U);
+        uint _S159 = min(_S2.clipPlaneCount_0.x, 8U);
         index_0 = 0U;
         for(;;)
         {
-            if(index_0 < _S158)
+            if(index_0 < _S159)
             {
             }
             else
@@ -402,14 +403,14 @@ struct KernelContext_0
         }
         break;
     }
-    float4 _S159 = float4(_S6->clearcoatShaded_0) ;
-    float shadedMode_0 = _S159.z;
+    float4 _S160 = float4(_S7->clearcoatShaded_0) ;
+    float shadedMode_0 = _S160.z;
     bool shaded_0 = shadedMode_0 >= 0.5f;
     bool unlit_0 = shadedMode_0 >= 1.5f;
     float3 diffuseColor_0;
     if(shaded_0)
     {
-        diffuseColor_0 = (float4(_S6->diffuseOpacity_0) ).xyz;
+        diffuseColor_0 = (float4(_S7->diffuseOpacity_0) ).xyz;
     }
     else
     {
@@ -418,15 +419,15 @@ struct KernelContext_0
     float opacity_0;
     if(shaded_0)
     {
-        opacity_0 = (float4(_S6->diffuseOpacity_0) ).w;
+        opacity_0 = (float4(_S7->diffuseOpacity_0) ).w;
     }
     else
     {
         opacity_0 = _S1.tint_0.w;
     }
-    float4 _S160 = float4(_S6->emissiveOcclusion_0) ;
-    float3 emissiveColor_0 = _S160.xyz;
-    float _S161 = _S160.w;
+    float4 _S161 = float4(_S7->emissiveOcclusion_0) ;
+    float3 emissiveColor_0 = _S161.xyz;
+    float _S162 = _S161.w;
     float3 unlitColor_0;
     if(unlit_0)
     {
@@ -439,53 +440,53 @@ struct KernelContext_0
         {
             unlitColor_0 = unlitColor_1;
         }
-        pixelOutput_0 _S162 = { float4(unlitColor_0, opacity_0) };
-        return _S162;
+        pixelOutput_0 _S163 = { float4(unlitColor_0, opacity_0) };
+        return _S163;
     }
-    float4 _S163 = float4(_S6->reserved_0) ;
-    if((_S163.x) >= 0.5f)
+    float4 _S164 = float4(_S7->reserved_0) ;
+    if((_S164.x) >= 0.5f)
     {
-        pixelOutput_0 _S164 = { float4(diffuseColor_0 * float3((1.0f - exp(- max(0.0f, _S163.y) * max(0.0f, _S163.z)))) , 1.0f) };
-        return _S164;
+        pixelOutput_0 _S165 = { float4(diffuseColor_0 * float3((1.0f - exp(- max(0.0f, _S164.y) * max(0.0f, _S164.z)))) , 1.0f) };
+        return _S165;
     }
-    float4 _S165 = float4(_S6->metallicRoughnessThresholdWorkflow_0) ;
-    float _S166 = saturate(_S165.x);
-    float _S167 = clamp(_S165.y, 0.00999999977648258f, 1.0f);
-    float4 _S168 = float4(_S6->specularIor_0) ;
-    float3 _S169 = _S168.xyz;
-    float _S170 = _S168.w;
-    float _S171 = _S159.x;
-    float _S172 = _S159.y;
-    float4 _S173 = float4(_S6->textureControls_0) ;
-    uint textureMask_0 = uint(round(_S173.x));
-    uint udimMask_0 = uint(round(_S173.y));
-    float4 _S174 = float4(_S6->uvTransformRow1_0) ;
-    uint secondaryMask_0 = uint(round(_S174.w));
-    float4 _S175 = float4(_S6->domeLinkControls_0) ;
-    uint alternateMask_0 = uint(round(_S175.w));
-    float4 _S176 = float4(_S6->uvTransformRow0_0) ;
-    float2 _S177 = _S176.xy;
-    float _S178 = _S176.z;
-    float2 _S179 = _S174.xy;
-    float _S180 = _S174.z;
-    float2 _S181 = float2(dot(_S177, _S1.texCoord_0) + _S178, dot(_S179, _S1.texCoord_0) + _S180);
-    float2 _S182 = float2(dot(_S177, _S1.texCoord1_0) + _S178, dot(_S179, _S1.texCoord1_0) + _S180);
-    float4 _S183 = float4(_S6->alternateUvTransformRow0_0) ;
-    float4 _S184 = float4(_S6->alternateUvTransformRow1_0) ;
-    float2 _S185 = _S183.xy;
-    float _S186 = _S183.z;
-    float2 _S187 = _S184.xy;
-    float _S188 = _S184.z;
-    float2 _S189 = float2(dot(_S185, _S1.texCoord_0) + _S186, dot(_S187, _S1.texCoord_0) + _S188);
-    float2 _S190 = float2(dot(_S185, _S1.texCoord1_0) + _S186, dot(_S187, _S1.texCoord1_0) + _S188);
+    float4 _S166 = float4(_S7->metallicRoughnessThresholdWorkflow_0) ;
+    float _S167 = saturate(_S166.x);
+    float _S168 = clamp(_S166.y, 0.00999999977648258f, 1.0f);
+    float4 _S169 = float4(_S7->specularIor_0) ;
+    float3 _S170 = _S169.xyz;
+    float _S171 = _S169.w;
+    float _S172 = _S160.x;
+    float _S173 = _S160.y;
+    float4 _S174 = float4(_S7->textureControls_0) ;
+    uint textureMask_0 = uint(round(_S174.x));
+    uint udimMask_0 = uint(round(_S174.y));
+    float4 _S175 = float4(_S7->uvTransformRow1_0) ;
+    uint secondaryMask_0 = uint(round(_S175.w));
+    float4 _S176 = float4(_S7->domeLinkControls_0) ;
+    uint alternateMask_0 = uint(round(_S176.w));
+    float4 _S177 = float4(_S7->uvTransformRow0_0) ;
+    float2 _S178 = _S177.xy;
+    float _S179 = _S177.z;
+    float2 _S180 = _S175.xy;
+    float _S181 = _S175.z;
+    float2 _S182 = float2(dot(_S178, _S1.texCoord_0) + _S179, dot(_S180, _S1.texCoord_0) + _S181);
+    float2 _S183 = float2(dot(_S178, _S1.texCoord1_0) + _S179, dot(_S180, _S1.texCoord1_0) + _S181);
+    float4 _S184 = float4(_S7->alternateUvTransformRow0_0) ;
+    float4 _S185 = float4(_S7->alternateUvTransformRow1_0) ;
+    float2 _S186 = _S184.xy;
+    float _S187 = _S184.z;
+    float2 _S188 = _S185.xy;
+    float _S189 = _S185.z;
+    float2 _S190 = float2(dot(_S186, _S1.texCoord_0) + _S187, dot(_S188, _S1.texCoord_0) + _S189);
+    float2 _S191 = float2(dot(_S186, _S1.texCoord1_0) + _S187, dot(_S188, _S1.texCoord1_0) + _S189);
     uint lightCount_0;
     float roughness_0;
     float metallic_0;
     float2 detailSource_0;
     float2 tangent_1;
     bool hasSceneLighting_0;
-    float4 _S191;
-    uint3 _S192;
+    float4 _S192;
+    uint3 _S193;
     if((textureMask_0 & 2U) != 0U)
     {
         bool useSecondary_0 = (secondaryMask_0 & 2U) != 0U;
@@ -493,30 +494,30 @@ struct KernelContext_0
         {
             if(useSecondary_0)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_0)
             {
-                detailSource_0 = _S182;
+                detailSource_0 = _S183;
             }
             else
             {
-                detailSource_0 = _S181;
+                detailSource_0 = _S182;
             }
         }
         thread float4 diffuseSample_0;
-        bool _S193 = (udimMask_0 & 2U) != 0U;
-        uint maskU_0 = uint(round(_S175.y));
-        uint maskV_0 = uint(round(_S175.z));
-        bool _S194 = (maskU_0 & 2U) != 0U;
-        if(_S194)
+        bool _S194 = (udimMask_0 & 2U) != 0U;
+        uint maskU_0 = uint(round(_S176.y));
+        uint maskV_0 = uint(round(_S176.z));
+        bool _S195 = (maskU_0 & 2U) != 0U;
+        if(_S195)
         {
             index_0 = 1U;
         }
@@ -524,8 +525,8 @@ struct KernelContext_0
         {
             index_0 = 0U;
         }
-        bool _S195 = (maskV_0 & 2U) != 0U;
-        if(_S195)
+        bool _S196 = (maskV_0 & 2U) != 0U;
+        if(_S196)
         {
             lightCount_0 = 2U;
         }
@@ -533,26 +534,26 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S196 = index_0 | lightCount_0;
+        uint _S197 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S193)
+            if(!_S194)
             {
                 for(;;)
                 {
-                    if(_S196 == 0U)
+                    if(_S197 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S197 = (&kernelContext_0)->baseColorTexture_0;
+                    texture2d<float, access::sample> _S198 = (&kernelContext_0)->baseColorTexture_0;
                     thread uint width_0;
                     thread uint height_0;
-                    (*((&width_0)) = (_S197).get_width(0)),(*((&height_0)) = (_S197).get_height(0));
+                    (*((&width_0)) = (_S198).get_width(0)),(*((&height_0)) = (_S198).get_height(0));
                     float2 size_0 = float2(float(width_0), float(height_0));
-                    float2 _S198 = float2(0.5f) ;
-                    float2 remapped_0 = clamp((detailSource_0 * (size_0 - float2(2.0f) ) + float2(1.0f) ) / size_0, _S198 / size_0, (size_0 - _S198) / size_0);
-                    if((_S196 & 1U) != 0U)
+                    float2 _S199 = float2(0.5f) ;
+                    float2 remapped_0 = clamp((detailSource_0 * (size_0 - float2(2.0f) ) + float2(1.0f) ) / size_0, _S199 / size_0, (size_0 - _S199) / size_0);
+                    if((_S197 & 1U) != 0U)
                     {
                         roughness_0 = remapped_0.x;
                     }
@@ -560,7 +561,7 @@ struct KernelContext_0
                     {
                         roughness_0 = detailSource_0.x;
                     }
-                    if((_S196 & 2U) != 0U)
+                    if((_S197 & 2U) != 0U)
                     {
                         metallic_0 = remapped_0.y;
                     }
@@ -571,42 +572,42 @@ struct KernelContext_0
                     tangent_1 = float2(roughness_0, metallic_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), (tangent_1)));
+                _S192 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), (tangent_1)));
                 break;
             }
-            texture2d<float, access::sample> _S199 = (&kernelContext_0)->baseColorTexture_0;
+            texture2d<float, access::sample> _S200 = (&kernelContext_0)->baseColorTexture_0;
             thread uint atlasWidth_0;
             thread uint atlasHeight_0;
-            (*((&atlasWidth_0)) = (_S199).get_width(0)),(*((&atlasHeight_0)) = (_S199).get_height(0));
-            int3 _S200 = int3(int(0), int(0), int(0));
-            float4 metadata_0 = round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S200)).xy), uint(((_S200)).z))) * float4(255.0f) );
+            (*((&atlasWidth_0)) = (_S200).get_width(0)),(*((&atlasHeight_0)) = (_S200).get_height(0));
+            int3 _S201 = int3(int(0), int(0), int(0));
+            float4 metadata_0 = round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S201)).xy), uint(((_S201)).z))) * float4(255.0f) );
             if((metadata_0.x) == 255.0f)
             {
-                uint _S201 = atlasWidth_0;
-                uint _S202 = 2U % atlasWidth_0;
-                int _S203 = int(_S202);
-                uint _S204 = 2U / _S201;
-                int3 _S205 = int3(_S203, int(_S204), int(0));
-                int _S206 = int(uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S205)).xy), uint(((_S205)).z))).x * 255.0f)));
-                uint _S207 = atlasWidth_0;
-                uint _S208 = 3U % atlasWidth_0;
-                int _S209 = int(_S208);
-                uint _S210 = 3U / _S207;
-                int3 _S211 = int3(_S209, int(_S210), int(0));
-                int2 minimumTile_0 = int2(_S206, int(uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S211)).xy), uint(((_S211)).z))).x * 255.0f))));
-                uint _S212 = atlasWidth_0;
-                uint _S213 = 4U % atlasWidth_0;
-                int _S214 = int(_S213);
-                uint _S215 = 4U / _S212;
-                int3 _S216 = int3(_S214, int(_S215), int(0));
-                uint _S217 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S216)).xy), uint(((_S216)).z))).x * 255.0f));
-                uint _S218 = atlasWidth_0;
-                uint _S219 = 5U % atlasWidth_0;
-                int _S220 = int(_S219);
-                uint _S221 = 5U / _S218;
-                int3 _S222 = int3(_S220, int(_S221), int(0));
-                uint _S223 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S222)).xy), uint(((_S222)).z))).x * 255.0f));
-                uint2 grid_0 = uint2(_S217, _S223);
+                uint _S202 = atlasWidth_0;
+                uint _S203 = 2U % atlasWidth_0;
+                int _S204 = int(_S203);
+                uint _S205 = 2U / _S202;
+                int3 _S206 = int3(_S204, int(_S205), int(0));
+                int _S207 = int(uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S206)).xy), uint(((_S206)).z))).x * 255.0f)));
+                uint _S208 = atlasWidth_0;
+                uint _S209 = 3U % atlasWidth_0;
+                int _S210 = int(_S209);
+                uint _S211 = 3U / _S208;
+                int3 _S212 = int3(_S210, int(_S211), int(0));
+                int2 minimumTile_0 = int2(_S207, int(uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S212)).xy), uint(((_S212)).z))).x * 255.0f))));
+                uint _S213 = atlasWidth_0;
+                uint _S214 = 4U % atlasWidth_0;
+                int _S215 = int(_S214);
+                uint _S216 = 4U / _S213;
+                int3 _S217 = int3(_S215, int(_S216), int(0));
+                uint _S218 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S217)).xy), uint(((_S217)).z))).x * 255.0f));
+                uint _S219 = atlasWidth_0;
+                uint _S220 = 5U % atlasWidth_0;
+                int _S221 = int(_S220);
+                uint _S222 = 5U / _S219;
+                int3 _S223 = int3(_S221, int(_S222), int(0));
+                uint _S224 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S223)).xy), uint(((_S223)).z))).x * 255.0f));
+                uint2 grid_0 = uint2(_S218, _S224);
                 int2 tile_0 = int2(floor(detailSource_0)) - minimumTile_0;
                 if(any(tile_0 < (int2(int(0)) )))
                 {
@@ -618,67 +619,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S224 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S224)).xy), uint(((_S224)).z)));
+                    int3 _S225 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S225)).xy), uint(((_S225)).z)));
                     break;
                 }
-                uint offset_0 = 10U + 2U * (uint(tile_0.y) * _S217 + uint(tile_0.x));
-                uint _S225 = atlasWidth_0;
-                uint _S226 = offset_0 % atlasWidth_0;
-                int _S227 = int(_S226);
-                uint _S228 = offset_0 / _S225;
-                int3 _S229 = int3(_S227, int(_S228), int(0));
-                uint _S230 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S229)).xy), uint(((_S229)).z))).x * 255.0f));
-                uint _S231 = atlasWidth_0;
-                uint _S232 = offset_0 + 1U;
-                uint _S233 = _S232 % atlasWidth_0;
-                int _S234 = int(_S233);
-                uint _S235 = _S232 / _S231;
-                int3 _S236 = int3(_S234, int(_S235), int(0));
-                uint slot_0 = _S230 | (uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S236)).xy), uint(((_S236)).z))).x * 255.0f)) << 8U);
+                uint offset_0 = 10U + 2U * (uint(tile_0.y) * _S218 + uint(tile_0.x));
+                uint _S226 = atlasWidth_0;
+                uint _S227 = offset_0 % atlasWidth_0;
+                int _S228 = int(_S227);
+                uint _S229 = offset_0 / _S226;
+                int3 _S230 = int3(_S228, int(_S229), int(0));
+                uint _S231 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S230)).xy), uint(((_S230)).z))).x * 255.0f));
+                uint _S232 = atlasWidth_0;
+                uint _S233 = offset_0 + 1U;
+                uint _S234 = _S233 % atlasWidth_0;
+                int _S235 = int(_S234);
+                uint _S236 = _S233 / _S232;
+                int3 _S237 = int3(_S235, int(_S236), int(0));
+                uint slot_0 = _S231 | (uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S237)).xy), uint(((_S237)).z))).x * 255.0f)) << 8U);
                 if(slot_0 == 0U)
                 {
-                    int3 _S237 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S237)).xy), uint(((_S237)).z)));
+                    int3 _S238 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S238)).xy), uint(((_S238)).z)));
                     break;
                 }
                 uint slot_1 = slot_0 - 1U;
-                uint _S238 = atlasWidth_0;
-                uint _S239 = 6U % atlasWidth_0;
-                int _S240 = int(_S239);
-                uint _S241 = 6U / _S238;
-                int3 _S242 = int3(_S240, int(_S241), int(0));
-                uint _S243 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S242)).xy), uint(((_S242)).z))).x * 255.0f));
-                uint _S244 = atlasWidth_0;
-                uint _S245 = 7U % atlasWidth_0;
-                int _S246 = int(_S245);
-                uint _S247 = 7U / _S244;
-                int3 _S248 = int3(_S246, int(_S247), int(0));
-                uint columns_0 = _S243 | (uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S248)).xy), uint(((_S248)).z))).x * 255.0f)) << 8U);
-                uint _S249 = atlasWidth_0;
-                uint _S250 = 8U % atlasWidth_0;
-                int _S251 = int(_S250);
-                uint _S252 = 8U / _S249;
-                int3 _S253 = int3(_S251, int(_S252), int(0));
-                uint _S254 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S253)).xy), uint(((_S253)).z))).x * 255.0f));
-                uint _S255 = atlasWidth_0;
-                uint _S256 = 9U % atlasWidth_0;
-                int _S257 = int(_S256);
-                uint _S258 = 9U / _S255;
-                int3 _S259 = int3(_S257, int(_S258), int(0));
-                uint rows_0 = ((_S254 | (uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S259)).xy), uint(((_S259)).z))).x * 255.0f)) << 8U)) + columns_0 - 1U) / columns_0;
-                uint metadataRows_0 = (10U + 2U * _S217 * _S223 + atlasWidth_0 - 1U) / atlasWidth_0;
-                uint _S260 = atlasWidth_0 / columns_0;
-                float _S261 = float(_S260);
-                uint _S262 = (atlasHeight_0 - metadataRows_0) / rows_0;
-                float2 cellSize_0 = float2(_S261, float(_S262));
-                uint _S263 = slot_1 % columns_0;
-                float _S264 = float(_S263);
-                uint _S265 = slot_1 / columns_0;
-                _S191 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), ((float2(_S264, float(_S265)) * cellSize_0 + float2(1.5f, float(metadataRows_0) + 1.5f) + fract(detailSource_0) * max(cellSize_0 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_0), float(atlasHeight_0)))));
+                uint _S239 = atlasWidth_0;
+                uint _S240 = 6U % atlasWidth_0;
+                int _S241 = int(_S240);
+                uint _S242 = 6U / _S239;
+                int3 _S243 = int3(_S241, int(_S242), int(0));
+                uint _S244 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S243)).xy), uint(((_S243)).z))).x * 255.0f));
+                uint _S245 = atlasWidth_0;
+                uint _S246 = 7U % atlasWidth_0;
+                int _S247 = int(_S246);
+                uint _S248 = 7U / _S245;
+                int3 _S249 = int3(_S247, int(_S248), int(0));
+                uint columns_0 = _S244 | (uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S249)).xy), uint(((_S249)).z))).x * 255.0f)) << 8U);
+                uint _S250 = atlasWidth_0;
+                uint _S251 = 8U % atlasWidth_0;
+                int _S252 = int(_S251);
+                uint _S253 = 8U / _S250;
+                int3 _S254 = int3(_S252, int(_S253), int(0));
+                uint _S255 = uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S254)).xy), uint(((_S254)).z))).x * 255.0f));
+                uint _S256 = atlasWidth_0;
+                uint _S257 = 9U % atlasWidth_0;
+                int _S258 = int(_S257);
+                uint _S259 = 9U / _S256;
+                int3 _S260 = int3(_S258, int(_S259), int(0));
+                uint rows_0 = ((_S255 | (uint(round((((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S260)).xy), uint(((_S260)).z))).x * 255.0f)) << 8U)) + columns_0 - 1U) / columns_0;
+                uint metadataRows_0 = (10U + 2U * _S218 * _S224 + atlasWidth_0 - 1U) / atlasWidth_0;
+                uint _S261 = atlasWidth_0 / columns_0;
+                float _S262 = float(_S261);
+                uint _S263 = (atlasHeight_0 - metadataRows_0) / rows_0;
+                float2 cellSize_0 = float2(_S262, float(_S263));
+                uint _S264 = slot_1 % columns_0;
+                float _S265 = float(_S264);
+                uint _S266 = slot_1 / columns_0;
+                _S192 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), ((float2(_S265, float(_S266)) * cellSize_0 + float2(1.5f, float(metadataRows_0) + 1.5f) + fract(detailSource_0) * max(cellSize_0 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_0), float(atlasHeight_0)))));
                 break;
             }
-            int2 _S266 = int2(metadata_0.zw);
+            int2 _S267 = int2(metadata_0.zw);
             int2 tile_1 = int2(floor(detailSource_0)) - int2(metadata_0.xy);
             if(any(tile_1 < (int2(int(0)) )))
             {
@@ -686,27 +687,27 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_1 >= _S266);
+                hasSceneLighting_0 = any(tile_1 >= _S267);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S267 = int3(int(min(1U, atlasWidth_0 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S267)).xy), uint(((_S267)).z)));
+                int3 _S268 = int3(int(min(1U, atlasWidth_0 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->baseColorTexture_0).read(vec<uint,2>(((_S268)).xy), uint(((_S268)).z)));
                 break;
             }
-            uint _S268 = atlasWidth_0 / uint(_S266.x);
-            float _S269 = float(_S268);
-            uint _S270 = (atlasHeight_0 - 1U) / uint(_S266.y);
-            float2 cellSize_1 = float2(_S269, float(_S270));
-            _S191 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), ((float2(tile_1) * cellSize_1 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_1 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_0), float(atlasHeight_0)))));
+            uint _S269 = atlasWidth_0 / uint(_S267.x);
+            float _S270 = float(_S269);
+            uint _S271 = (atlasHeight_0 - 1U) / uint(_S267.y);
+            float2 cellSize_1 = float2(_S270, float(_S271));
+            _S192 = (((&kernelContext_0)->baseColorTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), ((float2(tile_1) * cellSize_1 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_1 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_0), float(atlasHeight_0)))));
             break;
         }
-        diffuseSample_0 = _S191;
-        float4 _S271 = float4(_S6->compositeControls_0) ;
-        float _S272 = _S271.x;
-        if(_S272 == 0.0f)
+        diffuseSample_0 = _S192;
+        float4 _S272 = float4(_S7->compositeControls_0) ;
+        float _S273 = _S272.x;
+        if(_S273 == 0.0f)
         {
-            hasSceneLighting_0 = (_S271.w) == 2.0f;
+            hasSceneLighting_0 = (_S272.w) == 2.0f;
         }
         else
         {
@@ -714,65 +715,65 @@ struct KernelContext_0
         }
         if(hasSceneLighting_0)
         {
-            texture2d<float, access::sample> _S273 = (&kernelContext_0)->baseColorTexture_0;
+            texture2d<float, access::sample> _S274 = (&kernelContext_0)->baseColorTexture_0;
             thread uint sourceWidth_0;
             thread uint sourceHeight_0;
-            (*((&sourceWidth_0)) = (_S273).get_width(0)),(*((&sourceHeight_0)) = (_S273).get_height(0));
-            texture2d<float, access::sample> _S274 = (&kernelContext_0)->diffuseValuesTexture_0;
+            (*((&sourceWidth_0)) = (_S274).get_width(0)),(*((&sourceHeight_0)) = (_S274).get_height(0));
+            texture2d<float, access::sample> _S275 = (&kernelContext_0)->diffuseValuesTexture_0;
             thread uint valueWidth_0;
             thread uint valueHeight_0;
-            (*((&valueWidth_0)) = (_S274).get_width(0)),(*((&valueHeight_0)) = (_S274).get_height(0));
+            (*((&valueWidth_0)) = (_S275).get_width(0)),(*((&valueHeight_0)) = (_S275).get_height(0));
             if(valueWidth_0 != sourceWidth_0)
             {
-                float4 _S275 = diffuseSample_0;
+                float4 _S276 = diffuseSample_0;
                 for(;;)
                 {
-                    float _S276 = _S275.w;
-                    if(_S276 > 1.0f)
+                    float _S277 = _S276.w;
+                    if(_S277 > 1.0f)
                     {
-                        diffuseColor_0 = _S275.xyz;
+                        diffuseColor_0 = _S276.xyz;
                         break;
                     }
-                    texture2d<float, access::sample> _S277 = (&kernelContext_0)->diffuseValuesTexture_0;
+                    texture2d<float, access::sample> _S278 = (&kernelContext_0)->diffuseValuesTexture_0;
                     thread uint width_1;
                     thread uint height_1;
-                    (*((&width_1)) = (_S277).get_width(0)),(*((&height_1)) = (_S277).get_height(0));
-                    uint3 _S278 = uint3(round(_S275.xyz * float3(255.0f) ));
-                    uint index_1 = ((_S278.x) | ((_S278.y) << 8U)) | ((_S278.z) << 16U);
-                    if(_S276 == 0.0f)
+                    (*((&width_1)) = (_S278).get_width(0)),(*((&height_1)) = (_S278).get_height(0));
+                    uint3 _S279 = uint3(round(_S276.xyz * float3(255.0f) ));
+                    uint index_1 = ((_S279.x) | ((_S279.y) << 8U)) | ((_S279.z) << 16U);
+                    if(_S277 == 0.0f)
                     {
-                        _S192 = _S278;
+                        _S193 = _S279;
                     }
                     else
                     {
-                        _S192 = uint3(index_1, index_1, index_1);
+                        _S193 = uint3(index_1, index_1, index_1);
                     }
-                    uint3 address_0 = _S192 * uint3(3U)  + uint3(0U, 1U, 2U);
-                    uint _S279 = address_0.x;
-                    uint _S280 = _S279 % width_1;
-                    int _S281 = int(_S280);
-                    uint _S282 = _S279 / width_1;
-                    int3 _S283 = int3(_S281, int(_S282), int(0));
-                    float _S284 = (((&kernelContext_0)->diffuseValuesTexture_0).read(vec<uint,2>(((_S283)).xy), uint(((_S283)).z))).x;
-                    uint _S285 = address_0.y;
-                    uint _S286 = _S285 % width_1;
-                    int _S287 = int(_S286);
-                    uint _S288 = _S285 / width_1;
-                    int3 _S289 = int3(_S287, int(_S288), int(0));
-                    float _S290 = (((&kernelContext_0)->diffuseValuesTexture_0).read(vec<uint,2>(((_S289)).xy), uint(((_S289)).z))).x;
-                    uint _S291 = address_0.z;
-                    uint _S292 = _S291 % width_1;
-                    int _S293 = int(_S292);
-                    uint _S294 = _S291 / width_1;
-                    int3 _S295 = int3(_S293, int(_S294), int(0));
-                    diffuseColor_0 = float3(_S284, _S290, (((&kernelContext_0)->diffuseValuesTexture_0).read(vec<uint,2>(((_S295)).xy), uint(((_S295)).z))).x);
+                    uint3 address_0 = _S193 * uint3(3U)  + uint3(0U, 1U, 2U);
+                    uint _S280 = address_0.x;
+                    uint _S281 = _S280 % width_1;
+                    int _S282 = int(_S281);
+                    uint _S283 = _S280 / width_1;
+                    int3 _S284 = int3(_S282, int(_S283), int(0));
+                    float _S285 = (((&kernelContext_0)->diffuseValuesTexture_0).read(vec<uint,2>(((_S284)).xy), uint(((_S284)).z))).x;
+                    uint _S286 = address_0.y;
+                    uint _S287 = _S286 % width_1;
+                    int _S288 = int(_S287);
+                    uint _S289 = _S286 / width_1;
+                    int3 _S290 = int3(_S288, int(_S289), int(0));
+                    float _S291 = (((&kernelContext_0)->diffuseValuesTexture_0).read(vec<uint,2>(((_S290)).xy), uint(((_S290)).z))).x;
+                    uint _S292 = address_0.z;
+                    uint _S293 = _S292 % width_1;
+                    int _S294 = int(_S293);
+                    uint _S295 = _S292 / width_1;
+                    int3 _S296 = int3(_S294, int(_S295), int(0));
+                    diffuseColor_0 = float3(_S285, _S291, (((&kernelContext_0)->diffuseValuesTexture_0).read(vec<uint,2>(((_S296)).xy), uint(((_S296)).z))).x);
                     break;
                 }
                 diffuseSample_0.xyz = diffuseColor_0;
             }
             else
             {
-                if(_S194)
+                if(_S195)
                 {
                     index_0 = 1U;
                 }
@@ -780,7 +781,7 @@ struct KernelContext_0
                 {
                     index_0 = 0U;
                 }
-                if(_S195)
+                if(_S196)
                 {
                     lightCount_0 = 2U;
                 }
@@ -788,22 +789,22 @@ struct KernelContext_0
                 {
                     lightCount_0 = 0U;
                 }
-                uint _S296 = index_0 | lightCount_0;
+                uint _S297 = index_0 | lightCount_0;
                 for(;;)
                 {
-                    if(_S296 == 0U)
+                    if(_S297 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S297 = (&kernelContext_0)->diffuseValuesTexture_0;
+                    texture2d<float, access::sample> _S298 = (&kernelContext_0)->diffuseValuesTexture_0;
                     thread uint width_2;
                     thread uint height_2;
-                    (*((&width_2)) = (_S297).get_width(0)),(*((&height_2)) = (_S297).get_height(0));
+                    (*((&width_2)) = (_S298).get_width(0)),(*((&height_2)) = (_S298).get_height(0));
                     float2 size_1 = float2(float(width_2), float(height_2));
-                    float2 _S298 = float2(0.5f) ;
-                    float2 remapped_1 = clamp((detailSource_0 * (size_1 - float2(2.0f) ) + float2(1.0f) ) / size_1, _S298 / size_1, (size_1 - _S298) / size_1);
-                    if((_S296 & 1U) != 0U)
+                    float2 _S299 = float2(0.5f) ;
+                    float2 remapped_1 = clamp((detailSource_0 * (size_1 - float2(2.0f) ) + float2(1.0f) ) / size_1, _S299 / size_1, (size_1 - _S299) / size_1);
+                    if((_S297 & 1U) != 0U)
                     {
                         roughness_0 = remapped_1.x;
                     }
@@ -811,7 +812,7 @@ struct KernelContext_0
                     {
                         roughness_0 = detailSource_0.x;
                     }
-                    if((_S296 & 2U) != 0U)
+                    if((_S297 & 2U) != 0U)
                     {
                         metallic_0 = remapped_1.y;
                     }
@@ -825,15 +826,15 @@ struct KernelContext_0
                 diffuseSample_0.z = (((&kernelContext_0)->diffuseValuesTexture_0).sample(((&kernelContext_0)->baseColorSampler_0), (tangent_1))).x;
             }
         }
-        float4 _S299 = diffuseSample_0;
+        float4 _S300 = diffuseSample_0;
         for(;;)
         {
-            if(_S272 != 2.0f)
+            if(_S273 != 2.0f)
             {
-                _S191 = _S299;
+                _S192 = _S300;
                 break;
             }
-            bool _S300 = (_S271.w) >= 0.5f;
+            bool _S301 = (_S272.w) >= 0.5f;
             if((maskU_0 & 1U) != 0U)
             {
                 index_0 = 1U;
@@ -850,25 +851,25 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S301 = index_0 | lightCount_0;
+            uint _S302 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S300)
+                if(!_S301)
                 {
                     for(;;)
                     {
-                        if(_S301 == 0U)
+                        if(_S302 == 0U)
                         {
                             break;
                         }
-                        texture2d<float, access::sample> _S302 = (&kernelContext_0)->compositeTexture_0;
+                        texture2d<float, access::sample> _S303 = (&kernelContext_0)->compositeTexture_0;
                         thread uint width_3;
                         thread uint height_3;
-                        (*((&width_3)) = (_S302).get_width(0)),(*((&height_3)) = (_S302).get_height(0));
+                        (*((&width_3)) = (_S303).get_width(0)),(*((&height_3)) = (_S303).get_height(0));
                         float2 size_2 = float2(float(width_3), float(height_3));
-                        float2 _S303 = float2(0.5f) ;
-                        float2 remapped_2 = clamp((detailSource_0 * (size_2 - float2(2.0f) ) + float2(1.0f) ) / size_2, _S303 / size_2, (size_2 - _S303) / size_2);
-                        if((_S301 & 1U) != 0U)
+                        float2 _S304 = float2(0.5f) ;
+                        float2 remapped_2 = clamp((detailSource_0 * (size_2 - float2(2.0f) ) + float2(1.0f) ) / size_2, _S304 / size_2, (size_2 - _S304) / size_2);
+                        if((_S302 & 1U) != 0U)
                         {
                             roughness_0 = remapped_2.x;
                         }
@@ -876,7 +877,7 @@ struct KernelContext_0
                         {
                             roughness_0 = detailSource_0.x;
                         }
-                        if((_S301 & 2U) != 0U)
+                        if((_S302 & 2U) != 0U)
                         {
                             metallic_0 = remapped_2.y;
                         }
@@ -887,42 +888,42 @@ struct KernelContext_0
                         detailSource_0 = float2(roughness_0, metallic_0);
                         break;
                     }
-                    _S191 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S192 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
                     break;
                 }
-                texture2d<float, access::sample> _S304 = (&kernelContext_0)->compositeTexture_0;
+                texture2d<float, access::sample> _S305 = (&kernelContext_0)->compositeTexture_0;
                 thread uint atlasWidth_1;
                 thread uint atlasHeight_1;
-                (*((&atlasWidth_1)) = (_S304).get_width(0)),(*((&atlasHeight_1)) = (_S304).get_height(0));
-                int3 _S305 = int3(int(0), int(0), int(0));
-                float4 metadata_1 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S305)).xy), uint(((_S305)).z))) * float4(255.0f) );
+                (*((&atlasWidth_1)) = (_S305).get_width(0)),(*((&atlasHeight_1)) = (_S305).get_height(0));
+                int3 _S306 = int3(int(0), int(0), int(0));
+                float4 metadata_1 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S306)).xy), uint(((_S306)).z))) * float4(255.0f) );
                 if((metadata_1.x) == 255.0f)
                 {
-                    uint _S306 = atlasWidth_1;
-                    uint _S307 = 2U % atlasWidth_1;
-                    int _S308 = int(_S307);
-                    uint _S309 = 2U / _S306;
-                    int3 _S310 = int3(_S308, int(_S309), int(0));
-                    int _S311 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S310)).xy), uint(((_S310)).z))).x * 255.0f)));
-                    uint _S312 = atlasWidth_1;
-                    uint _S313 = 3U % atlasWidth_1;
-                    int _S314 = int(_S313);
-                    uint _S315 = 3U / _S312;
-                    int3 _S316 = int3(_S314, int(_S315), int(0));
-                    int2 minimumTile_1 = int2(_S311, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S316)).xy), uint(((_S316)).z))).x * 255.0f))));
-                    uint _S317 = atlasWidth_1;
-                    uint _S318 = 4U % atlasWidth_1;
-                    int _S319 = int(_S318);
-                    uint _S320 = 4U / _S317;
-                    int3 _S321 = int3(_S319, int(_S320), int(0));
-                    uint _S322 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S321)).xy), uint(((_S321)).z))).x * 255.0f));
-                    uint _S323 = atlasWidth_1;
-                    uint _S324 = 5U % atlasWidth_1;
-                    int _S325 = int(_S324);
-                    uint _S326 = 5U / _S323;
-                    int3 _S327 = int3(_S325, int(_S326), int(0));
-                    uint _S328 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S327)).xy), uint(((_S327)).z))).x * 255.0f));
-                    uint2 grid_1 = uint2(_S322, _S328);
+                    uint _S307 = atlasWidth_1;
+                    uint _S308 = 2U % atlasWidth_1;
+                    int _S309 = int(_S308);
+                    uint _S310 = 2U / _S307;
+                    int3 _S311 = int3(_S309, int(_S310), int(0));
+                    int _S312 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S311)).xy), uint(((_S311)).z))).x * 255.0f)));
+                    uint _S313 = atlasWidth_1;
+                    uint _S314 = 3U % atlasWidth_1;
+                    int _S315 = int(_S314);
+                    uint _S316 = 3U / _S313;
+                    int3 _S317 = int3(_S315, int(_S316), int(0));
+                    int2 minimumTile_1 = int2(_S312, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S317)).xy), uint(((_S317)).z))).x * 255.0f))));
+                    uint _S318 = atlasWidth_1;
+                    uint _S319 = 4U % atlasWidth_1;
+                    int _S320 = int(_S319);
+                    uint _S321 = 4U / _S318;
+                    int3 _S322 = int3(_S320, int(_S321), int(0));
+                    uint _S323 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S322)).xy), uint(((_S322)).z))).x * 255.0f));
+                    uint _S324 = atlasWidth_1;
+                    uint _S325 = 5U % atlasWidth_1;
+                    int _S326 = int(_S325);
+                    uint _S327 = 5U / _S324;
+                    int3 _S328 = int3(_S326, int(_S327), int(0));
+                    uint _S329 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S328)).xy), uint(((_S328)).z))).x * 255.0f));
+                    uint2 grid_1 = uint2(_S323, _S329);
                     int2 tile_2 = int2(floor(detailSource_0)) - minimumTile_1;
                     if(any(tile_2 < (int2(int(0)) )))
                     {
@@ -934,67 +935,67 @@ struct KernelContext_0
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S329 = int3(int(1), int(0), int(0));
-                        _S191 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S329)).xy), uint(((_S329)).z)));
+                        int3 _S330 = int3(int(1), int(0), int(0));
+                        _S192 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S330)).xy), uint(((_S330)).z)));
                         break;
                     }
-                    uint offset_1 = 10U + 2U * (uint(tile_2.y) * _S322 + uint(tile_2.x));
-                    uint _S330 = atlasWidth_1;
-                    uint _S331 = offset_1 % atlasWidth_1;
-                    int _S332 = int(_S331);
-                    uint _S333 = offset_1 / _S330;
-                    int3 _S334 = int3(_S332, int(_S333), int(0));
-                    uint _S335 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S334)).xy), uint(((_S334)).z))).x * 255.0f));
-                    uint _S336 = atlasWidth_1;
-                    uint _S337 = offset_1 + 1U;
-                    uint _S338 = _S337 % atlasWidth_1;
-                    int _S339 = int(_S338);
-                    uint _S340 = _S337 / _S336;
-                    int3 _S341 = int3(_S339, int(_S340), int(0));
-                    uint slot_2 = _S335 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S341)).xy), uint(((_S341)).z))).x * 255.0f)) << 8U);
+                    uint offset_1 = 10U + 2U * (uint(tile_2.y) * _S323 + uint(tile_2.x));
+                    uint _S331 = atlasWidth_1;
+                    uint _S332 = offset_1 % atlasWidth_1;
+                    int _S333 = int(_S332);
+                    uint _S334 = offset_1 / _S331;
+                    int3 _S335 = int3(_S333, int(_S334), int(0));
+                    uint _S336 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S335)).xy), uint(((_S335)).z))).x * 255.0f));
+                    uint _S337 = atlasWidth_1;
+                    uint _S338 = offset_1 + 1U;
+                    uint _S339 = _S338 % atlasWidth_1;
+                    int _S340 = int(_S339);
+                    uint _S341 = _S338 / _S337;
+                    int3 _S342 = int3(_S340, int(_S341), int(0));
+                    uint slot_2 = _S336 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S342)).xy), uint(((_S342)).z))).x * 255.0f)) << 8U);
                     if(slot_2 == 0U)
                     {
-                        int3 _S342 = int3(int(1), int(0), int(0));
-                        _S191 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S342)).xy), uint(((_S342)).z)));
+                        int3 _S343 = int3(int(1), int(0), int(0));
+                        _S192 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S343)).xy), uint(((_S343)).z)));
                         break;
                     }
                     uint slot_3 = slot_2 - 1U;
-                    uint _S343 = atlasWidth_1;
-                    uint _S344 = 6U % atlasWidth_1;
-                    int _S345 = int(_S344);
-                    uint _S346 = 6U / _S343;
-                    int3 _S347 = int3(_S345, int(_S346), int(0));
-                    uint _S348 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S347)).xy), uint(((_S347)).z))).x * 255.0f));
-                    uint _S349 = atlasWidth_1;
-                    uint _S350 = 7U % atlasWidth_1;
-                    int _S351 = int(_S350);
-                    uint _S352 = 7U / _S349;
-                    int3 _S353 = int3(_S351, int(_S352), int(0));
-                    uint columns_1 = _S348 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S353)).xy), uint(((_S353)).z))).x * 255.0f)) << 8U);
-                    uint _S354 = atlasWidth_1;
-                    uint _S355 = 8U % atlasWidth_1;
-                    int _S356 = int(_S355);
-                    uint _S357 = 8U / _S354;
-                    int3 _S358 = int3(_S356, int(_S357), int(0));
-                    uint _S359 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S358)).xy), uint(((_S358)).z))).x * 255.0f));
-                    uint _S360 = atlasWidth_1;
-                    uint _S361 = 9U % atlasWidth_1;
-                    int _S362 = int(_S361);
-                    uint _S363 = 9U / _S360;
-                    int3 _S364 = int3(_S362, int(_S363), int(0));
-                    uint rows_1 = ((_S359 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S364)).xy), uint(((_S364)).z))).x * 255.0f)) << 8U)) + columns_1 - 1U) / columns_1;
-                    uint metadataRows_1 = (10U + 2U * _S322 * _S328 + atlasWidth_1 - 1U) / atlasWidth_1;
-                    uint _S365 = atlasWidth_1 / columns_1;
-                    float _S366 = float(_S365);
-                    uint _S367 = (atlasHeight_1 - metadataRows_1) / rows_1;
-                    float2 cellSize_2 = float2(_S366, float(_S367));
-                    uint _S368 = slot_3 % columns_1;
-                    float _S369 = float(_S368);
-                    uint _S370 = slot_3 / columns_1;
-                    _S191 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S369, float(_S370)) * cellSize_2 + float2(1.5f, float(metadataRows_1) + 1.5f) + fract(detailSource_0) * max(cellSize_2 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_1), float(atlasHeight_1)))));
+                    uint _S344 = atlasWidth_1;
+                    uint _S345 = 6U % atlasWidth_1;
+                    int _S346 = int(_S345);
+                    uint _S347 = 6U / _S344;
+                    int3 _S348 = int3(_S346, int(_S347), int(0));
+                    uint _S349 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S348)).xy), uint(((_S348)).z))).x * 255.0f));
+                    uint _S350 = atlasWidth_1;
+                    uint _S351 = 7U % atlasWidth_1;
+                    int _S352 = int(_S351);
+                    uint _S353 = 7U / _S350;
+                    int3 _S354 = int3(_S352, int(_S353), int(0));
+                    uint columns_1 = _S349 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S354)).xy), uint(((_S354)).z))).x * 255.0f)) << 8U);
+                    uint _S355 = atlasWidth_1;
+                    uint _S356 = 8U % atlasWidth_1;
+                    int _S357 = int(_S356);
+                    uint _S358 = 8U / _S355;
+                    int3 _S359 = int3(_S357, int(_S358), int(0));
+                    uint _S360 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S359)).xy), uint(((_S359)).z))).x * 255.0f));
+                    uint _S361 = atlasWidth_1;
+                    uint _S362 = 9U % atlasWidth_1;
+                    int _S363 = int(_S362);
+                    uint _S364 = 9U / _S361;
+                    int3 _S365 = int3(_S363, int(_S364), int(0));
+                    uint rows_1 = ((_S360 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S365)).xy), uint(((_S365)).z))).x * 255.0f)) << 8U)) + columns_1 - 1U) / columns_1;
+                    uint metadataRows_1 = (10U + 2U * _S323 * _S329 + atlasWidth_1 - 1U) / atlasWidth_1;
+                    uint _S366 = atlasWidth_1 / columns_1;
+                    float _S367 = float(_S366);
+                    uint _S368 = (atlasHeight_1 - metadataRows_1) / rows_1;
+                    float2 cellSize_2 = float2(_S367, float(_S368));
+                    uint _S369 = slot_3 % columns_1;
+                    float _S370 = float(_S369);
+                    uint _S371 = slot_3 / columns_1;
+                    _S192 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S370, float(_S371)) * cellSize_2 + float2(1.5f, float(metadataRows_1) + 1.5f) + fract(detailSource_0) * max(cellSize_2 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_1), float(atlasHeight_1)))));
                     break;
                 }
-                int2 _S371 = int2(metadata_1.zw);
+                int2 _S372 = int2(metadata_1.zw);
                 int2 tile_3 = int2(floor(detailSource_0)) - int2(metadata_1.xy);
                 if(any(tile_3 < (int2(int(0)) )))
                 {
@@ -1002,76 +1003,76 @@ struct KernelContext_0
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_3 >= _S371);
+                    hasSceneLighting_0 = any(tile_3 >= _S372);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S372 = int3(int(min(1U, atlasWidth_1 - 1U)), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S372)).xy), uint(((_S372)).z)));
+                    int3 _S373 = int3(int(min(1U, atlasWidth_1 - 1U)), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S373)).xy), uint(((_S373)).z)));
                     break;
                 }
-                uint _S373 = atlasWidth_1 / uint(_S371.x);
-                float _S374 = float(_S373);
-                uint _S375 = (atlasHeight_1 - 1U) / uint(_S371.y);
-                float2 cellSize_3 = float2(_S374, float(_S375));
-                _S191 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_3) * cellSize_3 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_3 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_1), float(atlasHeight_1)))));
+                uint _S374 = atlasWidth_1 / uint(_S372.x);
+                float _S375 = float(_S374);
+                uint _S376 = (atlasHeight_1 - 1U) / uint(_S372.y);
+                float2 cellSize_3 = float2(_S375, float(_S376));
+                _S192 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_3) * cellSize_3 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_3 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_1), float(atlasHeight_1)))));
                 break;
             }
-            uint operation_0 = uint(round(_S271.y));
+            uint operation_0 = uint(round(_S272.y));
             if(operation_0 == 1U)
             {
-                _S191 = _S299 * _S191;
+                _S192 = _S300 * _S192;
                 break;
             }
             if(operation_0 == 2U)
             {
-                _S191 = _S299 + _S191;
+                _S192 = _S300 + _S192;
                 break;
             }
             if(operation_0 == 3U)
             {
-                _S191 = _S299 - _S191;
+                _S192 = _S300 - _S192;
                 break;
             }
             if(operation_0 == 4U)
             {
-                float factor_0 = _S271.z;
-                _S191 = _S299 * float4((1.0f - factor_0))  + _S191 * float4(factor_0) ;
+                float factor_0 = _S272.z;
+                _S192 = _S300 * float4((1.0f - factor_0))  + _S192 * float4(factor_0) ;
                 break;
             }
-            _S191 = _S299;
+            _S192 = _S300;
             break;
         }
-        diffuseColor_0 = _S191.xyz;
+        diffuseColor_0 = _S192.xyz;
     }
     thread float4 baseNormalSample_0;
     bool useSecondary_1 = (secondaryMask_0 & 4U) != 0U;
-    bool _S376 = (alternateMask_0 & 4U) != 0U;
-    if(_S376)
+    bool _S377 = (alternateMask_0 & 4U) != 0U;
+    if(_S377)
     {
         if(useSecondary_1)
         {
-            detailSource_0 = _S190;
+            detailSource_0 = _S191;
         }
         else
         {
-            detailSource_0 = _S189;
+            detailSource_0 = _S190;
         }
     }
     else
     {
         if(useSecondary_1)
         {
-            detailSource_0 = _S182;
+            detailSource_0 = _S183;
         }
         else
         {
-            detailSource_0 = _S181;
+            detailSource_0 = _S182;
         }
     }
-    bool _S377 = (udimMask_0 & 4U) != 0U;
-    uint maskU_1 = uint(round(_S175.y));
-    uint maskV_1 = uint(round(_S175.z));
+    bool _S378 = (udimMask_0 & 4U) != 0U;
+    uint maskU_1 = uint(round(_S176.y));
+    uint maskV_1 = uint(round(_S176.z));
     if((maskU_1 & 4U) != 0U)
     {
         index_0 = 1U;
@@ -1088,25 +1089,25 @@ struct KernelContext_0
     {
         lightCount_0 = 0U;
     }
-    uint _S378 = index_0 | lightCount_0;
+    uint _S379 = index_0 | lightCount_0;
     for(;;)
     {
-        if(!_S377)
+        if(!_S378)
         {
             for(;;)
             {
-                if(_S378 == 0U)
+                if(_S379 == 0U)
                 {
                     break;
                 }
-                texture2d<float, access::sample> _S379 = (&kernelContext_0)->normalTexture_0;
+                texture2d<float, access::sample> _S380 = (&kernelContext_0)->normalTexture_0;
                 thread uint width_4;
                 thread uint height_4;
-                (*((&width_4)) = (_S379).get_width(0)),(*((&height_4)) = (_S379).get_height(0));
+                (*((&width_4)) = (_S380).get_width(0)),(*((&height_4)) = (_S380).get_height(0));
                 float2 size_3 = float2(float(width_4), float(height_4));
-                float2 _S380 = float2(0.5f) ;
-                float2 remapped_3 = clamp((detailSource_0 * (size_3 - float2(2.0f) ) + float2(1.0f) ) / size_3, _S380 / size_3, (size_3 - _S380) / size_3);
-                if((_S378 & 1U) != 0U)
+                float2 _S381 = float2(0.5f) ;
+                float2 remapped_3 = clamp((detailSource_0 * (size_3 - float2(2.0f) ) + float2(1.0f) ) / size_3, _S381 / size_3, (size_3 - _S381) / size_3);
+                if((_S379 & 1U) != 0U)
                 {
                     roughness_0 = remapped_3.x;
                 }
@@ -1114,7 +1115,7 @@ struct KernelContext_0
                 {
                     roughness_0 = detailSource_0.x;
                 }
-                if((_S378 & 2U) != 0U)
+                if((_S379 & 2U) != 0U)
                 {
                     metallic_0 = remapped_3.y;
                 }
@@ -1125,42 +1126,42 @@ struct KernelContext_0
                 detailSource_0 = float2(roughness_0, metallic_0);
                 break;
             }
-            _S191 = (((&kernelContext_0)->normalTexture_0).sample(((&kernelContext_0)->normalSampler_0), (detailSource_0)));
+            _S192 = (((&kernelContext_0)->normalTexture_0).sample(((&kernelContext_0)->normalSampler_0), (detailSource_0)));
             break;
         }
-        texture2d<float, access::sample> _S381 = (&kernelContext_0)->normalTexture_0;
+        texture2d<float, access::sample> _S382 = (&kernelContext_0)->normalTexture_0;
         thread uint atlasWidth_2;
         thread uint atlasHeight_2;
-        (*((&atlasWidth_2)) = (_S381).get_width(0)),(*((&atlasHeight_2)) = (_S381).get_height(0));
-        int3 _S382 = int3(int(0), int(0), int(0));
-        float4 metadata_2 = round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S382)).xy), uint(((_S382)).z))) * float4(255.0f) );
+        (*((&atlasWidth_2)) = (_S382).get_width(0)),(*((&atlasHeight_2)) = (_S382).get_height(0));
+        int3 _S383 = int3(int(0), int(0), int(0));
+        float4 metadata_2 = round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S383)).xy), uint(((_S383)).z))) * float4(255.0f) );
         if((metadata_2.x) == 255.0f)
         {
-            uint _S383 = atlasWidth_2;
-            uint _S384 = 2U % atlasWidth_2;
-            int _S385 = int(_S384);
-            uint _S386 = 2U / _S383;
-            int3 _S387 = int3(_S385, int(_S386), int(0));
-            int _S388 = int(uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S387)).xy), uint(((_S387)).z))).x * 255.0f)));
-            uint _S389 = atlasWidth_2;
-            uint _S390 = 3U % atlasWidth_2;
-            int _S391 = int(_S390);
-            uint _S392 = 3U / _S389;
-            int3 _S393 = int3(_S391, int(_S392), int(0));
-            int2 minimumTile_2 = int2(_S388, int(uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S393)).xy), uint(((_S393)).z))).x * 255.0f))));
-            uint _S394 = atlasWidth_2;
-            uint _S395 = 4U % atlasWidth_2;
-            int _S396 = int(_S395);
-            uint _S397 = 4U / _S394;
-            int3 _S398 = int3(_S396, int(_S397), int(0));
-            uint _S399 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S398)).xy), uint(((_S398)).z))).x * 255.0f));
-            uint _S400 = atlasWidth_2;
-            uint _S401 = 5U % atlasWidth_2;
-            int _S402 = int(_S401);
-            uint _S403 = 5U / _S400;
-            int3 _S404 = int3(_S402, int(_S403), int(0));
-            uint _S405 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S404)).xy), uint(((_S404)).z))).x * 255.0f));
-            uint2 grid_2 = uint2(_S399, _S405);
+            uint _S384 = atlasWidth_2;
+            uint _S385 = 2U % atlasWidth_2;
+            int _S386 = int(_S385);
+            uint _S387 = 2U / _S384;
+            int3 _S388 = int3(_S386, int(_S387), int(0));
+            int _S389 = int(uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S388)).xy), uint(((_S388)).z))).x * 255.0f)));
+            uint _S390 = atlasWidth_2;
+            uint _S391 = 3U % atlasWidth_2;
+            int _S392 = int(_S391);
+            uint _S393 = 3U / _S390;
+            int3 _S394 = int3(_S392, int(_S393), int(0));
+            int2 minimumTile_2 = int2(_S389, int(uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S394)).xy), uint(((_S394)).z))).x * 255.0f))));
+            uint _S395 = atlasWidth_2;
+            uint _S396 = 4U % atlasWidth_2;
+            int _S397 = int(_S396);
+            uint _S398 = 4U / _S395;
+            int3 _S399 = int3(_S397, int(_S398), int(0));
+            uint _S400 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S399)).xy), uint(((_S399)).z))).x * 255.0f));
+            uint _S401 = atlasWidth_2;
+            uint _S402 = 5U % atlasWidth_2;
+            int _S403 = int(_S402);
+            uint _S404 = 5U / _S401;
+            int3 _S405 = int3(_S403, int(_S404), int(0));
+            uint _S406 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S405)).xy), uint(((_S405)).z))).x * 255.0f));
+            uint2 grid_2 = uint2(_S400, _S406);
             int2 tile_4 = int2(floor(detailSource_0)) - minimumTile_2;
             if(any(tile_4 < (int2(int(0)) )))
             {
@@ -1172,67 +1173,67 @@ struct KernelContext_0
             }
             if(hasSceneLighting_0)
             {
-                int3 _S406 = int3(int(1), int(0), int(0));
-                _S191 = (((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S406)).xy), uint(((_S406)).z)));
+                int3 _S407 = int3(int(1), int(0), int(0));
+                _S192 = (((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S407)).xy), uint(((_S407)).z)));
                 break;
             }
-            uint offset_2 = 10U + 2U * (uint(tile_4.y) * _S399 + uint(tile_4.x));
-            uint _S407 = atlasWidth_2;
-            uint _S408 = offset_2 % atlasWidth_2;
-            int _S409 = int(_S408);
-            uint _S410 = offset_2 / _S407;
-            int3 _S411 = int3(_S409, int(_S410), int(0));
-            uint _S412 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S411)).xy), uint(((_S411)).z))).x * 255.0f));
-            uint _S413 = atlasWidth_2;
-            uint _S414 = offset_2 + 1U;
-            uint _S415 = _S414 % atlasWidth_2;
-            int _S416 = int(_S415);
-            uint _S417 = _S414 / _S413;
-            int3 _S418 = int3(_S416, int(_S417), int(0));
-            uint slot_4 = _S412 | (uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S418)).xy), uint(((_S418)).z))).x * 255.0f)) << 8U);
+            uint offset_2 = 10U + 2U * (uint(tile_4.y) * _S400 + uint(tile_4.x));
+            uint _S408 = atlasWidth_2;
+            uint _S409 = offset_2 % atlasWidth_2;
+            int _S410 = int(_S409);
+            uint _S411 = offset_2 / _S408;
+            int3 _S412 = int3(_S410, int(_S411), int(0));
+            uint _S413 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S412)).xy), uint(((_S412)).z))).x * 255.0f));
+            uint _S414 = atlasWidth_2;
+            uint _S415 = offset_2 + 1U;
+            uint _S416 = _S415 % atlasWidth_2;
+            int _S417 = int(_S416);
+            uint _S418 = _S415 / _S414;
+            int3 _S419 = int3(_S417, int(_S418), int(0));
+            uint slot_4 = _S413 | (uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S419)).xy), uint(((_S419)).z))).x * 255.0f)) << 8U);
             if(slot_4 == 0U)
             {
-                int3 _S419 = int3(int(1), int(0), int(0));
-                _S191 = (((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S419)).xy), uint(((_S419)).z)));
+                int3 _S420 = int3(int(1), int(0), int(0));
+                _S192 = (((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S420)).xy), uint(((_S420)).z)));
                 break;
             }
             uint slot_5 = slot_4 - 1U;
-            uint _S420 = atlasWidth_2;
-            uint _S421 = 6U % atlasWidth_2;
-            int _S422 = int(_S421);
-            uint _S423 = 6U / _S420;
-            int3 _S424 = int3(_S422, int(_S423), int(0));
-            uint _S425 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S424)).xy), uint(((_S424)).z))).x * 255.0f));
-            uint _S426 = atlasWidth_2;
-            uint _S427 = 7U % atlasWidth_2;
-            int _S428 = int(_S427);
-            uint _S429 = 7U / _S426;
-            int3 _S430 = int3(_S428, int(_S429), int(0));
-            uint columns_2 = _S425 | (uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S430)).xy), uint(((_S430)).z))).x * 255.0f)) << 8U);
-            uint _S431 = atlasWidth_2;
-            uint _S432 = 8U % atlasWidth_2;
-            int _S433 = int(_S432);
-            uint _S434 = 8U / _S431;
-            int3 _S435 = int3(_S433, int(_S434), int(0));
-            uint _S436 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S435)).xy), uint(((_S435)).z))).x * 255.0f));
-            uint _S437 = atlasWidth_2;
-            uint _S438 = 9U % atlasWidth_2;
-            int _S439 = int(_S438);
-            uint _S440 = 9U / _S437;
-            int3 _S441 = int3(_S439, int(_S440), int(0));
-            uint rows_2 = ((_S436 | (uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S441)).xy), uint(((_S441)).z))).x * 255.0f)) << 8U)) + columns_2 - 1U) / columns_2;
-            uint metadataRows_2 = (10U + 2U * _S399 * _S405 + atlasWidth_2 - 1U) / atlasWidth_2;
-            uint _S442 = atlasWidth_2 / columns_2;
-            float _S443 = float(_S442);
-            uint _S444 = (atlasHeight_2 - metadataRows_2) / rows_2;
-            float2 cellSize_4 = float2(_S443, float(_S444));
-            uint _S445 = slot_5 % columns_2;
-            float _S446 = float(_S445);
-            uint _S447 = slot_5 / columns_2;
-            _S191 = (((&kernelContext_0)->normalTexture_0).sample(((&kernelContext_0)->normalSampler_0), ((float2(_S446, float(_S447)) * cellSize_4 + float2(1.5f, float(metadataRows_2) + 1.5f) + fract(detailSource_0) * max(cellSize_4 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_2), float(atlasHeight_2)))));
+            uint _S421 = atlasWidth_2;
+            uint _S422 = 6U % atlasWidth_2;
+            int _S423 = int(_S422);
+            uint _S424 = 6U / _S421;
+            int3 _S425 = int3(_S423, int(_S424), int(0));
+            uint _S426 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S425)).xy), uint(((_S425)).z))).x * 255.0f));
+            uint _S427 = atlasWidth_2;
+            uint _S428 = 7U % atlasWidth_2;
+            int _S429 = int(_S428);
+            uint _S430 = 7U / _S427;
+            int3 _S431 = int3(_S429, int(_S430), int(0));
+            uint columns_2 = _S426 | (uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S431)).xy), uint(((_S431)).z))).x * 255.0f)) << 8U);
+            uint _S432 = atlasWidth_2;
+            uint _S433 = 8U % atlasWidth_2;
+            int _S434 = int(_S433);
+            uint _S435 = 8U / _S432;
+            int3 _S436 = int3(_S434, int(_S435), int(0));
+            uint _S437 = uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S436)).xy), uint(((_S436)).z))).x * 255.0f));
+            uint _S438 = atlasWidth_2;
+            uint _S439 = 9U % atlasWidth_2;
+            int _S440 = int(_S439);
+            uint _S441 = 9U / _S438;
+            int3 _S442 = int3(_S440, int(_S441), int(0));
+            uint rows_2 = ((_S437 | (uint(round((((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S442)).xy), uint(((_S442)).z))).x * 255.0f)) << 8U)) + columns_2 - 1U) / columns_2;
+            uint metadataRows_2 = (10U + 2U * _S400 * _S406 + atlasWidth_2 - 1U) / atlasWidth_2;
+            uint _S443 = atlasWidth_2 / columns_2;
+            float _S444 = float(_S443);
+            uint _S445 = (atlasHeight_2 - metadataRows_2) / rows_2;
+            float2 cellSize_4 = float2(_S444, float(_S445));
+            uint _S446 = slot_5 % columns_2;
+            float _S447 = float(_S446);
+            uint _S448 = slot_5 / columns_2;
+            _S192 = (((&kernelContext_0)->normalTexture_0).sample(((&kernelContext_0)->normalSampler_0), ((float2(_S447, float(_S448)) * cellSize_4 + float2(1.5f, float(metadataRows_2) + 1.5f) + fract(detailSource_0) * max(cellSize_4 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_2), float(atlasHeight_2)))));
             break;
         }
-        int2 _S448 = int2(metadata_2.zw);
+        int2 _S449 = int2(metadata_2.zw);
         int2 tile_5 = int2(floor(detailSource_0)) - int2(metadata_2.xy);
         if(any(tile_5 < (int2(int(0)) )))
         {
@@ -1240,67 +1241,67 @@ struct KernelContext_0
         }
         else
         {
-            hasSceneLighting_0 = any(tile_5 >= _S448);
+            hasSceneLighting_0 = any(tile_5 >= _S449);
         }
         if(hasSceneLighting_0)
         {
-            int3 _S449 = int3(int(min(1U, atlasWidth_2 - 1U)), int(0), int(0));
-            _S191 = (((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S449)).xy), uint(((_S449)).z)));
+            int3 _S450 = int3(int(min(1U, atlasWidth_2 - 1U)), int(0), int(0));
+            _S192 = (((&kernelContext_0)->normalTexture_0).read(vec<uint,2>(((_S450)).xy), uint(((_S450)).z)));
             break;
         }
-        uint _S450 = atlasWidth_2 / uint(_S448.x);
-        float _S451 = float(_S450);
-        uint _S452 = (atlasHeight_2 - 1U) / uint(_S448.y);
-        float2 cellSize_5 = float2(_S451, float(_S452));
-        _S191 = (((&kernelContext_0)->normalTexture_0).sample(((&kernelContext_0)->normalSampler_0), ((float2(tile_5) * cellSize_5 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_5 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_2), float(atlasHeight_2)))));
+        uint _S451 = atlasWidth_2 / uint(_S449.x);
+        float _S452 = float(_S451);
+        uint _S453 = (atlasHeight_2 - 1U) / uint(_S449.y);
+        float2 cellSize_5 = float2(_S452, float(_S453));
+        _S192 = (((&kernelContext_0)->normalTexture_0).sample(((&kernelContext_0)->normalSampler_0), ((float2(tile_5) * cellSize_5 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_5 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_2), float(atlasHeight_2)))));
         break;
     }
-    baseNormalSample_0 = _S191;
-    float4 _S453 = float4(_S6->detailUvTransformRow0_0) ;
-    if((_S453.w) != 0.0f)
+    baseNormalSample_0 = _S192;
+    float4 _S454 = float4(_S7->detailUvTransformRow0_0) ;
+    if((_S454.w) != 0.0f)
     {
-        float4 _S454 = baseNormalSample_0;
+        float4 _S455 = baseNormalSample_0;
         for(;;)
         {
-            float _S455 = _S454.w;
-            if(_S455 > 1.0f)
+            float _S456 = _S455.w;
+            if(_S456 > 1.0f)
             {
-                unlitColor_0 = _S454.xyz;
+                unlitColor_0 = _S455.xyz;
                 break;
             }
-            texture2d<float, access::sample> _S456 = (&kernelContext_0)->normalValuesTexture_0;
+            texture2d<float, access::sample> _S457 = (&kernelContext_0)->normalValuesTexture_0;
             thread uint width_5;
             thread uint height_5;
-            (*((&width_5)) = (_S456).get_width(0)),(*((&height_5)) = (_S456).get_height(0));
-            uint3 _S457 = uint3(round(_S454.xyz * float3(255.0f) ));
-            uint index_2 = ((_S457.x) | ((_S457.y) << 8U)) | ((_S457.z) << 16U);
-            if(_S455 == 0.0f)
+            (*((&width_5)) = (_S457).get_width(0)),(*((&height_5)) = (_S457).get_height(0));
+            uint3 _S458 = uint3(round(_S455.xyz * float3(255.0f) ));
+            uint index_2 = ((_S458.x) | ((_S458.y) << 8U)) | ((_S458.z) << 16U);
+            if(_S456 == 0.0f)
             {
-                _S192 = _S457;
+                _S193 = _S458;
             }
             else
             {
-                _S192 = uint3(index_2, index_2, index_2);
+                _S193 = uint3(index_2, index_2, index_2);
             }
-            uint3 address_1 = _S192 * uint3(3U)  + uint3(0U, 1U, 2U);
-            uint _S458 = address_1.x;
-            uint _S459 = _S458 % width_5;
-            int _S460 = int(_S459);
-            uint _S461 = _S458 / width_5;
-            int3 _S462 = int3(_S460, int(_S461), int(0));
-            float _S463 = (((&kernelContext_0)->normalValuesTexture_0).read(vec<uint,2>(((_S462)).xy), uint(((_S462)).z))).x;
-            uint _S464 = address_1.y;
-            uint _S465 = _S464 % width_5;
-            int _S466 = int(_S465);
-            uint _S467 = _S464 / width_5;
-            int3 _S468 = int3(_S466, int(_S467), int(0));
-            float _S469 = (((&kernelContext_0)->normalValuesTexture_0).read(vec<uint,2>(((_S468)).xy), uint(((_S468)).z))).x;
-            uint _S470 = address_1.z;
-            uint _S471 = _S470 % width_5;
-            int _S472 = int(_S471);
-            uint _S473 = _S470 / width_5;
-            int3 _S474 = int3(_S472, int(_S473), int(0));
-            unlitColor_0 = float3(_S463, _S469, (((&kernelContext_0)->normalValuesTexture_0).read(vec<uint,2>(((_S474)).xy), uint(((_S474)).z))).x);
+            uint3 address_1 = _S193 * uint3(3U)  + uint3(0U, 1U, 2U);
+            uint _S459 = address_1.x;
+            uint _S460 = _S459 % width_5;
+            int _S461 = int(_S460);
+            uint _S462 = _S459 / width_5;
+            int3 _S463 = int3(_S461, int(_S462), int(0));
+            float _S464 = (((&kernelContext_0)->normalValuesTexture_0).read(vec<uint,2>(((_S463)).xy), uint(((_S463)).z))).x;
+            uint _S465 = address_1.y;
+            uint _S466 = _S465 % width_5;
+            int _S467 = int(_S466);
+            uint _S468 = _S465 / width_5;
+            int3 _S469 = int3(_S467, int(_S468), int(0));
+            float _S470 = (((&kernelContext_0)->normalValuesTexture_0).read(vec<uint,2>(((_S469)).xy), uint(((_S469)).z))).x;
+            uint _S471 = address_1.z;
+            uint _S472 = _S471 % width_5;
+            int _S473 = int(_S472);
+            uint _S474 = _S471 / width_5;
+            int3 _S475 = int3(_S473, int(_S474), int(0));
+            unlitColor_0 = float3(_S464, _S470, (((&kernelContext_0)->normalValuesTexture_0).read(vec<uint,2>(((_S475)).xy), uint(((_S475)).z))).x);
             break;
         }
         baseNormalSample_0.xyz = unlitColor_0;
@@ -1313,29 +1314,29 @@ struct KernelContext_0
     {
         unlitColor_0 = baseNormalSample_0.xyz * float3(2.0f)  - float3(1.0f) ;
     }
-    if(_S376)
+    if(_S377)
     {
-        detailSource_0 = _S185;
+        detailSource_0 = _S186;
     }
     else
     {
-        detailSource_0 = _S177;
+        detailSource_0 = _S178;
     }
-    if(_S376)
+    if(_S377)
     {
-        tangent_1 = _S187;
+        tangent_1 = _S188;
     }
     else
     {
-        tangent_1 = _S179;
+        tangent_1 = _S180;
     }
-    thread float3 _S475 = unlitColor_0;
-    float2 _S476 = float2(0.0f, 0.0f);
-    if(any(tangent_1 != _S476))
+    thread float3 _S476 = unlitColor_0;
+    float2 _S477 = float2(0.0f, 0.0f);
+    if(any(tangent_1 != _S477))
     {
-        float _S477 = tangent_1.x;
-        float _S478 = tangent_1.y;
-        float2 tangent_2 = normalize(float2(_S478, - _S477) / float2(max(abs(_S477), abs(_S478))) );
+        float _S478 = tangent_1.x;
+        float _S479 = tangent_1.y;
+        float2 tangent_2 = normalize(float2(_S479, - _S478) / float2(max(abs(_S478), abs(_S479))) );
         float2 bitangent_0 = float2(- tangent_2.y, tangent_2.x);
         if((dot(detailSource_0, tangent_2)) < 0.0f)
         {
@@ -1345,9 +1346,9 @@ struct KernelContext_0
         {
             detailSource_0 = tangent_2;
         }
-        _S475.xy = detailSource_0 * float2(_S475.x)  + bitangent_0 * float2(_S475.y) ;
+        _S476.xy = detailSource_0 * float2(_S476.x)  + bitangent_0 * float2(_S476.y) ;
     }
-    float3 _S479 = _S475;
+    float3 _S480 = _S476;
     if((textureMask_0 & 4096U) != 0U)
     {
         if((secondaryMask_0 & 4096U) != 0U)
@@ -1358,14 +1359,14 @@ struct KernelContext_0
         {
             detailSource_0 = _S1.texCoord_0;
         }
-        float2 _S480 = _S453.xy;
-        float _S481 = dot(_S480, detailSource_0) + _S453.z;
-        float4 _S482 = float4(_S6->detailUvTransformRow1_0) ;
-        float2 _S483 = _S482.xy;
-        float _S484 = dot(_S483, detailSource_0) + _S482.z;
-        float2 detailUv_0 = float2(_S481, _S484);
+        float2 _S481 = _S454.xy;
+        float _S482 = dot(_S481, detailSource_0) + _S454.z;
+        float4 _S483 = float4(_S7->detailUvTransformRow1_0) ;
+        float2 _S484 = _S483.xy;
+        float _S485 = dot(_S484, detailSource_0) + _S483.z;
+        float2 detailUv_0 = float2(_S482, _S485);
         thread float4 detailSample_0;
-        bool _S485 = (udimMask_0 & 4096U) != 0U;
+        bool _S486 = (udimMask_0 & 4096U) != 0U;
         if((maskU_1 & 4096U) != 0U)
         {
             index_0 = 1U;
@@ -1382,80 +1383,80 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S486 = index_0 | lightCount_0;
+        uint _S487 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S485)
+            if(!_S486)
             {
                 for(;;)
                 {
-                    if(_S486 == 0U)
+                    if(_S487 == 0U)
                     {
                         detailSource_0 = detailUv_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S487 = (&kernelContext_0)->detailNormalTexture_0;
+                    texture2d<float, access::sample> _S488 = (&kernelContext_0)->detailNormalTexture_0;
                     thread uint width_6;
                     thread uint height_6;
-                    (*((&width_6)) = (_S487).get_width(0)),(*((&height_6)) = (_S487).get_height(0));
+                    (*((&width_6)) = (_S488).get_width(0)),(*((&height_6)) = (_S488).get_height(0));
                     float2 size_4 = float2(float(width_6), float(height_6));
-                    float2 _S488 = float2(0.5f) ;
-                    float2 remapped_4 = clamp((detailUv_0 * (size_4 - float2(2.0f) ) + float2(1.0f) ) / size_4, _S488 / size_4, (size_4 - _S488) / size_4);
-                    if((_S486 & 1U) != 0U)
+                    float2 _S489 = float2(0.5f) ;
+                    float2 remapped_4 = clamp((detailUv_0 * (size_4 - float2(2.0f) ) + float2(1.0f) ) / size_4, _S489 / size_4, (size_4 - _S489) / size_4);
+                    if((_S487 & 1U) != 0U)
                     {
                         roughness_0 = remapped_4.x;
                     }
                     else
                     {
-                        roughness_0 = _S481;
+                        roughness_0 = _S482;
                     }
-                    if((_S486 & 2U) != 0U)
+                    if((_S487 & 2U) != 0U)
                     {
                         metallic_0 = remapped_4.y;
                     }
                     else
                     {
-                        metallic_0 = _S484;
+                        metallic_0 = _S485;
                     }
                     detailSource_0 = float2(roughness_0, metallic_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->detailNormalTexture_0).sample(((&kernelContext_0)->detailNormalSampler_0), (detailSource_0)));
+                _S192 = (((&kernelContext_0)->detailNormalTexture_0).sample(((&kernelContext_0)->detailNormalSampler_0), (detailSource_0)));
                 break;
             }
-            texture2d<float, access::sample> _S489 = (&kernelContext_0)->detailNormalTexture_0;
+            texture2d<float, access::sample> _S490 = (&kernelContext_0)->detailNormalTexture_0;
             thread uint atlasWidth_3;
             thread uint atlasHeight_3;
-            (*((&atlasWidth_3)) = (_S489).get_width(0)),(*((&atlasHeight_3)) = (_S489).get_height(0));
-            int3 _S490 = int3(int(0), int(0), int(0));
-            float4 metadata_3 = round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S490)).xy), uint(((_S490)).z))) * float4(255.0f) );
+            (*((&atlasWidth_3)) = (_S490).get_width(0)),(*((&atlasHeight_3)) = (_S490).get_height(0));
+            int3 _S491 = int3(int(0), int(0), int(0));
+            float4 metadata_3 = round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S491)).xy), uint(((_S491)).z))) * float4(255.0f) );
             if((metadata_3.x) == 255.0f)
             {
-                uint _S491 = atlasWidth_3;
-                uint _S492 = 2U % atlasWidth_3;
-                int _S493 = int(_S492);
-                uint _S494 = 2U / _S491;
-                int3 _S495 = int3(_S493, int(_S494), int(0));
-                int _S496 = int(uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S495)).xy), uint(((_S495)).z))).x * 255.0f)));
-                uint _S497 = atlasWidth_3;
-                uint _S498 = 3U % atlasWidth_3;
-                int _S499 = int(_S498);
-                uint _S500 = 3U / _S497;
-                int3 _S501 = int3(_S499, int(_S500), int(0));
-                int2 minimumTile_3 = int2(_S496, int(uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S501)).xy), uint(((_S501)).z))).x * 255.0f))));
-                uint _S502 = atlasWidth_3;
-                uint _S503 = 4U % atlasWidth_3;
-                int _S504 = int(_S503);
-                uint _S505 = 4U / _S502;
-                int3 _S506 = int3(_S504, int(_S505), int(0));
-                uint _S507 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S506)).xy), uint(((_S506)).z))).x * 255.0f));
-                uint _S508 = atlasWidth_3;
-                uint _S509 = 5U % atlasWidth_3;
-                int _S510 = int(_S509);
-                uint _S511 = 5U / _S508;
-                int3 _S512 = int3(_S510, int(_S511), int(0));
-                uint _S513 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S512)).xy), uint(((_S512)).z))).x * 255.0f));
-                uint2 grid_3 = uint2(_S507, _S513);
+                uint _S492 = atlasWidth_3;
+                uint _S493 = 2U % atlasWidth_3;
+                int _S494 = int(_S493);
+                uint _S495 = 2U / _S492;
+                int3 _S496 = int3(_S494, int(_S495), int(0));
+                int _S497 = int(uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S496)).xy), uint(((_S496)).z))).x * 255.0f)));
+                uint _S498 = atlasWidth_3;
+                uint _S499 = 3U % atlasWidth_3;
+                int _S500 = int(_S499);
+                uint _S501 = 3U / _S498;
+                int3 _S502 = int3(_S500, int(_S501), int(0));
+                int2 minimumTile_3 = int2(_S497, int(uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S502)).xy), uint(((_S502)).z))).x * 255.0f))));
+                uint _S503 = atlasWidth_3;
+                uint _S504 = 4U % atlasWidth_3;
+                int _S505 = int(_S504);
+                uint _S506 = 4U / _S503;
+                int3 _S507 = int3(_S505, int(_S506), int(0));
+                uint _S508 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S507)).xy), uint(((_S507)).z))).x * 255.0f));
+                uint _S509 = atlasWidth_3;
+                uint _S510 = 5U % atlasWidth_3;
+                int _S511 = int(_S510);
+                uint _S512 = 5U / _S509;
+                int3 _S513 = int3(_S511, int(_S512), int(0));
+                uint _S514 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S513)).xy), uint(((_S513)).z))).x * 255.0f));
+                uint2 grid_3 = uint2(_S508, _S514);
                 int2 tile_6 = int2(floor(detailUv_0)) - minimumTile_3;
                 if(any(tile_6 < (int2(int(0)) )))
                 {
@@ -1467,67 +1468,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S514 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S514)).xy), uint(((_S514)).z)));
+                    int3 _S515 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S515)).xy), uint(((_S515)).z)));
                     break;
                 }
-                uint offset_3 = 10U + 2U * (uint(tile_6.y) * _S507 + uint(tile_6.x));
-                uint _S515 = atlasWidth_3;
-                uint _S516 = offset_3 % atlasWidth_3;
-                int _S517 = int(_S516);
-                uint _S518 = offset_3 / _S515;
-                int3 _S519 = int3(_S517, int(_S518), int(0));
-                uint _S520 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S519)).xy), uint(((_S519)).z))).x * 255.0f));
-                uint _S521 = atlasWidth_3;
-                uint _S522 = offset_3 + 1U;
-                uint _S523 = _S522 % atlasWidth_3;
-                int _S524 = int(_S523);
-                uint _S525 = _S522 / _S521;
-                int3 _S526 = int3(_S524, int(_S525), int(0));
-                uint slot_6 = _S520 | (uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S526)).xy), uint(((_S526)).z))).x * 255.0f)) << 8U);
+                uint offset_3 = 10U + 2U * (uint(tile_6.y) * _S508 + uint(tile_6.x));
+                uint _S516 = atlasWidth_3;
+                uint _S517 = offset_3 % atlasWidth_3;
+                int _S518 = int(_S517);
+                uint _S519 = offset_3 / _S516;
+                int3 _S520 = int3(_S518, int(_S519), int(0));
+                uint _S521 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S520)).xy), uint(((_S520)).z))).x * 255.0f));
+                uint _S522 = atlasWidth_3;
+                uint _S523 = offset_3 + 1U;
+                uint _S524 = _S523 % atlasWidth_3;
+                int _S525 = int(_S524);
+                uint _S526 = _S523 / _S522;
+                int3 _S527 = int3(_S525, int(_S526), int(0));
+                uint slot_6 = _S521 | (uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S527)).xy), uint(((_S527)).z))).x * 255.0f)) << 8U);
                 if(slot_6 == 0U)
                 {
-                    int3 _S527 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S527)).xy), uint(((_S527)).z)));
+                    int3 _S528 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S528)).xy), uint(((_S528)).z)));
                     break;
                 }
                 uint slot_7 = slot_6 - 1U;
-                uint _S528 = atlasWidth_3;
-                uint _S529 = 6U % atlasWidth_3;
-                int _S530 = int(_S529);
-                uint _S531 = 6U / _S528;
-                int3 _S532 = int3(_S530, int(_S531), int(0));
-                uint _S533 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S532)).xy), uint(((_S532)).z))).x * 255.0f));
-                uint _S534 = atlasWidth_3;
-                uint _S535 = 7U % atlasWidth_3;
-                int _S536 = int(_S535);
-                uint _S537 = 7U / _S534;
-                int3 _S538 = int3(_S536, int(_S537), int(0));
-                uint columns_3 = _S533 | (uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S538)).xy), uint(((_S538)).z))).x * 255.0f)) << 8U);
-                uint _S539 = atlasWidth_3;
-                uint _S540 = 8U % atlasWidth_3;
-                int _S541 = int(_S540);
-                uint _S542 = 8U / _S539;
-                int3 _S543 = int3(_S541, int(_S542), int(0));
-                uint _S544 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S543)).xy), uint(((_S543)).z))).x * 255.0f));
-                uint _S545 = atlasWidth_3;
-                uint _S546 = 9U % atlasWidth_3;
-                int _S547 = int(_S546);
-                uint _S548 = 9U / _S545;
-                int3 _S549 = int3(_S547, int(_S548), int(0));
-                uint rows_3 = ((_S544 | (uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S549)).xy), uint(((_S549)).z))).x * 255.0f)) << 8U)) + columns_3 - 1U) / columns_3;
-                uint metadataRows_3 = (10U + 2U * _S507 * _S513 + atlasWidth_3 - 1U) / atlasWidth_3;
-                uint _S550 = atlasWidth_3 / columns_3;
-                float _S551 = float(_S550);
-                uint _S552 = (atlasHeight_3 - metadataRows_3) / rows_3;
-                float2 cellSize_6 = float2(_S551, float(_S552));
-                uint _S553 = slot_7 % columns_3;
-                float _S554 = float(_S553);
-                uint _S555 = slot_7 / columns_3;
-                _S191 = (((&kernelContext_0)->detailNormalTexture_0).sample(((&kernelContext_0)->detailNormalSampler_0), ((float2(_S554, float(_S555)) * cellSize_6 + float2(1.5f, float(metadataRows_3) + 1.5f) + fract(detailUv_0) * max(cellSize_6 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_3), float(atlasHeight_3)))));
+                uint _S529 = atlasWidth_3;
+                uint _S530 = 6U % atlasWidth_3;
+                int _S531 = int(_S530);
+                uint _S532 = 6U / _S529;
+                int3 _S533 = int3(_S531, int(_S532), int(0));
+                uint _S534 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S533)).xy), uint(((_S533)).z))).x * 255.0f));
+                uint _S535 = atlasWidth_3;
+                uint _S536 = 7U % atlasWidth_3;
+                int _S537 = int(_S536);
+                uint _S538 = 7U / _S535;
+                int3 _S539 = int3(_S537, int(_S538), int(0));
+                uint columns_3 = _S534 | (uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S539)).xy), uint(((_S539)).z))).x * 255.0f)) << 8U);
+                uint _S540 = atlasWidth_3;
+                uint _S541 = 8U % atlasWidth_3;
+                int _S542 = int(_S541);
+                uint _S543 = 8U / _S540;
+                int3 _S544 = int3(_S542, int(_S543), int(0));
+                uint _S545 = uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S544)).xy), uint(((_S544)).z))).x * 255.0f));
+                uint _S546 = atlasWidth_3;
+                uint _S547 = 9U % atlasWidth_3;
+                int _S548 = int(_S547);
+                uint _S549 = 9U / _S546;
+                int3 _S550 = int3(_S548, int(_S549), int(0));
+                uint rows_3 = ((_S545 | (uint(round((((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S550)).xy), uint(((_S550)).z))).x * 255.0f)) << 8U)) + columns_3 - 1U) / columns_3;
+                uint metadataRows_3 = (10U + 2U * _S508 * _S514 + atlasWidth_3 - 1U) / atlasWidth_3;
+                uint _S551 = atlasWidth_3 / columns_3;
+                float _S552 = float(_S551);
+                uint _S553 = (atlasHeight_3 - metadataRows_3) / rows_3;
+                float2 cellSize_6 = float2(_S552, float(_S553));
+                uint _S554 = slot_7 % columns_3;
+                float _S555 = float(_S554);
+                uint _S556 = slot_7 / columns_3;
+                _S192 = (((&kernelContext_0)->detailNormalTexture_0).sample(((&kernelContext_0)->detailNormalSampler_0), ((float2(_S555, float(_S556)) * cellSize_6 + float2(1.5f, float(metadataRows_3) + 1.5f) + fract(detailUv_0) * max(cellSize_6 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_3), float(atlasHeight_3)))));
                 break;
             }
-            int2 _S556 = int2(metadata_3.zw);
+            int2 _S557 = int2(metadata_3.zw);
             int2 tile_7 = int2(floor(detailUv_0)) - int2(metadata_3.xy);
             if(any(tile_7 < (int2(int(0)) )))
             {
@@ -1535,79 +1536,79 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_7 >= _S556);
+                hasSceneLighting_0 = any(tile_7 >= _S557);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S557 = int3(int(min(1U, atlasWidth_3 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S557)).xy), uint(((_S557)).z)));
+                int3 _S558 = int3(int(min(1U, atlasWidth_3 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->detailNormalTexture_0).read(vec<uint,2>(((_S558)).xy), uint(((_S558)).z)));
                 break;
             }
-            uint _S558 = atlasWidth_3 / uint(_S556.x);
-            float _S559 = float(_S558);
-            uint _S560 = (atlasHeight_3 - 1U) / uint(_S556.y);
-            float2 cellSize_7 = float2(_S559, float(_S560));
-            _S191 = (((&kernelContext_0)->detailNormalTexture_0).sample(((&kernelContext_0)->detailNormalSampler_0), ((float2(tile_7) * cellSize_7 + float2(1.5f, 2.5f) + fract(detailUv_0) * max(cellSize_7 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_3), float(atlasHeight_3)))));
+            uint _S559 = atlasWidth_3 / uint(_S557.x);
+            float _S560 = float(_S559);
+            uint _S561 = (atlasHeight_3 - 1U) / uint(_S557.y);
+            float2 cellSize_7 = float2(_S560, float(_S561));
+            _S192 = (((&kernelContext_0)->detailNormalTexture_0).sample(((&kernelContext_0)->detailNormalSampler_0), ((float2(tile_7) * cellSize_7 + float2(1.5f, 2.5f) + fract(detailUv_0) * max(cellSize_7 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_3), float(atlasHeight_3)))));
             break;
         }
-        detailSample_0 = _S191;
-        if((_S482.w) != 0.0f)
+        detailSample_0 = _S192;
+        if((_S483.w) != 0.0f)
         {
-            float4 _S561 = detailSample_0;
+            float4 _S562 = detailSample_0;
             for(;;)
             {
-                float _S562 = _S561.w;
-                if(_S562 > 1.0f)
+                float _S563 = _S562.w;
+                if(_S563 > 1.0f)
                 {
-                    unlitColor_0 = _S561.xyz;
+                    unlitColor_0 = _S562.xyz;
                     break;
                 }
-                texture2d<float, access::sample> _S563 = (&kernelContext_0)->detailNormalValuesTexture_0;
+                texture2d<float, access::sample> _S564 = (&kernelContext_0)->detailNormalValuesTexture_0;
                 thread uint width_7;
                 thread uint height_7;
-                (*((&width_7)) = (_S563).get_width(0)),(*((&height_7)) = (_S563).get_height(0));
-                uint3 _S564 = uint3(round(_S561.xyz * float3(255.0f) ));
-                uint index_3 = ((_S564.x) | ((_S564.y) << 8U)) | ((_S564.z) << 16U);
-                if(_S562 == 0.0f)
+                (*((&width_7)) = (_S564).get_width(0)),(*((&height_7)) = (_S564).get_height(0));
+                uint3 _S565 = uint3(round(_S562.xyz * float3(255.0f) ));
+                uint index_3 = ((_S565.x) | ((_S565.y) << 8U)) | ((_S565.z) << 16U);
+                if(_S563 == 0.0f)
                 {
-                    _S192 = _S564;
+                    _S193 = _S565;
                 }
                 else
                 {
-                    _S192 = uint3(index_3, index_3, index_3);
+                    _S193 = uint3(index_3, index_3, index_3);
                 }
-                uint3 address_2 = _S192 * uint3(3U)  + uint3(0U, 1U, 2U);
-                uint _S565 = address_2.x;
-                uint _S566 = _S565 % width_7;
-                int _S567 = int(_S566);
-                uint _S568 = _S565 / width_7;
-                int3 _S569 = int3(_S567, int(_S568), int(0));
-                float _S570 = (((&kernelContext_0)->detailNormalValuesTexture_0).read(vec<uint,2>(((_S569)).xy), uint(((_S569)).z))).x;
-                uint _S571 = address_2.y;
-                uint _S572 = _S571 % width_7;
-                int _S573 = int(_S572);
-                uint _S574 = _S571 / width_7;
-                int3 _S575 = int3(_S573, int(_S574), int(0));
-                float _S576 = (((&kernelContext_0)->detailNormalValuesTexture_0).read(vec<uint,2>(((_S575)).xy), uint(((_S575)).z))).x;
-                uint _S577 = address_2.z;
-                uint _S578 = _S577 % width_7;
-                int _S579 = int(_S578);
-                uint _S580 = _S577 / width_7;
-                int3 _S581 = int3(_S579, int(_S580), int(0));
-                unlitColor_0 = float3(_S570, _S576, (((&kernelContext_0)->detailNormalValuesTexture_0).read(vec<uint,2>(((_S581)).xy), uint(((_S581)).z))).x);
+                uint3 address_2 = _S193 * uint3(3U)  + uint3(0U, 1U, 2U);
+                uint _S566 = address_2.x;
+                uint _S567 = _S566 % width_7;
+                int _S568 = int(_S567);
+                uint _S569 = _S566 / width_7;
+                int3 _S570 = int3(_S568, int(_S569), int(0));
+                float _S571 = (((&kernelContext_0)->detailNormalValuesTexture_0).read(vec<uint,2>(((_S570)).xy), uint(((_S570)).z))).x;
+                uint _S572 = address_2.y;
+                uint _S573 = _S572 % width_7;
+                int _S574 = int(_S573);
+                uint _S575 = _S572 / width_7;
+                int3 _S576 = int3(_S574, int(_S575), int(0));
+                float _S577 = (((&kernelContext_0)->detailNormalValuesTexture_0).read(vec<uint,2>(((_S576)).xy), uint(((_S576)).z))).x;
+                uint _S578 = address_2.z;
+                uint _S579 = _S578 % width_7;
+                int _S580 = int(_S579);
+                uint _S581 = _S578 / width_7;
+                int3 _S582 = int3(_S580, int(_S581), int(0));
+                unlitColor_0 = float3(_S571, _S577, (((&kernelContext_0)->detailNormalValuesTexture_0).read(vec<uint,2>(((_S582)).xy), uint(((_S582)).z))).x);
                 break;
             }
             detailSample_0.xyz = unlitColor_0;
         }
         float3 detail_0 = detailSample_0.xyz * float3(2.0f)  - float3(1.0f) ;
-        thread float3 _S582 = detail_0;
-        if(any(_S483 != _S476))
+        thread float3 _S583 = detail_0;
+        if(any(_S484 != _S477))
         {
-            float _S583 = _S483.x;
-            float _S584 = _S483.y;
-            float2 tangent_3 = normalize(float2(_S584, - _S583) / float2(max(abs(_S583), abs(_S584))) );
+            float _S584 = _S484.x;
+            float _S585 = _S484.y;
+            float2 tangent_3 = normalize(float2(_S585, - _S584) / float2(max(abs(_S584), abs(_S585))) );
             float2 bitangent_1 = float2(- tangent_3.y, tangent_3.x);
-            if((dot(_S480, tangent_3)) < 0.0f)
+            if((dot(_S481, tangent_3)) < 0.0f)
             {
                 tangent_1 = - tangent_3;
             }
@@ -1615,37 +1616,37 @@ struct KernelContext_0
             {
                 tangent_1 = tangent_3;
             }
-            _S582.xy = tangent_1 * float2(_S582.x)  + bitangent_1 * float2(_S582.y) ;
+            _S583.xy = tangent_1 * float2(_S583.x)  + bitangent_1 * float2(_S583.y) ;
         }
-        float3 _S585 = _S582;
+        float3 _S586 = _S583;
         for(;;)
         {
-            float3 t_0 = normalize(_S479) + float3(0.0f, 0.0f, 1.0f);
-            float3 u_0 = normalize(_S585) * float3(-1.0f, -1.0f, 1.0f);
-            float _S586 = t_0.z;
-            if(_S586 == 0.0f)
+            float3 t_0 = normalize(_S480) + float3(0.0f, 0.0f, 1.0f);
+            float3 u_0 = normalize(_S586) * float3(-1.0f, -1.0f, 1.0f);
+            float _S587 = t_0.z;
+            if(_S587 == 0.0f)
             {
                 unlitColor_0 = float3(- u_0.x, u_0.y, - u_0.z);
                 break;
             }
-            unlitColor_0 = normalize(t_0 * float3((dot(t_0, u_0) / _S586))  - u_0);
+            unlitColor_0 = normalize(t_0 * float3((dot(t_0, u_0) / _S587))  - u_0);
             break;
         }
     }
     else
     {
-        unlitColor_0 = _S479;
+        unlitColor_0 = _S480;
     }
     float3 tangent_4 = normalize(_S1.tangent_0.xyz);
-    float3 _S587 = float3(unlitColor_0.x) ;
-    float3 _S588 = float3(unlitColor_0.y) ;
-    float3 _S589 = float3(unlitColor_0.z) ;
-    float3 shadingNormal_0 = normalize(tangent_4 * _S587 + cross(normalize(_S1.normal_0), tangent_4) * float3(_S1.tangent_0.w)  * _S588 + _S1.normal_0 * _S589);
+    float3 _S588 = float3(unlitColor_0.x) ;
+    float3 _S589 = float3(unlitColor_0.y) ;
+    float3 _S590 = float3(unlitColor_0.z) ;
+    float3 shadingNormal_0 = normalize(tangent_4 * _S588 + cross(normalize(_S1.normal_0), tangent_4) * float3(_S1.tangent_0.w)  * _S589 + _S1.normal_0 * _S590);
     float3 worldNormalBasis_0 = normalize(_S1.worldNormal_0);
     float3 worldTangentBasis_0 = normalize(_S1.worldTangent_0.xyz);
     float3 worldTangentBasis_1 = normalize(worldTangentBasis_0 - worldNormalBasis_0 * float3(dot(worldNormalBasis_0, worldTangentBasis_0)) );
-    float3 worldShadingNormal_0 = normalize(worldTangentBasis_1 * _S587 + cross(worldNormalBasis_0, worldTangentBasis_1) * float3(_S1.worldTangent_0.w)  * _S588 + worldNormalBasis_0 * _S589);
-    float4 _S590;
+    float3 worldShadingNormal_0 = normalize(worldTangentBasis_1 * _S588 + cross(worldNormalBasis_0, worldTangentBasis_1) * float3(_S1.worldTangent_0.w)  * _S589 + worldNormalBasis_0 * _S590);
+    float4 _S591;
     if((textureMask_0 & 8U) != 0U)
     {
         bool useSecondary_2 = (secondaryMask_0 & 8U) != 0U;
@@ -1653,25 +1654,25 @@ struct KernelContext_0
         {
             if(useSecondary_2)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_2)
             {
-                detailSource_0 = _S182;
+                detailSource_0 = _S183;
             }
             else
             {
-                detailSource_0 = _S181;
+                detailSource_0 = _S182;
             }
         }
-        bool _S591 = (udimMask_0 & 8U) != 0U;
+        bool _S592 = (udimMask_0 & 8U) != 0U;
         if((maskU_1 & 8U) != 0U)
         {
             index_0 = 1U;
@@ -1688,26 +1689,26 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S592 = index_0 | lightCount_0;
+        uint _S593 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S591)
+            if(!_S592)
             {
                 for(;;)
                 {
-                    if(_S592 == 0U)
+                    if(_S593 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S593 = (&kernelContext_0)->roughnessMetallicTexture_0;
+                    texture2d<float, access::sample> _S594 = (&kernelContext_0)->roughnessMetallicTexture_0;
                     thread uint width_8;
                     thread uint height_8;
-                    (*((&width_8)) = (_S593).get_width(0)),(*((&height_8)) = (_S593).get_height(0));
+                    (*((&width_8)) = (_S594).get_width(0)),(*((&height_8)) = (_S594).get_height(0));
                     float2 size_5 = float2(float(width_8), float(height_8));
-                    float2 _S594 = float2(0.5f) ;
-                    float2 remapped_5 = clamp((detailSource_0 * (size_5 - float2(2.0f) ) + float2(1.0f) ) / size_5, _S594 / size_5, (size_5 - _S594) / size_5);
-                    if((_S592 & 1U) != 0U)
+                    float2 _S595 = float2(0.5f) ;
+                    float2 remapped_5 = clamp((detailSource_0 * (size_5 - float2(2.0f) ) + float2(1.0f) ) / size_5, _S595 / size_5, (size_5 - _S595) / size_5);
+                    if((_S593 & 1U) != 0U)
                     {
                         roughness_0 = remapped_5.x;
                     }
@@ -1715,7 +1716,7 @@ struct KernelContext_0
                     {
                         roughness_0 = detailSource_0.x;
                     }
-                    if((_S592 & 2U) != 0U)
+                    if((_S593 & 2U) != 0U)
                     {
                         metallic_0 = remapped_5.y;
                     }
@@ -1726,42 +1727,42 @@ struct KernelContext_0
                     tangent_1 = float2(roughness_0, metallic_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), (tangent_1)));
+                _S192 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), (tangent_1)));
                 break;
             }
-            texture2d<float, access::sample> _S595 = (&kernelContext_0)->roughnessMetallicTexture_0;
+            texture2d<float, access::sample> _S596 = (&kernelContext_0)->roughnessMetallicTexture_0;
             thread uint atlasWidth_4;
             thread uint atlasHeight_4;
-            (*((&atlasWidth_4)) = (_S595).get_width(0)),(*((&atlasHeight_4)) = (_S595).get_height(0));
-            int3 _S596 = int3(int(0), int(0), int(0));
-            float4 metadata_4 = round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S596)).xy), uint(((_S596)).z))) * float4(255.0f) );
+            (*((&atlasWidth_4)) = (_S596).get_width(0)),(*((&atlasHeight_4)) = (_S596).get_height(0));
+            int3 _S597 = int3(int(0), int(0), int(0));
+            float4 metadata_4 = round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S597)).xy), uint(((_S597)).z))) * float4(255.0f) );
             if((metadata_4.x) == 255.0f)
             {
-                uint _S597 = atlasWidth_4;
-                uint _S598 = 2U % atlasWidth_4;
-                int _S599 = int(_S598);
-                uint _S600 = 2U / _S597;
-                int3 _S601 = int3(_S599, int(_S600), int(0));
-                int _S602 = int(uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S601)).xy), uint(((_S601)).z))).x * 255.0f)));
-                uint _S603 = atlasWidth_4;
-                uint _S604 = 3U % atlasWidth_4;
-                int _S605 = int(_S604);
-                uint _S606 = 3U / _S603;
-                int3 _S607 = int3(_S605, int(_S606), int(0));
-                int2 minimumTile_4 = int2(_S602, int(uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S607)).xy), uint(((_S607)).z))).x * 255.0f))));
-                uint _S608 = atlasWidth_4;
-                uint _S609 = 4U % atlasWidth_4;
-                int _S610 = int(_S609);
-                uint _S611 = 4U / _S608;
-                int3 _S612 = int3(_S610, int(_S611), int(0));
-                uint _S613 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S612)).xy), uint(((_S612)).z))).x * 255.0f));
-                uint _S614 = atlasWidth_4;
-                uint _S615 = 5U % atlasWidth_4;
-                int _S616 = int(_S615);
-                uint _S617 = 5U / _S614;
-                int3 _S618 = int3(_S616, int(_S617), int(0));
-                uint _S619 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S618)).xy), uint(((_S618)).z))).x * 255.0f));
-                uint2 grid_4 = uint2(_S613, _S619);
+                uint _S598 = atlasWidth_4;
+                uint _S599 = 2U % atlasWidth_4;
+                int _S600 = int(_S599);
+                uint _S601 = 2U / _S598;
+                int3 _S602 = int3(_S600, int(_S601), int(0));
+                int _S603 = int(uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S602)).xy), uint(((_S602)).z))).x * 255.0f)));
+                uint _S604 = atlasWidth_4;
+                uint _S605 = 3U % atlasWidth_4;
+                int _S606 = int(_S605);
+                uint _S607 = 3U / _S604;
+                int3 _S608 = int3(_S606, int(_S607), int(0));
+                int2 minimumTile_4 = int2(_S603, int(uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S608)).xy), uint(((_S608)).z))).x * 255.0f))));
+                uint _S609 = atlasWidth_4;
+                uint _S610 = 4U % atlasWidth_4;
+                int _S611 = int(_S610);
+                uint _S612 = 4U / _S609;
+                int3 _S613 = int3(_S611, int(_S612), int(0));
+                uint _S614 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S613)).xy), uint(((_S613)).z))).x * 255.0f));
+                uint _S615 = atlasWidth_4;
+                uint _S616 = 5U % atlasWidth_4;
+                int _S617 = int(_S616);
+                uint _S618 = 5U / _S615;
+                int3 _S619 = int3(_S617, int(_S618), int(0));
+                uint _S620 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S619)).xy), uint(((_S619)).z))).x * 255.0f));
+                uint2 grid_4 = uint2(_S614, _S620);
                 int2 tile_8 = int2(floor(detailSource_0)) - minimumTile_4;
                 if(any(tile_8 < (int2(int(0)) )))
                 {
@@ -1773,67 +1774,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S620 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S620)).xy), uint(((_S620)).z)));
+                    int3 _S621 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S621)).xy), uint(((_S621)).z)));
                     break;
                 }
-                uint offset_4 = 10U + 2U * (uint(tile_8.y) * _S613 + uint(tile_8.x));
-                uint _S621 = atlasWidth_4;
-                uint _S622 = offset_4 % atlasWidth_4;
-                int _S623 = int(_S622);
-                uint _S624 = offset_4 / _S621;
-                int3 _S625 = int3(_S623, int(_S624), int(0));
-                uint _S626 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S625)).xy), uint(((_S625)).z))).x * 255.0f));
-                uint _S627 = atlasWidth_4;
-                uint _S628 = offset_4 + 1U;
-                uint _S629 = _S628 % atlasWidth_4;
-                int _S630 = int(_S629);
-                uint _S631 = _S628 / _S627;
-                int3 _S632 = int3(_S630, int(_S631), int(0));
-                uint slot_8 = _S626 | (uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S632)).xy), uint(((_S632)).z))).x * 255.0f)) << 8U);
+                uint offset_4 = 10U + 2U * (uint(tile_8.y) * _S614 + uint(tile_8.x));
+                uint _S622 = atlasWidth_4;
+                uint _S623 = offset_4 % atlasWidth_4;
+                int _S624 = int(_S623);
+                uint _S625 = offset_4 / _S622;
+                int3 _S626 = int3(_S624, int(_S625), int(0));
+                uint _S627 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S626)).xy), uint(((_S626)).z))).x * 255.0f));
+                uint _S628 = atlasWidth_4;
+                uint _S629 = offset_4 + 1U;
+                uint _S630 = _S629 % atlasWidth_4;
+                int _S631 = int(_S630);
+                uint _S632 = _S629 / _S628;
+                int3 _S633 = int3(_S631, int(_S632), int(0));
+                uint slot_8 = _S627 | (uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S633)).xy), uint(((_S633)).z))).x * 255.0f)) << 8U);
                 if(slot_8 == 0U)
                 {
-                    int3 _S633 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S633)).xy), uint(((_S633)).z)));
+                    int3 _S634 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S634)).xy), uint(((_S634)).z)));
                     break;
                 }
                 uint slot_9 = slot_8 - 1U;
-                uint _S634 = atlasWidth_4;
-                uint _S635 = 6U % atlasWidth_4;
-                int _S636 = int(_S635);
-                uint _S637 = 6U / _S634;
-                int3 _S638 = int3(_S636, int(_S637), int(0));
-                uint _S639 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S638)).xy), uint(((_S638)).z))).x * 255.0f));
-                uint _S640 = atlasWidth_4;
-                uint _S641 = 7U % atlasWidth_4;
-                int _S642 = int(_S641);
-                uint _S643 = 7U / _S640;
-                int3 _S644 = int3(_S642, int(_S643), int(0));
-                uint columns_4 = _S639 | (uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S644)).xy), uint(((_S644)).z))).x * 255.0f)) << 8U);
-                uint _S645 = atlasWidth_4;
-                uint _S646 = 8U % atlasWidth_4;
-                int _S647 = int(_S646);
-                uint _S648 = 8U / _S645;
-                int3 _S649 = int3(_S647, int(_S648), int(0));
-                uint _S650 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S649)).xy), uint(((_S649)).z))).x * 255.0f));
-                uint _S651 = atlasWidth_4;
-                uint _S652 = 9U % atlasWidth_4;
-                int _S653 = int(_S652);
-                uint _S654 = 9U / _S651;
-                int3 _S655 = int3(_S653, int(_S654), int(0));
-                uint rows_4 = ((_S650 | (uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S655)).xy), uint(((_S655)).z))).x * 255.0f)) << 8U)) + columns_4 - 1U) / columns_4;
-                uint metadataRows_4 = (10U + 2U * _S613 * _S619 + atlasWidth_4 - 1U) / atlasWidth_4;
-                uint _S656 = atlasWidth_4 / columns_4;
-                float _S657 = float(_S656);
-                uint _S658 = (atlasHeight_4 - metadataRows_4) / rows_4;
-                float2 cellSize_8 = float2(_S657, float(_S658));
-                uint _S659 = slot_9 % columns_4;
-                float _S660 = float(_S659);
-                uint _S661 = slot_9 / columns_4;
-                _S191 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), ((float2(_S660, float(_S661)) * cellSize_8 + float2(1.5f, float(metadataRows_4) + 1.5f) + fract(detailSource_0) * max(cellSize_8 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_4), float(atlasHeight_4)))));
+                uint _S635 = atlasWidth_4;
+                uint _S636 = 6U % atlasWidth_4;
+                int _S637 = int(_S636);
+                uint _S638 = 6U / _S635;
+                int3 _S639 = int3(_S637, int(_S638), int(0));
+                uint _S640 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S639)).xy), uint(((_S639)).z))).x * 255.0f));
+                uint _S641 = atlasWidth_4;
+                uint _S642 = 7U % atlasWidth_4;
+                int _S643 = int(_S642);
+                uint _S644 = 7U / _S641;
+                int3 _S645 = int3(_S643, int(_S644), int(0));
+                uint columns_4 = _S640 | (uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S645)).xy), uint(((_S645)).z))).x * 255.0f)) << 8U);
+                uint _S646 = atlasWidth_4;
+                uint _S647 = 8U % atlasWidth_4;
+                int _S648 = int(_S647);
+                uint _S649 = 8U / _S646;
+                int3 _S650 = int3(_S648, int(_S649), int(0));
+                uint _S651 = uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S650)).xy), uint(((_S650)).z))).x * 255.0f));
+                uint _S652 = atlasWidth_4;
+                uint _S653 = 9U % atlasWidth_4;
+                int _S654 = int(_S653);
+                uint _S655 = 9U / _S652;
+                int3 _S656 = int3(_S654, int(_S655), int(0));
+                uint rows_4 = ((_S651 | (uint(round((((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S656)).xy), uint(((_S656)).z))).x * 255.0f)) << 8U)) + columns_4 - 1U) / columns_4;
+                uint metadataRows_4 = (10U + 2U * _S614 * _S620 + atlasWidth_4 - 1U) / atlasWidth_4;
+                uint _S657 = atlasWidth_4 / columns_4;
+                float _S658 = float(_S657);
+                uint _S659 = (atlasHeight_4 - metadataRows_4) / rows_4;
+                float2 cellSize_8 = float2(_S658, float(_S659));
+                uint _S660 = slot_9 % columns_4;
+                float _S661 = float(_S660);
+                uint _S662 = slot_9 / columns_4;
+                _S192 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), ((float2(_S661, float(_S662)) * cellSize_8 + float2(1.5f, float(metadataRows_4) + 1.5f) + fract(detailSource_0) * max(cellSize_8 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_4), float(atlasHeight_4)))));
                 break;
             }
-            int2 _S662 = int2(metadata_4.zw);
+            int2 _S663 = int2(metadata_4.zw);
             int2 tile_9 = int2(floor(detailSource_0)) - int2(metadata_4.xy);
             if(any(tile_9 < (int2(int(0)) )))
             {
@@ -1841,29 +1842,29 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_9 >= _S662);
+                hasSceneLighting_0 = any(tile_9 >= _S663);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S663 = int3(int(min(1U, atlasWidth_4 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S663)).xy), uint(((_S663)).z)));
+                int3 _S664 = int3(int(min(1U, atlasWidth_4 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->roughnessMetallicTexture_0).read(vec<uint,2>(((_S664)).xy), uint(((_S664)).z)));
                 break;
             }
-            uint _S664 = atlasWidth_4 / uint(_S662.x);
-            float _S665 = float(_S664);
-            uint _S666 = (atlasHeight_4 - 1U) / uint(_S662.y);
-            float2 cellSize_9 = float2(_S665, float(_S666));
-            _S191 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), ((float2(tile_9) * cellSize_9 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_9 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_4), float(atlasHeight_4)))));
+            uint _S665 = atlasWidth_4 / uint(_S663.x);
+            float _S666 = float(_S665);
+            uint _S667 = (atlasHeight_4 - 1U) / uint(_S663.y);
+            float2 cellSize_9 = float2(_S666, float(_S667));
+            _S192 = (((&kernelContext_0)->roughnessMetallicTexture_0).sample(((&kernelContext_0)->roughnessMetallicSampler_0), ((float2(tile_9) * cellSize_9 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_9 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_4), float(atlasHeight_4)))));
             break;
         }
         for(;;)
         {
-            float4 _S667 = float4(_S6->compositeControls_0) ;
-            if((_S667.x) != 8.0f)
+            float4 _S668 = float4(_S7->compositeControls_0) ;
+            if((_S668.x) != 8.0f)
             {
                 break;
             }
-            bool _S668 = (_S667.w) >= 0.5f;
+            bool _S669 = (_S668.w) >= 0.5f;
             if((maskU_1 & 1U) != 0U)
             {
                 index_0 = 1U;
@@ -1880,25 +1881,25 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S669 = index_0 | lightCount_0;
+            uint _S670 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S668)
+                if(!_S669)
                 {
                     for(;;)
                     {
-                        if(_S669 == 0U)
+                        if(_S670 == 0U)
                         {
                             break;
                         }
-                        texture2d<float, access::sample> _S670 = (&kernelContext_0)->compositeTexture_0;
+                        texture2d<float, access::sample> _S671 = (&kernelContext_0)->compositeTexture_0;
                         thread uint width_9;
                         thread uint height_9;
-                        (*((&width_9)) = (_S670).get_width(0)),(*((&height_9)) = (_S670).get_height(0));
+                        (*((&width_9)) = (_S671).get_width(0)),(*((&height_9)) = (_S671).get_height(0));
                         float2 size_6 = float2(float(width_9), float(height_9));
-                        float2 _S671 = float2(0.5f) ;
-                        float2 remapped_6 = clamp((detailSource_0 * (size_6 - float2(2.0f) ) + float2(1.0f) ) / size_6, _S671 / size_6, (size_6 - _S671) / size_6);
-                        if((_S669 & 1U) != 0U)
+                        float2 _S672 = float2(0.5f) ;
+                        float2 remapped_6 = clamp((detailSource_0 * (size_6 - float2(2.0f) ) + float2(1.0f) ) / size_6, _S672 / size_6, (size_6 - _S672) / size_6);
+                        if((_S670 & 1U) != 0U)
                         {
                             roughness_0 = remapped_6.x;
                         }
@@ -1906,7 +1907,7 @@ struct KernelContext_0
                         {
                             roughness_0 = detailSource_0.x;
                         }
-                        if((_S669 & 2U) != 0U)
+                        if((_S670 & 2U) != 0U)
                         {
                             metallic_0 = remapped_6.y;
                         }
@@ -1917,42 +1918,42 @@ struct KernelContext_0
                         detailSource_0 = float2(roughness_0, metallic_0);
                         break;
                     }
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
                     break;
                 }
-                texture2d<float, access::sample> _S672 = (&kernelContext_0)->compositeTexture_0;
+                texture2d<float, access::sample> _S673 = (&kernelContext_0)->compositeTexture_0;
                 thread uint atlasWidth_5;
                 thread uint atlasHeight_5;
-                (*((&atlasWidth_5)) = (_S672).get_width(0)),(*((&atlasHeight_5)) = (_S672).get_height(0));
-                int3 _S673 = int3(int(0), int(0), int(0));
-                float4 metadata_5 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S673)).xy), uint(((_S673)).z))) * float4(255.0f) );
+                (*((&atlasWidth_5)) = (_S673).get_width(0)),(*((&atlasHeight_5)) = (_S673).get_height(0));
+                int3 _S674 = int3(int(0), int(0), int(0));
+                float4 metadata_5 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S674)).xy), uint(((_S674)).z))) * float4(255.0f) );
                 if((metadata_5.x) == 255.0f)
                 {
-                    uint _S674 = atlasWidth_5;
-                    uint _S675 = 2U % atlasWidth_5;
-                    int _S676 = int(_S675);
-                    uint _S677 = 2U / _S674;
-                    int3 _S678 = int3(_S676, int(_S677), int(0));
-                    int _S679 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S678)).xy), uint(((_S678)).z))).x * 255.0f)));
-                    uint _S680 = atlasWidth_5;
-                    uint _S681 = 3U % atlasWidth_5;
-                    int _S682 = int(_S681);
-                    uint _S683 = 3U / _S680;
-                    int3 _S684 = int3(_S682, int(_S683), int(0));
-                    int2 minimumTile_5 = int2(_S679, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S684)).xy), uint(((_S684)).z))).x * 255.0f))));
-                    uint _S685 = atlasWidth_5;
-                    uint _S686 = 4U % atlasWidth_5;
-                    int _S687 = int(_S686);
-                    uint _S688 = 4U / _S685;
-                    int3 _S689 = int3(_S687, int(_S688), int(0));
-                    uint _S690 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S689)).xy), uint(((_S689)).z))).x * 255.0f));
-                    uint _S691 = atlasWidth_5;
-                    uint _S692 = 5U % atlasWidth_5;
-                    int _S693 = int(_S692);
-                    uint _S694 = 5U / _S691;
-                    int3 _S695 = int3(_S693, int(_S694), int(0));
-                    uint _S696 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S695)).xy), uint(((_S695)).z))).x * 255.0f));
-                    uint2 grid_5 = uint2(_S690, _S696);
+                    uint _S675 = atlasWidth_5;
+                    uint _S676 = 2U % atlasWidth_5;
+                    int _S677 = int(_S676);
+                    uint _S678 = 2U / _S675;
+                    int3 _S679 = int3(_S677, int(_S678), int(0));
+                    int _S680 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S679)).xy), uint(((_S679)).z))).x * 255.0f)));
+                    uint _S681 = atlasWidth_5;
+                    uint _S682 = 3U % atlasWidth_5;
+                    int _S683 = int(_S682);
+                    uint _S684 = 3U / _S681;
+                    int3 _S685 = int3(_S683, int(_S684), int(0));
+                    int2 minimumTile_5 = int2(_S680, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S685)).xy), uint(((_S685)).z))).x * 255.0f))));
+                    uint _S686 = atlasWidth_5;
+                    uint _S687 = 4U % atlasWidth_5;
+                    int _S688 = int(_S687);
+                    uint _S689 = 4U / _S686;
+                    int3 _S690 = int3(_S688, int(_S689), int(0));
+                    uint _S691 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S690)).xy), uint(((_S690)).z))).x * 255.0f));
+                    uint _S692 = atlasWidth_5;
+                    uint _S693 = 5U % atlasWidth_5;
+                    int _S694 = int(_S693);
+                    uint _S695 = 5U / _S692;
+                    int3 _S696 = int3(_S694, int(_S695), int(0));
+                    uint _S697 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S696)).xy), uint(((_S696)).z))).x * 255.0f));
+                    uint2 grid_5 = uint2(_S691, _S697);
                     int2 tile_10 = int2(floor(detailSource_0)) - minimumTile_5;
                     if(any(tile_10 < (int2(int(0)) )))
                     {
@@ -1964,67 +1965,67 @@ struct KernelContext_0
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S697 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S697)).xy), uint(((_S697)).z)));
+                        int3 _S698 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S698)).xy), uint(((_S698)).z)));
                         break;
                     }
-                    uint offset_5 = 10U + 2U * (uint(tile_10.y) * _S690 + uint(tile_10.x));
-                    uint _S698 = atlasWidth_5;
-                    uint _S699 = offset_5 % atlasWidth_5;
-                    int _S700 = int(_S699);
-                    uint _S701 = offset_5 / _S698;
-                    int3 _S702 = int3(_S700, int(_S701), int(0));
-                    uint _S703 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S702)).xy), uint(((_S702)).z))).x * 255.0f));
-                    uint _S704 = atlasWidth_5;
-                    uint _S705 = offset_5 + 1U;
-                    uint _S706 = _S705 % atlasWidth_5;
-                    int _S707 = int(_S706);
-                    uint _S708 = _S705 / _S704;
-                    int3 _S709 = int3(_S707, int(_S708), int(0));
-                    uint slot_10 = _S703 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S709)).xy), uint(((_S709)).z))).x * 255.0f)) << 8U);
+                    uint offset_5 = 10U + 2U * (uint(tile_10.y) * _S691 + uint(tile_10.x));
+                    uint _S699 = atlasWidth_5;
+                    uint _S700 = offset_5 % atlasWidth_5;
+                    int _S701 = int(_S700);
+                    uint _S702 = offset_5 / _S699;
+                    int3 _S703 = int3(_S701, int(_S702), int(0));
+                    uint _S704 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S703)).xy), uint(((_S703)).z))).x * 255.0f));
+                    uint _S705 = atlasWidth_5;
+                    uint _S706 = offset_5 + 1U;
+                    uint _S707 = _S706 % atlasWidth_5;
+                    int _S708 = int(_S707);
+                    uint _S709 = _S706 / _S705;
+                    int3 _S710 = int3(_S708, int(_S709), int(0));
+                    uint slot_10 = _S704 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S710)).xy), uint(((_S710)).z))).x * 255.0f)) << 8U);
                     if(slot_10 == 0U)
                     {
-                        int3 _S710 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S710)).xy), uint(((_S710)).z)));
+                        int3 _S711 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S711)).xy), uint(((_S711)).z)));
                         break;
                     }
                     uint slot_11 = slot_10 - 1U;
-                    uint _S711 = atlasWidth_5;
-                    uint _S712 = 6U % atlasWidth_5;
-                    int _S713 = int(_S712);
-                    uint _S714 = 6U / _S711;
-                    int3 _S715 = int3(_S713, int(_S714), int(0));
-                    uint _S716 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S715)).xy), uint(((_S715)).z))).x * 255.0f));
-                    uint _S717 = atlasWidth_5;
-                    uint _S718 = 7U % atlasWidth_5;
-                    int _S719 = int(_S718);
-                    uint _S720 = 7U / _S717;
-                    int3 _S721 = int3(_S719, int(_S720), int(0));
-                    uint columns_5 = _S716 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S721)).xy), uint(((_S721)).z))).x * 255.0f)) << 8U);
-                    uint _S722 = atlasWidth_5;
-                    uint _S723 = 8U % atlasWidth_5;
-                    int _S724 = int(_S723);
-                    uint _S725 = 8U / _S722;
-                    int3 _S726 = int3(_S724, int(_S725), int(0));
-                    uint _S727 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S726)).xy), uint(((_S726)).z))).x * 255.0f));
-                    uint _S728 = atlasWidth_5;
-                    uint _S729 = 9U % atlasWidth_5;
-                    int _S730 = int(_S729);
-                    uint _S731 = 9U / _S728;
-                    int3 _S732 = int3(_S730, int(_S731), int(0));
-                    uint rows_5 = ((_S727 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S732)).xy), uint(((_S732)).z))).x * 255.0f)) << 8U)) + columns_5 - 1U) / columns_5;
-                    uint metadataRows_5 = (10U + 2U * _S690 * _S696 + atlasWidth_5 - 1U) / atlasWidth_5;
-                    uint _S733 = atlasWidth_5 / columns_5;
-                    float _S734 = float(_S733);
-                    uint _S735 = (atlasHeight_5 - metadataRows_5) / rows_5;
-                    float2 cellSize_10 = float2(_S734, float(_S735));
-                    uint _S736 = slot_11 % columns_5;
-                    float _S737 = float(_S736);
-                    uint _S738 = slot_11 / columns_5;
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S737, float(_S738)) * cellSize_10 + float2(1.5f, float(metadataRows_5) + 1.5f) + fract(detailSource_0) * max(cellSize_10 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_5), float(atlasHeight_5)))));
+                    uint _S712 = atlasWidth_5;
+                    uint _S713 = 6U % atlasWidth_5;
+                    int _S714 = int(_S713);
+                    uint _S715 = 6U / _S712;
+                    int3 _S716 = int3(_S714, int(_S715), int(0));
+                    uint _S717 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S716)).xy), uint(((_S716)).z))).x * 255.0f));
+                    uint _S718 = atlasWidth_5;
+                    uint _S719 = 7U % atlasWidth_5;
+                    int _S720 = int(_S719);
+                    uint _S721 = 7U / _S718;
+                    int3 _S722 = int3(_S720, int(_S721), int(0));
+                    uint columns_5 = _S717 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S722)).xy), uint(((_S722)).z))).x * 255.0f)) << 8U);
+                    uint _S723 = atlasWidth_5;
+                    uint _S724 = 8U % atlasWidth_5;
+                    int _S725 = int(_S724);
+                    uint _S726 = 8U / _S723;
+                    int3 _S727 = int3(_S725, int(_S726), int(0));
+                    uint _S728 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S727)).xy), uint(((_S727)).z))).x * 255.0f));
+                    uint _S729 = atlasWidth_5;
+                    uint _S730 = 9U % atlasWidth_5;
+                    int _S731 = int(_S730);
+                    uint _S732 = 9U / _S729;
+                    int3 _S733 = int3(_S731, int(_S732), int(0));
+                    uint rows_5 = ((_S728 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S733)).xy), uint(((_S733)).z))).x * 255.0f)) << 8U)) + columns_5 - 1U) / columns_5;
+                    uint metadataRows_5 = (10U + 2U * _S691 * _S697 + atlasWidth_5 - 1U) / atlasWidth_5;
+                    uint _S734 = atlasWidth_5 / columns_5;
+                    float _S735 = float(_S734);
+                    uint _S736 = (atlasHeight_5 - metadataRows_5) / rows_5;
+                    float2 cellSize_10 = float2(_S735, float(_S736));
+                    uint _S737 = slot_11 % columns_5;
+                    float _S738 = float(_S737);
+                    uint _S739 = slot_11 / columns_5;
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S738, float(_S739)) * cellSize_10 + float2(1.5f, float(metadataRows_5) + 1.5f) + fract(detailSource_0) * max(cellSize_10 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_5), float(atlasHeight_5)))));
                     break;
                 }
-                int2 _S739 = int2(metadata_5.zw);
+                int2 _S740 = int2(metadata_5.zw);
                 int2 tile_11 = int2(floor(detailSource_0)) - int2(metadata_5.xy);
                 if(any(tile_11 < (int2(int(0)) )))
                 {
@@ -2032,50 +2033,50 @@ struct KernelContext_0
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_11 >= _S739);
+                    hasSceneLighting_0 = any(tile_11 >= _S740);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S740 = int3(int(min(1U, atlasWidth_5 - 1U)), int(0), int(0));
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S740)).xy), uint(((_S740)).z)));
+                    int3 _S741 = int3(int(min(1U, atlasWidth_5 - 1U)), int(0), int(0));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S741)).xy), uint(((_S741)).z)));
                     break;
                 }
-                uint _S741 = atlasWidth_5 / uint(_S739.x);
-                float _S742 = float(_S741);
-                uint _S743 = (atlasHeight_5 - 1U) / uint(_S739.y);
-                float2 cellSize_11 = float2(_S742, float(_S743));
-                _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_11) * cellSize_11 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_11 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_5), float(atlasHeight_5)))));
+                uint _S742 = atlasWidth_5 / uint(_S740.x);
+                float _S743 = float(_S742);
+                uint _S744 = (atlasHeight_5 - 1U) / uint(_S740.y);
+                float2 cellSize_11 = float2(_S743, float(_S744));
+                _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_11) * cellSize_11 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_11 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_5), float(atlasHeight_5)))));
                 break;
             }
-            uint operation_1 = uint(round(_S667.y));
+            uint operation_1 = uint(round(_S668.y));
             if(operation_1 == 1U)
             {
-                _S191 = _S191 * _S590;
+                _S192 = _S192 * _S591;
                 break;
             }
             if(operation_1 == 2U)
             {
-                _S191 = _S191 + _S590;
+                _S192 = _S192 + _S591;
                 break;
             }
             if(operation_1 == 3U)
             {
-                _S191 = _S191 - _S590;
+                _S192 = _S192 - _S591;
                 break;
             }
             if(operation_1 == 4U)
             {
-                float factor_1 = _S667.z;
-                _S191 = _S191 * float4((1.0f - factor_1))  + _S590 * float4(factor_1) ;
+                float factor_1 = _S668.z;
+                _S192 = _S192 * float4((1.0f - factor_1))  + _S591 * float4(factor_1) ;
                 break;
             }
             break;
         }
-        roughness_0 = clamp(_S191.x, 0.00999999977648258f, 1.0f);
+        roughness_0 = clamp(_S192.x, 0.00999999977648258f, 1.0f);
     }
     else
     {
-        roughness_0 = _S167;
+        roughness_0 = _S168;
     }
     float occlusion_0;
     if((textureMask_0 & 32U) != 0U)
@@ -2085,25 +2086,25 @@ struct KernelContext_0
         {
             if(useSecondary_3)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_3)
             {
-                detailSource_0 = _S182;
+                detailSource_0 = _S183;
             }
             else
             {
-                detailSource_0 = _S181;
+                detailSource_0 = _S182;
             }
         }
-        bool _S744 = (udimMask_0 & 32U) != 0U;
+        bool _S745 = (udimMask_0 & 32U) != 0U;
         if((maskU_1 & 32U) != 0U)
         {
             index_0 = 1U;
@@ -2120,26 +2121,26 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S745 = index_0 | lightCount_0;
+        uint _S746 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S744)
+            if(!_S745)
             {
                 for(;;)
                 {
-                    if(_S745 == 0U)
+                    if(_S746 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S746 = (&kernelContext_0)->metallicTexture_0;
+                    texture2d<float, access::sample> _S747 = (&kernelContext_0)->metallicTexture_0;
                     thread uint width_10;
                     thread uint height_10;
-                    (*((&width_10)) = (_S746).get_width(0)),(*((&height_10)) = (_S746).get_height(0));
+                    (*((&width_10)) = (_S747).get_width(0)),(*((&height_10)) = (_S747).get_height(0));
                     float2 size_7 = float2(float(width_10), float(height_10));
-                    float2 _S747 = float2(0.5f) ;
-                    float2 remapped_7 = clamp((detailSource_0 * (size_7 - float2(2.0f) ) + float2(1.0f) ) / size_7, _S747 / size_7, (size_7 - _S747) / size_7);
-                    if((_S745 & 1U) != 0U)
+                    float2 _S748 = float2(0.5f) ;
+                    float2 remapped_7 = clamp((detailSource_0 * (size_7 - float2(2.0f) ) + float2(1.0f) ) / size_7, _S748 / size_7, (size_7 - _S748) / size_7);
+                    if((_S746 & 1U) != 0U)
                     {
                         metallic_0 = remapped_7.x;
                     }
@@ -2147,7 +2148,7 @@ struct KernelContext_0
                     {
                         metallic_0 = detailSource_0.x;
                     }
-                    if((_S745 & 2U) != 0U)
+                    if((_S746 & 2U) != 0U)
                     {
                         occlusion_0 = remapped_7.y;
                     }
@@ -2158,42 +2159,42 @@ struct KernelContext_0
                     tangent_1 = float2(metallic_0, occlusion_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), (tangent_1)));
+                _S192 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), (tangent_1)));
                 break;
             }
-            texture2d<float, access::sample> _S748 = (&kernelContext_0)->metallicTexture_0;
+            texture2d<float, access::sample> _S749 = (&kernelContext_0)->metallicTexture_0;
             thread uint atlasWidth_6;
             thread uint atlasHeight_6;
-            (*((&atlasWidth_6)) = (_S748).get_width(0)),(*((&atlasHeight_6)) = (_S748).get_height(0));
-            int3 _S749 = int3(int(0), int(0), int(0));
-            float4 metadata_6 = round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S749)).xy), uint(((_S749)).z))) * float4(255.0f) );
+            (*((&atlasWidth_6)) = (_S749).get_width(0)),(*((&atlasHeight_6)) = (_S749).get_height(0));
+            int3 _S750 = int3(int(0), int(0), int(0));
+            float4 metadata_6 = round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S750)).xy), uint(((_S750)).z))) * float4(255.0f) );
             if((metadata_6.x) == 255.0f)
             {
-                uint _S750 = atlasWidth_6;
-                uint _S751 = 2U % atlasWidth_6;
-                int _S752 = int(_S751);
-                uint _S753 = 2U / _S750;
-                int3 _S754 = int3(_S752, int(_S753), int(0));
-                int _S755 = int(uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S754)).xy), uint(((_S754)).z))).x * 255.0f)));
-                uint _S756 = atlasWidth_6;
-                uint _S757 = 3U % atlasWidth_6;
-                int _S758 = int(_S757);
-                uint _S759 = 3U / _S756;
-                int3 _S760 = int3(_S758, int(_S759), int(0));
-                int2 minimumTile_6 = int2(_S755, int(uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S760)).xy), uint(((_S760)).z))).x * 255.0f))));
-                uint _S761 = atlasWidth_6;
-                uint _S762 = 4U % atlasWidth_6;
-                int _S763 = int(_S762);
-                uint _S764 = 4U / _S761;
-                int3 _S765 = int3(_S763, int(_S764), int(0));
-                uint _S766 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S765)).xy), uint(((_S765)).z))).x * 255.0f));
-                uint _S767 = atlasWidth_6;
-                uint _S768 = 5U % atlasWidth_6;
-                int _S769 = int(_S768);
-                uint _S770 = 5U / _S767;
-                int3 _S771 = int3(_S769, int(_S770), int(0));
-                uint _S772 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S771)).xy), uint(((_S771)).z))).x * 255.0f));
-                uint2 grid_6 = uint2(_S766, _S772);
+                uint _S751 = atlasWidth_6;
+                uint _S752 = 2U % atlasWidth_6;
+                int _S753 = int(_S752);
+                uint _S754 = 2U / _S751;
+                int3 _S755 = int3(_S753, int(_S754), int(0));
+                int _S756 = int(uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S755)).xy), uint(((_S755)).z))).x * 255.0f)));
+                uint _S757 = atlasWidth_6;
+                uint _S758 = 3U % atlasWidth_6;
+                int _S759 = int(_S758);
+                uint _S760 = 3U / _S757;
+                int3 _S761 = int3(_S759, int(_S760), int(0));
+                int2 minimumTile_6 = int2(_S756, int(uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S761)).xy), uint(((_S761)).z))).x * 255.0f))));
+                uint _S762 = atlasWidth_6;
+                uint _S763 = 4U % atlasWidth_6;
+                int _S764 = int(_S763);
+                uint _S765 = 4U / _S762;
+                int3 _S766 = int3(_S764, int(_S765), int(0));
+                uint _S767 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S766)).xy), uint(((_S766)).z))).x * 255.0f));
+                uint _S768 = atlasWidth_6;
+                uint _S769 = 5U % atlasWidth_6;
+                int _S770 = int(_S769);
+                uint _S771 = 5U / _S768;
+                int3 _S772 = int3(_S770, int(_S771), int(0));
+                uint _S773 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S772)).xy), uint(((_S772)).z))).x * 255.0f));
+                uint2 grid_6 = uint2(_S767, _S773);
                 int2 tile_12 = int2(floor(detailSource_0)) - minimumTile_6;
                 if(any(tile_12 < (int2(int(0)) )))
                 {
@@ -2205,67 +2206,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S773 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S773)).xy), uint(((_S773)).z)));
+                    int3 _S774 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S774)).xy), uint(((_S774)).z)));
                     break;
                 }
-                uint offset_6 = 10U + 2U * (uint(tile_12.y) * _S766 + uint(tile_12.x));
-                uint _S774 = atlasWidth_6;
-                uint _S775 = offset_6 % atlasWidth_6;
-                int _S776 = int(_S775);
-                uint _S777 = offset_6 / _S774;
-                int3 _S778 = int3(_S776, int(_S777), int(0));
-                uint _S779 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S778)).xy), uint(((_S778)).z))).x * 255.0f));
-                uint _S780 = atlasWidth_6;
-                uint _S781 = offset_6 + 1U;
-                uint _S782 = _S781 % atlasWidth_6;
-                int _S783 = int(_S782);
-                uint _S784 = _S781 / _S780;
-                int3 _S785 = int3(_S783, int(_S784), int(0));
-                uint slot_12 = _S779 | (uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S785)).xy), uint(((_S785)).z))).x * 255.0f)) << 8U);
+                uint offset_6 = 10U + 2U * (uint(tile_12.y) * _S767 + uint(tile_12.x));
+                uint _S775 = atlasWidth_6;
+                uint _S776 = offset_6 % atlasWidth_6;
+                int _S777 = int(_S776);
+                uint _S778 = offset_6 / _S775;
+                int3 _S779 = int3(_S777, int(_S778), int(0));
+                uint _S780 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S779)).xy), uint(((_S779)).z))).x * 255.0f));
+                uint _S781 = atlasWidth_6;
+                uint _S782 = offset_6 + 1U;
+                uint _S783 = _S782 % atlasWidth_6;
+                int _S784 = int(_S783);
+                uint _S785 = _S782 / _S781;
+                int3 _S786 = int3(_S784, int(_S785), int(0));
+                uint slot_12 = _S780 | (uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S786)).xy), uint(((_S786)).z))).x * 255.0f)) << 8U);
                 if(slot_12 == 0U)
                 {
-                    int3 _S786 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S786)).xy), uint(((_S786)).z)));
+                    int3 _S787 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S787)).xy), uint(((_S787)).z)));
                     break;
                 }
                 uint slot_13 = slot_12 - 1U;
-                uint _S787 = atlasWidth_6;
-                uint _S788 = 6U % atlasWidth_6;
-                int _S789 = int(_S788);
-                uint _S790 = 6U / _S787;
-                int3 _S791 = int3(_S789, int(_S790), int(0));
-                uint _S792 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S791)).xy), uint(((_S791)).z))).x * 255.0f));
-                uint _S793 = atlasWidth_6;
-                uint _S794 = 7U % atlasWidth_6;
-                int _S795 = int(_S794);
-                uint _S796 = 7U / _S793;
-                int3 _S797 = int3(_S795, int(_S796), int(0));
-                uint columns_6 = _S792 | (uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S797)).xy), uint(((_S797)).z))).x * 255.0f)) << 8U);
-                uint _S798 = atlasWidth_6;
-                uint _S799 = 8U % atlasWidth_6;
-                int _S800 = int(_S799);
-                uint _S801 = 8U / _S798;
-                int3 _S802 = int3(_S800, int(_S801), int(0));
-                uint _S803 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S802)).xy), uint(((_S802)).z))).x * 255.0f));
-                uint _S804 = atlasWidth_6;
-                uint _S805 = 9U % atlasWidth_6;
-                int _S806 = int(_S805);
-                uint _S807 = 9U / _S804;
-                int3 _S808 = int3(_S806, int(_S807), int(0));
-                uint rows_6 = ((_S803 | (uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S808)).xy), uint(((_S808)).z))).x * 255.0f)) << 8U)) + columns_6 - 1U) / columns_6;
-                uint metadataRows_6 = (10U + 2U * _S766 * _S772 + atlasWidth_6 - 1U) / atlasWidth_6;
-                uint _S809 = atlasWidth_6 / columns_6;
-                float _S810 = float(_S809);
-                uint _S811 = (atlasHeight_6 - metadataRows_6) / rows_6;
-                float2 cellSize_12 = float2(_S810, float(_S811));
-                uint _S812 = slot_13 % columns_6;
-                float _S813 = float(_S812);
-                uint _S814 = slot_13 / columns_6;
-                _S191 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), ((float2(_S813, float(_S814)) * cellSize_12 + float2(1.5f, float(metadataRows_6) + 1.5f) + fract(detailSource_0) * max(cellSize_12 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_6), float(atlasHeight_6)))));
+                uint _S788 = atlasWidth_6;
+                uint _S789 = 6U % atlasWidth_6;
+                int _S790 = int(_S789);
+                uint _S791 = 6U / _S788;
+                int3 _S792 = int3(_S790, int(_S791), int(0));
+                uint _S793 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S792)).xy), uint(((_S792)).z))).x * 255.0f));
+                uint _S794 = atlasWidth_6;
+                uint _S795 = 7U % atlasWidth_6;
+                int _S796 = int(_S795);
+                uint _S797 = 7U / _S794;
+                int3 _S798 = int3(_S796, int(_S797), int(0));
+                uint columns_6 = _S793 | (uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S798)).xy), uint(((_S798)).z))).x * 255.0f)) << 8U);
+                uint _S799 = atlasWidth_6;
+                uint _S800 = 8U % atlasWidth_6;
+                int _S801 = int(_S800);
+                uint _S802 = 8U / _S799;
+                int3 _S803 = int3(_S801, int(_S802), int(0));
+                uint _S804 = uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S803)).xy), uint(((_S803)).z))).x * 255.0f));
+                uint _S805 = atlasWidth_6;
+                uint _S806 = 9U % atlasWidth_6;
+                int _S807 = int(_S806);
+                uint _S808 = 9U / _S805;
+                int3 _S809 = int3(_S807, int(_S808), int(0));
+                uint rows_6 = ((_S804 | (uint(round((((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S809)).xy), uint(((_S809)).z))).x * 255.0f)) << 8U)) + columns_6 - 1U) / columns_6;
+                uint metadataRows_6 = (10U + 2U * _S767 * _S773 + atlasWidth_6 - 1U) / atlasWidth_6;
+                uint _S810 = atlasWidth_6 / columns_6;
+                float _S811 = float(_S810);
+                uint _S812 = (atlasHeight_6 - metadataRows_6) / rows_6;
+                float2 cellSize_12 = float2(_S811, float(_S812));
+                uint _S813 = slot_13 % columns_6;
+                float _S814 = float(_S813);
+                uint _S815 = slot_13 / columns_6;
+                _S192 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), ((float2(_S814, float(_S815)) * cellSize_12 + float2(1.5f, float(metadataRows_6) + 1.5f) + fract(detailSource_0) * max(cellSize_12 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_6), float(atlasHeight_6)))));
                 break;
             }
-            int2 _S815 = int2(metadata_6.zw);
+            int2 _S816 = int2(metadata_6.zw);
             int2 tile_13 = int2(floor(detailSource_0)) - int2(metadata_6.xy);
             if(any(tile_13 < (int2(int(0)) )))
             {
@@ -2273,29 +2274,29 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_13 >= _S815);
+                hasSceneLighting_0 = any(tile_13 >= _S816);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S816 = int3(int(min(1U, atlasWidth_6 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S816)).xy), uint(((_S816)).z)));
+                int3 _S817 = int3(int(min(1U, atlasWidth_6 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->metallicTexture_0).read(vec<uint,2>(((_S817)).xy), uint(((_S817)).z)));
                 break;
             }
-            uint _S817 = atlasWidth_6 / uint(_S815.x);
-            float _S818 = float(_S817);
-            uint _S819 = (atlasHeight_6 - 1U) / uint(_S815.y);
-            float2 cellSize_13 = float2(_S818, float(_S819));
-            _S191 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), ((float2(tile_13) * cellSize_13 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_13 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_6), float(atlasHeight_6)))));
+            uint _S818 = atlasWidth_6 / uint(_S816.x);
+            float _S819 = float(_S818);
+            uint _S820 = (atlasHeight_6 - 1U) / uint(_S816.y);
+            float2 cellSize_13 = float2(_S819, float(_S820));
+            _S192 = (((&kernelContext_0)->metallicTexture_0).sample(((&kernelContext_0)->metallicSampler_0), ((float2(tile_13) * cellSize_13 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_13 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_6), float(atlasHeight_6)))));
             break;
         }
         for(;;)
         {
-            float4 _S820 = float4(_S6->compositeControls_0) ;
-            if((_S820.x) != 32.0f)
+            float4 _S821 = float4(_S7->compositeControls_0) ;
+            if((_S821.x) != 32.0f)
             {
                 break;
             }
-            bool _S821 = (_S820.w) >= 0.5f;
+            bool _S822 = (_S821.w) >= 0.5f;
             if((maskU_1 & 1U) != 0U)
             {
                 index_0 = 1U;
@@ -2312,25 +2313,25 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S822 = index_0 | lightCount_0;
+            uint _S823 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S821)
+                if(!_S822)
                 {
                     for(;;)
                     {
-                        if(_S822 == 0U)
+                        if(_S823 == 0U)
                         {
                             break;
                         }
-                        texture2d<float, access::sample> _S823 = (&kernelContext_0)->compositeTexture_0;
+                        texture2d<float, access::sample> _S824 = (&kernelContext_0)->compositeTexture_0;
                         thread uint width_11;
                         thread uint height_11;
-                        (*((&width_11)) = (_S823).get_width(0)),(*((&height_11)) = (_S823).get_height(0));
+                        (*((&width_11)) = (_S824).get_width(0)),(*((&height_11)) = (_S824).get_height(0));
                         float2 size_8 = float2(float(width_11), float(height_11));
-                        float2 _S824 = float2(0.5f) ;
-                        float2 remapped_8 = clamp((detailSource_0 * (size_8 - float2(2.0f) ) + float2(1.0f) ) / size_8, _S824 / size_8, (size_8 - _S824) / size_8);
-                        if((_S822 & 1U) != 0U)
+                        float2 _S825 = float2(0.5f) ;
+                        float2 remapped_8 = clamp((detailSource_0 * (size_8 - float2(2.0f) ) + float2(1.0f) ) / size_8, _S825 / size_8, (size_8 - _S825) / size_8);
+                        if((_S823 & 1U) != 0U)
                         {
                             metallic_0 = remapped_8.x;
                         }
@@ -2338,7 +2339,7 @@ struct KernelContext_0
                         {
                             metallic_0 = detailSource_0.x;
                         }
-                        if((_S822 & 2U) != 0U)
+                        if((_S823 & 2U) != 0U)
                         {
                             occlusion_0 = remapped_8.y;
                         }
@@ -2349,42 +2350,42 @@ struct KernelContext_0
                         detailSource_0 = float2(metallic_0, occlusion_0);
                         break;
                     }
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
                     break;
                 }
-                texture2d<float, access::sample> _S825 = (&kernelContext_0)->compositeTexture_0;
+                texture2d<float, access::sample> _S826 = (&kernelContext_0)->compositeTexture_0;
                 thread uint atlasWidth_7;
                 thread uint atlasHeight_7;
-                (*((&atlasWidth_7)) = (_S825).get_width(0)),(*((&atlasHeight_7)) = (_S825).get_height(0));
-                int3 _S826 = int3(int(0), int(0), int(0));
-                float4 metadata_7 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S826)).xy), uint(((_S826)).z))) * float4(255.0f) );
+                (*((&atlasWidth_7)) = (_S826).get_width(0)),(*((&atlasHeight_7)) = (_S826).get_height(0));
+                int3 _S827 = int3(int(0), int(0), int(0));
+                float4 metadata_7 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S827)).xy), uint(((_S827)).z))) * float4(255.0f) );
                 if((metadata_7.x) == 255.0f)
                 {
-                    uint _S827 = atlasWidth_7;
-                    uint _S828 = 2U % atlasWidth_7;
-                    int _S829 = int(_S828);
-                    uint _S830 = 2U / _S827;
-                    int3 _S831 = int3(_S829, int(_S830), int(0));
-                    int _S832 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S831)).xy), uint(((_S831)).z))).x * 255.0f)));
-                    uint _S833 = atlasWidth_7;
-                    uint _S834 = 3U % atlasWidth_7;
-                    int _S835 = int(_S834);
-                    uint _S836 = 3U / _S833;
-                    int3 _S837 = int3(_S835, int(_S836), int(0));
-                    int2 minimumTile_7 = int2(_S832, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S837)).xy), uint(((_S837)).z))).x * 255.0f))));
-                    uint _S838 = atlasWidth_7;
-                    uint _S839 = 4U % atlasWidth_7;
-                    int _S840 = int(_S839);
-                    uint _S841 = 4U / _S838;
-                    int3 _S842 = int3(_S840, int(_S841), int(0));
-                    uint _S843 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S842)).xy), uint(((_S842)).z))).x * 255.0f));
-                    uint _S844 = atlasWidth_7;
-                    uint _S845 = 5U % atlasWidth_7;
-                    int _S846 = int(_S845);
-                    uint _S847 = 5U / _S844;
-                    int3 _S848 = int3(_S846, int(_S847), int(0));
-                    uint _S849 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S848)).xy), uint(((_S848)).z))).x * 255.0f));
-                    uint2 grid_7 = uint2(_S843, _S849);
+                    uint _S828 = atlasWidth_7;
+                    uint _S829 = 2U % atlasWidth_7;
+                    int _S830 = int(_S829);
+                    uint _S831 = 2U / _S828;
+                    int3 _S832 = int3(_S830, int(_S831), int(0));
+                    int _S833 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S832)).xy), uint(((_S832)).z))).x * 255.0f)));
+                    uint _S834 = atlasWidth_7;
+                    uint _S835 = 3U % atlasWidth_7;
+                    int _S836 = int(_S835);
+                    uint _S837 = 3U / _S834;
+                    int3 _S838 = int3(_S836, int(_S837), int(0));
+                    int2 minimumTile_7 = int2(_S833, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S838)).xy), uint(((_S838)).z))).x * 255.0f))));
+                    uint _S839 = atlasWidth_7;
+                    uint _S840 = 4U % atlasWidth_7;
+                    int _S841 = int(_S840);
+                    uint _S842 = 4U / _S839;
+                    int3 _S843 = int3(_S841, int(_S842), int(0));
+                    uint _S844 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S843)).xy), uint(((_S843)).z))).x * 255.0f));
+                    uint _S845 = atlasWidth_7;
+                    uint _S846 = 5U % atlasWidth_7;
+                    int _S847 = int(_S846);
+                    uint _S848 = 5U / _S845;
+                    int3 _S849 = int3(_S847, int(_S848), int(0));
+                    uint _S850 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S849)).xy), uint(((_S849)).z))).x * 255.0f));
+                    uint2 grid_7 = uint2(_S844, _S850);
                     int2 tile_14 = int2(floor(detailSource_0)) - minimumTile_7;
                     if(any(tile_14 < (int2(int(0)) )))
                     {
@@ -2396,67 +2397,67 @@ struct KernelContext_0
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S850 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S850)).xy), uint(((_S850)).z)));
+                        int3 _S851 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S851)).xy), uint(((_S851)).z)));
                         break;
                     }
-                    uint offset_7 = 10U + 2U * (uint(tile_14.y) * _S843 + uint(tile_14.x));
-                    uint _S851 = atlasWidth_7;
-                    uint _S852 = offset_7 % atlasWidth_7;
-                    int _S853 = int(_S852);
-                    uint _S854 = offset_7 / _S851;
-                    int3 _S855 = int3(_S853, int(_S854), int(0));
-                    uint _S856 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S855)).xy), uint(((_S855)).z))).x * 255.0f));
-                    uint _S857 = atlasWidth_7;
-                    uint _S858 = offset_7 + 1U;
-                    uint _S859 = _S858 % atlasWidth_7;
-                    int _S860 = int(_S859);
-                    uint _S861 = _S858 / _S857;
-                    int3 _S862 = int3(_S860, int(_S861), int(0));
-                    uint slot_14 = _S856 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S862)).xy), uint(((_S862)).z))).x * 255.0f)) << 8U);
+                    uint offset_7 = 10U + 2U * (uint(tile_14.y) * _S844 + uint(tile_14.x));
+                    uint _S852 = atlasWidth_7;
+                    uint _S853 = offset_7 % atlasWidth_7;
+                    int _S854 = int(_S853);
+                    uint _S855 = offset_7 / _S852;
+                    int3 _S856 = int3(_S854, int(_S855), int(0));
+                    uint _S857 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S856)).xy), uint(((_S856)).z))).x * 255.0f));
+                    uint _S858 = atlasWidth_7;
+                    uint _S859 = offset_7 + 1U;
+                    uint _S860 = _S859 % atlasWidth_7;
+                    int _S861 = int(_S860);
+                    uint _S862 = _S859 / _S858;
+                    int3 _S863 = int3(_S861, int(_S862), int(0));
+                    uint slot_14 = _S857 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S863)).xy), uint(((_S863)).z))).x * 255.0f)) << 8U);
                     if(slot_14 == 0U)
                     {
-                        int3 _S863 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S863)).xy), uint(((_S863)).z)));
+                        int3 _S864 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S864)).xy), uint(((_S864)).z)));
                         break;
                     }
                     uint slot_15 = slot_14 - 1U;
-                    uint _S864 = atlasWidth_7;
-                    uint _S865 = 6U % atlasWidth_7;
-                    int _S866 = int(_S865);
-                    uint _S867 = 6U / _S864;
-                    int3 _S868 = int3(_S866, int(_S867), int(0));
-                    uint _S869 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S868)).xy), uint(((_S868)).z))).x * 255.0f));
-                    uint _S870 = atlasWidth_7;
-                    uint _S871 = 7U % atlasWidth_7;
-                    int _S872 = int(_S871);
-                    uint _S873 = 7U / _S870;
-                    int3 _S874 = int3(_S872, int(_S873), int(0));
-                    uint columns_7 = _S869 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S874)).xy), uint(((_S874)).z))).x * 255.0f)) << 8U);
-                    uint _S875 = atlasWidth_7;
-                    uint _S876 = 8U % atlasWidth_7;
-                    int _S877 = int(_S876);
-                    uint _S878 = 8U / _S875;
-                    int3 _S879 = int3(_S877, int(_S878), int(0));
-                    uint _S880 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S879)).xy), uint(((_S879)).z))).x * 255.0f));
-                    uint _S881 = atlasWidth_7;
-                    uint _S882 = 9U % atlasWidth_7;
-                    int _S883 = int(_S882);
-                    uint _S884 = 9U / _S881;
-                    int3 _S885 = int3(_S883, int(_S884), int(0));
-                    uint rows_7 = ((_S880 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S885)).xy), uint(((_S885)).z))).x * 255.0f)) << 8U)) + columns_7 - 1U) / columns_7;
-                    uint metadataRows_7 = (10U + 2U * _S843 * _S849 + atlasWidth_7 - 1U) / atlasWidth_7;
-                    uint _S886 = atlasWidth_7 / columns_7;
-                    float _S887 = float(_S886);
-                    uint _S888 = (atlasHeight_7 - metadataRows_7) / rows_7;
-                    float2 cellSize_14 = float2(_S887, float(_S888));
-                    uint _S889 = slot_15 % columns_7;
-                    float _S890 = float(_S889);
-                    uint _S891 = slot_15 / columns_7;
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S890, float(_S891)) * cellSize_14 + float2(1.5f, float(metadataRows_7) + 1.5f) + fract(detailSource_0) * max(cellSize_14 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_7), float(atlasHeight_7)))));
+                    uint _S865 = atlasWidth_7;
+                    uint _S866 = 6U % atlasWidth_7;
+                    int _S867 = int(_S866);
+                    uint _S868 = 6U / _S865;
+                    int3 _S869 = int3(_S867, int(_S868), int(0));
+                    uint _S870 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S869)).xy), uint(((_S869)).z))).x * 255.0f));
+                    uint _S871 = atlasWidth_7;
+                    uint _S872 = 7U % atlasWidth_7;
+                    int _S873 = int(_S872);
+                    uint _S874 = 7U / _S871;
+                    int3 _S875 = int3(_S873, int(_S874), int(0));
+                    uint columns_7 = _S870 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S875)).xy), uint(((_S875)).z))).x * 255.0f)) << 8U);
+                    uint _S876 = atlasWidth_7;
+                    uint _S877 = 8U % atlasWidth_7;
+                    int _S878 = int(_S877);
+                    uint _S879 = 8U / _S876;
+                    int3 _S880 = int3(_S878, int(_S879), int(0));
+                    uint _S881 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S880)).xy), uint(((_S880)).z))).x * 255.0f));
+                    uint _S882 = atlasWidth_7;
+                    uint _S883 = 9U % atlasWidth_7;
+                    int _S884 = int(_S883);
+                    uint _S885 = 9U / _S882;
+                    int3 _S886 = int3(_S884, int(_S885), int(0));
+                    uint rows_7 = ((_S881 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S886)).xy), uint(((_S886)).z))).x * 255.0f)) << 8U)) + columns_7 - 1U) / columns_7;
+                    uint metadataRows_7 = (10U + 2U * _S844 * _S850 + atlasWidth_7 - 1U) / atlasWidth_7;
+                    uint _S887 = atlasWidth_7 / columns_7;
+                    float _S888 = float(_S887);
+                    uint _S889 = (atlasHeight_7 - metadataRows_7) / rows_7;
+                    float2 cellSize_14 = float2(_S888, float(_S889));
+                    uint _S890 = slot_15 % columns_7;
+                    float _S891 = float(_S890);
+                    uint _S892 = slot_15 / columns_7;
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S891, float(_S892)) * cellSize_14 + float2(1.5f, float(metadataRows_7) + 1.5f) + fract(detailSource_0) * max(cellSize_14 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_7), float(atlasHeight_7)))));
                     break;
                 }
-                int2 _S892 = int2(metadata_7.zw);
+                int2 _S893 = int2(metadata_7.zw);
                 int2 tile_15 = int2(floor(detailSource_0)) - int2(metadata_7.xy);
                 if(any(tile_15 < (int2(int(0)) )))
                 {
@@ -2464,50 +2465,50 @@ struct KernelContext_0
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_15 >= _S892);
+                    hasSceneLighting_0 = any(tile_15 >= _S893);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S893 = int3(int(min(1U, atlasWidth_7 - 1U)), int(0), int(0));
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S893)).xy), uint(((_S893)).z)));
+                    int3 _S894 = int3(int(min(1U, atlasWidth_7 - 1U)), int(0), int(0));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S894)).xy), uint(((_S894)).z)));
                     break;
                 }
-                uint _S894 = atlasWidth_7 / uint(_S892.x);
-                float _S895 = float(_S894);
-                uint _S896 = (atlasHeight_7 - 1U) / uint(_S892.y);
-                float2 cellSize_15 = float2(_S895, float(_S896));
-                _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_15) * cellSize_15 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_15 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_7), float(atlasHeight_7)))));
+                uint _S895 = atlasWidth_7 / uint(_S893.x);
+                float _S896 = float(_S895);
+                uint _S897 = (atlasHeight_7 - 1U) / uint(_S893.y);
+                float2 cellSize_15 = float2(_S896, float(_S897));
+                _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_15) * cellSize_15 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_15 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_7), float(atlasHeight_7)))));
                 break;
             }
-            uint operation_2 = uint(round(_S820.y));
+            uint operation_2 = uint(round(_S821.y));
             if(operation_2 == 1U)
             {
-                _S191 = _S191 * _S590;
+                _S192 = _S192 * _S591;
                 break;
             }
             if(operation_2 == 2U)
             {
-                _S191 = _S191 + _S590;
+                _S192 = _S192 + _S591;
                 break;
             }
             if(operation_2 == 3U)
             {
-                _S191 = _S191 - _S590;
+                _S192 = _S192 - _S591;
                 break;
             }
             if(operation_2 == 4U)
             {
-                float factor_2 = _S820.z;
-                _S191 = _S191 * float4((1.0f - factor_2))  + _S590 * float4(factor_2) ;
+                float factor_2 = _S821.z;
+                _S192 = _S192 * float4((1.0f - factor_2))  + _S591 * float4(factor_2) ;
                 break;
             }
             break;
         }
-        metallic_0 = saturate(_S191.x);
+        metallic_0 = saturate(_S192.x);
     }
     else
     {
-        metallic_0 = _S166;
+        metallic_0 = _S167;
     }
     float3 emissiveColor_1;
     float clearcoatAmount_0;
@@ -2518,28 +2519,28 @@ struct KernelContext_0
         {
             if(useSecondary_4)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_4)
             {
-                detailSource_0 = _S182;
+                detailSource_0 = _S183;
             }
             else
             {
-                detailSource_0 = _S181;
+                detailSource_0 = _S182;
             }
         }
         thread float4 emissionSample_0;
-        bool _S897 = (udimMask_0 & 16U) != 0U;
-        bool _S898 = (maskU_1 & 16U) != 0U;
-        if(_S898)
+        bool _S898 = (udimMask_0 & 16U) != 0U;
+        bool _S899 = (maskU_1 & 16U) != 0U;
+        if(_S899)
         {
             index_0 = 1U;
         }
@@ -2547,8 +2548,8 @@ struct KernelContext_0
         {
             index_0 = 0U;
         }
-        bool _S899 = (maskV_1 & 16U) != 0U;
-        if(_S899)
+        bool _S900 = (maskV_1 & 16U) != 0U;
+        if(_S900)
         {
             lightCount_0 = 2U;
         }
@@ -2556,26 +2557,26 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S900 = index_0 | lightCount_0;
+        uint _S901 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S897)
+            if(!_S898)
             {
                 for(;;)
                 {
-                    if(_S900 == 0U)
+                    if(_S901 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S901 = (&kernelContext_0)->emissiveTexture_0;
+                    texture2d<float, access::sample> _S902 = (&kernelContext_0)->emissiveTexture_0;
                     thread uint width_12;
                     thread uint height_12;
-                    (*((&width_12)) = (_S901).get_width(0)),(*((&height_12)) = (_S901).get_height(0));
+                    (*((&width_12)) = (_S902).get_width(0)),(*((&height_12)) = (_S902).get_height(0));
                     float2 size_9 = float2(float(width_12), float(height_12));
-                    float2 _S902 = float2(0.5f) ;
-                    float2 remapped_9 = clamp((detailSource_0 * (size_9 - float2(2.0f) ) + float2(1.0f) ) / size_9, _S902 / size_9, (size_9 - _S902) / size_9);
-                    if((_S900 & 1U) != 0U)
+                    float2 _S903 = float2(0.5f) ;
+                    float2 remapped_9 = clamp((detailSource_0 * (size_9 - float2(2.0f) ) + float2(1.0f) ) / size_9, _S903 / size_9, (size_9 - _S903) / size_9);
+                    if((_S901 & 1U) != 0U)
                     {
                         occlusion_0 = remapped_9.x;
                     }
@@ -2583,7 +2584,7 @@ struct KernelContext_0
                     {
                         occlusion_0 = detailSource_0.x;
                     }
-                    if((_S900 & 2U) != 0U)
+                    if((_S901 & 2U) != 0U)
                     {
                         clearcoatAmount_0 = remapped_9.y;
                     }
@@ -2594,42 +2595,42 @@ struct KernelContext_0
                     tangent_1 = float2(occlusion_0, clearcoatAmount_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), (tangent_1)));
+                _S192 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), (tangent_1)));
                 break;
             }
-            texture2d<float, access::sample> _S903 = (&kernelContext_0)->emissiveTexture_0;
+            texture2d<float, access::sample> _S904 = (&kernelContext_0)->emissiveTexture_0;
             thread uint atlasWidth_8;
             thread uint atlasHeight_8;
-            (*((&atlasWidth_8)) = (_S903).get_width(0)),(*((&atlasHeight_8)) = (_S903).get_height(0));
-            int3 _S904 = int3(int(0), int(0), int(0));
-            float4 metadata_8 = round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S904)).xy), uint(((_S904)).z))) * float4(255.0f) );
+            (*((&atlasWidth_8)) = (_S904).get_width(0)),(*((&atlasHeight_8)) = (_S904).get_height(0));
+            int3 _S905 = int3(int(0), int(0), int(0));
+            float4 metadata_8 = round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S905)).xy), uint(((_S905)).z))) * float4(255.0f) );
             if((metadata_8.x) == 255.0f)
             {
-                uint _S905 = atlasWidth_8;
-                uint _S906 = 2U % atlasWidth_8;
-                int _S907 = int(_S906);
-                uint _S908 = 2U / _S905;
-                int3 _S909 = int3(_S907, int(_S908), int(0));
-                int _S910 = int(uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S909)).xy), uint(((_S909)).z))).x * 255.0f)));
-                uint _S911 = atlasWidth_8;
-                uint _S912 = 3U % atlasWidth_8;
-                int _S913 = int(_S912);
-                uint _S914 = 3U / _S911;
-                int3 _S915 = int3(_S913, int(_S914), int(0));
-                int2 minimumTile_8 = int2(_S910, int(uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S915)).xy), uint(((_S915)).z))).x * 255.0f))));
-                uint _S916 = atlasWidth_8;
-                uint _S917 = 4U % atlasWidth_8;
-                int _S918 = int(_S917);
-                uint _S919 = 4U / _S916;
-                int3 _S920 = int3(_S918, int(_S919), int(0));
-                uint _S921 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S920)).xy), uint(((_S920)).z))).x * 255.0f));
-                uint _S922 = atlasWidth_8;
-                uint _S923 = 5U % atlasWidth_8;
-                int _S924 = int(_S923);
-                uint _S925 = 5U / _S922;
-                int3 _S926 = int3(_S924, int(_S925), int(0));
-                uint _S927 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S926)).xy), uint(((_S926)).z))).x * 255.0f));
-                uint2 grid_8 = uint2(_S921, _S927);
+                uint _S906 = atlasWidth_8;
+                uint _S907 = 2U % atlasWidth_8;
+                int _S908 = int(_S907);
+                uint _S909 = 2U / _S906;
+                int3 _S910 = int3(_S908, int(_S909), int(0));
+                int _S911 = int(uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S910)).xy), uint(((_S910)).z))).x * 255.0f)));
+                uint _S912 = atlasWidth_8;
+                uint _S913 = 3U % atlasWidth_8;
+                int _S914 = int(_S913);
+                uint _S915 = 3U / _S912;
+                int3 _S916 = int3(_S914, int(_S915), int(0));
+                int2 minimumTile_8 = int2(_S911, int(uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S916)).xy), uint(((_S916)).z))).x * 255.0f))));
+                uint _S917 = atlasWidth_8;
+                uint _S918 = 4U % atlasWidth_8;
+                int _S919 = int(_S918);
+                uint _S920 = 4U / _S917;
+                int3 _S921 = int3(_S919, int(_S920), int(0));
+                uint _S922 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S921)).xy), uint(((_S921)).z))).x * 255.0f));
+                uint _S923 = atlasWidth_8;
+                uint _S924 = 5U % atlasWidth_8;
+                int _S925 = int(_S924);
+                uint _S926 = 5U / _S923;
+                int3 _S927 = int3(_S925, int(_S926), int(0));
+                uint _S928 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S927)).xy), uint(((_S927)).z))).x * 255.0f));
+                uint2 grid_8 = uint2(_S922, _S928);
                 int2 tile_16 = int2(floor(detailSource_0)) - minimumTile_8;
                 if(any(tile_16 < (int2(int(0)) )))
                 {
@@ -2641,67 +2642,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S928 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S928)).xy), uint(((_S928)).z)));
+                    int3 _S929 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S929)).xy), uint(((_S929)).z)));
                     break;
                 }
-                uint offset_8 = 10U + 2U * (uint(tile_16.y) * _S921 + uint(tile_16.x));
-                uint _S929 = atlasWidth_8;
-                uint _S930 = offset_8 % atlasWidth_8;
-                int _S931 = int(_S930);
-                uint _S932 = offset_8 / _S929;
-                int3 _S933 = int3(_S931, int(_S932), int(0));
-                uint _S934 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S933)).xy), uint(((_S933)).z))).x * 255.0f));
-                uint _S935 = atlasWidth_8;
-                uint _S936 = offset_8 + 1U;
-                uint _S937 = _S936 % atlasWidth_8;
-                int _S938 = int(_S937);
-                uint _S939 = _S936 / _S935;
-                int3 _S940 = int3(_S938, int(_S939), int(0));
-                uint slot_16 = _S934 | (uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S940)).xy), uint(((_S940)).z))).x * 255.0f)) << 8U);
+                uint offset_8 = 10U + 2U * (uint(tile_16.y) * _S922 + uint(tile_16.x));
+                uint _S930 = atlasWidth_8;
+                uint _S931 = offset_8 % atlasWidth_8;
+                int _S932 = int(_S931);
+                uint _S933 = offset_8 / _S930;
+                int3 _S934 = int3(_S932, int(_S933), int(0));
+                uint _S935 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S934)).xy), uint(((_S934)).z))).x * 255.0f));
+                uint _S936 = atlasWidth_8;
+                uint _S937 = offset_8 + 1U;
+                uint _S938 = _S937 % atlasWidth_8;
+                int _S939 = int(_S938);
+                uint _S940 = _S937 / _S936;
+                int3 _S941 = int3(_S939, int(_S940), int(0));
+                uint slot_16 = _S935 | (uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S941)).xy), uint(((_S941)).z))).x * 255.0f)) << 8U);
                 if(slot_16 == 0U)
                 {
-                    int3 _S941 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S941)).xy), uint(((_S941)).z)));
+                    int3 _S942 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S942)).xy), uint(((_S942)).z)));
                     break;
                 }
                 uint slot_17 = slot_16 - 1U;
-                uint _S942 = atlasWidth_8;
-                uint _S943 = 6U % atlasWidth_8;
-                int _S944 = int(_S943);
-                uint _S945 = 6U / _S942;
-                int3 _S946 = int3(_S944, int(_S945), int(0));
-                uint _S947 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S946)).xy), uint(((_S946)).z))).x * 255.0f));
-                uint _S948 = atlasWidth_8;
-                uint _S949 = 7U % atlasWidth_8;
-                int _S950 = int(_S949);
-                uint _S951 = 7U / _S948;
-                int3 _S952 = int3(_S950, int(_S951), int(0));
-                uint columns_8 = _S947 | (uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S952)).xy), uint(((_S952)).z))).x * 255.0f)) << 8U);
-                uint _S953 = atlasWidth_8;
-                uint _S954 = 8U % atlasWidth_8;
-                int _S955 = int(_S954);
-                uint _S956 = 8U / _S953;
-                int3 _S957 = int3(_S955, int(_S956), int(0));
-                uint _S958 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S957)).xy), uint(((_S957)).z))).x * 255.0f));
-                uint _S959 = atlasWidth_8;
-                uint _S960 = 9U % atlasWidth_8;
-                int _S961 = int(_S960);
-                uint _S962 = 9U / _S959;
-                int3 _S963 = int3(_S961, int(_S962), int(0));
-                uint rows_8 = ((_S958 | (uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S963)).xy), uint(((_S963)).z))).x * 255.0f)) << 8U)) + columns_8 - 1U) / columns_8;
-                uint metadataRows_8 = (10U + 2U * _S921 * _S927 + atlasWidth_8 - 1U) / atlasWidth_8;
-                uint _S964 = atlasWidth_8 / columns_8;
-                float _S965 = float(_S964);
-                uint _S966 = (atlasHeight_8 - metadataRows_8) / rows_8;
-                float2 cellSize_16 = float2(_S965, float(_S966));
-                uint _S967 = slot_17 % columns_8;
-                float _S968 = float(_S967);
-                uint _S969 = slot_17 / columns_8;
-                _S191 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), ((float2(_S968, float(_S969)) * cellSize_16 + float2(1.5f, float(metadataRows_8) + 1.5f) + fract(detailSource_0) * max(cellSize_16 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_8), float(atlasHeight_8)))));
+                uint _S943 = atlasWidth_8;
+                uint _S944 = 6U % atlasWidth_8;
+                int _S945 = int(_S944);
+                uint _S946 = 6U / _S943;
+                int3 _S947 = int3(_S945, int(_S946), int(0));
+                uint _S948 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S947)).xy), uint(((_S947)).z))).x * 255.0f));
+                uint _S949 = atlasWidth_8;
+                uint _S950 = 7U % atlasWidth_8;
+                int _S951 = int(_S950);
+                uint _S952 = 7U / _S949;
+                int3 _S953 = int3(_S951, int(_S952), int(0));
+                uint columns_8 = _S948 | (uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S953)).xy), uint(((_S953)).z))).x * 255.0f)) << 8U);
+                uint _S954 = atlasWidth_8;
+                uint _S955 = 8U % atlasWidth_8;
+                int _S956 = int(_S955);
+                uint _S957 = 8U / _S954;
+                int3 _S958 = int3(_S956, int(_S957), int(0));
+                uint _S959 = uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S958)).xy), uint(((_S958)).z))).x * 255.0f));
+                uint _S960 = atlasWidth_8;
+                uint _S961 = 9U % atlasWidth_8;
+                int _S962 = int(_S961);
+                uint _S963 = 9U / _S960;
+                int3 _S964 = int3(_S962, int(_S963), int(0));
+                uint rows_8 = ((_S959 | (uint(round((((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S964)).xy), uint(((_S964)).z))).x * 255.0f)) << 8U)) + columns_8 - 1U) / columns_8;
+                uint metadataRows_8 = (10U + 2U * _S922 * _S928 + atlasWidth_8 - 1U) / atlasWidth_8;
+                uint _S965 = atlasWidth_8 / columns_8;
+                float _S966 = float(_S965);
+                uint _S967 = (atlasHeight_8 - metadataRows_8) / rows_8;
+                float2 cellSize_16 = float2(_S966, float(_S967));
+                uint _S968 = slot_17 % columns_8;
+                float _S969 = float(_S968);
+                uint _S970 = slot_17 / columns_8;
+                _S192 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), ((float2(_S969, float(_S970)) * cellSize_16 + float2(1.5f, float(metadataRows_8) + 1.5f) + fract(detailSource_0) * max(cellSize_16 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_8), float(atlasHeight_8)))));
                 break;
             }
-            int2 _S970 = int2(metadata_8.zw);
+            int2 _S971 = int2(metadata_8.zw);
             int2 tile_17 = int2(floor(detailSource_0)) - int2(metadata_8.xy);
             if(any(tile_17 < (int2(int(0)) )))
             {
@@ -2709,83 +2710,83 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_17 >= _S970);
+                hasSceneLighting_0 = any(tile_17 >= _S971);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S971 = int3(int(min(1U, atlasWidth_8 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S971)).xy), uint(((_S971)).z)));
+                int3 _S972 = int3(int(min(1U, atlasWidth_8 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->emissiveTexture_0).read(vec<uint,2>(((_S972)).xy), uint(((_S972)).z)));
                 break;
             }
-            uint _S972 = atlasWidth_8 / uint(_S970.x);
-            float _S973 = float(_S972);
-            uint _S974 = (atlasHeight_8 - 1U) / uint(_S970.y);
-            float2 cellSize_17 = float2(_S973, float(_S974));
-            _S191 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), ((float2(tile_17) * cellSize_17 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_17 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_8), float(atlasHeight_8)))));
+            uint _S973 = atlasWidth_8 / uint(_S971.x);
+            float _S974 = float(_S973);
+            uint _S975 = (atlasHeight_8 - 1U) / uint(_S971.y);
+            float2 cellSize_17 = float2(_S974, float(_S975));
+            _S192 = (((&kernelContext_0)->emissiveTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), ((float2(tile_17) * cellSize_17 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_17 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_8), float(atlasHeight_8)))));
             break;
         }
-        emissionSample_0 = _S191;
-        if((_S176.w) != 0.0f)
+        emissionSample_0 = _S192;
+        if((_S177.w) != 0.0f)
         {
-            texture2d<float, access::sample> _S975 = (&kernelContext_0)->emissiveTexture_0;
+            texture2d<float, access::sample> _S976 = (&kernelContext_0)->emissiveTexture_0;
             thread uint sourceWidth_1;
             thread uint sourceHeight_1;
-            (*((&sourceWidth_1)) = (_S975).get_width(0)),(*((&sourceHeight_1)) = (_S975).get_height(0));
-            texture2d<float, access::sample> _S976 = (&kernelContext_0)->emissiveValuesTexture_0;
+            (*((&sourceWidth_1)) = (_S976).get_width(0)),(*((&sourceHeight_1)) = (_S976).get_height(0));
+            texture2d<float, access::sample> _S977 = (&kernelContext_0)->emissiveValuesTexture_0;
             thread uint valueWidth_1;
             thread uint valueHeight_1;
-            (*((&valueWidth_1)) = (_S976).get_width(0)),(*((&valueHeight_1)) = (_S976).get_height(0));
+            (*((&valueWidth_1)) = (_S977).get_width(0)),(*((&valueHeight_1)) = (_S977).get_height(0));
             if(valueWidth_1 != sourceWidth_1)
             {
-                float4 _S977 = emissionSample_0;
+                float4 _S978 = emissionSample_0;
                 for(;;)
                 {
-                    float _S978 = _S977.w;
-                    if(_S978 > 1.0f)
+                    float _S979 = _S978.w;
+                    if(_S979 > 1.0f)
                     {
-                        unlitColor_0 = _S977.xyz;
+                        unlitColor_0 = _S978.xyz;
                         break;
                     }
-                    texture2d<float, access::sample> _S979 = (&kernelContext_0)->emissiveValuesTexture_0;
+                    texture2d<float, access::sample> _S980 = (&kernelContext_0)->emissiveValuesTexture_0;
                     thread uint width_13;
                     thread uint height_13;
-                    (*((&width_13)) = (_S979).get_width(0)),(*((&height_13)) = (_S979).get_height(0));
-                    uint3 _S980 = uint3(round(_S977.xyz * float3(255.0f) ));
-                    uint index_4 = ((_S980.x) | ((_S980.y) << 8U)) | ((_S980.z) << 16U);
-                    if(_S978 == 0.0f)
+                    (*((&width_13)) = (_S980).get_width(0)),(*((&height_13)) = (_S980).get_height(0));
+                    uint3 _S981 = uint3(round(_S978.xyz * float3(255.0f) ));
+                    uint index_4 = ((_S981.x) | ((_S981.y) << 8U)) | ((_S981.z) << 16U);
+                    if(_S979 == 0.0f)
                     {
-                        _S192 = _S980;
+                        _S193 = _S981;
                     }
                     else
                     {
-                        _S192 = uint3(index_4, index_4, index_4);
+                        _S193 = uint3(index_4, index_4, index_4);
                     }
-                    uint3 address_3 = _S192 * uint3(3U)  + uint3(0U, 1U, 2U);
-                    uint _S981 = address_3.x;
-                    uint _S982 = _S981 % width_13;
-                    int _S983 = int(_S982);
-                    uint _S984 = _S981 / width_13;
-                    int3 _S985 = int3(_S983, int(_S984), int(0));
-                    float _S986 = (((&kernelContext_0)->emissiveValuesTexture_0).read(vec<uint,2>(((_S985)).xy), uint(((_S985)).z))).x;
-                    uint _S987 = address_3.y;
-                    uint _S988 = _S987 % width_13;
-                    int _S989 = int(_S988);
-                    uint _S990 = _S987 / width_13;
-                    int3 _S991 = int3(_S989, int(_S990), int(0));
-                    float _S992 = (((&kernelContext_0)->emissiveValuesTexture_0).read(vec<uint,2>(((_S991)).xy), uint(((_S991)).z))).x;
-                    uint _S993 = address_3.z;
-                    uint _S994 = _S993 % width_13;
-                    int _S995 = int(_S994);
-                    uint _S996 = _S993 / width_13;
-                    int3 _S997 = int3(_S995, int(_S996), int(0));
-                    unlitColor_0 = float3(_S986, _S992, (((&kernelContext_0)->emissiveValuesTexture_0).read(vec<uint,2>(((_S997)).xy), uint(((_S997)).z))).x);
+                    uint3 address_3 = _S193 * uint3(3U)  + uint3(0U, 1U, 2U);
+                    uint _S982 = address_3.x;
+                    uint _S983 = _S982 % width_13;
+                    int _S984 = int(_S983);
+                    uint _S985 = _S982 / width_13;
+                    int3 _S986 = int3(_S984, int(_S985), int(0));
+                    float _S987 = (((&kernelContext_0)->emissiveValuesTexture_0).read(vec<uint,2>(((_S986)).xy), uint(((_S986)).z))).x;
+                    uint _S988 = address_3.y;
+                    uint _S989 = _S988 % width_13;
+                    int _S990 = int(_S989);
+                    uint _S991 = _S988 / width_13;
+                    int3 _S992 = int3(_S990, int(_S991), int(0));
+                    float _S993 = (((&kernelContext_0)->emissiveValuesTexture_0).read(vec<uint,2>(((_S992)).xy), uint(((_S992)).z))).x;
+                    uint _S994 = address_3.z;
+                    uint _S995 = _S994 % width_13;
+                    int _S996 = int(_S995);
+                    uint _S997 = _S994 / width_13;
+                    int3 _S998 = int3(_S996, int(_S997), int(0));
+                    unlitColor_0 = float3(_S987, _S993, (((&kernelContext_0)->emissiveValuesTexture_0).read(vec<uint,2>(((_S998)).xy), uint(((_S998)).z))).x);
                     break;
                 }
                 emissionSample_0.xyz = unlitColor_0;
             }
             else
             {
-                if(_S898)
+                if(_S899)
                 {
                     index_0 = 1U;
                 }
@@ -2793,7 +2794,7 @@ struct KernelContext_0
                 {
                     index_0 = 0U;
                 }
-                if(_S899)
+                if(_S900)
                 {
                     lightCount_0 = 2U;
                 }
@@ -2801,22 +2802,22 @@ struct KernelContext_0
                 {
                     lightCount_0 = 0U;
                 }
-                uint _S998 = index_0 | lightCount_0;
+                uint _S999 = index_0 | lightCount_0;
                 for(;;)
                 {
-                    if(_S998 == 0U)
+                    if(_S999 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S999 = (&kernelContext_0)->emissiveValuesTexture_0;
+                    texture2d<float, access::sample> _S1000 = (&kernelContext_0)->emissiveValuesTexture_0;
                     thread uint width_14;
                     thread uint height_14;
-                    (*((&width_14)) = (_S999).get_width(0)),(*((&height_14)) = (_S999).get_height(0));
+                    (*((&width_14)) = (_S1000).get_width(0)),(*((&height_14)) = (_S1000).get_height(0));
                     float2 size_10 = float2(float(width_14), float(height_14));
-                    float2 _S1000 = float2(0.5f) ;
-                    float2 remapped_10 = clamp((detailSource_0 * (size_10 - float2(2.0f) ) + float2(1.0f) ) / size_10, _S1000 / size_10, (size_10 - _S1000) / size_10);
-                    if((_S998 & 1U) != 0U)
+                    float2 _S1001 = float2(0.5f) ;
+                    float2 remapped_10 = clamp((detailSource_0 * (size_10 - float2(2.0f) ) + float2(1.0f) ) / size_10, _S1001 / size_10, (size_10 - _S1001) / size_10);
+                    if((_S999 & 1U) != 0U)
                     {
                         occlusion_0 = remapped_10.x;
                     }
@@ -2824,7 +2825,7 @@ struct KernelContext_0
                     {
                         occlusion_0 = detailSource_0.x;
                     }
-                    if((_S998 & 2U) != 0U)
+                    if((_S999 & 2U) != 0U)
                     {
                         clearcoatAmount_0 = remapped_10.y;
                     }
@@ -2838,16 +2839,16 @@ struct KernelContext_0
                 emissionSample_0.z = (((&kernelContext_0)->emissiveValuesTexture_0).sample(((&kernelContext_0)->emissiveSampler_0), (tangent_1))).x;
             }
         }
-        float4 _S1001 = emissionSample_0;
+        float4 _S1002 = emissionSample_0;
         for(;;)
         {
-            float4 _S1002 = float4(_S6->compositeControls_0) ;
-            if((_S1002.x) != 16.0f)
+            float4 _S1003 = float4(_S7->compositeControls_0) ;
+            if((_S1003.x) != 16.0f)
             {
-                _S191 = _S1001;
+                _S192 = _S1002;
                 break;
             }
-            bool _S1003 = (_S1002.w) >= 0.5f;
+            bool _S1004 = (_S1003.w) >= 0.5f;
             if((maskU_1 & 1U) != 0U)
             {
                 index_0 = 1U;
@@ -2864,25 +2865,25 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S1004 = index_0 | lightCount_0;
+            uint _S1005 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S1003)
+                if(!_S1004)
                 {
                     for(;;)
                     {
-                        if(_S1004 == 0U)
+                        if(_S1005 == 0U)
                         {
                             break;
                         }
-                        texture2d<float, access::sample> _S1005 = (&kernelContext_0)->compositeTexture_0;
+                        texture2d<float, access::sample> _S1006 = (&kernelContext_0)->compositeTexture_0;
                         thread uint width_15;
                         thread uint height_15;
-                        (*((&width_15)) = (_S1005).get_width(0)),(*((&height_15)) = (_S1005).get_height(0));
+                        (*((&width_15)) = (_S1006).get_width(0)),(*((&height_15)) = (_S1006).get_height(0));
                         float2 size_11 = float2(float(width_15), float(height_15));
-                        float2 _S1006 = float2(0.5f) ;
-                        float2 remapped_11 = clamp((detailSource_0 * (size_11 - float2(2.0f) ) + float2(1.0f) ) / size_11, _S1006 / size_11, (size_11 - _S1006) / size_11);
-                        if((_S1004 & 1U) != 0U)
+                        float2 _S1007 = float2(0.5f) ;
+                        float2 remapped_11 = clamp((detailSource_0 * (size_11 - float2(2.0f) ) + float2(1.0f) ) / size_11, _S1007 / size_11, (size_11 - _S1007) / size_11);
+                        if((_S1005 & 1U) != 0U)
                         {
                             occlusion_0 = remapped_11.x;
                         }
@@ -2890,7 +2891,7 @@ struct KernelContext_0
                         {
                             occlusion_0 = detailSource_0.x;
                         }
-                        if((_S1004 & 2U) != 0U)
+                        if((_S1005 & 2U) != 0U)
                         {
                             clearcoatAmount_0 = remapped_11.y;
                         }
@@ -2901,42 +2902,42 @@ struct KernelContext_0
                         detailSource_0 = float2(occlusion_0, clearcoatAmount_0);
                         break;
                     }
-                    _S191 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S192 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
                     break;
                 }
-                texture2d<float, access::sample> _S1007 = (&kernelContext_0)->compositeTexture_0;
+                texture2d<float, access::sample> _S1008 = (&kernelContext_0)->compositeTexture_0;
                 thread uint atlasWidth_9;
                 thread uint atlasHeight_9;
-                (*((&atlasWidth_9)) = (_S1007).get_width(0)),(*((&atlasHeight_9)) = (_S1007).get_height(0));
-                int3 _S1008 = int3(int(0), int(0), int(0));
-                float4 metadata_9 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1008)).xy), uint(((_S1008)).z))) * float4(255.0f) );
+                (*((&atlasWidth_9)) = (_S1008).get_width(0)),(*((&atlasHeight_9)) = (_S1008).get_height(0));
+                int3 _S1009 = int3(int(0), int(0), int(0));
+                float4 metadata_9 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1009)).xy), uint(((_S1009)).z))) * float4(255.0f) );
                 if((metadata_9.x) == 255.0f)
                 {
-                    uint _S1009 = atlasWidth_9;
-                    uint _S1010 = 2U % atlasWidth_9;
-                    int _S1011 = int(_S1010);
-                    uint _S1012 = 2U / _S1009;
-                    int3 _S1013 = int3(_S1011, int(_S1012), int(0));
-                    int _S1014 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1013)).xy), uint(((_S1013)).z))).x * 255.0f)));
-                    uint _S1015 = atlasWidth_9;
-                    uint _S1016 = 3U % atlasWidth_9;
-                    int _S1017 = int(_S1016);
-                    uint _S1018 = 3U / _S1015;
-                    int3 _S1019 = int3(_S1017, int(_S1018), int(0));
-                    int2 minimumTile_9 = int2(_S1014, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1019)).xy), uint(((_S1019)).z))).x * 255.0f))));
-                    uint _S1020 = atlasWidth_9;
-                    uint _S1021 = 4U % atlasWidth_9;
-                    int _S1022 = int(_S1021);
-                    uint _S1023 = 4U / _S1020;
-                    int3 _S1024 = int3(_S1022, int(_S1023), int(0));
-                    uint _S1025 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1024)).xy), uint(((_S1024)).z))).x * 255.0f));
-                    uint _S1026 = atlasWidth_9;
-                    uint _S1027 = 5U % atlasWidth_9;
-                    int _S1028 = int(_S1027);
-                    uint _S1029 = 5U / _S1026;
-                    int3 _S1030 = int3(_S1028, int(_S1029), int(0));
-                    uint _S1031 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1030)).xy), uint(((_S1030)).z))).x * 255.0f));
-                    uint2 grid_9 = uint2(_S1025, _S1031);
+                    uint _S1010 = atlasWidth_9;
+                    uint _S1011 = 2U % atlasWidth_9;
+                    int _S1012 = int(_S1011);
+                    uint _S1013 = 2U / _S1010;
+                    int3 _S1014 = int3(_S1012, int(_S1013), int(0));
+                    int _S1015 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1014)).xy), uint(((_S1014)).z))).x * 255.0f)));
+                    uint _S1016 = atlasWidth_9;
+                    uint _S1017 = 3U % atlasWidth_9;
+                    int _S1018 = int(_S1017);
+                    uint _S1019 = 3U / _S1016;
+                    int3 _S1020 = int3(_S1018, int(_S1019), int(0));
+                    int2 minimumTile_9 = int2(_S1015, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1020)).xy), uint(((_S1020)).z))).x * 255.0f))));
+                    uint _S1021 = atlasWidth_9;
+                    uint _S1022 = 4U % atlasWidth_9;
+                    int _S1023 = int(_S1022);
+                    uint _S1024 = 4U / _S1021;
+                    int3 _S1025 = int3(_S1023, int(_S1024), int(0));
+                    uint _S1026 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1025)).xy), uint(((_S1025)).z))).x * 255.0f));
+                    uint _S1027 = atlasWidth_9;
+                    uint _S1028 = 5U % atlasWidth_9;
+                    int _S1029 = int(_S1028);
+                    uint _S1030 = 5U / _S1027;
+                    int3 _S1031 = int3(_S1029, int(_S1030), int(0));
+                    uint _S1032 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1031)).xy), uint(((_S1031)).z))).x * 255.0f));
+                    uint2 grid_9 = uint2(_S1026, _S1032);
                     int2 tile_18 = int2(floor(detailSource_0)) - minimumTile_9;
                     if(any(tile_18 < (int2(int(0)) )))
                     {
@@ -2948,67 +2949,67 @@ struct KernelContext_0
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S1032 = int3(int(1), int(0), int(0));
-                        _S191 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1032)).xy), uint(((_S1032)).z)));
+                        int3 _S1033 = int3(int(1), int(0), int(0));
+                        _S192 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1033)).xy), uint(((_S1033)).z)));
                         break;
                     }
-                    uint offset_9 = 10U + 2U * (uint(tile_18.y) * _S1025 + uint(tile_18.x));
-                    uint _S1033 = atlasWidth_9;
-                    uint _S1034 = offset_9 % atlasWidth_9;
-                    int _S1035 = int(_S1034);
-                    uint _S1036 = offset_9 / _S1033;
-                    int3 _S1037 = int3(_S1035, int(_S1036), int(0));
-                    uint _S1038 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1037)).xy), uint(((_S1037)).z))).x * 255.0f));
-                    uint _S1039 = atlasWidth_9;
-                    uint _S1040 = offset_9 + 1U;
-                    uint _S1041 = _S1040 % atlasWidth_9;
-                    int _S1042 = int(_S1041);
-                    uint _S1043 = _S1040 / _S1039;
-                    int3 _S1044 = int3(_S1042, int(_S1043), int(0));
-                    uint slot_18 = _S1038 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1044)).xy), uint(((_S1044)).z))).x * 255.0f)) << 8U);
+                    uint offset_9 = 10U + 2U * (uint(tile_18.y) * _S1026 + uint(tile_18.x));
+                    uint _S1034 = atlasWidth_9;
+                    uint _S1035 = offset_9 % atlasWidth_9;
+                    int _S1036 = int(_S1035);
+                    uint _S1037 = offset_9 / _S1034;
+                    int3 _S1038 = int3(_S1036, int(_S1037), int(0));
+                    uint _S1039 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1038)).xy), uint(((_S1038)).z))).x * 255.0f));
+                    uint _S1040 = atlasWidth_9;
+                    uint _S1041 = offset_9 + 1U;
+                    uint _S1042 = _S1041 % atlasWidth_9;
+                    int _S1043 = int(_S1042);
+                    uint _S1044 = _S1041 / _S1040;
+                    int3 _S1045 = int3(_S1043, int(_S1044), int(0));
+                    uint slot_18 = _S1039 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1045)).xy), uint(((_S1045)).z))).x * 255.0f)) << 8U);
                     if(slot_18 == 0U)
                     {
-                        int3 _S1045 = int3(int(1), int(0), int(0));
-                        _S191 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1045)).xy), uint(((_S1045)).z)));
+                        int3 _S1046 = int3(int(1), int(0), int(0));
+                        _S192 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1046)).xy), uint(((_S1046)).z)));
                         break;
                     }
                     uint slot_19 = slot_18 - 1U;
-                    uint _S1046 = atlasWidth_9;
-                    uint _S1047 = 6U % atlasWidth_9;
-                    int _S1048 = int(_S1047);
-                    uint _S1049 = 6U / _S1046;
-                    int3 _S1050 = int3(_S1048, int(_S1049), int(0));
-                    uint _S1051 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1050)).xy), uint(((_S1050)).z))).x * 255.0f));
-                    uint _S1052 = atlasWidth_9;
-                    uint _S1053 = 7U % atlasWidth_9;
-                    int _S1054 = int(_S1053);
-                    uint _S1055 = 7U / _S1052;
-                    int3 _S1056 = int3(_S1054, int(_S1055), int(0));
-                    uint columns_9 = _S1051 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1056)).xy), uint(((_S1056)).z))).x * 255.0f)) << 8U);
-                    uint _S1057 = atlasWidth_9;
-                    uint _S1058 = 8U % atlasWidth_9;
-                    int _S1059 = int(_S1058);
-                    uint _S1060 = 8U / _S1057;
-                    int3 _S1061 = int3(_S1059, int(_S1060), int(0));
-                    uint _S1062 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1061)).xy), uint(((_S1061)).z))).x * 255.0f));
-                    uint _S1063 = atlasWidth_9;
-                    uint _S1064 = 9U % atlasWidth_9;
-                    int _S1065 = int(_S1064);
-                    uint _S1066 = 9U / _S1063;
-                    int3 _S1067 = int3(_S1065, int(_S1066), int(0));
-                    uint rows_9 = ((_S1062 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1067)).xy), uint(((_S1067)).z))).x * 255.0f)) << 8U)) + columns_9 - 1U) / columns_9;
-                    uint metadataRows_9 = (10U + 2U * _S1025 * _S1031 + atlasWidth_9 - 1U) / atlasWidth_9;
-                    uint _S1068 = atlasWidth_9 / columns_9;
-                    float _S1069 = float(_S1068);
-                    uint _S1070 = (atlasHeight_9 - metadataRows_9) / rows_9;
-                    float2 cellSize_18 = float2(_S1069, float(_S1070));
-                    uint _S1071 = slot_19 % columns_9;
-                    float _S1072 = float(_S1071);
-                    uint _S1073 = slot_19 / columns_9;
-                    _S191 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1072, float(_S1073)) * cellSize_18 + float2(1.5f, float(metadataRows_9) + 1.5f) + fract(detailSource_0) * max(cellSize_18 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_9), float(atlasHeight_9)))));
+                    uint _S1047 = atlasWidth_9;
+                    uint _S1048 = 6U % atlasWidth_9;
+                    int _S1049 = int(_S1048);
+                    uint _S1050 = 6U / _S1047;
+                    int3 _S1051 = int3(_S1049, int(_S1050), int(0));
+                    uint _S1052 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1051)).xy), uint(((_S1051)).z))).x * 255.0f));
+                    uint _S1053 = atlasWidth_9;
+                    uint _S1054 = 7U % atlasWidth_9;
+                    int _S1055 = int(_S1054);
+                    uint _S1056 = 7U / _S1053;
+                    int3 _S1057 = int3(_S1055, int(_S1056), int(0));
+                    uint columns_9 = _S1052 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1057)).xy), uint(((_S1057)).z))).x * 255.0f)) << 8U);
+                    uint _S1058 = atlasWidth_9;
+                    uint _S1059 = 8U % atlasWidth_9;
+                    int _S1060 = int(_S1059);
+                    uint _S1061 = 8U / _S1058;
+                    int3 _S1062 = int3(_S1060, int(_S1061), int(0));
+                    uint _S1063 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1062)).xy), uint(((_S1062)).z))).x * 255.0f));
+                    uint _S1064 = atlasWidth_9;
+                    uint _S1065 = 9U % atlasWidth_9;
+                    int _S1066 = int(_S1065);
+                    uint _S1067 = 9U / _S1064;
+                    int3 _S1068 = int3(_S1066, int(_S1067), int(0));
+                    uint rows_9 = ((_S1063 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1068)).xy), uint(((_S1068)).z))).x * 255.0f)) << 8U)) + columns_9 - 1U) / columns_9;
+                    uint metadataRows_9 = (10U + 2U * _S1026 * _S1032 + atlasWidth_9 - 1U) / atlasWidth_9;
+                    uint _S1069 = atlasWidth_9 / columns_9;
+                    float _S1070 = float(_S1069);
+                    uint _S1071 = (atlasHeight_9 - metadataRows_9) / rows_9;
+                    float2 cellSize_18 = float2(_S1070, float(_S1071));
+                    uint _S1072 = slot_19 % columns_9;
+                    float _S1073 = float(_S1072);
+                    uint _S1074 = slot_19 / columns_9;
+                    _S192 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1073, float(_S1074)) * cellSize_18 + float2(1.5f, float(metadataRows_9) + 1.5f) + fract(detailSource_0) * max(cellSize_18 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_9), float(atlasHeight_9)))));
                     break;
                 }
-                int2 _S1074 = int2(metadata_9.zw);
+                int2 _S1075 = int2(metadata_9.zw);
                 int2 tile_19 = int2(floor(detailSource_0)) - int2(metadata_9.xy);
                 if(any(tile_19 < (int2(int(0)) )))
                 {
@@ -3016,47 +3017,47 @@ struct KernelContext_0
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_19 >= _S1074);
+                    hasSceneLighting_0 = any(tile_19 >= _S1075);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1075 = int3(int(min(1U, atlasWidth_9 - 1U)), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1075)).xy), uint(((_S1075)).z)));
+                    int3 _S1076 = int3(int(min(1U, atlasWidth_9 - 1U)), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1076)).xy), uint(((_S1076)).z)));
                     break;
                 }
-                uint _S1076 = atlasWidth_9 / uint(_S1074.x);
-                float _S1077 = float(_S1076);
-                uint _S1078 = (atlasHeight_9 - 1U) / uint(_S1074.y);
-                float2 cellSize_19 = float2(_S1077, float(_S1078));
-                _S191 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_19) * cellSize_19 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_19 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_9), float(atlasHeight_9)))));
+                uint _S1077 = atlasWidth_9 / uint(_S1075.x);
+                float _S1078 = float(_S1077);
+                uint _S1079 = (atlasHeight_9 - 1U) / uint(_S1075.y);
+                float2 cellSize_19 = float2(_S1078, float(_S1079));
+                _S192 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_19) * cellSize_19 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_19 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_9), float(atlasHeight_9)))));
                 break;
             }
-            uint operation_3 = uint(round(_S1002.y));
+            uint operation_3 = uint(round(_S1003.y));
             if(operation_3 == 1U)
             {
-                _S191 = _S1001 * _S191;
+                _S192 = _S1002 * _S192;
                 break;
             }
             if(operation_3 == 2U)
             {
-                _S191 = _S1001 + _S191;
+                _S192 = _S1002 + _S192;
                 break;
             }
             if(operation_3 == 3U)
             {
-                _S191 = _S1001 - _S191;
+                _S192 = _S1002 - _S192;
                 break;
             }
             if(operation_3 == 4U)
             {
-                float factor_3 = _S1002.z;
-                _S191 = _S1001 * float4((1.0f - factor_3))  + _S191 * float4(factor_3) ;
+                float factor_3 = _S1003.z;
+                _S192 = _S1002 * float4((1.0f - factor_3))  + _S192 * float4(factor_3) ;
                 break;
             }
-            _S191 = _S1001;
+            _S192 = _S1002;
             break;
         }
-        emissiveColor_1 = _S191.xyz;
+        emissiveColor_1 = _S192.xyz;
     }
     else
     {
@@ -3069,218 +3070,28 @@ struct KernelContext_0
         {
             if(useSecondary_5)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_5)
             {
+                detailSource_0 = _S183;
+            }
+            else
+            {
                 detailSource_0 = _S182;
             }
-            else
-            {
-                detailSource_0 = _S181;
-            }
-        }
-        bool _S1079 = (udimMask_0 & 64U) != 0U;
-        if((maskU_1 & 64U) != 0U)
-        {
-            index_0 = 1U;
-        }
-        else
-        {
-            index_0 = 0U;
-        }
-        if((maskV_1 & 64U) != 0U)
-        {
-            lightCount_0 = 2U;
-        }
-        else
-        {
-            lightCount_0 = 0U;
-        }
-        uint _S1080 = index_0 | lightCount_0;
-        for(;;)
-        {
-            if(!_S1079)
-            {
-                for(;;)
-                {
-                    if(_S1080 == 0U)
-                    {
-                        tangent_1 = detailSource_0;
-                        break;
-                    }
-                    texture2d<float, access::sample> _S1081 = (&kernelContext_0)->opacityTexture_0;
-                    thread uint width_16;
-                    thread uint height_16;
-                    (*((&width_16)) = (_S1081).get_width(0)),(*((&height_16)) = (_S1081).get_height(0));
-                    float2 size_12 = float2(float(width_16), float(height_16));
-                    float2 _S1082 = float2(0.5f) ;
-                    float2 remapped_12 = clamp((detailSource_0 * (size_12 - float2(2.0f) ) + float2(1.0f) ) / size_12, _S1082 / size_12, (size_12 - _S1082) / size_12);
-                    if((_S1080 & 1U) != 0U)
-                    {
-                        opacity_0 = remapped_12.x;
-                    }
-                    else
-                    {
-                        opacity_0 = detailSource_0.x;
-                    }
-                    if((_S1080 & 2U) != 0U)
-                    {
-                        occlusion_0 = remapped_12.y;
-                    }
-                    else
-                    {
-                        occlusion_0 = detailSource_0.y;
-                    }
-                    tangent_1 = float2(opacity_0, occlusion_0);
-                    break;
-                }
-                _S191 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), (tangent_1)));
-                break;
-            }
-            texture2d<float, access::sample> _S1083 = (&kernelContext_0)->opacityTexture_0;
-            thread uint atlasWidth_10;
-            thread uint atlasHeight_10;
-            (*((&atlasWidth_10)) = (_S1083).get_width(0)),(*((&atlasHeight_10)) = (_S1083).get_height(0));
-            int3 _S1084 = int3(int(0), int(0), int(0));
-            float4 metadata_10 = round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1084)).xy), uint(((_S1084)).z))) * float4(255.0f) );
-            if((metadata_10.x) == 255.0f)
-            {
-                uint _S1085 = atlasWidth_10;
-                uint _S1086 = 2U % atlasWidth_10;
-                int _S1087 = int(_S1086);
-                uint _S1088 = 2U / _S1085;
-                int3 _S1089 = int3(_S1087, int(_S1088), int(0));
-                int _S1090 = int(uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1089)).xy), uint(((_S1089)).z))).x * 255.0f)));
-                uint _S1091 = atlasWidth_10;
-                uint _S1092 = 3U % atlasWidth_10;
-                int _S1093 = int(_S1092);
-                uint _S1094 = 3U / _S1091;
-                int3 _S1095 = int3(_S1093, int(_S1094), int(0));
-                int2 minimumTile_10 = int2(_S1090, int(uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1095)).xy), uint(((_S1095)).z))).x * 255.0f))));
-                uint _S1096 = atlasWidth_10;
-                uint _S1097 = 4U % atlasWidth_10;
-                int _S1098 = int(_S1097);
-                uint _S1099 = 4U / _S1096;
-                int3 _S1100 = int3(_S1098, int(_S1099), int(0));
-                uint _S1101 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1100)).xy), uint(((_S1100)).z))).x * 255.0f));
-                uint _S1102 = atlasWidth_10;
-                uint _S1103 = 5U % atlasWidth_10;
-                int _S1104 = int(_S1103);
-                uint _S1105 = 5U / _S1102;
-                int3 _S1106 = int3(_S1104, int(_S1105), int(0));
-                uint _S1107 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1106)).xy), uint(((_S1106)).z))).x * 255.0f));
-                uint2 grid_10 = uint2(_S1101, _S1107);
-                int2 tile_20 = int2(floor(detailSource_0)) - minimumTile_10;
-                if(any(tile_20 < (int2(int(0)) )))
-                {
-                    hasSceneLighting_0 = true;
-                }
-                else
-                {
-                    hasSceneLighting_0 = any(tile_20 >= int2(grid_10));
-                }
-                if(hasSceneLighting_0)
-                {
-                    int3 _S1108 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1108)).xy), uint(((_S1108)).z)));
-                    break;
-                }
-                uint offset_10 = 10U + 2U * (uint(tile_20.y) * _S1101 + uint(tile_20.x));
-                uint _S1109 = atlasWidth_10;
-                uint _S1110 = offset_10 % atlasWidth_10;
-                int _S1111 = int(_S1110);
-                uint _S1112 = offset_10 / _S1109;
-                int3 _S1113 = int3(_S1111, int(_S1112), int(0));
-                uint _S1114 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1113)).xy), uint(((_S1113)).z))).x * 255.0f));
-                uint _S1115 = atlasWidth_10;
-                uint _S1116 = offset_10 + 1U;
-                uint _S1117 = _S1116 % atlasWidth_10;
-                int _S1118 = int(_S1117);
-                uint _S1119 = _S1116 / _S1115;
-                int3 _S1120 = int3(_S1118, int(_S1119), int(0));
-                uint slot_20 = _S1114 | (uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1120)).xy), uint(((_S1120)).z))).x * 255.0f)) << 8U);
-                if(slot_20 == 0U)
-                {
-                    int3 _S1121 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1121)).xy), uint(((_S1121)).z)));
-                    break;
-                }
-                uint slot_21 = slot_20 - 1U;
-                uint _S1122 = atlasWidth_10;
-                uint _S1123 = 6U % atlasWidth_10;
-                int _S1124 = int(_S1123);
-                uint _S1125 = 6U / _S1122;
-                int3 _S1126 = int3(_S1124, int(_S1125), int(0));
-                uint _S1127 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1126)).xy), uint(((_S1126)).z))).x * 255.0f));
-                uint _S1128 = atlasWidth_10;
-                uint _S1129 = 7U % atlasWidth_10;
-                int _S1130 = int(_S1129);
-                uint _S1131 = 7U / _S1128;
-                int3 _S1132 = int3(_S1130, int(_S1131), int(0));
-                uint columns_10 = _S1127 | (uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1132)).xy), uint(((_S1132)).z))).x * 255.0f)) << 8U);
-                uint _S1133 = atlasWidth_10;
-                uint _S1134 = 8U % atlasWidth_10;
-                int _S1135 = int(_S1134);
-                uint _S1136 = 8U / _S1133;
-                int3 _S1137 = int3(_S1135, int(_S1136), int(0));
-                uint _S1138 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1137)).xy), uint(((_S1137)).z))).x * 255.0f));
-                uint _S1139 = atlasWidth_10;
-                uint _S1140 = 9U % atlasWidth_10;
-                int _S1141 = int(_S1140);
-                uint _S1142 = 9U / _S1139;
-                int3 _S1143 = int3(_S1141, int(_S1142), int(0));
-                uint rows_10 = ((_S1138 | (uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1143)).xy), uint(((_S1143)).z))).x * 255.0f)) << 8U)) + columns_10 - 1U) / columns_10;
-                uint metadataRows_10 = (10U + 2U * _S1101 * _S1107 + atlasWidth_10 - 1U) / atlasWidth_10;
-                uint _S1144 = atlasWidth_10 / columns_10;
-                float _S1145 = float(_S1144);
-                uint _S1146 = (atlasHeight_10 - metadataRows_10) / rows_10;
-                float2 cellSize_20 = float2(_S1145, float(_S1146));
-                uint _S1147 = slot_21 % columns_10;
-                float _S1148 = float(_S1147);
-                uint _S1149 = slot_21 / columns_10;
-                _S191 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), ((float2(_S1148, float(_S1149)) * cellSize_20 + float2(1.5f, float(metadataRows_10) + 1.5f) + fract(detailSource_0) * max(cellSize_20 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_10), float(atlasHeight_10)))));
-                break;
-            }
-            int2 _S1150 = int2(metadata_10.zw);
-            int2 tile_21 = int2(floor(detailSource_0)) - int2(metadata_10.xy);
-            if(any(tile_21 < (int2(int(0)) )))
-            {
-                hasSceneLighting_0 = true;
-            }
-            else
-            {
-                hasSceneLighting_0 = any(tile_21 >= _S1150);
-            }
-            if(hasSceneLighting_0)
-            {
-                int3 _S1151 = int3(int(min(1U, atlasWidth_10 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1151)).xy), uint(((_S1151)).z)));
-                break;
-            }
-            uint _S1152 = atlasWidth_10 / uint(_S1150.x);
-            float _S1153 = float(_S1152);
-            uint _S1154 = (atlasHeight_10 - 1U) / uint(_S1150.y);
-            float2 cellSize_21 = float2(_S1153, float(_S1154));
-            _S191 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), ((float2(tile_21) * cellSize_21 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_21 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_10), float(atlasHeight_10)))));
-            break;
         }
         for(;;)
         {
-            float4 _S1155 = float4(_S6->compositeControls_0) ;
-            if((_S1155.x) != 64.0f)
-            {
-                break;
-            }
-            bool _S1156 = (_S1155.w) >= 0.5f;
-            if((maskU_1 & 1U) != 0U)
+            bool _S1080 = (udimMask_0 & 64U) != 0U;
+            if((maskU_1 & 64U) != 0U)
             {
                 index_0 = 1U;
             }
@@ -3288,7 +3099,7 @@ struct KernelContext_0
             {
                 index_0 = 0U;
             }
-            if((maskV_1 & 1U) != 0U)
+            if((maskV_1 & 64U) != 0U)
             {
                 lightCount_0 = 2U;
             }
@@ -3296,198 +3107,393 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S1157 = index_0 | lightCount_0;
+            uint _S1081 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S1156)
+                if(!_S1080)
                 {
                     for(;;)
                     {
-                        if(_S1157 == 0U)
+                        if(_S1081 == 0U)
                         {
+                            tangent_1 = detailSource_0;
                             break;
                         }
-                        texture2d<float, access::sample> _S1158 = (&kernelContext_0)->compositeTexture_0;
-                        thread uint width_17;
-                        thread uint height_17;
-                        (*((&width_17)) = (_S1158).get_width(0)),(*((&height_17)) = (_S1158).get_height(0));
-                        float2 size_13 = float2(float(width_17), float(height_17));
-                        float2 _S1159 = float2(0.5f) ;
-                        float2 remapped_13 = clamp((detailSource_0 * (size_13 - float2(2.0f) ) + float2(1.0f) ) / size_13, _S1159 / size_13, (size_13 - _S1159) / size_13);
-                        if((_S1157 & 1U) != 0U)
+                        texture2d<float, access::sample> _S1082 = (&kernelContext_0)->opacityTexture_0;
+                        thread uint width_16;
+                        thread uint height_16;
+                        (*((&width_16)) = (_S1082).get_width(0)),(*((&height_16)) = (_S1082).get_height(0));
+                        float2 size_12 = float2(float(width_16), float(height_16));
+                        float2 _S1083 = float2(0.5f) ;
+                        float2 remapped_12 = clamp((detailSource_0 * (size_12 - float2(2.0f) ) + float2(1.0f) ) / size_12, _S1083 / size_12, (size_12 - _S1083) / size_12);
+                        if((_S1081 & 1U) != 0U)
                         {
-                            opacity_0 = remapped_13.x;
+                            opacity_0 = remapped_12.x;
                         }
                         else
                         {
                             opacity_0 = detailSource_0.x;
                         }
-                        if((_S1157 & 2U) != 0U)
+                        if((_S1081 & 2U) != 0U)
                         {
-                            occlusion_0 = remapped_13.y;
+                            occlusion_0 = remapped_12.y;
                         }
                         else
                         {
                             occlusion_0 = detailSource_0.y;
                         }
-                        detailSource_0 = float2(opacity_0, occlusion_0);
+                        tangent_1 = float2(opacity_0, occlusion_0);
                         break;
                     }
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S192 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), (tangent_1)));
                     break;
                 }
-                texture2d<float, access::sample> _S1160 = (&kernelContext_0)->compositeTexture_0;
-                thread uint atlasWidth_11;
-                thread uint atlasHeight_11;
-                (*((&atlasWidth_11)) = (_S1160).get_width(0)),(*((&atlasHeight_11)) = (_S1160).get_height(0));
-                int3 _S1161 = int3(int(0), int(0), int(0));
-                float4 metadata_11 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1161)).xy), uint(((_S1161)).z))) * float4(255.0f) );
-                if((metadata_11.x) == 255.0f)
+                texture2d<float, access::sample> _S1084 = (&kernelContext_0)->opacityTexture_0;
+                thread uint atlasWidth_10;
+                thread uint atlasHeight_10;
+                (*((&atlasWidth_10)) = (_S1084).get_width(0)),(*((&atlasHeight_10)) = (_S1084).get_height(0));
+                int3 _S1085 = int3(int(0), int(0), int(0));
+                float4 metadata_10 = round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1085)).xy), uint(((_S1085)).z))) * float4(255.0f) );
+                if((metadata_10.x) == 255.0f)
                 {
-                    uint _S1162 = atlasWidth_11;
-                    uint _S1163 = 2U % atlasWidth_11;
-                    int _S1164 = int(_S1163);
-                    uint _S1165 = 2U / _S1162;
-                    int3 _S1166 = int3(_S1164, int(_S1165), int(0));
-                    int _S1167 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1166)).xy), uint(((_S1166)).z))).x * 255.0f)));
-                    uint _S1168 = atlasWidth_11;
-                    uint _S1169 = 3U % atlasWidth_11;
-                    int _S1170 = int(_S1169);
-                    uint _S1171 = 3U / _S1168;
-                    int3 _S1172 = int3(_S1170, int(_S1171), int(0));
-                    int2 minimumTile_11 = int2(_S1167, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1172)).xy), uint(((_S1172)).z))).x * 255.0f))));
-                    uint _S1173 = atlasWidth_11;
-                    uint _S1174 = 4U % atlasWidth_11;
-                    int _S1175 = int(_S1174);
-                    uint _S1176 = 4U / _S1173;
-                    int3 _S1177 = int3(_S1175, int(_S1176), int(0));
-                    uint _S1178 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1177)).xy), uint(((_S1177)).z))).x * 255.0f));
-                    uint _S1179 = atlasWidth_11;
-                    uint _S1180 = 5U % atlasWidth_11;
-                    int _S1181 = int(_S1180);
-                    uint _S1182 = 5U / _S1179;
-                    int3 _S1183 = int3(_S1181, int(_S1182), int(0));
-                    uint _S1184 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1183)).xy), uint(((_S1183)).z))).x * 255.0f));
-                    uint2 grid_11 = uint2(_S1178, _S1184);
-                    int2 tile_22 = int2(floor(detailSource_0)) - minimumTile_11;
-                    if(any(tile_22 < (int2(int(0)) )))
+                    uint _S1086 = atlasWidth_10;
+                    uint _S1087 = 2U % atlasWidth_10;
+                    int _S1088 = int(_S1087);
+                    uint _S1089 = 2U / _S1086;
+                    int3 _S1090 = int3(_S1088, int(_S1089), int(0));
+                    int _S1091 = int(uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1090)).xy), uint(((_S1090)).z))).x * 255.0f)));
+                    uint _S1092 = atlasWidth_10;
+                    uint _S1093 = 3U % atlasWidth_10;
+                    int _S1094 = int(_S1093);
+                    uint _S1095 = 3U / _S1092;
+                    int3 _S1096 = int3(_S1094, int(_S1095), int(0));
+                    int2 minimumTile_10 = int2(_S1091, int(uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1096)).xy), uint(((_S1096)).z))).x * 255.0f))));
+                    uint _S1097 = atlasWidth_10;
+                    uint _S1098 = 4U % atlasWidth_10;
+                    int _S1099 = int(_S1098);
+                    uint _S1100 = 4U / _S1097;
+                    int3 _S1101 = int3(_S1099, int(_S1100), int(0));
+                    uint _S1102 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1101)).xy), uint(((_S1101)).z))).x * 255.0f));
+                    uint _S1103 = atlasWidth_10;
+                    uint _S1104 = 5U % atlasWidth_10;
+                    int _S1105 = int(_S1104);
+                    uint _S1106 = 5U / _S1103;
+                    int3 _S1107 = int3(_S1105, int(_S1106), int(0));
+                    uint _S1108 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1107)).xy), uint(((_S1107)).z))).x * 255.0f));
+                    uint2 grid_10 = uint2(_S1102, _S1108);
+                    int2 tile_20 = int2(floor(detailSource_0)) - minimumTile_10;
+                    if(any(tile_20 < (int2(int(0)) )))
                     {
                         hasSceneLighting_0 = true;
                     }
                     else
                     {
-                        hasSceneLighting_0 = any(tile_22 >= int2(grid_11));
+                        hasSceneLighting_0 = any(tile_20 >= int2(grid_10));
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S1185 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1185)).xy), uint(((_S1185)).z)));
+                        int3 _S1109 = int3(int(1), int(0), int(0));
+                        _S192 = (((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1109)).xy), uint(((_S1109)).z)));
                         break;
                     }
-                    uint offset_11 = 10U + 2U * (uint(tile_22.y) * _S1178 + uint(tile_22.x));
-                    uint _S1186 = atlasWidth_11;
-                    uint _S1187 = offset_11 % atlasWidth_11;
-                    int _S1188 = int(_S1187);
-                    uint _S1189 = offset_11 / _S1186;
-                    int3 _S1190 = int3(_S1188, int(_S1189), int(0));
-                    uint _S1191 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1190)).xy), uint(((_S1190)).z))).x * 255.0f));
-                    uint _S1192 = atlasWidth_11;
-                    uint _S1193 = offset_11 + 1U;
-                    uint _S1194 = _S1193 % atlasWidth_11;
-                    int _S1195 = int(_S1194);
-                    uint _S1196 = _S1193 / _S1192;
-                    int3 _S1197 = int3(_S1195, int(_S1196), int(0));
-                    uint slot_22 = _S1191 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1197)).xy), uint(((_S1197)).z))).x * 255.0f)) << 8U);
-                    if(slot_22 == 0U)
+                    uint offset_10 = 10U + 2U * (uint(tile_20.y) * _S1102 + uint(tile_20.x));
+                    uint _S1110 = atlasWidth_10;
+                    uint _S1111 = offset_10 % atlasWidth_10;
+                    int _S1112 = int(_S1111);
+                    uint _S1113 = offset_10 / _S1110;
+                    int3 _S1114 = int3(_S1112, int(_S1113), int(0));
+                    uint _S1115 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1114)).xy), uint(((_S1114)).z))).x * 255.0f));
+                    uint _S1116 = atlasWidth_10;
+                    uint _S1117 = offset_10 + 1U;
+                    uint _S1118 = _S1117 % atlasWidth_10;
+                    int _S1119 = int(_S1118);
+                    uint _S1120 = _S1117 / _S1116;
+                    int3 _S1121 = int3(_S1119, int(_S1120), int(0));
+                    uint slot_20 = _S1115 | (uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1121)).xy), uint(((_S1121)).z))).x * 255.0f)) << 8U);
+                    if(slot_20 == 0U)
                     {
-                        int3 _S1198 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1198)).xy), uint(((_S1198)).z)));
+                        int3 _S1122 = int3(int(1), int(0), int(0));
+                        _S192 = (((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1122)).xy), uint(((_S1122)).z)));
                         break;
                     }
-                    uint slot_23 = slot_22 - 1U;
-                    uint _S1199 = atlasWidth_11;
-                    uint _S1200 = 6U % atlasWidth_11;
-                    int _S1201 = int(_S1200);
-                    uint _S1202 = 6U / _S1199;
-                    int3 _S1203 = int3(_S1201, int(_S1202), int(0));
-                    uint _S1204 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1203)).xy), uint(((_S1203)).z))).x * 255.0f));
-                    uint _S1205 = atlasWidth_11;
-                    uint _S1206 = 7U % atlasWidth_11;
-                    int _S1207 = int(_S1206);
-                    uint _S1208 = 7U / _S1205;
-                    int3 _S1209 = int3(_S1207, int(_S1208), int(0));
-                    uint columns_11 = _S1204 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1209)).xy), uint(((_S1209)).z))).x * 255.0f)) << 8U);
-                    uint _S1210 = atlasWidth_11;
-                    uint _S1211 = 8U % atlasWidth_11;
-                    int _S1212 = int(_S1211);
-                    uint _S1213 = 8U / _S1210;
-                    int3 _S1214 = int3(_S1212, int(_S1213), int(0));
-                    uint _S1215 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1214)).xy), uint(((_S1214)).z))).x * 255.0f));
-                    uint _S1216 = atlasWidth_11;
-                    uint _S1217 = 9U % atlasWidth_11;
-                    int _S1218 = int(_S1217);
-                    uint _S1219 = 9U / _S1216;
-                    int3 _S1220 = int3(_S1218, int(_S1219), int(0));
-                    uint rows_11 = ((_S1215 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1220)).xy), uint(((_S1220)).z))).x * 255.0f)) << 8U)) + columns_11 - 1U) / columns_11;
-                    uint metadataRows_11 = (10U + 2U * _S1178 * _S1184 + atlasWidth_11 - 1U) / atlasWidth_11;
-                    uint _S1221 = atlasWidth_11 / columns_11;
-                    float _S1222 = float(_S1221);
-                    uint _S1223 = (atlasHeight_11 - metadataRows_11) / rows_11;
-                    float2 cellSize_22 = float2(_S1222, float(_S1223));
-                    uint _S1224 = slot_23 % columns_11;
-                    float _S1225 = float(_S1224);
-                    uint _S1226 = slot_23 / columns_11;
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1225, float(_S1226)) * cellSize_22 + float2(1.5f, float(metadataRows_11) + 1.5f) + fract(detailSource_0) * max(cellSize_22 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_11), float(atlasHeight_11)))));
+                    uint slot_21 = slot_20 - 1U;
+                    uint _S1123 = atlasWidth_10;
+                    uint _S1124 = 6U % atlasWidth_10;
+                    int _S1125 = int(_S1124);
+                    uint _S1126 = 6U / _S1123;
+                    int3 _S1127 = int3(_S1125, int(_S1126), int(0));
+                    uint _S1128 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1127)).xy), uint(((_S1127)).z))).x * 255.0f));
+                    uint _S1129 = atlasWidth_10;
+                    uint _S1130 = 7U % atlasWidth_10;
+                    int _S1131 = int(_S1130);
+                    uint _S1132 = 7U / _S1129;
+                    int3 _S1133 = int3(_S1131, int(_S1132), int(0));
+                    uint columns_10 = _S1128 | (uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1133)).xy), uint(((_S1133)).z))).x * 255.0f)) << 8U);
+                    uint _S1134 = atlasWidth_10;
+                    uint _S1135 = 8U % atlasWidth_10;
+                    int _S1136 = int(_S1135);
+                    uint _S1137 = 8U / _S1134;
+                    int3 _S1138 = int3(_S1136, int(_S1137), int(0));
+                    uint _S1139 = uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1138)).xy), uint(((_S1138)).z))).x * 255.0f));
+                    uint _S1140 = atlasWidth_10;
+                    uint _S1141 = 9U % atlasWidth_10;
+                    int _S1142 = int(_S1141);
+                    uint _S1143 = 9U / _S1140;
+                    int3 _S1144 = int3(_S1142, int(_S1143), int(0));
+                    uint rows_10 = ((_S1139 | (uint(round((((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1144)).xy), uint(((_S1144)).z))).x * 255.0f)) << 8U)) + columns_10 - 1U) / columns_10;
+                    uint metadataRows_10 = (10U + 2U * _S1102 * _S1108 + atlasWidth_10 - 1U) / atlasWidth_10;
+                    uint _S1145 = atlasWidth_10 / columns_10;
+                    float _S1146 = float(_S1145);
+                    uint _S1147 = (atlasHeight_10 - metadataRows_10) / rows_10;
+                    float2 cellSize_20 = float2(_S1146, float(_S1147));
+                    uint _S1148 = slot_21 % columns_10;
+                    float _S1149 = float(_S1148);
+                    uint _S1150 = slot_21 / columns_10;
+                    _S192 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), ((float2(_S1149, float(_S1150)) * cellSize_20 + float2(1.5f, float(metadataRows_10) + 1.5f) + fract(detailSource_0) * max(cellSize_20 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_10), float(atlasHeight_10)))));
                     break;
                 }
-                int2 _S1227 = int2(metadata_11.zw);
-                int2 tile_23 = int2(floor(detailSource_0)) - int2(metadata_11.xy);
-                if(any(tile_23 < (int2(int(0)) )))
+                int2 _S1151 = int2(metadata_10.zw);
+                int2 tile_21 = int2(floor(detailSource_0)) - int2(metadata_10.xy);
+                if(any(tile_21 < (int2(int(0)) )))
                 {
                     hasSceneLighting_0 = true;
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_23 >= _S1227);
+                    hasSceneLighting_0 = any(tile_21 >= _S1151);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1228 = int3(int(min(1U, atlasWidth_11 - 1U)), int(0), int(0));
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1228)).xy), uint(((_S1228)).z)));
+                    int3 _S1152 = int3(int(min(1U, atlasWidth_10 - 1U)), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->opacityTexture_0).read(vec<uint,2>(((_S1152)).xy), uint(((_S1152)).z)));
                     break;
                 }
-                uint _S1229 = atlasWidth_11 / uint(_S1227.x);
-                float _S1230 = float(_S1229);
-                uint _S1231 = (atlasHeight_11 - 1U) / uint(_S1227.y);
-                float2 cellSize_23 = float2(_S1230, float(_S1231));
-                _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_23) * cellSize_23 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_23 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_11), float(atlasHeight_11)))));
+                uint _S1153 = atlasWidth_10 / uint(_S1151.x);
+                float _S1154 = float(_S1153);
+                uint _S1155 = (atlasHeight_10 - 1U) / uint(_S1151.y);
+                float2 cellSize_21 = float2(_S1154, float(_S1155));
+                _S192 = (((&kernelContext_0)->opacityTexture_0).sample(((&kernelContext_0)->opacitySampler_0), ((float2(tile_21) * cellSize_21 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_21 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_10), float(atlasHeight_10)))));
                 break;
             }
-            uint operation_4 = uint(round(_S1155.y));
-            if(operation_4 == 1U)
+            for(;;)
             {
-                _S191 = _S191 * _S590;
+                float4 _S1156 = float4(_S7->compositeControls_0) ;
+                if((_S1156.x) != 64.0f)
+                {
+                    break;
+                }
+                bool _S1157 = (_S1156.w) >= 0.5f;
+                if((maskU_1 & 1U) != 0U)
+                {
+                    index_0 = 1U;
+                }
+                else
+                {
+                    index_0 = 0U;
+                }
+                if((maskV_1 & 1U) != 0U)
+                {
+                    lightCount_0 = 2U;
+                }
+                else
+                {
+                    lightCount_0 = 0U;
+                }
+                uint _S1158 = index_0 | lightCount_0;
+                for(;;)
+                {
+                    if(!_S1157)
+                    {
+                        for(;;)
+                        {
+                            if(_S1158 == 0U)
+                            {
+                                break;
+                            }
+                            texture2d<float, access::sample> _S1159 = (&kernelContext_0)->compositeTexture_0;
+                            thread uint width_17;
+                            thread uint height_17;
+                            (*((&width_17)) = (_S1159).get_width(0)),(*((&height_17)) = (_S1159).get_height(0));
+                            float2 size_13 = float2(float(width_17), float(height_17));
+                            float2 _S1160 = float2(0.5f) ;
+                            float2 remapped_13 = clamp((detailSource_0 * (size_13 - float2(2.0f) ) + float2(1.0f) ) / size_13, _S1160 / size_13, (size_13 - _S1160) / size_13);
+                            if((_S1158 & 1U) != 0U)
+                            {
+                                opacity_0 = remapped_13.x;
+                            }
+                            else
+                            {
+                                opacity_0 = detailSource_0.x;
+                            }
+                            if((_S1158 & 2U) != 0U)
+                            {
+                                occlusion_0 = remapped_13.y;
+                            }
+                            else
+                            {
+                                occlusion_0 = detailSource_0.y;
+                            }
+                            detailSource_0 = float2(opacity_0, occlusion_0);
+                            break;
+                        }
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                        break;
+                    }
+                    texture2d<float, access::sample> _S1161 = (&kernelContext_0)->compositeTexture_0;
+                    thread uint atlasWidth_11;
+                    thread uint atlasHeight_11;
+                    (*((&atlasWidth_11)) = (_S1161).get_width(0)),(*((&atlasHeight_11)) = (_S1161).get_height(0));
+                    int3 _S1162 = int3(int(0), int(0), int(0));
+                    float4 metadata_11 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1162)).xy), uint(((_S1162)).z))) * float4(255.0f) );
+                    if((metadata_11.x) == 255.0f)
+                    {
+                        uint _S1163 = atlasWidth_11;
+                        uint _S1164 = 2U % atlasWidth_11;
+                        int _S1165 = int(_S1164);
+                        uint _S1166 = 2U / _S1163;
+                        int3 _S1167 = int3(_S1165, int(_S1166), int(0));
+                        int _S1168 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1167)).xy), uint(((_S1167)).z))).x * 255.0f)));
+                        uint _S1169 = atlasWidth_11;
+                        uint _S1170 = 3U % atlasWidth_11;
+                        int _S1171 = int(_S1170);
+                        uint _S1172 = 3U / _S1169;
+                        int3 _S1173 = int3(_S1171, int(_S1172), int(0));
+                        int2 minimumTile_11 = int2(_S1168, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1173)).xy), uint(((_S1173)).z))).x * 255.0f))));
+                        uint _S1174 = atlasWidth_11;
+                        uint _S1175 = 4U % atlasWidth_11;
+                        int _S1176 = int(_S1175);
+                        uint _S1177 = 4U / _S1174;
+                        int3 _S1178 = int3(_S1176, int(_S1177), int(0));
+                        uint _S1179 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1178)).xy), uint(((_S1178)).z))).x * 255.0f));
+                        uint _S1180 = atlasWidth_11;
+                        uint _S1181 = 5U % atlasWidth_11;
+                        int _S1182 = int(_S1181);
+                        uint _S1183 = 5U / _S1180;
+                        int3 _S1184 = int3(_S1182, int(_S1183), int(0));
+                        uint _S1185 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1184)).xy), uint(((_S1184)).z))).x * 255.0f));
+                        uint2 grid_11 = uint2(_S1179, _S1185);
+                        int2 tile_22 = int2(floor(detailSource_0)) - minimumTile_11;
+                        if(any(tile_22 < (int2(int(0)) )))
+                        {
+                            hasSceneLighting_0 = true;
+                        }
+                        else
+                        {
+                            hasSceneLighting_0 = any(tile_22 >= int2(grid_11));
+                        }
+                        if(hasSceneLighting_0)
+                        {
+                            int3 _S1186 = int3(int(1), int(0), int(0));
+                            _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1186)).xy), uint(((_S1186)).z)));
+                            break;
+                        }
+                        uint offset_11 = 10U + 2U * (uint(tile_22.y) * _S1179 + uint(tile_22.x));
+                        uint _S1187 = atlasWidth_11;
+                        uint _S1188 = offset_11 % atlasWidth_11;
+                        int _S1189 = int(_S1188);
+                        uint _S1190 = offset_11 / _S1187;
+                        int3 _S1191 = int3(_S1189, int(_S1190), int(0));
+                        uint _S1192 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1191)).xy), uint(((_S1191)).z))).x * 255.0f));
+                        uint _S1193 = atlasWidth_11;
+                        uint _S1194 = offset_11 + 1U;
+                        uint _S1195 = _S1194 % atlasWidth_11;
+                        int _S1196 = int(_S1195);
+                        uint _S1197 = _S1194 / _S1193;
+                        int3 _S1198 = int3(_S1196, int(_S1197), int(0));
+                        uint slot_22 = _S1192 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1198)).xy), uint(((_S1198)).z))).x * 255.0f)) << 8U);
+                        if(slot_22 == 0U)
+                        {
+                            int3 _S1199 = int3(int(1), int(0), int(0));
+                            _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1199)).xy), uint(((_S1199)).z)));
+                            break;
+                        }
+                        uint slot_23 = slot_22 - 1U;
+                        uint _S1200 = atlasWidth_11;
+                        uint _S1201 = 6U % atlasWidth_11;
+                        int _S1202 = int(_S1201);
+                        uint _S1203 = 6U / _S1200;
+                        int3 _S1204 = int3(_S1202, int(_S1203), int(0));
+                        uint _S1205 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1204)).xy), uint(((_S1204)).z))).x * 255.0f));
+                        uint _S1206 = atlasWidth_11;
+                        uint _S1207 = 7U % atlasWidth_11;
+                        int _S1208 = int(_S1207);
+                        uint _S1209 = 7U / _S1206;
+                        int3 _S1210 = int3(_S1208, int(_S1209), int(0));
+                        uint columns_11 = _S1205 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1210)).xy), uint(((_S1210)).z))).x * 255.0f)) << 8U);
+                        uint _S1211 = atlasWidth_11;
+                        uint _S1212 = 8U % atlasWidth_11;
+                        int _S1213 = int(_S1212);
+                        uint _S1214 = 8U / _S1211;
+                        int3 _S1215 = int3(_S1213, int(_S1214), int(0));
+                        uint _S1216 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1215)).xy), uint(((_S1215)).z))).x * 255.0f));
+                        uint _S1217 = atlasWidth_11;
+                        uint _S1218 = 9U % atlasWidth_11;
+                        int _S1219 = int(_S1218);
+                        uint _S1220 = 9U / _S1217;
+                        int3 _S1221 = int3(_S1219, int(_S1220), int(0));
+                        uint rows_11 = ((_S1216 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1221)).xy), uint(((_S1221)).z))).x * 255.0f)) << 8U)) + columns_11 - 1U) / columns_11;
+                        uint metadataRows_11 = (10U + 2U * _S1179 * _S1185 + atlasWidth_11 - 1U) / atlasWidth_11;
+                        uint _S1222 = atlasWidth_11 / columns_11;
+                        float _S1223 = float(_S1222);
+                        uint _S1224 = (atlasHeight_11 - metadataRows_11) / rows_11;
+                        float2 cellSize_22 = float2(_S1223, float(_S1224));
+                        uint _S1225 = slot_23 % columns_11;
+                        float _S1226 = float(_S1225);
+                        uint _S1227 = slot_23 / columns_11;
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1226, float(_S1227)) * cellSize_22 + float2(1.5f, float(metadataRows_11) + 1.5f) + fract(detailSource_0) * max(cellSize_22 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_11), float(atlasHeight_11)))));
+                        break;
+                    }
+                    int2 _S1228 = int2(metadata_11.zw);
+                    int2 tile_23 = int2(floor(detailSource_0)) - int2(metadata_11.xy);
+                    if(any(tile_23 < (int2(int(0)) )))
+                    {
+                        hasSceneLighting_0 = true;
+                    }
+                    else
+                    {
+                        hasSceneLighting_0 = any(tile_23 >= _S1228);
+                    }
+                    if(hasSceneLighting_0)
+                    {
+                        int3 _S1229 = int3(int(min(1U, atlasWidth_11 - 1U)), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1229)).xy), uint(((_S1229)).z)));
+                        break;
+                    }
+                    uint _S1230 = atlasWidth_11 / uint(_S1228.x);
+                    float _S1231 = float(_S1230);
+                    uint _S1232 = (atlasHeight_11 - 1U) / uint(_S1228.y);
+                    float2 cellSize_23 = float2(_S1231, float(_S1232));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_23) * cellSize_23 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_23 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_11), float(atlasHeight_11)))));
+                    break;
+                }
+                uint operation_4 = uint(round(_S1156.y));
+                if(operation_4 == 1U)
+                {
+                    _S192 = _S192 * _S591;
+                    break;
+                }
+                if(operation_4 == 2U)
+                {
+                    _S192 = _S192 + _S591;
+                    break;
+                }
+                if(operation_4 == 3U)
+                {
+                    _S192 = _S192 - _S591;
+                    break;
+                }
+                if(operation_4 == 4U)
+                {
+                    float factor_4 = _S1156.z;
+                    _S192 = _S192 * float4((1.0f - factor_4))  + _S591 * float4(factor_4) ;
+                    break;
+                }
                 break;
             }
-            if(operation_4 == 2U)
-            {
-                _S191 = _S191 + _S590;
-                break;
-            }
-            if(operation_4 == 3U)
-            {
-                _S191 = _S191 - _S590;
-                break;
-            }
-            if(operation_4 == 4U)
-            {
-                float factor_4 = _S1155.z;
-                _S191 = _S191 * float4((1.0f - factor_4))  + _S590 * float4(factor_4) ;
-                break;
-            }
+            _S4 = saturate(_S192.x);
             break;
         }
-        opacity_0 = saturate(_S191.x);
+        opacity_0 = _S4;
     }
     if((textureMask_0 & 128U) != 0U)
     {
@@ -3496,25 +3502,25 @@ struct KernelContext_0
         {
             if(useSecondary_6)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_6)
             {
-                detailSource_0 = _S182;
+                detailSource_0 = _S183;
             }
             else
             {
-                detailSource_0 = _S181;
+                detailSource_0 = _S182;
             }
         }
-        bool _S1232 = (udimMask_0 & 128U) != 0U;
+        bool _S1233 = (udimMask_0 & 128U) != 0U;
         if((maskU_1 & 128U) != 0U)
         {
             index_0 = 1U;
@@ -3531,26 +3537,26 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S1233 = index_0 | lightCount_0;
+        uint _S1234 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S1232)
+            if(!_S1233)
             {
                 for(;;)
                 {
-                    if(_S1233 == 0U)
+                    if(_S1234 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S1234 = (&kernelContext_0)->occlusionTexture_0;
+                    texture2d<float, access::sample> _S1235 = (&kernelContext_0)->occlusionTexture_0;
                     thread uint width_18;
                     thread uint height_18;
-                    (*((&width_18)) = (_S1234).get_width(0)),(*((&height_18)) = (_S1234).get_height(0));
+                    (*((&width_18)) = (_S1235).get_width(0)),(*((&height_18)) = (_S1235).get_height(0));
                     float2 size_14 = float2(float(width_18), float(height_18));
-                    float2 _S1235 = float2(0.5f) ;
-                    float2 remapped_14 = clamp((detailSource_0 * (size_14 - float2(2.0f) ) + float2(1.0f) ) / size_14, _S1235 / size_14, (size_14 - _S1235) / size_14);
-                    if((_S1233 & 1U) != 0U)
+                    float2 _S1236 = float2(0.5f) ;
+                    float2 remapped_14 = clamp((detailSource_0 * (size_14 - float2(2.0f) ) + float2(1.0f) ) / size_14, _S1236 / size_14, (size_14 - _S1236) / size_14);
+                    if((_S1234 & 1U) != 0U)
                     {
                         occlusion_0 = remapped_14.x;
                     }
@@ -3558,7 +3564,7 @@ struct KernelContext_0
                     {
                         occlusion_0 = detailSource_0.x;
                     }
-                    if((_S1233 & 2U) != 0U)
+                    if((_S1234 & 2U) != 0U)
                     {
                         clearcoatAmount_0 = remapped_14.y;
                     }
@@ -3569,42 +3575,42 @@ struct KernelContext_0
                     tangent_1 = float2(occlusion_0, clearcoatAmount_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), (tangent_1)));
+                _S192 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), (tangent_1)));
                 break;
             }
-            texture2d<float, access::sample> _S1236 = (&kernelContext_0)->occlusionTexture_0;
+            texture2d<float, access::sample> _S1237 = (&kernelContext_0)->occlusionTexture_0;
             thread uint atlasWidth_12;
             thread uint atlasHeight_12;
-            (*((&atlasWidth_12)) = (_S1236).get_width(0)),(*((&atlasHeight_12)) = (_S1236).get_height(0));
-            int3 _S1237 = int3(int(0), int(0), int(0));
-            float4 metadata_12 = round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1237)).xy), uint(((_S1237)).z))) * float4(255.0f) );
+            (*((&atlasWidth_12)) = (_S1237).get_width(0)),(*((&atlasHeight_12)) = (_S1237).get_height(0));
+            int3 _S1238 = int3(int(0), int(0), int(0));
+            float4 metadata_12 = round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1238)).xy), uint(((_S1238)).z))) * float4(255.0f) );
             if((metadata_12.x) == 255.0f)
             {
-                uint _S1238 = atlasWidth_12;
-                uint _S1239 = 2U % atlasWidth_12;
-                int _S1240 = int(_S1239);
-                uint _S1241 = 2U / _S1238;
-                int3 _S1242 = int3(_S1240, int(_S1241), int(0));
-                int _S1243 = int(uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1242)).xy), uint(((_S1242)).z))).x * 255.0f)));
-                uint _S1244 = atlasWidth_12;
-                uint _S1245 = 3U % atlasWidth_12;
-                int _S1246 = int(_S1245);
-                uint _S1247 = 3U / _S1244;
-                int3 _S1248 = int3(_S1246, int(_S1247), int(0));
-                int2 minimumTile_12 = int2(_S1243, int(uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1248)).xy), uint(((_S1248)).z))).x * 255.0f))));
-                uint _S1249 = atlasWidth_12;
-                uint _S1250 = 4U % atlasWidth_12;
-                int _S1251 = int(_S1250);
-                uint _S1252 = 4U / _S1249;
-                int3 _S1253 = int3(_S1251, int(_S1252), int(0));
-                uint _S1254 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1253)).xy), uint(((_S1253)).z))).x * 255.0f));
-                uint _S1255 = atlasWidth_12;
-                uint _S1256 = 5U % atlasWidth_12;
-                int _S1257 = int(_S1256);
-                uint _S1258 = 5U / _S1255;
-                int3 _S1259 = int3(_S1257, int(_S1258), int(0));
-                uint _S1260 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1259)).xy), uint(((_S1259)).z))).x * 255.0f));
-                uint2 grid_12 = uint2(_S1254, _S1260);
+                uint _S1239 = atlasWidth_12;
+                uint _S1240 = 2U % atlasWidth_12;
+                int _S1241 = int(_S1240);
+                uint _S1242 = 2U / _S1239;
+                int3 _S1243 = int3(_S1241, int(_S1242), int(0));
+                int _S1244 = int(uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1243)).xy), uint(((_S1243)).z))).x * 255.0f)));
+                uint _S1245 = atlasWidth_12;
+                uint _S1246 = 3U % atlasWidth_12;
+                int _S1247 = int(_S1246);
+                uint _S1248 = 3U / _S1245;
+                int3 _S1249 = int3(_S1247, int(_S1248), int(0));
+                int2 minimumTile_12 = int2(_S1244, int(uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1249)).xy), uint(((_S1249)).z))).x * 255.0f))));
+                uint _S1250 = atlasWidth_12;
+                uint _S1251 = 4U % atlasWidth_12;
+                int _S1252 = int(_S1251);
+                uint _S1253 = 4U / _S1250;
+                int3 _S1254 = int3(_S1252, int(_S1253), int(0));
+                uint _S1255 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1254)).xy), uint(((_S1254)).z))).x * 255.0f));
+                uint _S1256 = atlasWidth_12;
+                uint _S1257 = 5U % atlasWidth_12;
+                int _S1258 = int(_S1257);
+                uint _S1259 = 5U / _S1256;
+                int3 _S1260 = int3(_S1258, int(_S1259), int(0));
+                uint _S1261 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1260)).xy), uint(((_S1260)).z))).x * 255.0f));
+                uint2 grid_12 = uint2(_S1255, _S1261);
                 int2 tile_24 = int2(floor(detailSource_0)) - minimumTile_12;
                 if(any(tile_24 < (int2(int(0)) )))
                 {
@@ -3616,67 +3622,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1261 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1261)).xy), uint(((_S1261)).z)));
+                    int3 _S1262 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1262)).xy), uint(((_S1262)).z)));
                     break;
                 }
-                uint offset_12 = 10U + 2U * (uint(tile_24.y) * _S1254 + uint(tile_24.x));
-                uint _S1262 = atlasWidth_12;
-                uint _S1263 = offset_12 % atlasWidth_12;
-                int _S1264 = int(_S1263);
-                uint _S1265 = offset_12 / _S1262;
-                int3 _S1266 = int3(_S1264, int(_S1265), int(0));
-                uint _S1267 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1266)).xy), uint(((_S1266)).z))).x * 255.0f));
-                uint _S1268 = atlasWidth_12;
-                uint _S1269 = offset_12 + 1U;
-                uint _S1270 = _S1269 % atlasWidth_12;
-                int _S1271 = int(_S1270);
-                uint _S1272 = _S1269 / _S1268;
-                int3 _S1273 = int3(_S1271, int(_S1272), int(0));
-                uint slot_24 = _S1267 | (uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1273)).xy), uint(((_S1273)).z))).x * 255.0f)) << 8U);
+                uint offset_12 = 10U + 2U * (uint(tile_24.y) * _S1255 + uint(tile_24.x));
+                uint _S1263 = atlasWidth_12;
+                uint _S1264 = offset_12 % atlasWidth_12;
+                int _S1265 = int(_S1264);
+                uint _S1266 = offset_12 / _S1263;
+                int3 _S1267 = int3(_S1265, int(_S1266), int(0));
+                uint _S1268 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1267)).xy), uint(((_S1267)).z))).x * 255.0f));
+                uint _S1269 = atlasWidth_12;
+                uint _S1270 = offset_12 + 1U;
+                uint _S1271 = _S1270 % atlasWidth_12;
+                int _S1272 = int(_S1271);
+                uint _S1273 = _S1270 / _S1269;
+                int3 _S1274 = int3(_S1272, int(_S1273), int(0));
+                uint slot_24 = _S1268 | (uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1274)).xy), uint(((_S1274)).z))).x * 255.0f)) << 8U);
                 if(slot_24 == 0U)
                 {
-                    int3 _S1274 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1274)).xy), uint(((_S1274)).z)));
+                    int3 _S1275 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1275)).xy), uint(((_S1275)).z)));
                     break;
                 }
                 uint slot_25 = slot_24 - 1U;
-                uint _S1275 = atlasWidth_12;
-                uint _S1276 = 6U % atlasWidth_12;
-                int _S1277 = int(_S1276);
-                uint _S1278 = 6U / _S1275;
-                int3 _S1279 = int3(_S1277, int(_S1278), int(0));
-                uint _S1280 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1279)).xy), uint(((_S1279)).z))).x * 255.0f));
-                uint _S1281 = atlasWidth_12;
-                uint _S1282 = 7U % atlasWidth_12;
-                int _S1283 = int(_S1282);
-                uint _S1284 = 7U / _S1281;
-                int3 _S1285 = int3(_S1283, int(_S1284), int(0));
-                uint columns_12 = _S1280 | (uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1285)).xy), uint(((_S1285)).z))).x * 255.0f)) << 8U);
-                uint _S1286 = atlasWidth_12;
-                uint _S1287 = 8U % atlasWidth_12;
-                int _S1288 = int(_S1287);
-                uint _S1289 = 8U / _S1286;
-                int3 _S1290 = int3(_S1288, int(_S1289), int(0));
-                uint _S1291 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1290)).xy), uint(((_S1290)).z))).x * 255.0f));
-                uint _S1292 = atlasWidth_12;
-                uint _S1293 = 9U % atlasWidth_12;
-                int _S1294 = int(_S1293);
-                uint _S1295 = 9U / _S1292;
-                int3 _S1296 = int3(_S1294, int(_S1295), int(0));
-                uint rows_12 = ((_S1291 | (uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1296)).xy), uint(((_S1296)).z))).x * 255.0f)) << 8U)) + columns_12 - 1U) / columns_12;
-                uint metadataRows_12 = (10U + 2U * _S1254 * _S1260 + atlasWidth_12 - 1U) / atlasWidth_12;
-                uint _S1297 = atlasWidth_12 / columns_12;
-                float _S1298 = float(_S1297);
-                uint _S1299 = (atlasHeight_12 - metadataRows_12) / rows_12;
-                float2 cellSize_24 = float2(_S1298, float(_S1299));
-                uint _S1300 = slot_25 % columns_12;
-                float _S1301 = float(_S1300);
-                uint _S1302 = slot_25 / columns_12;
-                _S191 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), ((float2(_S1301, float(_S1302)) * cellSize_24 + float2(1.5f, float(metadataRows_12) + 1.5f) + fract(detailSource_0) * max(cellSize_24 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_12), float(atlasHeight_12)))));
+                uint _S1276 = atlasWidth_12;
+                uint _S1277 = 6U % atlasWidth_12;
+                int _S1278 = int(_S1277);
+                uint _S1279 = 6U / _S1276;
+                int3 _S1280 = int3(_S1278, int(_S1279), int(0));
+                uint _S1281 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1280)).xy), uint(((_S1280)).z))).x * 255.0f));
+                uint _S1282 = atlasWidth_12;
+                uint _S1283 = 7U % atlasWidth_12;
+                int _S1284 = int(_S1283);
+                uint _S1285 = 7U / _S1282;
+                int3 _S1286 = int3(_S1284, int(_S1285), int(0));
+                uint columns_12 = _S1281 | (uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1286)).xy), uint(((_S1286)).z))).x * 255.0f)) << 8U);
+                uint _S1287 = atlasWidth_12;
+                uint _S1288 = 8U % atlasWidth_12;
+                int _S1289 = int(_S1288);
+                uint _S1290 = 8U / _S1287;
+                int3 _S1291 = int3(_S1289, int(_S1290), int(0));
+                uint _S1292 = uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1291)).xy), uint(((_S1291)).z))).x * 255.0f));
+                uint _S1293 = atlasWidth_12;
+                uint _S1294 = 9U % atlasWidth_12;
+                int _S1295 = int(_S1294);
+                uint _S1296 = 9U / _S1293;
+                int3 _S1297 = int3(_S1295, int(_S1296), int(0));
+                uint rows_12 = ((_S1292 | (uint(round((((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1297)).xy), uint(((_S1297)).z))).x * 255.0f)) << 8U)) + columns_12 - 1U) / columns_12;
+                uint metadataRows_12 = (10U + 2U * _S1255 * _S1261 + atlasWidth_12 - 1U) / atlasWidth_12;
+                uint _S1298 = atlasWidth_12 / columns_12;
+                float _S1299 = float(_S1298);
+                uint _S1300 = (atlasHeight_12 - metadataRows_12) / rows_12;
+                float2 cellSize_24 = float2(_S1299, float(_S1300));
+                uint _S1301 = slot_25 % columns_12;
+                float _S1302 = float(_S1301);
+                uint _S1303 = slot_25 / columns_12;
+                _S192 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), ((float2(_S1302, float(_S1303)) * cellSize_24 + float2(1.5f, float(metadataRows_12) + 1.5f) + fract(detailSource_0) * max(cellSize_24 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_12), float(atlasHeight_12)))));
                 break;
             }
-            int2 _S1303 = int2(metadata_12.zw);
+            int2 _S1304 = int2(metadata_12.zw);
             int2 tile_25 = int2(floor(detailSource_0)) - int2(metadata_12.xy);
             if(any(tile_25 < (int2(int(0)) )))
             {
@@ -3684,29 +3690,29 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_25 >= _S1303);
+                hasSceneLighting_0 = any(tile_25 >= _S1304);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S1304 = int3(int(min(1U, atlasWidth_12 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1304)).xy), uint(((_S1304)).z)));
+                int3 _S1305 = int3(int(min(1U, atlasWidth_12 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->occlusionTexture_0).read(vec<uint,2>(((_S1305)).xy), uint(((_S1305)).z)));
                 break;
             }
-            uint _S1305 = atlasWidth_12 / uint(_S1303.x);
-            float _S1306 = float(_S1305);
-            uint _S1307 = (atlasHeight_12 - 1U) / uint(_S1303.y);
-            float2 cellSize_25 = float2(_S1306, float(_S1307));
-            _S191 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), ((float2(tile_25) * cellSize_25 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_25 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_12), float(atlasHeight_12)))));
+            uint _S1306 = atlasWidth_12 / uint(_S1304.x);
+            float _S1307 = float(_S1306);
+            uint _S1308 = (atlasHeight_12 - 1U) / uint(_S1304.y);
+            float2 cellSize_25 = float2(_S1307, float(_S1308));
+            _S192 = (((&kernelContext_0)->occlusionTexture_0).sample(((&kernelContext_0)->occlusionSampler_0), ((float2(tile_25) * cellSize_25 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_25 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_12), float(atlasHeight_12)))));
             break;
         }
         for(;;)
         {
-            float4 _S1308 = float4(_S6->compositeControls_0) ;
-            if((_S1308.x) != 128.0f)
+            float4 _S1309 = float4(_S7->compositeControls_0) ;
+            if((_S1309.x) != 128.0f)
             {
                 break;
             }
-            bool _S1309 = (_S1308.w) >= 0.5f;
+            bool _S1310 = (_S1309.w) >= 0.5f;
             if((maskU_1 & 1U) != 0U)
             {
                 index_0 = 1U;
@@ -3723,25 +3729,25 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S1310 = index_0 | lightCount_0;
+            uint _S1311 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S1309)
+                if(!_S1310)
                 {
                     for(;;)
                     {
-                        if(_S1310 == 0U)
+                        if(_S1311 == 0U)
                         {
                             break;
                         }
-                        texture2d<float, access::sample> _S1311 = (&kernelContext_0)->compositeTexture_0;
+                        texture2d<float, access::sample> _S1312 = (&kernelContext_0)->compositeTexture_0;
                         thread uint width_19;
                         thread uint height_19;
-                        (*((&width_19)) = (_S1311).get_width(0)),(*((&height_19)) = (_S1311).get_height(0));
+                        (*((&width_19)) = (_S1312).get_width(0)),(*((&height_19)) = (_S1312).get_height(0));
                         float2 size_15 = float2(float(width_19), float(height_19));
-                        float2 _S1312 = float2(0.5f) ;
-                        float2 remapped_15 = clamp((detailSource_0 * (size_15 - float2(2.0f) ) + float2(1.0f) ) / size_15, _S1312 / size_15, (size_15 - _S1312) / size_15);
-                        if((_S1310 & 1U) != 0U)
+                        float2 _S1313 = float2(0.5f) ;
+                        float2 remapped_15 = clamp((detailSource_0 * (size_15 - float2(2.0f) ) + float2(1.0f) ) / size_15, _S1313 / size_15, (size_15 - _S1313) / size_15);
+                        if((_S1311 & 1U) != 0U)
                         {
                             occlusion_0 = remapped_15.x;
                         }
@@ -3749,7 +3755,7 @@ struct KernelContext_0
                         {
                             occlusion_0 = detailSource_0.x;
                         }
-                        if((_S1310 & 2U) != 0U)
+                        if((_S1311 & 2U) != 0U)
                         {
                             clearcoatAmount_0 = remapped_15.y;
                         }
@@ -3760,42 +3766,42 @@ struct KernelContext_0
                         detailSource_0 = float2(occlusion_0, clearcoatAmount_0);
                         break;
                     }
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
                     break;
                 }
-                texture2d<float, access::sample> _S1313 = (&kernelContext_0)->compositeTexture_0;
+                texture2d<float, access::sample> _S1314 = (&kernelContext_0)->compositeTexture_0;
                 thread uint atlasWidth_13;
                 thread uint atlasHeight_13;
-                (*((&atlasWidth_13)) = (_S1313).get_width(0)),(*((&atlasHeight_13)) = (_S1313).get_height(0));
-                int3 _S1314 = int3(int(0), int(0), int(0));
-                float4 metadata_13 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1314)).xy), uint(((_S1314)).z))) * float4(255.0f) );
+                (*((&atlasWidth_13)) = (_S1314).get_width(0)),(*((&atlasHeight_13)) = (_S1314).get_height(0));
+                int3 _S1315 = int3(int(0), int(0), int(0));
+                float4 metadata_13 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1315)).xy), uint(((_S1315)).z))) * float4(255.0f) );
                 if((metadata_13.x) == 255.0f)
                 {
-                    uint _S1315 = atlasWidth_13;
-                    uint _S1316 = 2U % atlasWidth_13;
-                    int _S1317 = int(_S1316);
-                    uint _S1318 = 2U / _S1315;
-                    int3 _S1319 = int3(_S1317, int(_S1318), int(0));
-                    int _S1320 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1319)).xy), uint(((_S1319)).z))).x * 255.0f)));
-                    uint _S1321 = atlasWidth_13;
-                    uint _S1322 = 3U % atlasWidth_13;
-                    int _S1323 = int(_S1322);
-                    uint _S1324 = 3U / _S1321;
-                    int3 _S1325 = int3(_S1323, int(_S1324), int(0));
-                    int2 minimumTile_13 = int2(_S1320, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1325)).xy), uint(((_S1325)).z))).x * 255.0f))));
-                    uint _S1326 = atlasWidth_13;
-                    uint _S1327 = 4U % atlasWidth_13;
-                    int _S1328 = int(_S1327);
-                    uint _S1329 = 4U / _S1326;
-                    int3 _S1330 = int3(_S1328, int(_S1329), int(0));
-                    uint _S1331 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1330)).xy), uint(((_S1330)).z))).x * 255.0f));
-                    uint _S1332 = atlasWidth_13;
-                    uint _S1333 = 5U % atlasWidth_13;
-                    int _S1334 = int(_S1333);
-                    uint _S1335 = 5U / _S1332;
-                    int3 _S1336 = int3(_S1334, int(_S1335), int(0));
-                    uint _S1337 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1336)).xy), uint(((_S1336)).z))).x * 255.0f));
-                    uint2 grid_13 = uint2(_S1331, _S1337);
+                    uint _S1316 = atlasWidth_13;
+                    uint _S1317 = 2U % atlasWidth_13;
+                    int _S1318 = int(_S1317);
+                    uint _S1319 = 2U / _S1316;
+                    int3 _S1320 = int3(_S1318, int(_S1319), int(0));
+                    int _S1321 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1320)).xy), uint(((_S1320)).z))).x * 255.0f)));
+                    uint _S1322 = atlasWidth_13;
+                    uint _S1323 = 3U % atlasWidth_13;
+                    int _S1324 = int(_S1323);
+                    uint _S1325 = 3U / _S1322;
+                    int3 _S1326 = int3(_S1324, int(_S1325), int(0));
+                    int2 minimumTile_13 = int2(_S1321, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1326)).xy), uint(((_S1326)).z))).x * 255.0f))));
+                    uint _S1327 = atlasWidth_13;
+                    uint _S1328 = 4U % atlasWidth_13;
+                    int _S1329 = int(_S1328);
+                    uint _S1330 = 4U / _S1327;
+                    int3 _S1331 = int3(_S1329, int(_S1330), int(0));
+                    uint _S1332 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1331)).xy), uint(((_S1331)).z))).x * 255.0f));
+                    uint _S1333 = atlasWidth_13;
+                    uint _S1334 = 5U % atlasWidth_13;
+                    int _S1335 = int(_S1334);
+                    uint _S1336 = 5U / _S1333;
+                    int3 _S1337 = int3(_S1335, int(_S1336), int(0));
+                    uint _S1338 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1337)).xy), uint(((_S1337)).z))).x * 255.0f));
+                    uint2 grid_13 = uint2(_S1332, _S1338);
                     int2 tile_26 = int2(floor(detailSource_0)) - minimumTile_13;
                     if(any(tile_26 < (int2(int(0)) )))
                     {
@@ -3807,67 +3813,67 @@ struct KernelContext_0
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S1338 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1338)).xy), uint(((_S1338)).z)));
+                        int3 _S1339 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1339)).xy), uint(((_S1339)).z)));
                         break;
                     }
-                    uint offset_13 = 10U + 2U * (uint(tile_26.y) * _S1331 + uint(tile_26.x));
-                    uint _S1339 = atlasWidth_13;
-                    uint _S1340 = offset_13 % atlasWidth_13;
-                    int _S1341 = int(_S1340);
-                    uint _S1342 = offset_13 / _S1339;
-                    int3 _S1343 = int3(_S1341, int(_S1342), int(0));
-                    uint _S1344 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1343)).xy), uint(((_S1343)).z))).x * 255.0f));
-                    uint _S1345 = atlasWidth_13;
-                    uint _S1346 = offset_13 + 1U;
-                    uint _S1347 = _S1346 % atlasWidth_13;
-                    int _S1348 = int(_S1347);
-                    uint _S1349 = _S1346 / _S1345;
-                    int3 _S1350 = int3(_S1348, int(_S1349), int(0));
-                    uint slot_26 = _S1344 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1350)).xy), uint(((_S1350)).z))).x * 255.0f)) << 8U);
+                    uint offset_13 = 10U + 2U * (uint(tile_26.y) * _S1332 + uint(tile_26.x));
+                    uint _S1340 = atlasWidth_13;
+                    uint _S1341 = offset_13 % atlasWidth_13;
+                    int _S1342 = int(_S1341);
+                    uint _S1343 = offset_13 / _S1340;
+                    int3 _S1344 = int3(_S1342, int(_S1343), int(0));
+                    uint _S1345 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1344)).xy), uint(((_S1344)).z))).x * 255.0f));
+                    uint _S1346 = atlasWidth_13;
+                    uint _S1347 = offset_13 + 1U;
+                    uint _S1348 = _S1347 % atlasWidth_13;
+                    int _S1349 = int(_S1348);
+                    uint _S1350 = _S1347 / _S1346;
+                    int3 _S1351 = int3(_S1349, int(_S1350), int(0));
+                    uint slot_26 = _S1345 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1351)).xy), uint(((_S1351)).z))).x * 255.0f)) << 8U);
                     if(slot_26 == 0U)
                     {
-                        int3 _S1351 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1351)).xy), uint(((_S1351)).z)));
+                        int3 _S1352 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1352)).xy), uint(((_S1352)).z)));
                         break;
                     }
                     uint slot_27 = slot_26 - 1U;
-                    uint _S1352 = atlasWidth_13;
-                    uint _S1353 = 6U % atlasWidth_13;
-                    int _S1354 = int(_S1353);
-                    uint _S1355 = 6U / _S1352;
-                    int3 _S1356 = int3(_S1354, int(_S1355), int(0));
-                    uint _S1357 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1356)).xy), uint(((_S1356)).z))).x * 255.0f));
-                    uint _S1358 = atlasWidth_13;
-                    uint _S1359 = 7U % atlasWidth_13;
-                    int _S1360 = int(_S1359);
-                    uint _S1361 = 7U / _S1358;
-                    int3 _S1362 = int3(_S1360, int(_S1361), int(0));
-                    uint columns_13 = _S1357 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1362)).xy), uint(((_S1362)).z))).x * 255.0f)) << 8U);
-                    uint _S1363 = atlasWidth_13;
-                    uint _S1364 = 8U % atlasWidth_13;
-                    int _S1365 = int(_S1364);
-                    uint _S1366 = 8U / _S1363;
-                    int3 _S1367 = int3(_S1365, int(_S1366), int(0));
-                    uint _S1368 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1367)).xy), uint(((_S1367)).z))).x * 255.0f));
-                    uint _S1369 = atlasWidth_13;
-                    uint _S1370 = 9U % atlasWidth_13;
-                    int _S1371 = int(_S1370);
-                    uint _S1372 = 9U / _S1369;
-                    int3 _S1373 = int3(_S1371, int(_S1372), int(0));
-                    uint rows_13 = ((_S1368 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1373)).xy), uint(((_S1373)).z))).x * 255.0f)) << 8U)) + columns_13 - 1U) / columns_13;
-                    uint metadataRows_13 = (10U + 2U * _S1331 * _S1337 + atlasWidth_13 - 1U) / atlasWidth_13;
-                    uint _S1374 = atlasWidth_13 / columns_13;
-                    float _S1375 = float(_S1374);
-                    uint _S1376 = (atlasHeight_13 - metadataRows_13) / rows_13;
-                    float2 cellSize_26 = float2(_S1375, float(_S1376));
-                    uint _S1377 = slot_27 % columns_13;
-                    float _S1378 = float(_S1377);
-                    uint _S1379 = slot_27 / columns_13;
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1378, float(_S1379)) * cellSize_26 + float2(1.5f, float(metadataRows_13) + 1.5f) + fract(detailSource_0) * max(cellSize_26 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_13), float(atlasHeight_13)))));
+                    uint _S1353 = atlasWidth_13;
+                    uint _S1354 = 6U % atlasWidth_13;
+                    int _S1355 = int(_S1354);
+                    uint _S1356 = 6U / _S1353;
+                    int3 _S1357 = int3(_S1355, int(_S1356), int(0));
+                    uint _S1358 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1357)).xy), uint(((_S1357)).z))).x * 255.0f));
+                    uint _S1359 = atlasWidth_13;
+                    uint _S1360 = 7U % atlasWidth_13;
+                    int _S1361 = int(_S1360);
+                    uint _S1362 = 7U / _S1359;
+                    int3 _S1363 = int3(_S1361, int(_S1362), int(0));
+                    uint columns_13 = _S1358 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1363)).xy), uint(((_S1363)).z))).x * 255.0f)) << 8U);
+                    uint _S1364 = atlasWidth_13;
+                    uint _S1365 = 8U % atlasWidth_13;
+                    int _S1366 = int(_S1365);
+                    uint _S1367 = 8U / _S1364;
+                    int3 _S1368 = int3(_S1366, int(_S1367), int(0));
+                    uint _S1369 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1368)).xy), uint(((_S1368)).z))).x * 255.0f));
+                    uint _S1370 = atlasWidth_13;
+                    uint _S1371 = 9U % atlasWidth_13;
+                    int _S1372 = int(_S1371);
+                    uint _S1373 = 9U / _S1370;
+                    int3 _S1374 = int3(_S1372, int(_S1373), int(0));
+                    uint rows_13 = ((_S1369 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1374)).xy), uint(((_S1374)).z))).x * 255.0f)) << 8U)) + columns_13 - 1U) / columns_13;
+                    uint metadataRows_13 = (10U + 2U * _S1332 * _S1338 + atlasWidth_13 - 1U) / atlasWidth_13;
+                    uint _S1375 = atlasWidth_13 / columns_13;
+                    float _S1376 = float(_S1375);
+                    uint _S1377 = (atlasHeight_13 - metadataRows_13) / rows_13;
+                    float2 cellSize_26 = float2(_S1376, float(_S1377));
+                    uint _S1378 = slot_27 % columns_13;
+                    float _S1379 = float(_S1378);
+                    uint _S1380 = slot_27 / columns_13;
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1379, float(_S1380)) * cellSize_26 + float2(1.5f, float(metadataRows_13) + 1.5f) + fract(detailSource_0) * max(cellSize_26 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_13), float(atlasHeight_13)))));
                     break;
                 }
-                int2 _S1380 = int2(metadata_13.zw);
+                int2 _S1381 = int2(metadata_13.zw);
                 int2 tile_27 = int2(floor(detailSource_0)) - int2(metadata_13.xy);
                 if(any(tile_27 < (int2(int(0)) )))
                 {
@@ -3875,50 +3881,50 @@ struct KernelContext_0
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_27 >= _S1380);
+                    hasSceneLighting_0 = any(tile_27 >= _S1381);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1381 = int3(int(min(1U, atlasWidth_13 - 1U)), int(0), int(0));
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1381)).xy), uint(((_S1381)).z)));
+                    int3 _S1382 = int3(int(min(1U, atlasWidth_13 - 1U)), int(0), int(0));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1382)).xy), uint(((_S1382)).z)));
                     break;
                 }
-                uint _S1382 = atlasWidth_13 / uint(_S1380.x);
-                float _S1383 = float(_S1382);
-                uint _S1384 = (atlasHeight_13 - 1U) / uint(_S1380.y);
-                float2 cellSize_27 = float2(_S1383, float(_S1384));
-                _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_27) * cellSize_27 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_27 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_13), float(atlasHeight_13)))));
+                uint _S1383 = atlasWidth_13 / uint(_S1381.x);
+                float _S1384 = float(_S1383);
+                uint _S1385 = (atlasHeight_13 - 1U) / uint(_S1381.y);
+                float2 cellSize_27 = float2(_S1384, float(_S1385));
+                _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_27) * cellSize_27 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_27 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_13), float(atlasHeight_13)))));
                 break;
             }
-            uint operation_5 = uint(round(_S1308.y));
+            uint operation_5 = uint(round(_S1309.y));
             if(operation_5 == 1U)
             {
-                _S191 = _S191 * _S590;
+                _S192 = _S192 * _S591;
                 break;
             }
             if(operation_5 == 2U)
             {
-                _S191 = _S191 + _S590;
+                _S192 = _S192 + _S591;
                 break;
             }
             if(operation_5 == 3U)
             {
-                _S191 = _S191 - _S590;
+                _S192 = _S192 - _S591;
                 break;
             }
             if(operation_5 == 4U)
             {
-                float factor_5 = _S1308.z;
-                _S191 = _S191 * float4((1.0f - factor_5))  + _S590 * float4(factor_5) ;
+                float factor_5 = _S1309.z;
+                _S192 = _S192 * float4((1.0f - factor_5))  + _S591 * float4(factor_5) ;
                 break;
             }
             break;
         }
-        occlusion_0 = saturate(_S191.x);
+        occlusion_0 = saturate(_S192.x);
     }
     else
     {
-        occlusion_0 = _S161;
+        occlusion_0 = _S162;
     }
     float3 specularColor_0;
     float clearcoatRoughness_0;
@@ -3929,25 +3935,25 @@ struct KernelContext_0
         {
             if(useSecondary_7)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_7)
             {
-                detailSource_0 = _S182;
+                detailSource_0 = _S183;
             }
             else
             {
-                detailSource_0 = _S181;
+                detailSource_0 = _S182;
             }
         }
-        bool _S1385 = (udimMask_0 & 256U) != 0U;
+        bool _S1386 = (udimMask_0 & 256U) != 0U;
         if((maskU_1 & 256U) != 0U)
         {
             index_0 = 1U;
@@ -3964,26 +3970,26 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S1386 = index_0 | lightCount_0;
+        uint _S1387 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S1385)
+            if(!_S1386)
             {
                 for(;;)
                 {
-                    if(_S1386 == 0U)
+                    if(_S1387 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S1387 = (&kernelContext_0)->specularColorTexture_0;
+                    texture2d<float, access::sample> _S1388 = (&kernelContext_0)->specularColorTexture_0;
                     thread uint width_20;
                     thread uint height_20;
-                    (*((&width_20)) = (_S1387).get_width(0)),(*((&height_20)) = (_S1387).get_height(0));
+                    (*((&width_20)) = (_S1388).get_width(0)),(*((&height_20)) = (_S1388).get_height(0));
                     float2 size_16 = float2(float(width_20), float(height_20));
-                    float2 _S1388 = float2(0.5f) ;
-                    float2 remapped_16 = clamp((detailSource_0 * (size_16 - float2(2.0f) ) + float2(1.0f) ) / size_16, _S1388 / size_16, (size_16 - _S1388) / size_16);
-                    if((_S1386 & 1U) != 0U)
+                    float2 _S1389 = float2(0.5f) ;
+                    float2 remapped_16 = clamp((detailSource_0 * (size_16 - float2(2.0f) ) + float2(1.0f) ) / size_16, _S1389 / size_16, (size_16 - _S1389) / size_16);
+                    if((_S1387 & 1U) != 0U)
                     {
                         clearcoatAmount_0 = remapped_16.x;
                     }
@@ -3991,7 +3997,7 @@ struct KernelContext_0
                     {
                         clearcoatAmount_0 = detailSource_0.x;
                     }
-                    if((_S1386 & 2U) != 0U)
+                    if((_S1387 & 2U) != 0U)
                     {
                         clearcoatRoughness_0 = remapped_16.y;
                     }
@@ -4002,42 +4008,42 @@ struct KernelContext_0
                     tangent_1 = float2(clearcoatAmount_0, clearcoatRoughness_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->specularColorTexture_0).sample(((&kernelContext_0)->specularColorSampler_0), (tangent_1)));
+                _S192 = (((&kernelContext_0)->specularColorTexture_0).sample(((&kernelContext_0)->specularColorSampler_0), (tangent_1)));
                 break;
             }
-            texture2d<float, access::sample> _S1389 = (&kernelContext_0)->specularColorTexture_0;
+            texture2d<float, access::sample> _S1390 = (&kernelContext_0)->specularColorTexture_0;
             thread uint atlasWidth_14;
             thread uint atlasHeight_14;
-            (*((&atlasWidth_14)) = (_S1389).get_width(0)),(*((&atlasHeight_14)) = (_S1389).get_height(0));
-            int3 _S1390 = int3(int(0), int(0), int(0));
-            float4 metadata_14 = round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1390)).xy), uint(((_S1390)).z))) * float4(255.0f) );
+            (*((&atlasWidth_14)) = (_S1390).get_width(0)),(*((&atlasHeight_14)) = (_S1390).get_height(0));
+            int3 _S1391 = int3(int(0), int(0), int(0));
+            float4 metadata_14 = round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1391)).xy), uint(((_S1391)).z))) * float4(255.0f) );
             if((metadata_14.x) == 255.0f)
             {
-                uint _S1391 = atlasWidth_14;
-                uint _S1392 = 2U % atlasWidth_14;
-                int _S1393 = int(_S1392);
-                uint _S1394 = 2U / _S1391;
-                int3 _S1395 = int3(_S1393, int(_S1394), int(0));
-                int _S1396 = int(uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1395)).xy), uint(((_S1395)).z))).x * 255.0f)));
-                uint _S1397 = atlasWidth_14;
-                uint _S1398 = 3U % atlasWidth_14;
-                int _S1399 = int(_S1398);
-                uint _S1400 = 3U / _S1397;
-                int3 _S1401 = int3(_S1399, int(_S1400), int(0));
-                int2 minimumTile_14 = int2(_S1396, int(uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1401)).xy), uint(((_S1401)).z))).x * 255.0f))));
-                uint _S1402 = atlasWidth_14;
-                uint _S1403 = 4U % atlasWidth_14;
-                int _S1404 = int(_S1403);
-                uint _S1405 = 4U / _S1402;
-                int3 _S1406 = int3(_S1404, int(_S1405), int(0));
-                uint _S1407 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1406)).xy), uint(((_S1406)).z))).x * 255.0f));
-                uint _S1408 = atlasWidth_14;
-                uint _S1409 = 5U % atlasWidth_14;
-                int _S1410 = int(_S1409);
-                uint _S1411 = 5U / _S1408;
-                int3 _S1412 = int3(_S1410, int(_S1411), int(0));
-                uint _S1413 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1412)).xy), uint(((_S1412)).z))).x * 255.0f));
-                uint2 grid_14 = uint2(_S1407, _S1413);
+                uint _S1392 = atlasWidth_14;
+                uint _S1393 = 2U % atlasWidth_14;
+                int _S1394 = int(_S1393);
+                uint _S1395 = 2U / _S1392;
+                int3 _S1396 = int3(_S1394, int(_S1395), int(0));
+                int _S1397 = int(uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1396)).xy), uint(((_S1396)).z))).x * 255.0f)));
+                uint _S1398 = atlasWidth_14;
+                uint _S1399 = 3U % atlasWidth_14;
+                int _S1400 = int(_S1399);
+                uint _S1401 = 3U / _S1398;
+                int3 _S1402 = int3(_S1400, int(_S1401), int(0));
+                int2 minimumTile_14 = int2(_S1397, int(uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1402)).xy), uint(((_S1402)).z))).x * 255.0f))));
+                uint _S1403 = atlasWidth_14;
+                uint _S1404 = 4U % atlasWidth_14;
+                int _S1405 = int(_S1404);
+                uint _S1406 = 4U / _S1403;
+                int3 _S1407 = int3(_S1405, int(_S1406), int(0));
+                uint _S1408 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1407)).xy), uint(((_S1407)).z))).x * 255.0f));
+                uint _S1409 = atlasWidth_14;
+                uint _S1410 = 5U % atlasWidth_14;
+                int _S1411 = int(_S1410);
+                uint _S1412 = 5U / _S1409;
+                int3 _S1413 = int3(_S1411, int(_S1412), int(0));
+                uint _S1414 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1413)).xy), uint(((_S1413)).z))).x * 255.0f));
+                uint2 grid_14 = uint2(_S1408, _S1414);
                 int2 tile_28 = int2(floor(detailSource_0)) - minimumTile_14;
                 if(any(tile_28 < (int2(int(0)) )))
                 {
@@ -4049,67 +4055,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1414 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1414)).xy), uint(((_S1414)).z)));
+                    int3 _S1415 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1415)).xy), uint(((_S1415)).z)));
                     break;
                 }
-                uint offset_14 = 10U + 2U * (uint(tile_28.y) * _S1407 + uint(tile_28.x));
-                uint _S1415 = atlasWidth_14;
-                uint _S1416 = offset_14 % atlasWidth_14;
-                int _S1417 = int(_S1416);
-                uint _S1418 = offset_14 / _S1415;
-                int3 _S1419 = int3(_S1417, int(_S1418), int(0));
-                uint _S1420 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1419)).xy), uint(((_S1419)).z))).x * 255.0f));
-                uint _S1421 = atlasWidth_14;
-                uint _S1422 = offset_14 + 1U;
-                uint _S1423 = _S1422 % atlasWidth_14;
-                int _S1424 = int(_S1423);
-                uint _S1425 = _S1422 / _S1421;
-                int3 _S1426 = int3(_S1424, int(_S1425), int(0));
-                uint slot_28 = _S1420 | (uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1426)).xy), uint(((_S1426)).z))).x * 255.0f)) << 8U);
+                uint offset_14 = 10U + 2U * (uint(tile_28.y) * _S1408 + uint(tile_28.x));
+                uint _S1416 = atlasWidth_14;
+                uint _S1417 = offset_14 % atlasWidth_14;
+                int _S1418 = int(_S1417);
+                uint _S1419 = offset_14 / _S1416;
+                int3 _S1420 = int3(_S1418, int(_S1419), int(0));
+                uint _S1421 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1420)).xy), uint(((_S1420)).z))).x * 255.0f));
+                uint _S1422 = atlasWidth_14;
+                uint _S1423 = offset_14 + 1U;
+                uint _S1424 = _S1423 % atlasWidth_14;
+                int _S1425 = int(_S1424);
+                uint _S1426 = _S1423 / _S1422;
+                int3 _S1427 = int3(_S1425, int(_S1426), int(0));
+                uint slot_28 = _S1421 | (uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1427)).xy), uint(((_S1427)).z))).x * 255.0f)) << 8U);
                 if(slot_28 == 0U)
                 {
-                    int3 _S1427 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1427)).xy), uint(((_S1427)).z)));
+                    int3 _S1428 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1428)).xy), uint(((_S1428)).z)));
                     break;
                 }
                 uint slot_29 = slot_28 - 1U;
-                uint _S1428 = atlasWidth_14;
-                uint _S1429 = 6U % atlasWidth_14;
-                int _S1430 = int(_S1429);
-                uint _S1431 = 6U / _S1428;
-                int3 _S1432 = int3(_S1430, int(_S1431), int(0));
-                uint _S1433 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1432)).xy), uint(((_S1432)).z))).x * 255.0f));
-                uint _S1434 = atlasWidth_14;
-                uint _S1435 = 7U % atlasWidth_14;
-                int _S1436 = int(_S1435);
-                uint _S1437 = 7U / _S1434;
-                int3 _S1438 = int3(_S1436, int(_S1437), int(0));
-                uint columns_14 = _S1433 | (uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1438)).xy), uint(((_S1438)).z))).x * 255.0f)) << 8U);
-                uint _S1439 = atlasWidth_14;
-                uint _S1440 = 8U % atlasWidth_14;
-                int _S1441 = int(_S1440);
-                uint _S1442 = 8U / _S1439;
-                int3 _S1443 = int3(_S1441, int(_S1442), int(0));
-                uint _S1444 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1443)).xy), uint(((_S1443)).z))).x * 255.0f));
-                uint _S1445 = atlasWidth_14;
-                uint _S1446 = 9U % atlasWidth_14;
-                int _S1447 = int(_S1446);
-                uint _S1448 = 9U / _S1445;
-                int3 _S1449 = int3(_S1447, int(_S1448), int(0));
-                uint rows_14 = ((_S1444 | (uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1449)).xy), uint(((_S1449)).z))).x * 255.0f)) << 8U)) + columns_14 - 1U) / columns_14;
-                uint metadataRows_14 = (10U + 2U * _S1407 * _S1413 + atlasWidth_14 - 1U) / atlasWidth_14;
-                uint _S1450 = atlasWidth_14 / columns_14;
-                float _S1451 = float(_S1450);
-                uint _S1452 = (atlasHeight_14 - metadataRows_14) / rows_14;
-                float2 cellSize_28 = float2(_S1451, float(_S1452));
-                uint _S1453 = slot_29 % columns_14;
-                float _S1454 = float(_S1453);
-                uint _S1455 = slot_29 / columns_14;
-                _S191 = (((&kernelContext_0)->specularColorTexture_0).sample(((&kernelContext_0)->specularColorSampler_0), ((float2(_S1454, float(_S1455)) * cellSize_28 + float2(1.5f, float(metadataRows_14) + 1.5f) + fract(detailSource_0) * max(cellSize_28 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_14), float(atlasHeight_14)))));
+                uint _S1429 = atlasWidth_14;
+                uint _S1430 = 6U % atlasWidth_14;
+                int _S1431 = int(_S1430);
+                uint _S1432 = 6U / _S1429;
+                int3 _S1433 = int3(_S1431, int(_S1432), int(0));
+                uint _S1434 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1433)).xy), uint(((_S1433)).z))).x * 255.0f));
+                uint _S1435 = atlasWidth_14;
+                uint _S1436 = 7U % atlasWidth_14;
+                int _S1437 = int(_S1436);
+                uint _S1438 = 7U / _S1435;
+                int3 _S1439 = int3(_S1437, int(_S1438), int(0));
+                uint columns_14 = _S1434 | (uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1439)).xy), uint(((_S1439)).z))).x * 255.0f)) << 8U);
+                uint _S1440 = atlasWidth_14;
+                uint _S1441 = 8U % atlasWidth_14;
+                int _S1442 = int(_S1441);
+                uint _S1443 = 8U / _S1440;
+                int3 _S1444 = int3(_S1442, int(_S1443), int(0));
+                uint _S1445 = uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1444)).xy), uint(((_S1444)).z))).x * 255.0f));
+                uint _S1446 = atlasWidth_14;
+                uint _S1447 = 9U % atlasWidth_14;
+                int _S1448 = int(_S1447);
+                uint _S1449 = 9U / _S1446;
+                int3 _S1450 = int3(_S1448, int(_S1449), int(0));
+                uint rows_14 = ((_S1445 | (uint(round((((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1450)).xy), uint(((_S1450)).z))).x * 255.0f)) << 8U)) + columns_14 - 1U) / columns_14;
+                uint metadataRows_14 = (10U + 2U * _S1408 * _S1414 + atlasWidth_14 - 1U) / atlasWidth_14;
+                uint _S1451 = atlasWidth_14 / columns_14;
+                float _S1452 = float(_S1451);
+                uint _S1453 = (atlasHeight_14 - metadataRows_14) / rows_14;
+                float2 cellSize_28 = float2(_S1452, float(_S1453));
+                uint _S1454 = slot_29 % columns_14;
+                float _S1455 = float(_S1454);
+                uint _S1456 = slot_29 / columns_14;
+                _S192 = (((&kernelContext_0)->specularColorTexture_0).sample(((&kernelContext_0)->specularColorSampler_0), ((float2(_S1455, float(_S1456)) * cellSize_28 + float2(1.5f, float(metadataRows_14) + 1.5f) + fract(detailSource_0) * max(cellSize_28 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_14), float(atlasHeight_14)))));
                 break;
             }
-            int2 _S1456 = int2(metadata_14.zw);
+            int2 _S1457 = int2(metadata_14.zw);
             int2 tile_29 = int2(floor(detailSource_0)) - int2(metadata_14.xy);
             if(any(tile_29 < (int2(int(0)) )))
             {
@@ -4117,29 +4123,29 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_29 >= _S1456);
+                hasSceneLighting_0 = any(tile_29 >= _S1457);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S1457 = int3(int(min(1U, atlasWidth_14 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1457)).xy), uint(((_S1457)).z)));
+                int3 _S1458 = int3(int(min(1U, atlasWidth_14 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->specularColorTexture_0).read(vec<uint,2>(((_S1458)).xy), uint(((_S1458)).z)));
                 break;
             }
-            uint _S1458 = atlasWidth_14 / uint(_S1456.x);
-            float _S1459 = float(_S1458);
-            uint _S1460 = (atlasHeight_14 - 1U) / uint(_S1456.y);
-            float2 cellSize_29 = float2(_S1459, float(_S1460));
-            _S191 = (((&kernelContext_0)->specularColorTexture_0).sample(((&kernelContext_0)->specularColorSampler_0), ((float2(tile_29) * cellSize_29 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_29 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_14), float(atlasHeight_14)))));
+            uint _S1459 = atlasWidth_14 / uint(_S1457.x);
+            float _S1460 = float(_S1459);
+            uint _S1461 = (atlasHeight_14 - 1U) / uint(_S1457.y);
+            float2 cellSize_29 = float2(_S1460, float(_S1461));
+            _S192 = (((&kernelContext_0)->specularColorTexture_0).sample(((&kernelContext_0)->specularColorSampler_0), ((float2(tile_29) * cellSize_29 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_29 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_14), float(atlasHeight_14)))));
             break;
         }
         for(;;)
         {
-            float4 _S1461 = float4(_S6->compositeControls_0) ;
-            if((_S1461.x) != 256.0f)
+            float4 _S1462 = float4(_S7->compositeControls_0) ;
+            if((_S1462.x) != 256.0f)
             {
                 break;
             }
-            bool _S1462 = (_S1461.w) >= 0.5f;
+            bool _S1463 = (_S1462.w) >= 0.5f;
             if((maskU_1 & 1U) != 0U)
             {
                 index_0 = 1U;
@@ -4156,25 +4162,25 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S1463 = index_0 | lightCount_0;
+            uint _S1464 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S1462)
+                if(!_S1463)
                 {
                     for(;;)
                     {
-                        if(_S1463 == 0U)
+                        if(_S1464 == 0U)
                         {
                             break;
                         }
-                        texture2d<float, access::sample> _S1464 = (&kernelContext_0)->compositeTexture_0;
+                        texture2d<float, access::sample> _S1465 = (&kernelContext_0)->compositeTexture_0;
                         thread uint width_21;
                         thread uint height_21;
-                        (*((&width_21)) = (_S1464).get_width(0)),(*((&height_21)) = (_S1464).get_height(0));
+                        (*((&width_21)) = (_S1465).get_width(0)),(*((&height_21)) = (_S1465).get_height(0));
                         float2 size_17 = float2(float(width_21), float(height_21));
-                        float2 _S1465 = float2(0.5f) ;
-                        float2 remapped_17 = clamp((detailSource_0 * (size_17 - float2(2.0f) ) + float2(1.0f) ) / size_17, _S1465 / size_17, (size_17 - _S1465) / size_17);
-                        if((_S1463 & 1U) != 0U)
+                        float2 _S1466 = float2(0.5f) ;
+                        float2 remapped_17 = clamp((detailSource_0 * (size_17 - float2(2.0f) ) + float2(1.0f) ) / size_17, _S1466 / size_17, (size_17 - _S1466) / size_17);
+                        if((_S1464 & 1U) != 0U)
                         {
                             clearcoatAmount_0 = remapped_17.x;
                         }
@@ -4182,7 +4188,7 @@ struct KernelContext_0
                         {
                             clearcoatAmount_0 = detailSource_0.x;
                         }
-                        if((_S1463 & 2U) != 0U)
+                        if((_S1464 & 2U) != 0U)
                         {
                             clearcoatRoughness_0 = remapped_17.y;
                         }
@@ -4193,42 +4199,42 @@ struct KernelContext_0
                         detailSource_0 = float2(clearcoatAmount_0, clearcoatRoughness_0);
                         break;
                     }
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
                     break;
                 }
-                texture2d<float, access::sample> _S1466 = (&kernelContext_0)->compositeTexture_0;
+                texture2d<float, access::sample> _S1467 = (&kernelContext_0)->compositeTexture_0;
                 thread uint atlasWidth_15;
                 thread uint atlasHeight_15;
-                (*((&atlasWidth_15)) = (_S1466).get_width(0)),(*((&atlasHeight_15)) = (_S1466).get_height(0));
-                int3 _S1467 = int3(int(0), int(0), int(0));
-                float4 metadata_15 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1467)).xy), uint(((_S1467)).z))) * float4(255.0f) );
+                (*((&atlasWidth_15)) = (_S1467).get_width(0)),(*((&atlasHeight_15)) = (_S1467).get_height(0));
+                int3 _S1468 = int3(int(0), int(0), int(0));
+                float4 metadata_15 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1468)).xy), uint(((_S1468)).z))) * float4(255.0f) );
                 if((metadata_15.x) == 255.0f)
                 {
-                    uint _S1468 = atlasWidth_15;
-                    uint _S1469 = 2U % atlasWidth_15;
-                    int _S1470 = int(_S1469);
-                    uint _S1471 = 2U / _S1468;
-                    int3 _S1472 = int3(_S1470, int(_S1471), int(0));
-                    int _S1473 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1472)).xy), uint(((_S1472)).z))).x * 255.0f)));
-                    uint _S1474 = atlasWidth_15;
-                    uint _S1475 = 3U % atlasWidth_15;
-                    int _S1476 = int(_S1475);
-                    uint _S1477 = 3U / _S1474;
-                    int3 _S1478 = int3(_S1476, int(_S1477), int(0));
-                    int2 minimumTile_15 = int2(_S1473, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1478)).xy), uint(((_S1478)).z))).x * 255.0f))));
-                    uint _S1479 = atlasWidth_15;
-                    uint _S1480 = 4U % atlasWidth_15;
-                    int _S1481 = int(_S1480);
-                    uint _S1482 = 4U / _S1479;
-                    int3 _S1483 = int3(_S1481, int(_S1482), int(0));
-                    uint _S1484 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1483)).xy), uint(((_S1483)).z))).x * 255.0f));
-                    uint _S1485 = atlasWidth_15;
-                    uint _S1486 = 5U % atlasWidth_15;
-                    int _S1487 = int(_S1486);
-                    uint _S1488 = 5U / _S1485;
-                    int3 _S1489 = int3(_S1487, int(_S1488), int(0));
-                    uint _S1490 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1489)).xy), uint(((_S1489)).z))).x * 255.0f));
-                    uint2 grid_15 = uint2(_S1484, _S1490);
+                    uint _S1469 = atlasWidth_15;
+                    uint _S1470 = 2U % atlasWidth_15;
+                    int _S1471 = int(_S1470);
+                    uint _S1472 = 2U / _S1469;
+                    int3 _S1473 = int3(_S1471, int(_S1472), int(0));
+                    int _S1474 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1473)).xy), uint(((_S1473)).z))).x * 255.0f)));
+                    uint _S1475 = atlasWidth_15;
+                    uint _S1476 = 3U % atlasWidth_15;
+                    int _S1477 = int(_S1476);
+                    uint _S1478 = 3U / _S1475;
+                    int3 _S1479 = int3(_S1477, int(_S1478), int(0));
+                    int2 minimumTile_15 = int2(_S1474, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1479)).xy), uint(((_S1479)).z))).x * 255.0f))));
+                    uint _S1480 = atlasWidth_15;
+                    uint _S1481 = 4U % atlasWidth_15;
+                    int _S1482 = int(_S1481);
+                    uint _S1483 = 4U / _S1480;
+                    int3 _S1484 = int3(_S1482, int(_S1483), int(0));
+                    uint _S1485 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1484)).xy), uint(((_S1484)).z))).x * 255.0f));
+                    uint _S1486 = atlasWidth_15;
+                    uint _S1487 = 5U % atlasWidth_15;
+                    int _S1488 = int(_S1487);
+                    uint _S1489 = 5U / _S1486;
+                    int3 _S1490 = int3(_S1488, int(_S1489), int(0));
+                    uint _S1491 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1490)).xy), uint(((_S1490)).z))).x * 255.0f));
+                    uint2 grid_15 = uint2(_S1485, _S1491);
                     int2 tile_30 = int2(floor(detailSource_0)) - minimumTile_15;
                     if(any(tile_30 < (int2(int(0)) )))
                     {
@@ -4240,67 +4246,67 @@ struct KernelContext_0
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S1491 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1491)).xy), uint(((_S1491)).z)));
+                        int3 _S1492 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1492)).xy), uint(((_S1492)).z)));
                         break;
                     }
-                    uint offset_15 = 10U + 2U * (uint(tile_30.y) * _S1484 + uint(tile_30.x));
-                    uint _S1492 = atlasWidth_15;
-                    uint _S1493 = offset_15 % atlasWidth_15;
-                    int _S1494 = int(_S1493);
-                    uint _S1495 = offset_15 / _S1492;
-                    int3 _S1496 = int3(_S1494, int(_S1495), int(0));
-                    uint _S1497 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1496)).xy), uint(((_S1496)).z))).x * 255.0f));
-                    uint _S1498 = atlasWidth_15;
-                    uint _S1499 = offset_15 + 1U;
-                    uint _S1500 = _S1499 % atlasWidth_15;
-                    int _S1501 = int(_S1500);
-                    uint _S1502 = _S1499 / _S1498;
-                    int3 _S1503 = int3(_S1501, int(_S1502), int(0));
-                    uint slot_30 = _S1497 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1503)).xy), uint(((_S1503)).z))).x * 255.0f)) << 8U);
+                    uint offset_15 = 10U + 2U * (uint(tile_30.y) * _S1485 + uint(tile_30.x));
+                    uint _S1493 = atlasWidth_15;
+                    uint _S1494 = offset_15 % atlasWidth_15;
+                    int _S1495 = int(_S1494);
+                    uint _S1496 = offset_15 / _S1493;
+                    int3 _S1497 = int3(_S1495, int(_S1496), int(0));
+                    uint _S1498 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1497)).xy), uint(((_S1497)).z))).x * 255.0f));
+                    uint _S1499 = atlasWidth_15;
+                    uint _S1500 = offset_15 + 1U;
+                    uint _S1501 = _S1500 % atlasWidth_15;
+                    int _S1502 = int(_S1501);
+                    uint _S1503 = _S1500 / _S1499;
+                    int3 _S1504 = int3(_S1502, int(_S1503), int(0));
+                    uint slot_30 = _S1498 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1504)).xy), uint(((_S1504)).z))).x * 255.0f)) << 8U);
                     if(slot_30 == 0U)
                     {
-                        int3 _S1504 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1504)).xy), uint(((_S1504)).z)));
+                        int3 _S1505 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1505)).xy), uint(((_S1505)).z)));
                         break;
                     }
                     uint slot_31 = slot_30 - 1U;
-                    uint _S1505 = atlasWidth_15;
-                    uint _S1506 = 6U % atlasWidth_15;
-                    int _S1507 = int(_S1506);
-                    uint _S1508 = 6U / _S1505;
-                    int3 _S1509 = int3(_S1507, int(_S1508), int(0));
-                    uint _S1510 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1509)).xy), uint(((_S1509)).z))).x * 255.0f));
-                    uint _S1511 = atlasWidth_15;
-                    uint _S1512 = 7U % atlasWidth_15;
-                    int _S1513 = int(_S1512);
-                    uint _S1514 = 7U / _S1511;
-                    int3 _S1515 = int3(_S1513, int(_S1514), int(0));
-                    uint columns_15 = _S1510 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1515)).xy), uint(((_S1515)).z))).x * 255.0f)) << 8U);
-                    uint _S1516 = atlasWidth_15;
-                    uint _S1517 = 8U % atlasWidth_15;
-                    int _S1518 = int(_S1517);
-                    uint _S1519 = 8U / _S1516;
-                    int3 _S1520 = int3(_S1518, int(_S1519), int(0));
-                    uint _S1521 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1520)).xy), uint(((_S1520)).z))).x * 255.0f));
-                    uint _S1522 = atlasWidth_15;
-                    uint _S1523 = 9U % atlasWidth_15;
-                    int _S1524 = int(_S1523);
-                    uint _S1525 = 9U / _S1522;
-                    int3 _S1526 = int3(_S1524, int(_S1525), int(0));
-                    uint rows_15 = ((_S1521 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1526)).xy), uint(((_S1526)).z))).x * 255.0f)) << 8U)) + columns_15 - 1U) / columns_15;
-                    uint metadataRows_15 = (10U + 2U * _S1484 * _S1490 + atlasWidth_15 - 1U) / atlasWidth_15;
-                    uint _S1527 = atlasWidth_15 / columns_15;
-                    float _S1528 = float(_S1527);
-                    uint _S1529 = (atlasHeight_15 - metadataRows_15) / rows_15;
-                    float2 cellSize_30 = float2(_S1528, float(_S1529));
-                    uint _S1530 = slot_31 % columns_15;
-                    float _S1531 = float(_S1530);
-                    uint _S1532 = slot_31 / columns_15;
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1531, float(_S1532)) * cellSize_30 + float2(1.5f, float(metadataRows_15) + 1.5f) + fract(detailSource_0) * max(cellSize_30 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_15), float(atlasHeight_15)))));
+                    uint _S1506 = atlasWidth_15;
+                    uint _S1507 = 6U % atlasWidth_15;
+                    int _S1508 = int(_S1507);
+                    uint _S1509 = 6U / _S1506;
+                    int3 _S1510 = int3(_S1508, int(_S1509), int(0));
+                    uint _S1511 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1510)).xy), uint(((_S1510)).z))).x * 255.0f));
+                    uint _S1512 = atlasWidth_15;
+                    uint _S1513 = 7U % atlasWidth_15;
+                    int _S1514 = int(_S1513);
+                    uint _S1515 = 7U / _S1512;
+                    int3 _S1516 = int3(_S1514, int(_S1515), int(0));
+                    uint columns_15 = _S1511 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1516)).xy), uint(((_S1516)).z))).x * 255.0f)) << 8U);
+                    uint _S1517 = atlasWidth_15;
+                    uint _S1518 = 8U % atlasWidth_15;
+                    int _S1519 = int(_S1518);
+                    uint _S1520 = 8U / _S1517;
+                    int3 _S1521 = int3(_S1519, int(_S1520), int(0));
+                    uint _S1522 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1521)).xy), uint(((_S1521)).z))).x * 255.0f));
+                    uint _S1523 = atlasWidth_15;
+                    uint _S1524 = 9U % atlasWidth_15;
+                    int _S1525 = int(_S1524);
+                    uint _S1526 = 9U / _S1523;
+                    int3 _S1527 = int3(_S1525, int(_S1526), int(0));
+                    uint rows_15 = ((_S1522 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1527)).xy), uint(((_S1527)).z))).x * 255.0f)) << 8U)) + columns_15 - 1U) / columns_15;
+                    uint metadataRows_15 = (10U + 2U * _S1485 * _S1491 + atlasWidth_15 - 1U) / atlasWidth_15;
+                    uint _S1528 = atlasWidth_15 / columns_15;
+                    float _S1529 = float(_S1528);
+                    uint _S1530 = (atlasHeight_15 - metadataRows_15) / rows_15;
+                    float2 cellSize_30 = float2(_S1529, float(_S1530));
+                    uint _S1531 = slot_31 % columns_15;
+                    float _S1532 = float(_S1531);
+                    uint _S1533 = slot_31 / columns_15;
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1532, float(_S1533)) * cellSize_30 + float2(1.5f, float(metadataRows_15) + 1.5f) + fract(detailSource_0) * max(cellSize_30 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_15), float(atlasHeight_15)))));
                     break;
                 }
-                int2 _S1533 = int2(metadata_15.zw);
+                int2 _S1534 = int2(metadata_15.zw);
                 int2 tile_31 = int2(floor(detailSource_0)) - int2(metadata_15.xy);
                 if(any(tile_31 < (int2(int(0)) )))
                 {
@@ -4308,50 +4314,50 @@ struct KernelContext_0
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_31 >= _S1533);
+                    hasSceneLighting_0 = any(tile_31 >= _S1534);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1534 = int3(int(min(1U, atlasWidth_15 - 1U)), int(0), int(0));
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1534)).xy), uint(((_S1534)).z)));
+                    int3 _S1535 = int3(int(min(1U, atlasWidth_15 - 1U)), int(0), int(0));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1535)).xy), uint(((_S1535)).z)));
                     break;
                 }
-                uint _S1535 = atlasWidth_15 / uint(_S1533.x);
-                float _S1536 = float(_S1535);
-                uint _S1537 = (atlasHeight_15 - 1U) / uint(_S1533.y);
-                float2 cellSize_31 = float2(_S1536, float(_S1537));
-                _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_31) * cellSize_31 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_31 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_15), float(atlasHeight_15)))));
+                uint _S1536 = atlasWidth_15 / uint(_S1534.x);
+                float _S1537 = float(_S1536);
+                uint _S1538 = (atlasHeight_15 - 1U) / uint(_S1534.y);
+                float2 cellSize_31 = float2(_S1537, float(_S1538));
+                _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_31) * cellSize_31 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_31 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_15), float(atlasHeight_15)))));
                 break;
             }
-            uint operation_6 = uint(round(_S1461.y));
+            uint operation_6 = uint(round(_S1462.y));
             if(operation_6 == 1U)
             {
-                _S191 = _S191 * _S590;
+                _S192 = _S192 * _S591;
                 break;
             }
             if(operation_6 == 2U)
             {
-                _S191 = _S191 + _S590;
+                _S192 = _S192 + _S591;
                 break;
             }
             if(operation_6 == 3U)
             {
-                _S191 = _S191 - _S590;
+                _S192 = _S192 - _S591;
                 break;
             }
             if(operation_6 == 4U)
             {
-                float factor_6 = _S1461.z;
-                _S191 = _S191 * float4((1.0f - factor_6))  + _S590 * float4(factor_6) ;
+                float factor_6 = _S1462.z;
+                _S192 = _S192 * float4((1.0f - factor_6))  + _S591 * float4(factor_6) ;
                 break;
             }
             break;
         }
-        specularColor_0 = saturate(_S191.xyz);
+        specularColor_0 = saturate(_S192.xyz);
     }
     else
     {
-        specularColor_0 = _S169;
+        specularColor_0 = _S170;
     }
     if((textureMask_0 & 512U) != 0U)
     {
@@ -4360,25 +4366,25 @@ struct KernelContext_0
         {
             if(useSecondary_8)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_8)
             {
-                detailSource_0 = _S182;
+                detailSource_0 = _S183;
             }
             else
             {
-                detailSource_0 = _S181;
+                detailSource_0 = _S182;
             }
         }
-        bool _S1538 = (udimMask_0 & 512U) != 0U;
+        bool _S1539 = (udimMask_0 & 512U) != 0U;
         if((maskU_1 & 512U) != 0U)
         {
             index_0 = 1U;
@@ -4395,26 +4401,26 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S1539 = index_0 | lightCount_0;
+        uint _S1540 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S1538)
+            if(!_S1539)
             {
                 for(;;)
                 {
-                    if(_S1539 == 0U)
+                    if(_S1540 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S1540 = (&kernelContext_0)->clearcoatTexture_0;
+                    texture2d<float, access::sample> _S1541 = (&kernelContext_0)->clearcoatTexture_0;
                     thread uint width_22;
                     thread uint height_22;
-                    (*((&width_22)) = (_S1540).get_width(0)),(*((&height_22)) = (_S1540).get_height(0));
+                    (*((&width_22)) = (_S1541).get_width(0)),(*((&height_22)) = (_S1541).get_height(0));
                     float2 size_18 = float2(float(width_22), float(height_22));
-                    float2 _S1541 = float2(0.5f) ;
-                    float2 remapped_18 = clamp((detailSource_0 * (size_18 - float2(2.0f) ) + float2(1.0f) ) / size_18, _S1541 / size_18, (size_18 - _S1541) / size_18);
-                    if((_S1539 & 1U) != 0U)
+                    float2 _S1542 = float2(0.5f) ;
+                    float2 remapped_18 = clamp((detailSource_0 * (size_18 - float2(2.0f) ) + float2(1.0f) ) / size_18, _S1542 / size_18, (size_18 - _S1542) / size_18);
+                    if((_S1540 & 1U) != 0U)
                     {
                         clearcoatAmount_0 = remapped_18.x;
                     }
@@ -4422,7 +4428,7 @@ struct KernelContext_0
                     {
                         clearcoatAmount_0 = detailSource_0.x;
                     }
-                    if((_S1539 & 2U) != 0U)
+                    if((_S1540 & 2U) != 0U)
                     {
                         clearcoatRoughness_0 = remapped_18.y;
                     }
@@ -4433,42 +4439,42 @@ struct KernelContext_0
                     tangent_1 = float2(clearcoatAmount_0, clearcoatRoughness_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->clearcoatTexture_0).sample(((&kernelContext_0)->clearcoatSampler_0), (tangent_1)));
+                _S192 = (((&kernelContext_0)->clearcoatTexture_0).sample(((&kernelContext_0)->clearcoatSampler_0), (tangent_1)));
                 break;
             }
-            texture2d<float, access::sample> _S1542 = (&kernelContext_0)->clearcoatTexture_0;
+            texture2d<float, access::sample> _S1543 = (&kernelContext_0)->clearcoatTexture_0;
             thread uint atlasWidth_16;
             thread uint atlasHeight_16;
-            (*((&atlasWidth_16)) = (_S1542).get_width(0)),(*((&atlasHeight_16)) = (_S1542).get_height(0));
-            int3 _S1543 = int3(int(0), int(0), int(0));
-            float4 metadata_16 = round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1543)).xy), uint(((_S1543)).z))) * float4(255.0f) );
+            (*((&atlasWidth_16)) = (_S1543).get_width(0)),(*((&atlasHeight_16)) = (_S1543).get_height(0));
+            int3 _S1544 = int3(int(0), int(0), int(0));
+            float4 metadata_16 = round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1544)).xy), uint(((_S1544)).z))) * float4(255.0f) );
             if((metadata_16.x) == 255.0f)
             {
-                uint _S1544 = atlasWidth_16;
-                uint _S1545 = 2U % atlasWidth_16;
-                int _S1546 = int(_S1545);
-                uint _S1547 = 2U / _S1544;
-                int3 _S1548 = int3(_S1546, int(_S1547), int(0));
-                int _S1549 = int(uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1548)).xy), uint(((_S1548)).z))).x * 255.0f)));
-                uint _S1550 = atlasWidth_16;
-                uint _S1551 = 3U % atlasWidth_16;
-                int _S1552 = int(_S1551);
-                uint _S1553 = 3U / _S1550;
-                int3 _S1554 = int3(_S1552, int(_S1553), int(0));
-                int2 minimumTile_16 = int2(_S1549, int(uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1554)).xy), uint(((_S1554)).z))).x * 255.0f))));
-                uint _S1555 = atlasWidth_16;
-                uint _S1556 = 4U % atlasWidth_16;
-                int _S1557 = int(_S1556);
-                uint _S1558 = 4U / _S1555;
-                int3 _S1559 = int3(_S1557, int(_S1558), int(0));
-                uint _S1560 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1559)).xy), uint(((_S1559)).z))).x * 255.0f));
-                uint _S1561 = atlasWidth_16;
-                uint _S1562 = 5U % atlasWidth_16;
-                int _S1563 = int(_S1562);
-                uint _S1564 = 5U / _S1561;
-                int3 _S1565 = int3(_S1563, int(_S1564), int(0));
-                uint _S1566 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1565)).xy), uint(((_S1565)).z))).x * 255.0f));
-                uint2 grid_16 = uint2(_S1560, _S1566);
+                uint _S1545 = atlasWidth_16;
+                uint _S1546 = 2U % atlasWidth_16;
+                int _S1547 = int(_S1546);
+                uint _S1548 = 2U / _S1545;
+                int3 _S1549 = int3(_S1547, int(_S1548), int(0));
+                int _S1550 = int(uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1549)).xy), uint(((_S1549)).z))).x * 255.0f)));
+                uint _S1551 = atlasWidth_16;
+                uint _S1552 = 3U % atlasWidth_16;
+                int _S1553 = int(_S1552);
+                uint _S1554 = 3U / _S1551;
+                int3 _S1555 = int3(_S1553, int(_S1554), int(0));
+                int2 minimumTile_16 = int2(_S1550, int(uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1555)).xy), uint(((_S1555)).z))).x * 255.0f))));
+                uint _S1556 = atlasWidth_16;
+                uint _S1557 = 4U % atlasWidth_16;
+                int _S1558 = int(_S1557);
+                uint _S1559 = 4U / _S1556;
+                int3 _S1560 = int3(_S1558, int(_S1559), int(0));
+                uint _S1561 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1560)).xy), uint(((_S1560)).z))).x * 255.0f));
+                uint _S1562 = atlasWidth_16;
+                uint _S1563 = 5U % atlasWidth_16;
+                int _S1564 = int(_S1563);
+                uint _S1565 = 5U / _S1562;
+                int3 _S1566 = int3(_S1564, int(_S1565), int(0));
+                uint _S1567 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1566)).xy), uint(((_S1566)).z))).x * 255.0f));
+                uint2 grid_16 = uint2(_S1561, _S1567);
                 int2 tile_32 = int2(floor(detailSource_0)) - minimumTile_16;
                 if(any(tile_32 < (int2(int(0)) )))
                 {
@@ -4480,67 +4486,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1567 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1567)).xy), uint(((_S1567)).z)));
+                    int3 _S1568 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1568)).xy), uint(((_S1568)).z)));
                     break;
                 }
-                uint offset_16 = 10U + 2U * (uint(tile_32.y) * _S1560 + uint(tile_32.x));
-                uint _S1568 = atlasWidth_16;
-                uint _S1569 = offset_16 % atlasWidth_16;
-                int _S1570 = int(_S1569);
-                uint _S1571 = offset_16 / _S1568;
-                int3 _S1572 = int3(_S1570, int(_S1571), int(0));
-                uint _S1573 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1572)).xy), uint(((_S1572)).z))).x * 255.0f));
-                uint _S1574 = atlasWidth_16;
-                uint _S1575 = offset_16 + 1U;
-                uint _S1576 = _S1575 % atlasWidth_16;
-                int _S1577 = int(_S1576);
-                uint _S1578 = _S1575 / _S1574;
-                int3 _S1579 = int3(_S1577, int(_S1578), int(0));
-                uint slot_32 = _S1573 | (uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1579)).xy), uint(((_S1579)).z))).x * 255.0f)) << 8U);
+                uint offset_16 = 10U + 2U * (uint(tile_32.y) * _S1561 + uint(tile_32.x));
+                uint _S1569 = atlasWidth_16;
+                uint _S1570 = offset_16 % atlasWidth_16;
+                int _S1571 = int(_S1570);
+                uint _S1572 = offset_16 / _S1569;
+                int3 _S1573 = int3(_S1571, int(_S1572), int(0));
+                uint _S1574 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1573)).xy), uint(((_S1573)).z))).x * 255.0f));
+                uint _S1575 = atlasWidth_16;
+                uint _S1576 = offset_16 + 1U;
+                uint _S1577 = _S1576 % atlasWidth_16;
+                int _S1578 = int(_S1577);
+                uint _S1579 = _S1576 / _S1575;
+                int3 _S1580 = int3(_S1578, int(_S1579), int(0));
+                uint slot_32 = _S1574 | (uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1580)).xy), uint(((_S1580)).z))).x * 255.0f)) << 8U);
                 if(slot_32 == 0U)
                 {
-                    int3 _S1580 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1580)).xy), uint(((_S1580)).z)));
+                    int3 _S1581 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1581)).xy), uint(((_S1581)).z)));
                     break;
                 }
                 uint slot_33 = slot_32 - 1U;
-                uint _S1581 = atlasWidth_16;
-                uint _S1582 = 6U % atlasWidth_16;
-                int _S1583 = int(_S1582);
-                uint _S1584 = 6U / _S1581;
-                int3 _S1585 = int3(_S1583, int(_S1584), int(0));
-                uint _S1586 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1585)).xy), uint(((_S1585)).z))).x * 255.0f));
-                uint _S1587 = atlasWidth_16;
-                uint _S1588 = 7U % atlasWidth_16;
-                int _S1589 = int(_S1588);
-                uint _S1590 = 7U / _S1587;
-                int3 _S1591 = int3(_S1589, int(_S1590), int(0));
-                uint columns_16 = _S1586 | (uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1591)).xy), uint(((_S1591)).z))).x * 255.0f)) << 8U);
-                uint _S1592 = atlasWidth_16;
-                uint _S1593 = 8U % atlasWidth_16;
-                int _S1594 = int(_S1593);
-                uint _S1595 = 8U / _S1592;
-                int3 _S1596 = int3(_S1594, int(_S1595), int(0));
-                uint _S1597 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1596)).xy), uint(((_S1596)).z))).x * 255.0f));
-                uint _S1598 = atlasWidth_16;
-                uint _S1599 = 9U % atlasWidth_16;
-                int _S1600 = int(_S1599);
-                uint _S1601 = 9U / _S1598;
-                int3 _S1602 = int3(_S1600, int(_S1601), int(0));
-                uint rows_16 = ((_S1597 | (uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1602)).xy), uint(((_S1602)).z))).x * 255.0f)) << 8U)) + columns_16 - 1U) / columns_16;
-                uint metadataRows_16 = (10U + 2U * _S1560 * _S1566 + atlasWidth_16 - 1U) / atlasWidth_16;
-                uint _S1603 = atlasWidth_16 / columns_16;
-                float _S1604 = float(_S1603);
-                uint _S1605 = (atlasHeight_16 - metadataRows_16) / rows_16;
-                float2 cellSize_32 = float2(_S1604, float(_S1605));
-                uint _S1606 = slot_33 % columns_16;
-                float _S1607 = float(_S1606);
-                uint _S1608 = slot_33 / columns_16;
-                _S191 = (((&kernelContext_0)->clearcoatTexture_0).sample(((&kernelContext_0)->clearcoatSampler_0), ((float2(_S1607, float(_S1608)) * cellSize_32 + float2(1.5f, float(metadataRows_16) + 1.5f) + fract(detailSource_0) * max(cellSize_32 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_16), float(atlasHeight_16)))));
+                uint _S1582 = atlasWidth_16;
+                uint _S1583 = 6U % atlasWidth_16;
+                int _S1584 = int(_S1583);
+                uint _S1585 = 6U / _S1582;
+                int3 _S1586 = int3(_S1584, int(_S1585), int(0));
+                uint _S1587 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1586)).xy), uint(((_S1586)).z))).x * 255.0f));
+                uint _S1588 = atlasWidth_16;
+                uint _S1589 = 7U % atlasWidth_16;
+                int _S1590 = int(_S1589);
+                uint _S1591 = 7U / _S1588;
+                int3 _S1592 = int3(_S1590, int(_S1591), int(0));
+                uint columns_16 = _S1587 | (uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1592)).xy), uint(((_S1592)).z))).x * 255.0f)) << 8U);
+                uint _S1593 = atlasWidth_16;
+                uint _S1594 = 8U % atlasWidth_16;
+                int _S1595 = int(_S1594);
+                uint _S1596 = 8U / _S1593;
+                int3 _S1597 = int3(_S1595, int(_S1596), int(0));
+                uint _S1598 = uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1597)).xy), uint(((_S1597)).z))).x * 255.0f));
+                uint _S1599 = atlasWidth_16;
+                uint _S1600 = 9U % atlasWidth_16;
+                int _S1601 = int(_S1600);
+                uint _S1602 = 9U / _S1599;
+                int3 _S1603 = int3(_S1601, int(_S1602), int(0));
+                uint rows_16 = ((_S1598 | (uint(round((((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1603)).xy), uint(((_S1603)).z))).x * 255.0f)) << 8U)) + columns_16 - 1U) / columns_16;
+                uint metadataRows_16 = (10U + 2U * _S1561 * _S1567 + atlasWidth_16 - 1U) / atlasWidth_16;
+                uint _S1604 = atlasWidth_16 / columns_16;
+                float _S1605 = float(_S1604);
+                uint _S1606 = (atlasHeight_16 - metadataRows_16) / rows_16;
+                float2 cellSize_32 = float2(_S1605, float(_S1606));
+                uint _S1607 = slot_33 % columns_16;
+                float _S1608 = float(_S1607);
+                uint _S1609 = slot_33 / columns_16;
+                _S192 = (((&kernelContext_0)->clearcoatTexture_0).sample(((&kernelContext_0)->clearcoatSampler_0), ((float2(_S1608, float(_S1609)) * cellSize_32 + float2(1.5f, float(metadataRows_16) + 1.5f) + fract(detailSource_0) * max(cellSize_32 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_16), float(atlasHeight_16)))));
                 break;
             }
-            int2 _S1609 = int2(metadata_16.zw);
+            int2 _S1610 = int2(metadata_16.zw);
             int2 tile_33 = int2(floor(detailSource_0)) - int2(metadata_16.xy);
             if(any(tile_33 < (int2(int(0)) )))
             {
@@ -4548,29 +4554,29 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_33 >= _S1609);
+                hasSceneLighting_0 = any(tile_33 >= _S1610);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S1610 = int3(int(min(1U, atlasWidth_16 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1610)).xy), uint(((_S1610)).z)));
+                int3 _S1611 = int3(int(min(1U, atlasWidth_16 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->clearcoatTexture_0).read(vec<uint,2>(((_S1611)).xy), uint(((_S1611)).z)));
                 break;
             }
-            uint _S1611 = atlasWidth_16 / uint(_S1609.x);
-            float _S1612 = float(_S1611);
-            uint _S1613 = (atlasHeight_16 - 1U) / uint(_S1609.y);
-            float2 cellSize_33 = float2(_S1612, float(_S1613));
-            _S191 = (((&kernelContext_0)->clearcoatTexture_0).sample(((&kernelContext_0)->clearcoatSampler_0), ((float2(tile_33) * cellSize_33 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_33 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_16), float(atlasHeight_16)))));
+            uint _S1612 = atlasWidth_16 / uint(_S1610.x);
+            float _S1613 = float(_S1612);
+            uint _S1614 = (atlasHeight_16 - 1U) / uint(_S1610.y);
+            float2 cellSize_33 = float2(_S1613, float(_S1614));
+            _S192 = (((&kernelContext_0)->clearcoatTexture_0).sample(((&kernelContext_0)->clearcoatSampler_0), ((float2(tile_33) * cellSize_33 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_33 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_16), float(atlasHeight_16)))));
             break;
         }
         for(;;)
         {
-            float4 _S1614 = float4(_S6->compositeControls_0) ;
-            if((_S1614.x) != 512.0f)
+            float4 _S1615 = float4(_S7->compositeControls_0) ;
+            if((_S1615.x) != 512.0f)
             {
                 break;
             }
-            bool _S1615 = (_S1614.w) >= 0.5f;
+            bool _S1616 = (_S1615.w) >= 0.5f;
             if((maskU_1 & 1U) != 0U)
             {
                 index_0 = 1U;
@@ -4587,25 +4593,25 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S1616 = index_0 | lightCount_0;
+            uint _S1617 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S1615)
+                if(!_S1616)
                 {
                     for(;;)
                     {
-                        if(_S1616 == 0U)
+                        if(_S1617 == 0U)
                         {
                             break;
                         }
-                        texture2d<float, access::sample> _S1617 = (&kernelContext_0)->compositeTexture_0;
+                        texture2d<float, access::sample> _S1618 = (&kernelContext_0)->compositeTexture_0;
                         thread uint width_23;
                         thread uint height_23;
-                        (*((&width_23)) = (_S1617).get_width(0)),(*((&height_23)) = (_S1617).get_height(0));
+                        (*((&width_23)) = (_S1618).get_width(0)),(*((&height_23)) = (_S1618).get_height(0));
                         float2 size_19 = float2(float(width_23), float(height_23));
-                        float2 _S1618 = float2(0.5f) ;
-                        float2 remapped_19 = clamp((detailSource_0 * (size_19 - float2(2.0f) ) + float2(1.0f) ) / size_19, _S1618 / size_19, (size_19 - _S1618) / size_19);
-                        if((_S1616 & 1U) != 0U)
+                        float2 _S1619 = float2(0.5f) ;
+                        float2 remapped_19 = clamp((detailSource_0 * (size_19 - float2(2.0f) ) + float2(1.0f) ) / size_19, _S1619 / size_19, (size_19 - _S1619) / size_19);
+                        if((_S1617 & 1U) != 0U)
                         {
                             clearcoatAmount_0 = remapped_19.x;
                         }
@@ -4613,7 +4619,7 @@ struct KernelContext_0
                         {
                             clearcoatAmount_0 = detailSource_0.x;
                         }
-                        if((_S1616 & 2U) != 0U)
+                        if((_S1617 & 2U) != 0U)
                         {
                             clearcoatRoughness_0 = remapped_19.y;
                         }
@@ -4624,42 +4630,42 @@ struct KernelContext_0
                         detailSource_0 = float2(clearcoatAmount_0, clearcoatRoughness_0);
                         break;
                     }
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
                     break;
                 }
-                texture2d<float, access::sample> _S1619 = (&kernelContext_0)->compositeTexture_0;
+                texture2d<float, access::sample> _S1620 = (&kernelContext_0)->compositeTexture_0;
                 thread uint atlasWidth_17;
                 thread uint atlasHeight_17;
-                (*((&atlasWidth_17)) = (_S1619).get_width(0)),(*((&atlasHeight_17)) = (_S1619).get_height(0));
-                int3 _S1620 = int3(int(0), int(0), int(0));
-                float4 metadata_17 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1620)).xy), uint(((_S1620)).z))) * float4(255.0f) );
+                (*((&atlasWidth_17)) = (_S1620).get_width(0)),(*((&atlasHeight_17)) = (_S1620).get_height(0));
+                int3 _S1621 = int3(int(0), int(0), int(0));
+                float4 metadata_17 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1621)).xy), uint(((_S1621)).z))) * float4(255.0f) );
                 if((metadata_17.x) == 255.0f)
                 {
-                    uint _S1621 = atlasWidth_17;
-                    uint _S1622 = 2U % atlasWidth_17;
-                    int _S1623 = int(_S1622);
-                    uint _S1624 = 2U / _S1621;
-                    int3 _S1625 = int3(_S1623, int(_S1624), int(0));
-                    int _S1626 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1625)).xy), uint(((_S1625)).z))).x * 255.0f)));
-                    uint _S1627 = atlasWidth_17;
-                    uint _S1628 = 3U % atlasWidth_17;
-                    int _S1629 = int(_S1628);
-                    uint _S1630 = 3U / _S1627;
-                    int3 _S1631 = int3(_S1629, int(_S1630), int(0));
-                    int2 minimumTile_17 = int2(_S1626, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1631)).xy), uint(((_S1631)).z))).x * 255.0f))));
-                    uint _S1632 = atlasWidth_17;
-                    uint _S1633 = 4U % atlasWidth_17;
-                    int _S1634 = int(_S1633);
-                    uint _S1635 = 4U / _S1632;
-                    int3 _S1636 = int3(_S1634, int(_S1635), int(0));
-                    uint _S1637 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1636)).xy), uint(((_S1636)).z))).x * 255.0f));
-                    uint _S1638 = atlasWidth_17;
-                    uint _S1639 = 5U % atlasWidth_17;
-                    int _S1640 = int(_S1639);
-                    uint _S1641 = 5U / _S1638;
-                    int3 _S1642 = int3(_S1640, int(_S1641), int(0));
-                    uint _S1643 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1642)).xy), uint(((_S1642)).z))).x * 255.0f));
-                    uint2 grid_17 = uint2(_S1637, _S1643);
+                    uint _S1622 = atlasWidth_17;
+                    uint _S1623 = 2U % atlasWidth_17;
+                    int _S1624 = int(_S1623);
+                    uint _S1625 = 2U / _S1622;
+                    int3 _S1626 = int3(_S1624, int(_S1625), int(0));
+                    int _S1627 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1626)).xy), uint(((_S1626)).z))).x * 255.0f)));
+                    uint _S1628 = atlasWidth_17;
+                    uint _S1629 = 3U % atlasWidth_17;
+                    int _S1630 = int(_S1629);
+                    uint _S1631 = 3U / _S1628;
+                    int3 _S1632 = int3(_S1630, int(_S1631), int(0));
+                    int2 minimumTile_17 = int2(_S1627, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1632)).xy), uint(((_S1632)).z))).x * 255.0f))));
+                    uint _S1633 = atlasWidth_17;
+                    uint _S1634 = 4U % atlasWidth_17;
+                    int _S1635 = int(_S1634);
+                    uint _S1636 = 4U / _S1633;
+                    int3 _S1637 = int3(_S1635, int(_S1636), int(0));
+                    uint _S1638 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1637)).xy), uint(((_S1637)).z))).x * 255.0f));
+                    uint _S1639 = atlasWidth_17;
+                    uint _S1640 = 5U % atlasWidth_17;
+                    int _S1641 = int(_S1640);
+                    uint _S1642 = 5U / _S1639;
+                    int3 _S1643 = int3(_S1641, int(_S1642), int(0));
+                    uint _S1644 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1643)).xy), uint(((_S1643)).z))).x * 255.0f));
+                    uint2 grid_17 = uint2(_S1638, _S1644);
                     int2 tile_34 = int2(floor(detailSource_0)) - minimumTile_17;
                     if(any(tile_34 < (int2(int(0)) )))
                     {
@@ -4671,67 +4677,67 @@ struct KernelContext_0
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S1644 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1644)).xy), uint(((_S1644)).z)));
+                        int3 _S1645 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1645)).xy), uint(((_S1645)).z)));
                         break;
                     }
-                    uint offset_17 = 10U + 2U * (uint(tile_34.y) * _S1637 + uint(tile_34.x));
-                    uint _S1645 = atlasWidth_17;
-                    uint _S1646 = offset_17 % atlasWidth_17;
-                    int _S1647 = int(_S1646);
-                    uint _S1648 = offset_17 / _S1645;
-                    int3 _S1649 = int3(_S1647, int(_S1648), int(0));
-                    uint _S1650 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1649)).xy), uint(((_S1649)).z))).x * 255.0f));
-                    uint _S1651 = atlasWidth_17;
-                    uint _S1652 = offset_17 + 1U;
-                    uint _S1653 = _S1652 % atlasWidth_17;
-                    int _S1654 = int(_S1653);
-                    uint _S1655 = _S1652 / _S1651;
-                    int3 _S1656 = int3(_S1654, int(_S1655), int(0));
-                    uint slot_34 = _S1650 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1656)).xy), uint(((_S1656)).z))).x * 255.0f)) << 8U);
+                    uint offset_17 = 10U + 2U * (uint(tile_34.y) * _S1638 + uint(tile_34.x));
+                    uint _S1646 = atlasWidth_17;
+                    uint _S1647 = offset_17 % atlasWidth_17;
+                    int _S1648 = int(_S1647);
+                    uint _S1649 = offset_17 / _S1646;
+                    int3 _S1650 = int3(_S1648, int(_S1649), int(0));
+                    uint _S1651 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1650)).xy), uint(((_S1650)).z))).x * 255.0f));
+                    uint _S1652 = atlasWidth_17;
+                    uint _S1653 = offset_17 + 1U;
+                    uint _S1654 = _S1653 % atlasWidth_17;
+                    int _S1655 = int(_S1654);
+                    uint _S1656 = _S1653 / _S1652;
+                    int3 _S1657 = int3(_S1655, int(_S1656), int(0));
+                    uint slot_34 = _S1651 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1657)).xy), uint(((_S1657)).z))).x * 255.0f)) << 8U);
                     if(slot_34 == 0U)
                     {
-                        int3 _S1657 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1657)).xy), uint(((_S1657)).z)));
+                        int3 _S1658 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1658)).xy), uint(((_S1658)).z)));
                         break;
                     }
                     uint slot_35 = slot_34 - 1U;
-                    uint _S1658 = atlasWidth_17;
-                    uint _S1659 = 6U % atlasWidth_17;
-                    int _S1660 = int(_S1659);
-                    uint _S1661 = 6U / _S1658;
-                    int3 _S1662 = int3(_S1660, int(_S1661), int(0));
-                    uint _S1663 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1662)).xy), uint(((_S1662)).z))).x * 255.0f));
-                    uint _S1664 = atlasWidth_17;
-                    uint _S1665 = 7U % atlasWidth_17;
-                    int _S1666 = int(_S1665);
-                    uint _S1667 = 7U / _S1664;
-                    int3 _S1668 = int3(_S1666, int(_S1667), int(0));
-                    uint columns_17 = _S1663 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1668)).xy), uint(((_S1668)).z))).x * 255.0f)) << 8U);
-                    uint _S1669 = atlasWidth_17;
-                    uint _S1670 = 8U % atlasWidth_17;
-                    int _S1671 = int(_S1670);
-                    uint _S1672 = 8U / _S1669;
-                    int3 _S1673 = int3(_S1671, int(_S1672), int(0));
-                    uint _S1674 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1673)).xy), uint(((_S1673)).z))).x * 255.0f));
-                    uint _S1675 = atlasWidth_17;
-                    uint _S1676 = 9U % atlasWidth_17;
-                    int _S1677 = int(_S1676);
-                    uint _S1678 = 9U / _S1675;
-                    int3 _S1679 = int3(_S1677, int(_S1678), int(0));
-                    uint rows_17 = ((_S1674 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1679)).xy), uint(((_S1679)).z))).x * 255.0f)) << 8U)) + columns_17 - 1U) / columns_17;
-                    uint metadataRows_17 = (10U + 2U * _S1637 * _S1643 + atlasWidth_17 - 1U) / atlasWidth_17;
-                    uint _S1680 = atlasWidth_17 / columns_17;
-                    float _S1681 = float(_S1680);
-                    uint _S1682 = (atlasHeight_17 - metadataRows_17) / rows_17;
-                    float2 cellSize_34 = float2(_S1681, float(_S1682));
-                    uint _S1683 = slot_35 % columns_17;
-                    float _S1684 = float(_S1683);
-                    uint _S1685 = slot_35 / columns_17;
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1684, float(_S1685)) * cellSize_34 + float2(1.5f, float(metadataRows_17) + 1.5f) + fract(detailSource_0) * max(cellSize_34 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_17), float(atlasHeight_17)))));
+                    uint _S1659 = atlasWidth_17;
+                    uint _S1660 = 6U % atlasWidth_17;
+                    int _S1661 = int(_S1660);
+                    uint _S1662 = 6U / _S1659;
+                    int3 _S1663 = int3(_S1661, int(_S1662), int(0));
+                    uint _S1664 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1663)).xy), uint(((_S1663)).z))).x * 255.0f));
+                    uint _S1665 = atlasWidth_17;
+                    uint _S1666 = 7U % atlasWidth_17;
+                    int _S1667 = int(_S1666);
+                    uint _S1668 = 7U / _S1665;
+                    int3 _S1669 = int3(_S1667, int(_S1668), int(0));
+                    uint columns_17 = _S1664 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1669)).xy), uint(((_S1669)).z))).x * 255.0f)) << 8U);
+                    uint _S1670 = atlasWidth_17;
+                    uint _S1671 = 8U % atlasWidth_17;
+                    int _S1672 = int(_S1671);
+                    uint _S1673 = 8U / _S1670;
+                    int3 _S1674 = int3(_S1672, int(_S1673), int(0));
+                    uint _S1675 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1674)).xy), uint(((_S1674)).z))).x * 255.0f));
+                    uint _S1676 = atlasWidth_17;
+                    uint _S1677 = 9U % atlasWidth_17;
+                    int _S1678 = int(_S1677);
+                    uint _S1679 = 9U / _S1676;
+                    int3 _S1680 = int3(_S1678, int(_S1679), int(0));
+                    uint rows_17 = ((_S1675 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1680)).xy), uint(((_S1680)).z))).x * 255.0f)) << 8U)) + columns_17 - 1U) / columns_17;
+                    uint metadataRows_17 = (10U + 2U * _S1638 * _S1644 + atlasWidth_17 - 1U) / atlasWidth_17;
+                    uint _S1681 = atlasWidth_17 / columns_17;
+                    float _S1682 = float(_S1681);
+                    uint _S1683 = (atlasHeight_17 - metadataRows_17) / rows_17;
+                    float2 cellSize_34 = float2(_S1682, float(_S1683));
+                    uint _S1684 = slot_35 % columns_17;
+                    float _S1685 = float(_S1684);
+                    uint _S1686 = slot_35 / columns_17;
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1685, float(_S1686)) * cellSize_34 + float2(1.5f, float(metadataRows_17) + 1.5f) + fract(detailSource_0) * max(cellSize_34 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_17), float(atlasHeight_17)))));
                     break;
                 }
-                int2 _S1686 = int2(metadata_17.zw);
+                int2 _S1687 = int2(metadata_17.zw);
                 int2 tile_35 = int2(floor(detailSource_0)) - int2(metadata_17.xy);
                 if(any(tile_35 < (int2(int(0)) )))
                 {
@@ -4739,50 +4745,50 @@ struct KernelContext_0
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_35 >= _S1686);
+                    hasSceneLighting_0 = any(tile_35 >= _S1687);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1687 = int3(int(min(1U, atlasWidth_17 - 1U)), int(0), int(0));
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1687)).xy), uint(((_S1687)).z)));
+                    int3 _S1688 = int3(int(min(1U, atlasWidth_17 - 1U)), int(0), int(0));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1688)).xy), uint(((_S1688)).z)));
                     break;
                 }
-                uint _S1688 = atlasWidth_17 / uint(_S1686.x);
-                float _S1689 = float(_S1688);
-                uint _S1690 = (atlasHeight_17 - 1U) / uint(_S1686.y);
-                float2 cellSize_35 = float2(_S1689, float(_S1690));
-                _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_35) * cellSize_35 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_35 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_17), float(atlasHeight_17)))));
+                uint _S1689 = atlasWidth_17 / uint(_S1687.x);
+                float _S1690 = float(_S1689);
+                uint _S1691 = (atlasHeight_17 - 1U) / uint(_S1687.y);
+                float2 cellSize_35 = float2(_S1690, float(_S1691));
+                _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_35) * cellSize_35 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_35 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_17), float(atlasHeight_17)))));
                 break;
             }
-            uint operation_7 = uint(round(_S1614.y));
+            uint operation_7 = uint(round(_S1615.y));
             if(operation_7 == 1U)
             {
-                _S191 = _S191 * _S590;
+                _S192 = _S192 * _S591;
                 break;
             }
             if(operation_7 == 2U)
             {
-                _S191 = _S191 + _S590;
+                _S192 = _S192 + _S591;
                 break;
             }
             if(operation_7 == 3U)
             {
-                _S191 = _S191 - _S590;
+                _S192 = _S192 - _S591;
                 break;
             }
             if(operation_7 == 4U)
             {
-                float factor_7 = _S1614.z;
-                _S191 = _S191 * float4((1.0f - factor_7))  + _S590 * float4(factor_7) ;
+                float factor_7 = _S1615.z;
+                _S192 = _S192 * float4((1.0f - factor_7))  + _S591 * float4(factor_7) ;
                 break;
             }
             break;
         }
-        clearcoatAmount_0 = saturate(_S191.x);
+        clearcoatAmount_0 = saturate(_S192.x);
     }
     else
     {
-        clearcoatAmount_0 = _S171;
+        clearcoatAmount_0 = _S172;
     }
     float ior_0;
     if((textureMask_0 & 1024U) != 0U)
@@ -4792,25 +4798,25 @@ struct KernelContext_0
         {
             if(useSecondary_9)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_9)
             {
-                detailSource_0 = _S182;
+                detailSource_0 = _S183;
             }
             else
             {
-                detailSource_0 = _S181;
+                detailSource_0 = _S182;
             }
         }
-        bool _S1691 = (udimMask_0 & 1024U) != 0U;
+        bool _S1692 = (udimMask_0 & 1024U) != 0U;
         if((maskU_1 & 1024U) != 0U)
         {
             index_0 = 1U;
@@ -4827,26 +4833,26 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S1692 = index_0 | lightCount_0;
+        uint _S1693 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S1691)
+            if(!_S1692)
             {
                 for(;;)
                 {
-                    if(_S1692 == 0U)
+                    if(_S1693 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S1693 = (&kernelContext_0)->clearcoatRoughnessTexture_0;
+                    texture2d<float, access::sample> _S1694 = (&kernelContext_0)->clearcoatRoughnessTexture_0;
                     thread uint width_24;
                     thread uint height_24;
-                    (*((&width_24)) = (_S1693).get_width(0)),(*((&height_24)) = (_S1693).get_height(0));
+                    (*((&width_24)) = (_S1694).get_width(0)),(*((&height_24)) = (_S1694).get_height(0));
                     float2 size_20 = float2(float(width_24), float(height_24));
-                    float2 _S1694 = float2(0.5f) ;
-                    float2 remapped_20 = clamp((detailSource_0 * (size_20 - float2(2.0f) ) + float2(1.0f) ) / size_20, _S1694 / size_20, (size_20 - _S1694) / size_20);
-                    if((_S1692 & 1U) != 0U)
+                    float2 _S1695 = float2(0.5f) ;
+                    float2 remapped_20 = clamp((detailSource_0 * (size_20 - float2(2.0f) ) + float2(1.0f) ) / size_20, _S1695 / size_20, (size_20 - _S1695) / size_20);
+                    if((_S1693 & 1U) != 0U)
                     {
                         clearcoatRoughness_0 = remapped_20.x;
                     }
@@ -4854,7 +4860,7 @@ struct KernelContext_0
                     {
                         clearcoatRoughness_0 = detailSource_0.x;
                     }
-                    if((_S1692 & 2U) != 0U)
+                    if((_S1693 & 2U) != 0U)
                     {
                         ior_0 = remapped_20.y;
                     }
@@ -4865,42 +4871,42 @@ struct KernelContext_0
                     tangent_1 = float2(clearcoatRoughness_0, ior_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).sample(((&kernelContext_0)->clearcoatRoughnessSampler_0), (tangent_1)));
+                _S192 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).sample(((&kernelContext_0)->clearcoatRoughnessSampler_0), (tangent_1)));
                 break;
             }
-            texture2d<float, access::sample> _S1695 = (&kernelContext_0)->clearcoatRoughnessTexture_0;
+            texture2d<float, access::sample> _S1696 = (&kernelContext_0)->clearcoatRoughnessTexture_0;
             thread uint atlasWidth_18;
             thread uint atlasHeight_18;
-            (*((&atlasWidth_18)) = (_S1695).get_width(0)),(*((&atlasHeight_18)) = (_S1695).get_height(0));
-            int3 _S1696 = int3(int(0), int(0), int(0));
-            float4 metadata_18 = round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1696)).xy), uint(((_S1696)).z))) * float4(255.0f) );
+            (*((&atlasWidth_18)) = (_S1696).get_width(0)),(*((&atlasHeight_18)) = (_S1696).get_height(0));
+            int3 _S1697 = int3(int(0), int(0), int(0));
+            float4 metadata_18 = round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1697)).xy), uint(((_S1697)).z))) * float4(255.0f) );
             if((metadata_18.x) == 255.0f)
             {
-                uint _S1697 = atlasWidth_18;
-                uint _S1698 = 2U % atlasWidth_18;
-                int _S1699 = int(_S1698);
-                uint _S1700 = 2U / _S1697;
-                int3 _S1701 = int3(_S1699, int(_S1700), int(0));
-                int _S1702 = int(uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1701)).xy), uint(((_S1701)).z))).x * 255.0f)));
-                uint _S1703 = atlasWidth_18;
-                uint _S1704 = 3U % atlasWidth_18;
-                int _S1705 = int(_S1704);
-                uint _S1706 = 3U / _S1703;
-                int3 _S1707 = int3(_S1705, int(_S1706), int(0));
-                int2 minimumTile_18 = int2(_S1702, int(uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1707)).xy), uint(((_S1707)).z))).x * 255.0f))));
-                uint _S1708 = atlasWidth_18;
-                uint _S1709 = 4U % atlasWidth_18;
-                int _S1710 = int(_S1709);
-                uint _S1711 = 4U / _S1708;
-                int3 _S1712 = int3(_S1710, int(_S1711), int(0));
-                uint _S1713 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1712)).xy), uint(((_S1712)).z))).x * 255.0f));
-                uint _S1714 = atlasWidth_18;
-                uint _S1715 = 5U % atlasWidth_18;
-                int _S1716 = int(_S1715);
-                uint _S1717 = 5U / _S1714;
-                int3 _S1718 = int3(_S1716, int(_S1717), int(0));
-                uint _S1719 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1718)).xy), uint(((_S1718)).z))).x * 255.0f));
-                uint2 grid_18 = uint2(_S1713, _S1719);
+                uint _S1698 = atlasWidth_18;
+                uint _S1699 = 2U % atlasWidth_18;
+                int _S1700 = int(_S1699);
+                uint _S1701 = 2U / _S1698;
+                int3 _S1702 = int3(_S1700, int(_S1701), int(0));
+                int _S1703 = int(uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1702)).xy), uint(((_S1702)).z))).x * 255.0f)));
+                uint _S1704 = atlasWidth_18;
+                uint _S1705 = 3U % atlasWidth_18;
+                int _S1706 = int(_S1705);
+                uint _S1707 = 3U / _S1704;
+                int3 _S1708 = int3(_S1706, int(_S1707), int(0));
+                int2 minimumTile_18 = int2(_S1703, int(uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1708)).xy), uint(((_S1708)).z))).x * 255.0f))));
+                uint _S1709 = atlasWidth_18;
+                uint _S1710 = 4U % atlasWidth_18;
+                int _S1711 = int(_S1710);
+                uint _S1712 = 4U / _S1709;
+                int3 _S1713 = int3(_S1711, int(_S1712), int(0));
+                uint _S1714 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1713)).xy), uint(((_S1713)).z))).x * 255.0f));
+                uint _S1715 = atlasWidth_18;
+                uint _S1716 = 5U % atlasWidth_18;
+                int _S1717 = int(_S1716);
+                uint _S1718 = 5U / _S1715;
+                int3 _S1719 = int3(_S1717, int(_S1718), int(0));
+                uint _S1720 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1719)).xy), uint(((_S1719)).z))).x * 255.0f));
+                uint2 grid_18 = uint2(_S1714, _S1720);
                 int2 tile_36 = int2(floor(detailSource_0)) - minimumTile_18;
                 if(any(tile_36 < (int2(int(0)) )))
                 {
@@ -4912,67 +4918,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1720 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1720)).xy), uint(((_S1720)).z)));
+                    int3 _S1721 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1721)).xy), uint(((_S1721)).z)));
                     break;
                 }
-                uint offset_18 = 10U + 2U * (uint(tile_36.y) * _S1713 + uint(tile_36.x));
-                uint _S1721 = atlasWidth_18;
-                uint _S1722 = offset_18 % atlasWidth_18;
-                int _S1723 = int(_S1722);
-                uint _S1724 = offset_18 / _S1721;
-                int3 _S1725 = int3(_S1723, int(_S1724), int(0));
-                uint _S1726 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1725)).xy), uint(((_S1725)).z))).x * 255.0f));
-                uint _S1727 = atlasWidth_18;
-                uint _S1728 = offset_18 + 1U;
-                uint _S1729 = _S1728 % atlasWidth_18;
-                int _S1730 = int(_S1729);
-                uint _S1731 = _S1728 / _S1727;
-                int3 _S1732 = int3(_S1730, int(_S1731), int(0));
-                uint slot_36 = _S1726 | (uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1732)).xy), uint(((_S1732)).z))).x * 255.0f)) << 8U);
+                uint offset_18 = 10U + 2U * (uint(tile_36.y) * _S1714 + uint(tile_36.x));
+                uint _S1722 = atlasWidth_18;
+                uint _S1723 = offset_18 % atlasWidth_18;
+                int _S1724 = int(_S1723);
+                uint _S1725 = offset_18 / _S1722;
+                int3 _S1726 = int3(_S1724, int(_S1725), int(0));
+                uint _S1727 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1726)).xy), uint(((_S1726)).z))).x * 255.0f));
+                uint _S1728 = atlasWidth_18;
+                uint _S1729 = offset_18 + 1U;
+                uint _S1730 = _S1729 % atlasWidth_18;
+                int _S1731 = int(_S1730);
+                uint _S1732 = _S1729 / _S1728;
+                int3 _S1733 = int3(_S1731, int(_S1732), int(0));
+                uint slot_36 = _S1727 | (uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1733)).xy), uint(((_S1733)).z))).x * 255.0f)) << 8U);
                 if(slot_36 == 0U)
                 {
-                    int3 _S1733 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1733)).xy), uint(((_S1733)).z)));
+                    int3 _S1734 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1734)).xy), uint(((_S1734)).z)));
                     break;
                 }
                 uint slot_37 = slot_36 - 1U;
-                uint _S1734 = atlasWidth_18;
-                uint _S1735 = 6U % atlasWidth_18;
-                int _S1736 = int(_S1735);
-                uint _S1737 = 6U / _S1734;
-                int3 _S1738 = int3(_S1736, int(_S1737), int(0));
-                uint _S1739 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1738)).xy), uint(((_S1738)).z))).x * 255.0f));
-                uint _S1740 = atlasWidth_18;
-                uint _S1741 = 7U % atlasWidth_18;
-                int _S1742 = int(_S1741);
-                uint _S1743 = 7U / _S1740;
-                int3 _S1744 = int3(_S1742, int(_S1743), int(0));
-                uint columns_18 = _S1739 | (uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1744)).xy), uint(((_S1744)).z))).x * 255.0f)) << 8U);
-                uint _S1745 = atlasWidth_18;
-                uint _S1746 = 8U % atlasWidth_18;
-                int _S1747 = int(_S1746);
-                uint _S1748 = 8U / _S1745;
-                int3 _S1749 = int3(_S1747, int(_S1748), int(0));
-                uint _S1750 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1749)).xy), uint(((_S1749)).z))).x * 255.0f));
-                uint _S1751 = atlasWidth_18;
-                uint _S1752 = 9U % atlasWidth_18;
-                int _S1753 = int(_S1752);
-                uint _S1754 = 9U / _S1751;
-                int3 _S1755 = int3(_S1753, int(_S1754), int(0));
-                uint rows_18 = ((_S1750 | (uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1755)).xy), uint(((_S1755)).z))).x * 255.0f)) << 8U)) + columns_18 - 1U) / columns_18;
-                uint metadataRows_18 = (10U + 2U * _S1713 * _S1719 + atlasWidth_18 - 1U) / atlasWidth_18;
-                uint _S1756 = atlasWidth_18 / columns_18;
-                float _S1757 = float(_S1756);
-                uint _S1758 = (atlasHeight_18 - metadataRows_18) / rows_18;
-                float2 cellSize_36 = float2(_S1757, float(_S1758));
-                uint _S1759 = slot_37 % columns_18;
-                float _S1760 = float(_S1759);
-                uint _S1761 = slot_37 / columns_18;
-                _S191 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).sample(((&kernelContext_0)->clearcoatRoughnessSampler_0), ((float2(_S1760, float(_S1761)) * cellSize_36 + float2(1.5f, float(metadataRows_18) + 1.5f) + fract(detailSource_0) * max(cellSize_36 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_18), float(atlasHeight_18)))));
+                uint _S1735 = atlasWidth_18;
+                uint _S1736 = 6U % atlasWidth_18;
+                int _S1737 = int(_S1736);
+                uint _S1738 = 6U / _S1735;
+                int3 _S1739 = int3(_S1737, int(_S1738), int(0));
+                uint _S1740 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1739)).xy), uint(((_S1739)).z))).x * 255.0f));
+                uint _S1741 = atlasWidth_18;
+                uint _S1742 = 7U % atlasWidth_18;
+                int _S1743 = int(_S1742);
+                uint _S1744 = 7U / _S1741;
+                int3 _S1745 = int3(_S1743, int(_S1744), int(0));
+                uint columns_18 = _S1740 | (uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1745)).xy), uint(((_S1745)).z))).x * 255.0f)) << 8U);
+                uint _S1746 = atlasWidth_18;
+                uint _S1747 = 8U % atlasWidth_18;
+                int _S1748 = int(_S1747);
+                uint _S1749 = 8U / _S1746;
+                int3 _S1750 = int3(_S1748, int(_S1749), int(0));
+                uint _S1751 = uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1750)).xy), uint(((_S1750)).z))).x * 255.0f));
+                uint _S1752 = atlasWidth_18;
+                uint _S1753 = 9U % atlasWidth_18;
+                int _S1754 = int(_S1753);
+                uint _S1755 = 9U / _S1752;
+                int3 _S1756 = int3(_S1754, int(_S1755), int(0));
+                uint rows_18 = ((_S1751 | (uint(round((((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1756)).xy), uint(((_S1756)).z))).x * 255.0f)) << 8U)) + columns_18 - 1U) / columns_18;
+                uint metadataRows_18 = (10U + 2U * _S1714 * _S1720 + atlasWidth_18 - 1U) / atlasWidth_18;
+                uint _S1757 = atlasWidth_18 / columns_18;
+                float _S1758 = float(_S1757);
+                uint _S1759 = (atlasHeight_18 - metadataRows_18) / rows_18;
+                float2 cellSize_36 = float2(_S1758, float(_S1759));
+                uint _S1760 = slot_37 % columns_18;
+                float _S1761 = float(_S1760);
+                uint _S1762 = slot_37 / columns_18;
+                _S192 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).sample(((&kernelContext_0)->clearcoatRoughnessSampler_0), ((float2(_S1761, float(_S1762)) * cellSize_36 + float2(1.5f, float(metadataRows_18) + 1.5f) + fract(detailSource_0) * max(cellSize_36 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_18), float(atlasHeight_18)))));
                 break;
             }
-            int2 _S1762 = int2(metadata_18.zw);
+            int2 _S1763 = int2(metadata_18.zw);
             int2 tile_37 = int2(floor(detailSource_0)) - int2(metadata_18.xy);
             if(any(tile_37 < (int2(int(0)) )))
             {
@@ -4980,29 +4986,29 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_37 >= _S1762);
+                hasSceneLighting_0 = any(tile_37 >= _S1763);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S1763 = int3(int(min(1U, atlasWidth_18 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1763)).xy), uint(((_S1763)).z)));
+                int3 _S1764 = int3(int(min(1U, atlasWidth_18 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).read(vec<uint,2>(((_S1764)).xy), uint(((_S1764)).z)));
                 break;
             }
-            uint _S1764 = atlasWidth_18 / uint(_S1762.x);
-            float _S1765 = float(_S1764);
-            uint _S1766 = (atlasHeight_18 - 1U) / uint(_S1762.y);
-            float2 cellSize_37 = float2(_S1765, float(_S1766));
-            _S191 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).sample(((&kernelContext_0)->clearcoatRoughnessSampler_0), ((float2(tile_37) * cellSize_37 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_37 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_18), float(atlasHeight_18)))));
+            uint _S1765 = atlasWidth_18 / uint(_S1763.x);
+            float _S1766 = float(_S1765);
+            uint _S1767 = (atlasHeight_18 - 1U) / uint(_S1763.y);
+            float2 cellSize_37 = float2(_S1766, float(_S1767));
+            _S192 = (((&kernelContext_0)->clearcoatRoughnessTexture_0).sample(((&kernelContext_0)->clearcoatRoughnessSampler_0), ((float2(tile_37) * cellSize_37 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_37 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_18), float(atlasHeight_18)))));
             break;
         }
         for(;;)
         {
-            float4 _S1767 = float4(_S6->compositeControls_0) ;
-            if((_S1767.x) != 1024.0f)
+            float4 _S1768 = float4(_S7->compositeControls_0) ;
+            if((_S1768.x) != 1024.0f)
             {
                 break;
             }
-            bool _S1768 = (_S1767.w) >= 0.5f;
+            bool _S1769 = (_S1768.w) >= 0.5f;
             if((maskU_1 & 1U) != 0U)
             {
                 index_0 = 1U;
@@ -5019,25 +5025,25 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S1769 = index_0 | lightCount_0;
+            uint _S1770 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S1768)
+                if(!_S1769)
                 {
                     for(;;)
                     {
-                        if(_S1769 == 0U)
+                        if(_S1770 == 0U)
                         {
                             break;
                         }
-                        texture2d<float, access::sample> _S1770 = (&kernelContext_0)->compositeTexture_0;
+                        texture2d<float, access::sample> _S1771 = (&kernelContext_0)->compositeTexture_0;
                         thread uint width_25;
                         thread uint height_25;
-                        (*((&width_25)) = (_S1770).get_width(0)),(*((&height_25)) = (_S1770).get_height(0));
+                        (*((&width_25)) = (_S1771).get_width(0)),(*((&height_25)) = (_S1771).get_height(0));
                         float2 size_21 = float2(float(width_25), float(height_25));
-                        float2 _S1771 = float2(0.5f) ;
-                        float2 remapped_21 = clamp((detailSource_0 * (size_21 - float2(2.0f) ) + float2(1.0f) ) / size_21, _S1771 / size_21, (size_21 - _S1771) / size_21);
-                        if((_S1769 & 1U) != 0U)
+                        float2 _S1772 = float2(0.5f) ;
+                        float2 remapped_21 = clamp((detailSource_0 * (size_21 - float2(2.0f) ) + float2(1.0f) ) / size_21, _S1772 / size_21, (size_21 - _S1772) / size_21);
+                        if((_S1770 & 1U) != 0U)
                         {
                             clearcoatRoughness_0 = remapped_21.x;
                         }
@@ -5045,7 +5051,7 @@ struct KernelContext_0
                         {
                             clearcoatRoughness_0 = detailSource_0.x;
                         }
-                        if((_S1769 & 2U) != 0U)
+                        if((_S1770 & 2U) != 0U)
                         {
                             ior_0 = remapped_21.y;
                         }
@@ -5056,42 +5062,42 @@ struct KernelContext_0
                         detailSource_0 = float2(clearcoatRoughness_0, ior_0);
                         break;
                     }
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
                     break;
                 }
-                texture2d<float, access::sample> _S1772 = (&kernelContext_0)->compositeTexture_0;
+                texture2d<float, access::sample> _S1773 = (&kernelContext_0)->compositeTexture_0;
                 thread uint atlasWidth_19;
                 thread uint atlasHeight_19;
-                (*((&atlasWidth_19)) = (_S1772).get_width(0)),(*((&atlasHeight_19)) = (_S1772).get_height(0));
-                int3 _S1773 = int3(int(0), int(0), int(0));
-                float4 metadata_19 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1773)).xy), uint(((_S1773)).z))) * float4(255.0f) );
+                (*((&atlasWidth_19)) = (_S1773).get_width(0)),(*((&atlasHeight_19)) = (_S1773).get_height(0));
+                int3 _S1774 = int3(int(0), int(0), int(0));
+                float4 metadata_19 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1774)).xy), uint(((_S1774)).z))) * float4(255.0f) );
                 if((metadata_19.x) == 255.0f)
                 {
-                    uint _S1774 = atlasWidth_19;
-                    uint _S1775 = 2U % atlasWidth_19;
-                    int _S1776 = int(_S1775);
-                    uint _S1777 = 2U / _S1774;
-                    int3 _S1778 = int3(_S1776, int(_S1777), int(0));
-                    int _S1779 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1778)).xy), uint(((_S1778)).z))).x * 255.0f)));
-                    uint _S1780 = atlasWidth_19;
-                    uint _S1781 = 3U % atlasWidth_19;
-                    int _S1782 = int(_S1781);
-                    uint _S1783 = 3U / _S1780;
-                    int3 _S1784 = int3(_S1782, int(_S1783), int(0));
-                    int2 minimumTile_19 = int2(_S1779, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1784)).xy), uint(((_S1784)).z))).x * 255.0f))));
-                    uint _S1785 = atlasWidth_19;
-                    uint _S1786 = 4U % atlasWidth_19;
-                    int _S1787 = int(_S1786);
-                    uint _S1788 = 4U / _S1785;
-                    int3 _S1789 = int3(_S1787, int(_S1788), int(0));
-                    uint _S1790 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1789)).xy), uint(((_S1789)).z))).x * 255.0f));
-                    uint _S1791 = atlasWidth_19;
-                    uint _S1792 = 5U % atlasWidth_19;
-                    int _S1793 = int(_S1792);
-                    uint _S1794 = 5U / _S1791;
-                    int3 _S1795 = int3(_S1793, int(_S1794), int(0));
-                    uint _S1796 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1795)).xy), uint(((_S1795)).z))).x * 255.0f));
-                    uint2 grid_19 = uint2(_S1790, _S1796);
+                    uint _S1775 = atlasWidth_19;
+                    uint _S1776 = 2U % atlasWidth_19;
+                    int _S1777 = int(_S1776);
+                    uint _S1778 = 2U / _S1775;
+                    int3 _S1779 = int3(_S1777, int(_S1778), int(0));
+                    int _S1780 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1779)).xy), uint(((_S1779)).z))).x * 255.0f)));
+                    uint _S1781 = atlasWidth_19;
+                    uint _S1782 = 3U % atlasWidth_19;
+                    int _S1783 = int(_S1782);
+                    uint _S1784 = 3U / _S1781;
+                    int3 _S1785 = int3(_S1783, int(_S1784), int(0));
+                    int2 minimumTile_19 = int2(_S1780, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1785)).xy), uint(((_S1785)).z))).x * 255.0f))));
+                    uint _S1786 = atlasWidth_19;
+                    uint _S1787 = 4U % atlasWidth_19;
+                    int _S1788 = int(_S1787);
+                    uint _S1789 = 4U / _S1786;
+                    int3 _S1790 = int3(_S1788, int(_S1789), int(0));
+                    uint _S1791 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1790)).xy), uint(((_S1790)).z))).x * 255.0f));
+                    uint _S1792 = atlasWidth_19;
+                    uint _S1793 = 5U % atlasWidth_19;
+                    int _S1794 = int(_S1793);
+                    uint _S1795 = 5U / _S1792;
+                    int3 _S1796 = int3(_S1794, int(_S1795), int(0));
+                    uint _S1797 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1796)).xy), uint(((_S1796)).z))).x * 255.0f));
+                    uint2 grid_19 = uint2(_S1791, _S1797);
                     int2 tile_38 = int2(floor(detailSource_0)) - minimumTile_19;
                     if(any(tile_38 < (int2(int(0)) )))
                     {
@@ -5103,67 +5109,67 @@ struct KernelContext_0
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S1797 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1797)).xy), uint(((_S1797)).z)));
+                        int3 _S1798 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1798)).xy), uint(((_S1798)).z)));
                         break;
                     }
-                    uint offset_19 = 10U + 2U * (uint(tile_38.y) * _S1790 + uint(tile_38.x));
-                    uint _S1798 = atlasWidth_19;
-                    uint _S1799 = offset_19 % atlasWidth_19;
-                    int _S1800 = int(_S1799);
-                    uint _S1801 = offset_19 / _S1798;
-                    int3 _S1802 = int3(_S1800, int(_S1801), int(0));
-                    uint _S1803 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1802)).xy), uint(((_S1802)).z))).x * 255.0f));
-                    uint _S1804 = atlasWidth_19;
-                    uint _S1805 = offset_19 + 1U;
-                    uint _S1806 = _S1805 % atlasWidth_19;
-                    int _S1807 = int(_S1806);
-                    uint _S1808 = _S1805 / _S1804;
-                    int3 _S1809 = int3(_S1807, int(_S1808), int(0));
-                    uint slot_38 = _S1803 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1809)).xy), uint(((_S1809)).z))).x * 255.0f)) << 8U);
+                    uint offset_19 = 10U + 2U * (uint(tile_38.y) * _S1791 + uint(tile_38.x));
+                    uint _S1799 = atlasWidth_19;
+                    uint _S1800 = offset_19 % atlasWidth_19;
+                    int _S1801 = int(_S1800);
+                    uint _S1802 = offset_19 / _S1799;
+                    int3 _S1803 = int3(_S1801, int(_S1802), int(0));
+                    uint _S1804 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1803)).xy), uint(((_S1803)).z))).x * 255.0f));
+                    uint _S1805 = atlasWidth_19;
+                    uint _S1806 = offset_19 + 1U;
+                    uint _S1807 = _S1806 % atlasWidth_19;
+                    int _S1808 = int(_S1807);
+                    uint _S1809 = _S1806 / _S1805;
+                    int3 _S1810 = int3(_S1808, int(_S1809), int(0));
+                    uint slot_38 = _S1804 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1810)).xy), uint(((_S1810)).z))).x * 255.0f)) << 8U);
                     if(slot_38 == 0U)
                     {
-                        int3 _S1810 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1810)).xy), uint(((_S1810)).z)));
+                        int3 _S1811 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1811)).xy), uint(((_S1811)).z)));
                         break;
                     }
                     uint slot_39 = slot_38 - 1U;
-                    uint _S1811 = atlasWidth_19;
-                    uint _S1812 = 6U % atlasWidth_19;
-                    int _S1813 = int(_S1812);
-                    uint _S1814 = 6U / _S1811;
-                    int3 _S1815 = int3(_S1813, int(_S1814), int(0));
-                    uint _S1816 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1815)).xy), uint(((_S1815)).z))).x * 255.0f));
-                    uint _S1817 = atlasWidth_19;
-                    uint _S1818 = 7U % atlasWidth_19;
-                    int _S1819 = int(_S1818);
-                    uint _S1820 = 7U / _S1817;
-                    int3 _S1821 = int3(_S1819, int(_S1820), int(0));
-                    uint columns_19 = _S1816 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1821)).xy), uint(((_S1821)).z))).x * 255.0f)) << 8U);
-                    uint _S1822 = atlasWidth_19;
-                    uint _S1823 = 8U % atlasWidth_19;
-                    int _S1824 = int(_S1823);
-                    uint _S1825 = 8U / _S1822;
-                    int3 _S1826 = int3(_S1824, int(_S1825), int(0));
-                    uint _S1827 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1826)).xy), uint(((_S1826)).z))).x * 255.0f));
-                    uint _S1828 = atlasWidth_19;
-                    uint _S1829 = 9U % atlasWidth_19;
-                    int _S1830 = int(_S1829);
-                    uint _S1831 = 9U / _S1828;
-                    int3 _S1832 = int3(_S1830, int(_S1831), int(0));
-                    uint rows_19 = ((_S1827 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1832)).xy), uint(((_S1832)).z))).x * 255.0f)) << 8U)) + columns_19 - 1U) / columns_19;
-                    uint metadataRows_19 = (10U + 2U * _S1790 * _S1796 + atlasWidth_19 - 1U) / atlasWidth_19;
-                    uint _S1833 = atlasWidth_19 / columns_19;
-                    float _S1834 = float(_S1833);
-                    uint _S1835 = (atlasHeight_19 - metadataRows_19) / rows_19;
-                    float2 cellSize_38 = float2(_S1834, float(_S1835));
-                    uint _S1836 = slot_39 % columns_19;
-                    float _S1837 = float(_S1836);
-                    uint _S1838 = slot_39 / columns_19;
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1837, float(_S1838)) * cellSize_38 + float2(1.5f, float(metadataRows_19) + 1.5f) + fract(detailSource_0) * max(cellSize_38 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_19), float(atlasHeight_19)))));
+                    uint _S1812 = atlasWidth_19;
+                    uint _S1813 = 6U % atlasWidth_19;
+                    int _S1814 = int(_S1813);
+                    uint _S1815 = 6U / _S1812;
+                    int3 _S1816 = int3(_S1814, int(_S1815), int(0));
+                    uint _S1817 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1816)).xy), uint(((_S1816)).z))).x * 255.0f));
+                    uint _S1818 = atlasWidth_19;
+                    uint _S1819 = 7U % atlasWidth_19;
+                    int _S1820 = int(_S1819);
+                    uint _S1821 = 7U / _S1818;
+                    int3 _S1822 = int3(_S1820, int(_S1821), int(0));
+                    uint columns_19 = _S1817 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1822)).xy), uint(((_S1822)).z))).x * 255.0f)) << 8U);
+                    uint _S1823 = atlasWidth_19;
+                    uint _S1824 = 8U % atlasWidth_19;
+                    int _S1825 = int(_S1824);
+                    uint _S1826 = 8U / _S1823;
+                    int3 _S1827 = int3(_S1825, int(_S1826), int(0));
+                    uint _S1828 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1827)).xy), uint(((_S1827)).z))).x * 255.0f));
+                    uint _S1829 = atlasWidth_19;
+                    uint _S1830 = 9U % atlasWidth_19;
+                    int _S1831 = int(_S1830);
+                    uint _S1832 = 9U / _S1829;
+                    int3 _S1833 = int3(_S1831, int(_S1832), int(0));
+                    uint rows_19 = ((_S1828 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1833)).xy), uint(((_S1833)).z))).x * 255.0f)) << 8U)) + columns_19 - 1U) / columns_19;
+                    uint metadataRows_19 = (10U + 2U * _S1791 * _S1797 + atlasWidth_19 - 1U) / atlasWidth_19;
+                    uint _S1834 = atlasWidth_19 / columns_19;
+                    float _S1835 = float(_S1834);
+                    uint _S1836 = (atlasHeight_19 - metadataRows_19) / rows_19;
+                    float2 cellSize_38 = float2(_S1835, float(_S1836));
+                    uint _S1837 = slot_39 % columns_19;
+                    float _S1838 = float(_S1837);
+                    uint _S1839 = slot_39 / columns_19;
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1838, float(_S1839)) * cellSize_38 + float2(1.5f, float(metadataRows_19) + 1.5f) + fract(detailSource_0) * max(cellSize_38 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_19), float(atlasHeight_19)))));
                     break;
                 }
-                int2 _S1839 = int2(metadata_19.zw);
+                int2 _S1840 = int2(metadata_19.zw);
                 int2 tile_39 = int2(floor(detailSource_0)) - int2(metadata_19.xy);
                 if(any(tile_39 < (int2(int(0)) )))
                 {
@@ -5171,50 +5177,50 @@ struct KernelContext_0
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_39 >= _S1839);
+                    hasSceneLighting_0 = any(tile_39 >= _S1840);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1840 = int3(int(min(1U, atlasWidth_19 - 1U)), int(0), int(0));
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1840)).xy), uint(((_S1840)).z)));
+                    int3 _S1841 = int3(int(min(1U, atlasWidth_19 - 1U)), int(0), int(0));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1841)).xy), uint(((_S1841)).z)));
                     break;
                 }
-                uint _S1841 = atlasWidth_19 / uint(_S1839.x);
-                float _S1842 = float(_S1841);
-                uint _S1843 = (atlasHeight_19 - 1U) / uint(_S1839.y);
-                float2 cellSize_39 = float2(_S1842, float(_S1843));
-                _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_39) * cellSize_39 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_39 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_19), float(atlasHeight_19)))));
+                uint _S1842 = atlasWidth_19 / uint(_S1840.x);
+                float _S1843 = float(_S1842);
+                uint _S1844 = (atlasHeight_19 - 1U) / uint(_S1840.y);
+                float2 cellSize_39 = float2(_S1843, float(_S1844));
+                _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_39) * cellSize_39 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_39 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_19), float(atlasHeight_19)))));
                 break;
             }
-            uint operation_8 = uint(round(_S1767.y));
+            uint operation_8 = uint(round(_S1768.y));
             if(operation_8 == 1U)
             {
-                _S191 = _S191 * _S590;
+                _S192 = _S192 * _S591;
                 break;
             }
             if(operation_8 == 2U)
             {
-                _S191 = _S191 + _S590;
+                _S192 = _S192 + _S591;
                 break;
             }
             if(operation_8 == 3U)
             {
-                _S191 = _S191 - _S590;
+                _S192 = _S192 - _S591;
                 break;
             }
             if(operation_8 == 4U)
             {
-                float factor_8 = _S1767.z;
-                _S191 = _S191 * float4((1.0f - factor_8))  + _S590 * float4(factor_8) ;
+                float factor_8 = _S1768.z;
+                _S192 = _S192 * float4((1.0f - factor_8))  + _S591 * float4(factor_8) ;
                 break;
             }
             break;
         }
-        clearcoatRoughness_0 = saturate(_S191.x);
+        clearcoatRoughness_0 = saturate(_S192.x);
     }
     else
     {
-        clearcoatRoughness_0 = _S172;
+        clearcoatRoughness_0 = _S173;
     }
     float lightType_0;
     if((textureMask_0 & 2048U) != 0U)
@@ -5224,25 +5230,25 @@ struct KernelContext_0
         {
             if(useSecondary_10)
             {
-                detailSource_0 = _S190;
+                detailSource_0 = _S191;
             }
             else
             {
-                detailSource_0 = _S189;
+                detailSource_0 = _S190;
             }
         }
         else
         {
             if(useSecondary_10)
             {
-                detailSource_0 = _S182;
+                detailSource_0 = _S183;
             }
             else
             {
-                detailSource_0 = _S181;
+                detailSource_0 = _S182;
             }
         }
-        bool _S1844 = (udimMask_0 & 2048U) != 0U;
+        bool _S1845 = (udimMask_0 & 2048U) != 0U;
         if((maskU_1 & 2048U) != 0U)
         {
             index_0 = 1U;
@@ -5259,26 +5265,26 @@ struct KernelContext_0
         {
             lightCount_0 = 0U;
         }
-        uint _S1845 = index_0 | lightCount_0;
+        uint _S1846 = index_0 | lightCount_0;
         for(;;)
         {
-            if(!_S1844)
+            if(!_S1845)
             {
                 for(;;)
                 {
-                    if(_S1845 == 0U)
+                    if(_S1846 == 0U)
                     {
                         tangent_1 = detailSource_0;
                         break;
                     }
-                    texture2d<float, access::sample> _S1846 = (&kernelContext_0)->iorTexture_0;
+                    texture2d<float, access::sample> _S1847 = (&kernelContext_0)->iorTexture_0;
                     thread uint width_26;
                     thread uint height_26;
-                    (*((&width_26)) = (_S1846).get_width(0)),(*((&height_26)) = (_S1846).get_height(0));
+                    (*((&width_26)) = (_S1847).get_width(0)),(*((&height_26)) = (_S1847).get_height(0));
                     float2 size_22 = float2(float(width_26), float(height_26));
-                    float2 _S1847 = float2(0.5f) ;
-                    float2 remapped_22 = clamp((detailSource_0 * (size_22 - float2(2.0f) ) + float2(1.0f) ) / size_22, _S1847 / size_22, (size_22 - _S1847) / size_22);
-                    if((_S1845 & 1U) != 0U)
+                    float2 _S1848 = float2(0.5f) ;
+                    float2 remapped_22 = clamp((detailSource_0 * (size_22 - float2(2.0f) ) + float2(1.0f) ) / size_22, _S1848 / size_22, (size_22 - _S1848) / size_22);
+                    if((_S1846 & 1U) != 0U)
                     {
                         ior_0 = remapped_22.x;
                     }
@@ -5286,7 +5292,7 @@ struct KernelContext_0
                     {
                         ior_0 = detailSource_0.x;
                     }
-                    if((_S1845 & 2U) != 0U)
+                    if((_S1846 & 2U) != 0U)
                     {
                         lightType_0 = remapped_22.y;
                     }
@@ -5297,42 +5303,42 @@ struct KernelContext_0
                     tangent_1 = float2(ior_0, lightType_0);
                     break;
                 }
-                _S191 = (((&kernelContext_0)->iorTexture_0).sample(((&kernelContext_0)->iorSampler_0), (tangent_1)));
+                _S192 = (((&kernelContext_0)->iorTexture_0).sample(((&kernelContext_0)->iorSampler_0), (tangent_1)));
                 break;
             }
-            texture2d<float, access::sample> _S1848 = (&kernelContext_0)->iorTexture_0;
+            texture2d<float, access::sample> _S1849 = (&kernelContext_0)->iorTexture_0;
             thread uint atlasWidth_20;
             thread uint atlasHeight_20;
-            (*((&atlasWidth_20)) = (_S1848).get_width(0)),(*((&atlasHeight_20)) = (_S1848).get_height(0));
-            int3 _S1849 = int3(int(0), int(0), int(0));
-            float4 metadata_20 = round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1849)).xy), uint(((_S1849)).z))) * float4(255.0f) );
+            (*((&atlasWidth_20)) = (_S1849).get_width(0)),(*((&atlasHeight_20)) = (_S1849).get_height(0));
+            int3 _S1850 = int3(int(0), int(0), int(0));
+            float4 metadata_20 = round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1850)).xy), uint(((_S1850)).z))) * float4(255.0f) );
             if((metadata_20.x) == 255.0f)
             {
-                uint _S1850 = atlasWidth_20;
-                uint _S1851 = 2U % atlasWidth_20;
-                int _S1852 = int(_S1851);
-                uint _S1853 = 2U / _S1850;
-                int3 _S1854 = int3(_S1852, int(_S1853), int(0));
-                int _S1855 = int(uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1854)).xy), uint(((_S1854)).z))).x * 255.0f)));
-                uint _S1856 = atlasWidth_20;
-                uint _S1857 = 3U % atlasWidth_20;
-                int _S1858 = int(_S1857);
-                uint _S1859 = 3U / _S1856;
-                int3 _S1860 = int3(_S1858, int(_S1859), int(0));
-                int2 minimumTile_20 = int2(_S1855, int(uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1860)).xy), uint(((_S1860)).z))).x * 255.0f))));
-                uint _S1861 = atlasWidth_20;
-                uint _S1862 = 4U % atlasWidth_20;
-                int _S1863 = int(_S1862);
-                uint _S1864 = 4U / _S1861;
-                int3 _S1865 = int3(_S1863, int(_S1864), int(0));
-                uint _S1866 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1865)).xy), uint(((_S1865)).z))).x * 255.0f));
-                uint _S1867 = atlasWidth_20;
-                uint _S1868 = 5U % atlasWidth_20;
-                int _S1869 = int(_S1868);
-                uint _S1870 = 5U / _S1867;
-                int3 _S1871 = int3(_S1869, int(_S1870), int(0));
-                uint _S1872 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1871)).xy), uint(((_S1871)).z))).x * 255.0f));
-                uint2 grid_20 = uint2(_S1866, _S1872);
+                uint _S1851 = atlasWidth_20;
+                uint _S1852 = 2U % atlasWidth_20;
+                int _S1853 = int(_S1852);
+                uint _S1854 = 2U / _S1851;
+                int3 _S1855 = int3(_S1853, int(_S1854), int(0));
+                int _S1856 = int(uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1855)).xy), uint(((_S1855)).z))).x * 255.0f)));
+                uint _S1857 = atlasWidth_20;
+                uint _S1858 = 3U % atlasWidth_20;
+                int _S1859 = int(_S1858);
+                uint _S1860 = 3U / _S1857;
+                int3 _S1861 = int3(_S1859, int(_S1860), int(0));
+                int2 minimumTile_20 = int2(_S1856, int(uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1861)).xy), uint(((_S1861)).z))).x * 255.0f))));
+                uint _S1862 = atlasWidth_20;
+                uint _S1863 = 4U % atlasWidth_20;
+                int _S1864 = int(_S1863);
+                uint _S1865 = 4U / _S1862;
+                int3 _S1866 = int3(_S1864, int(_S1865), int(0));
+                uint _S1867 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1866)).xy), uint(((_S1866)).z))).x * 255.0f));
+                uint _S1868 = atlasWidth_20;
+                uint _S1869 = 5U % atlasWidth_20;
+                int _S1870 = int(_S1869);
+                uint _S1871 = 5U / _S1868;
+                int3 _S1872 = int3(_S1870, int(_S1871), int(0));
+                uint _S1873 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1872)).xy), uint(((_S1872)).z))).x * 255.0f));
+                uint2 grid_20 = uint2(_S1867, _S1873);
                 int2 tile_40 = int2(floor(detailSource_0)) - minimumTile_20;
                 if(any(tile_40 < (int2(int(0)) )))
                 {
@@ -5344,67 +5350,67 @@ struct KernelContext_0
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1873 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1873)).xy), uint(((_S1873)).z)));
+                    int3 _S1874 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1874)).xy), uint(((_S1874)).z)));
                     break;
                 }
-                uint offset_20 = 10U + 2U * (uint(tile_40.y) * _S1866 + uint(tile_40.x));
-                uint _S1874 = atlasWidth_20;
-                uint _S1875 = offset_20 % atlasWidth_20;
-                int _S1876 = int(_S1875);
-                uint _S1877 = offset_20 / _S1874;
-                int3 _S1878 = int3(_S1876, int(_S1877), int(0));
-                uint _S1879 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1878)).xy), uint(((_S1878)).z))).x * 255.0f));
-                uint _S1880 = atlasWidth_20;
-                uint _S1881 = offset_20 + 1U;
-                uint _S1882 = _S1881 % atlasWidth_20;
-                int _S1883 = int(_S1882);
-                uint _S1884 = _S1881 / _S1880;
-                int3 _S1885 = int3(_S1883, int(_S1884), int(0));
-                uint slot_40 = _S1879 | (uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1885)).xy), uint(((_S1885)).z))).x * 255.0f)) << 8U);
+                uint offset_20 = 10U + 2U * (uint(tile_40.y) * _S1867 + uint(tile_40.x));
+                uint _S1875 = atlasWidth_20;
+                uint _S1876 = offset_20 % atlasWidth_20;
+                int _S1877 = int(_S1876);
+                uint _S1878 = offset_20 / _S1875;
+                int3 _S1879 = int3(_S1877, int(_S1878), int(0));
+                uint _S1880 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1879)).xy), uint(((_S1879)).z))).x * 255.0f));
+                uint _S1881 = atlasWidth_20;
+                uint _S1882 = offset_20 + 1U;
+                uint _S1883 = _S1882 % atlasWidth_20;
+                int _S1884 = int(_S1883);
+                uint _S1885 = _S1882 / _S1881;
+                int3 _S1886 = int3(_S1884, int(_S1885), int(0));
+                uint slot_40 = _S1880 | (uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1886)).xy), uint(((_S1886)).z))).x * 255.0f)) << 8U);
                 if(slot_40 == 0U)
                 {
-                    int3 _S1886 = int3(int(1), int(0), int(0));
-                    _S191 = (((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1886)).xy), uint(((_S1886)).z)));
+                    int3 _S1887 = int3(int(1), int(0), int(0));
+                    _S192 = (((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1887)).xy), uint(((_S1887)).z)));
                     break;
                 }
                 uint slot_41 = slot_40 - 1U;
-                uint _S1887 = atlasWidth_20;
-                uint _S1888 = 6U % atlasWidth_20;
-                int _S1889 = int(_S1888);
-                uint _S1890 = 6U / _S1887;
-                int3 _S1891 = int3(_S1889, int(_S1890), int(0));
-                uint _S1892 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1891)).xy), uint(((_S1891)).z))).x * 255.0f));
-                uint _S1893 = atlasWidth_20;
-                uint _S1894 = 7U % atlasWidth_20;
-                int _S1895 = int(_S1894);
-                uint _S1896 = 7U / _S1893;
-                int3 _S1897 = int3(_S1895, int(_S1896), int(0));
-                uint columns_20 = _S1892 | (uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1897)).xy), uint(((_S1897)).z))).x * 255.0f)) << 8U);
-                uint _S1898 = atlasWidth_20;
-                uint _S1899 = 8U % atlasWidth_20;
-                int _S1900 = int(_S1899);
-                uint _S1901 = 8U / _S1898;
-                int3 _S1902 = int3(_S1900, int(_S1901), int(0));
-                uint _S1903 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1902)).xy), uint(((_S1902)).z))).x * 255.0f));
-                uint _S1904 = atlasWidth_20;
-                uint _S1905 = 9U % atlasWidth_20;
-                int _S1906 = int(_S1905);
-                uint _S1907 = 9U / _S1904;
-                int3 _S1908 = int3(_S1906, int(_S1907), int(0));
-                uint rows_20 = ((_S1903 | (uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1908)).xy), uint(((_S1908)).z))).x * 255.0f)) << 8U)) + columns_20 - 1U) / columns_20;
-                uint metadataRows_20 = (10U + 2U * _S1866 * _S1872 + atlasWidth_20 - 1U) / atlasWidth_20;
-                uint _S1909 = atlasWidth_20 / columns_20;
-                float _S1910 = float(_S1909);
-                uint _S1911 = (atlasHeight_20 - metadataRows_20) / rows_20;
-                float2 cellSize_40 = float2(_S1910, float(_S1911));
-                uint _S1912 = slot_41 % columns_20;
-                float _S1913 = float(_S1912);
-                uint _S1914 = slot_41 / columns_20;
-                _S191 = (((&kernelContext_0)->iorTexture_0).sample(((&kernelContext_0)->iorSampler_0), ((float2(_S1913, float(_S1914)) * cellSize_40 + float2(1.5f, float(metadataRows_20) + 1.5f) + fract(detailSource_0) * max(cellSize_40 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_20), float(atlasHeight_20)))));
+                uint _S1888 = atlasWidth_20;
+                uint _S1889 = 6U % atlasWidth_20;
+                int _S1890 = int(_S1889);
+                uint _S1891 = 6U / _S1888;
+                int3 _S1892 = int3(_S1890, int(_S1891), int(0));
+                uint _S1893 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1892)).xy), uint(((_S1892)).z))).x * 255.0f));
+                uint _S1894 = atlasWidth_20;
+                uint _S1895 = 7U % atlasWidth_20;
+                int _S1896 = int(_S1895);
+                uint _S1897 = 7U / _S1894;
+                int3 _S1898 = int3(_S1896, int(_S1897), int(0));
+                uint columns_20 = _S1893 | (uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1898)).xy), uint(((_S1898)).z))).x * 255.0f)) << 8U);
+                uint _S1899 = atlasWidth_20;
+                uint _S1900 = 8U % atlasWidth_20;
+                int _S1901 = int(_S1900);
+                uint _S1902 = 8U / _S1899;
+                int3 _S1903 = int3(_S1901, int(_S1902), int(0));
+                uint _S1904 = uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1903)).xy), uint(((_S1903)).z))).x * 255.0f));
+                uint _S1905 = atlasWidth_20;
+                uint _S1906 = 9U % atlasWidth_20;
+                int _S1907 = int(_S1906);
+                uint _S1908 = 9U / _S1905;
+                int3 _S1909 = int3(_S1907, int(_S1908), int(0));
+                uint rows_20 = ((_S1904 | (uint(round((((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1909)).xy), uint(((_S1909)).z))).x * 255.0f)) << 8U)) + columns_20 - 1U) / columns_20;
+                uint metadataRows_20 = (10U + 2U * _S1867 * _S1873 + atlasWidth_20 - 1U) / atlasWidth_20;
+                uint _S1910 = atlasWidth_20 / columns_20;
+                float _S1911 = float(_S1910);
+                uint _S1912 = (atlasHeight_20 - metadataRows_20) / rows_20;
+                float2 cellSize_40 = float2(_S1911, float(_S1912));
+                uint _S1913 = slot_41 % columns_20;
+                float _S1914 = float(_S1913);
+                uint _S1915 = slot_41 / columns_20;
+                _S192 = (((&kernelContext_0)->iorTexture_0).sample(((&kernelContext_0)->iorSampler_0), ((float2(_S1914, float(_S1915)) * cellSize_40 + float2(1.5f, float(metadataRows_20) + 1.5f) + fract(detailSource_0) * max(cellSize_40 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_20), float(atlasHeight_20)))));
                 break;
             }
-            int2 _S1915 = int2(metadata_20.zw);
+            int2 _S1916 = int2(metadata_20.zw);
             int2 tile_41 = int2(floor(detailSource_0)) - int2(metadata_20.xy);
             if(any(tile_41 < (int2(int(0)) )))
             {
@@ -5412,29 +5418,29 @@ struct KernelContext_0
             }
             else
             {
-                hasSceneLighting_0 = any(tile_41 >= _S1915);
+                hasSceneLighting_0 = any(tile_41 >= _S1916);
             }
             if(hasSceneLighting_0)
             {
-                int3 _S1916 = int3(int(min(1U, atlasWidth_20 - 1U)), int(0), int(0));
-                _S191 = (((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1916)).xy), uint(((_S1916)).z)));
+                int3 _S1917 = int3(int(min(1U, atlasWidth_20 - 1U)), int(0), int(0));
+                _S192 = (((&kernelContext_0)->iorTexture_0).read(vec<uint,2>(((_S1917)).xy), uint(((_S1917)).z)));
                 break;
             }
-            uint _S1917 = atlasWidth_20 / uint(_S1915.x);
-            float _S1918 = float(_S1917);
-            uint _S1919 = (atlasHeight_20 - 1U) / uint(_S1915.y);
-            float2 cellSize_41 = float2(_S1918, float(_S1919));
-            _S191 = (((&kernelContext_0)->iorTexture_0).sample(((&kernelContext_0)->iorSampler_0), ((float2(tile_41) * cellSize_41 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_41 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_20), float(atlasHeight_20)))));
+            uint _S1918 = atlasWidth_20 / uint(_S1916.x);
+            float _S1919 = float(_S1918);
+            uint _S1920 = (atlasHeight_20 - 1U) / uint(_S1916.y);
+            float2 cellSize_41 = float2(_S1919, float(_S1920));
+            _S192 = (((&kernelContext_0)->iorTexture_0).sample(((&kernelContext_0)->iorSampler_0), ((float2(tile_41) * cellSize_41 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_41 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_20), float(atlasHeight_20)))));
             break;
         }
         for(;;)
         {
-            float4 _S1920 = float4(_S6->compositeControls_0) ;
-            if((_S1920.x) != 2048.0f)
+            float4 _S1921 = float4(_S7->compositeControls_0) ;
+            if((_S1921.x) != 2048.0f)
             {
                 break;
             }
-            bool _S1921 = (_S1920.w) >= 0.5f;
+            bool _S1922 = (_S1921.w) >= 0.5f;
             if((maskU_1 & 1U) != 0U)
             {
                 index_0 = 1U;
@@ -5451,25 +5457,25 @@ struct KernelContext_0
             {
                 lightCount_0 = 0U;
             }
-            uint _S1922 = index_0 | lightCount_0;
+            uint _S1923 = index_0 | lightCount_0;
             for(;;)
             {
-                if(!_S1921)
+                if(!_S1922)
                 {
                     for(;;)
                     {
-                        if(_S1922 == 0U)
+                        if(_S1923 == 0U)
                         {
                             break;
                         }
-                        texture2d<float, access::sample> _S1923 = (&kernelContext_0)->compositeTexture_0;
+                        texture2d<float, access::sample> _S1924 = (&kernelContext_0)->compositeTexture_0;
                         thread uint width_27;
                         thread uint height_27;
-                        (*((&width_27)) = (_S1923).get_width(0)),(*((&height_27)) = (_S1923).get_height(0));
+                        (*((&width_27)) = (_S1924).get_width(0)),(*((&height_27)) = (_S1924).get_height(0));
                         float2 size_23 = float2(float(width_27), float(height_27));
-                        float2 _S1924 = float2(0.5f) ;
-                        float2 remapped_23 = clamp((detailSource_0 * (size_23 - float2(2.0f) ) + float2(1.0f) ) / size_23, _S1924 / size_23, (size_23 - _S1924) / size_23);
-                        if((_S1922 & 1U) != 0U)
+                        float2 _S1925 = float2(0.5f) ;
+                        float2 remapped_23 = clamp((detailSource_0 * (size_23 - float2(2.0f) ) + float2(1.0f) ) / size_23, _S1925 / size_23, (size_23 - _S1925) / size_23);
+                        if((_S1923 & 1U) != 0U)
                         {
                             ior_0 = remapped_23.x;
                         }
@@ -5477,7 +5483,7 @@ struct KernelContext_0
                         {
                             ior_0 = detailSource_0.x;
                         }
-                        if((_S1922 & 2U) != 0U)
+                        if((_S1923 & 2U) != 0U)
                         {
                             lightType_0 = remapped_23.y;
                         }
@@ -5488,42 +5494,42 @@ struct KernelContext_0
                         detailSource_0 = float2(ior_0, lightType_0);
                         break;
                     }
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), (detailSource_0)));
                     break;
                 }
-                texture2d<float, access::sample> _S1925 = (&kernelContext_0)->compositeTexture_0;
+                texture2d<float, access::sample> _S1926 = (&kernelContext_0)->compositeTexture_0;
                 thread uint atlasWidth_21;
                 thread uint atlasHeight_21;
-                (*((&atlasWidth_21)) = (_S1925).get_width(0)),(*((&atlasHeight_21)) = (_S1925).get_height(0));
-                int3 _S1926 = int3(int(0), int(0), int(0));
-                float4 metadata_21 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1926)).xy), uint(((_S1926)).z))) * float4(255.0f) );
+                (*((&atlasWidth_21)) = (_S1926).get_width(0)),(*((&atlasHeight_21)) = (_S1926).get_height(0));
+                int3 _S1927 = int3(int(0), int(0), int(0));
+                float4 metadata_21 = round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1927)).xy), uint(((_S1927)).z))) * float4(255.0f) );
                 if((metadata_21.x) == 255.0f)
                 {
-                    uint _S1927 = atlasWidth_21;
-                    uint _S1928 = 2U % atlasWidth_21;
-                    int _S1929 = int(_S1928);
-                    uint _S1930 = 2U / _S1927;
-                    int3 _S1931 = int3(_S1929, int(_S1930), int(0));
-                    int _S1932 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1931)).xy), uint(((_S1931)).z))).x * 255.0f)));
-                    uint _S1933 = atlasWidth_21;
-                    uint _S1934 = 3U % atlasWidth_21;
-                    int _S1935 = int(_S1934);
-                    uint _S1936 = 3U / _S1933;
-                    int3 _S1937 = int3(_S1935, int(_S1936), int(0));
-                    int2 minimumTile_21 = int2(_S1932, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1937)).xy), uint(((_S1937)).z))).x * 255.0f))));
-                    uint _S1938 = atlasWidth_21;
-                    uint _S1939 = 4U % atlasWidth_21;
-                    int _S1940 = int(_S1939);
-                    uint _S1941 = 4U / _S1938;
-                    int3 _S1942 = int3(_S1940, int(_S1941), int(0));
-                    uint _S1943 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1942)).xy), uint(((_S1942)).z))).x * 255.0f));
-                    uint _S1944 = atlasWidth_21;
-                    uint _S1945 = 5U % atlasWidth_21;
-                    int _S1946 = int(_S1945);
-                    uint _S1947 = 5U / _S1944;
-                    int3 _S1948 = int3(_S1946, int(_S1947), int(0));
-                    uint _S1949 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1948)).xy), uint(((_S1948)).z))).x * 255.0f));
-                    uint2 grid_21 = uint2(_S1943, _S1949);
+                    uint _S1928 = atlasWidth_21;
+                    uint _S1929 = 2U % atlasWidth_21;
+                    int _S1930 = int(_S1929);
+                    uint _S1931 = 2U / _S1928;
+                    int3 _S1932 = int3(_S1930, int(_S1931), int(0));
+                    int _S1933 = int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1932)).xy), uint(((_S1932)).z))).x * 255.0f)));
+                    uint _S1934 = atlasWidth_21;
+                    uint _S1935 = 3U % atlasWidth_21;
+                    int _S1936 = int(_S1935);
+                    uint _S1937 = 3U / _S1934;
+                    int3 _S1938 = int3(_S1936, int(_S1937), int(0));
+                    int2 minimumTile_21 = int2(_S1933, int(uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1938)).xy), uint(((_S1938)).z))).x * 255.0f))));
+                    uint _S1939 = atlasWidth_21;
+                    uint _S1940 = 4U % atlasWidth_21;
+                    int _S1941 = int(_S1940);
+                    uint _S1942 = 4U / _S1939;
+                    int3 _S1943 = int3(_S1941, int(_S1942), int(0));
+                    uint _S1944 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1943)).xy), uint(((_S1943)).z))).x * 255.0f));
+                    uint _S1945 = atlasWidth_21;
+                    uint _S1946 = 5U % atlasWidth_21;
+                    int _S1947 = int(_S1946);
+                    uint _S1948 = 5U / _S1945;
+                    int3 _S1949 = int3(_S1947, int(_S1948), int(0));
+                    uint _S1950 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1949)).xy), uint(((_S1949)).z))).x * 255.0f));
+                    uint2 grid_21 = uint2(_S1944, _S1950);
                     int2 tile_42 = int2(floor(detailSource_0)) - minimumTile_21;
                     if(any(tile_42 < (int2(int(0)) )))
                     {
@@ -5535,67 +5541,67 @@ struct KernelContext_0
                     }
                     if(hasSceneLighting_0)
                     {
-                        int3 _S1950 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1950)).xy), uint(((_S1950)).z)));
+                        int3 _S1951 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1951)).xy), uint(((_S1951)).z)));
                         break;
                     }
-                    uint offset_21 = 10U + 2U * (uint(tile_42.y) * _S1943 + uint(tile_42.x));
-                    uint _S1951 = atlasWidth_21;
-                    uint _S1952 = offset_21 % atlasWidth_21;
-                    int _S1953 = int(_S1952);
-                    uint _S1954 = offset_21 / _S1951;
-                    int3 _S1955 = int3(_S1953, int(_S1954), int(0));
-                    uint _S1956 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1955)).xy), uint(((_S1955)).z))).x * 255.0f));
-                    uint _S1957 = atlasWidth_21;
-                    uint _S1958 = offset_21 + 1U;
-                    uint _S1959 = _S1958 % atlasWidth_21;
-                    int _S1960 = int(_S1959);
-                    uint _S1961 = _S1958 / _S1957;
-                    int3 _S1962 = int3(_S1960, int(_S1961), int(0));
-                    uint slot_42 = _S1956 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1962)).xy), uint(((_S1962)).z))).x * 255.0f)) << 8U);
+                    uint offset_21 = 10U + 2U * (uint(tile_42.y) * _S1944 + uint(tile_42.x));
+                    uint _S1952 = atlasWidth_21;
+                    uint _S1953 = offset_21 % atlasWidth_21;
+                    int _S1954 = int(_S1953);
+                    uint _S1955 = offset_21 / _S1952;
+                    int3 _S1956 = int3(_S1954, int(_S1955), int(0));
+                    uint _S1957 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1956)).xy), uint(((_S1956)).z))).x * 255.0f));
+                    uint _S1958 = atlasWidth_21;
+                    uint _S1959 = offset_21 + 1U;
+                    uint _S1960 = _S1959 % atlasWidth_21;
+                    int _S1961 = int(_S1960);
+                    uint _S1962 = _S1959 / _S1958;
+                    int3 _S1963 = int3(_S1961, int(_S1962), int(0));
+                    uint slot_42 = _S1957 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1963)).xy), uint(((_S1963)).z))).x * 255.0f)) << 8U);
                     if(slot_42 == 0U)
                     {
-                        int3 _S1963 = int3(int(1), int(0), int(0));
-                        _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1963)).xy), uint(((_S1963)).z)));
+                        int3 _S1964 = int3(int(1), int(0), int(0));
+                        _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1964)).xy), uint(((_S1964)).z)));
                         break;
                     }
                     uint slot_43 = slot_42 - 1U;
-                    uint _S1964 = atlasWidth_21;
-                    uint _S1965 = 6U % atlasWidth_21;
-                    int _S1966 = int(_S1965);
-                    uint _S1967 = 6U / _S1964;
-                    int3 _S1968 = int3(_S1966, int(_S1967), int(0));
-                    uint _S1969 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1968)).xy), uint(((_S1968)).z))).x * 255.0f));
-                    uint _S1970 = atlasWidth_21;
-                    uint _S1971 = 7U % atlasWidth_21;
-                    int _S1972 = int(_S1971);
-                    uint _S1973 = 7U / _S1970;
-                    int3 _S1974 = int3(_S1972, int(_S1973), int(0));
-                    uint columns_21 = _S1969 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1974)).xy), uint(((_S1974)).z))).x * 255.0f)) << 8U);
-                    uint _S1975 = atlasWidth_21;
-                    uint _S1976 = 8U % atlasWidth_21;
-                    int _S1977 = int(_S1976);
-                    uint _S1978 = 8U / _S1975;
-                    int3 _S1979 = int3(_S1977, int(_S1978), int(0));
-                    uint _S1980 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1979)).xy), uint(((_S1979)).z))).x * 255.0f));
-                    uint _S1981 = atlasWidth_21;
-                    uint _S1982 = 9U % atlasWidth_21;
-                    int _S1983 = int(_S1982);
-                    uint _S1984 = 9U / _S1981;
-                    int3 _S1985 = int3(_S1983, int(_S1984), int(0));
-                    uint rows_21 = ((_S1980 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1985)).xy), uint(((_S1985)).z))).x * 255.0f)) << 8U)) + columns_21 - 1U) / columns_21;
-                    uint metadataRows_21 = (10U + 2U * _S1943 * _S1949 + atlasWidth_21 - 1U) / atlasWidth_21;
-                    uint _S1986 = atlasWidth_21 / columns_21;
-                    float _S1987 = float(_S1986);
-                    uint _S1988 = (atlasHeight_21 - metadataRows_21) / rows_21;
-                    float2 cellSize_42 = float2(_S1987, float(_S1988));
-                    uint _S1989 = slot_43 % columns_21;
-                    float _S1990 = float(_S1989);
-                    uint _S1991 = slot_43 / columns_21;
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1990, float(_S1991)) * cellSize_42 + float2(1.5f, float(metadataRows_21) + 1.5f) + fract(detailSource_0) * max(cellSize_42 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_21), float(atlasHeight_21)))));
+                    uint _S1965 = atlasWidth_21;
+                    uint _S1966 = 6U % atlasWidth_21;
+                    int _S1967 = int(_S1966);
+                    uint _S1968 = 6U / _S1965;
+                    int3 _S1969 = int3(_S1967, int(_S1968), int(0));
+                    uint _S1970 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1969)).xy), uint(((_S1969)).z))).x * 255.0f));
+                    uint _S1971 = atlasWidth_21;
+                    uint _S1972 = 7U % atlasWidth_21;
+                    int _S1973 = int(_S1972);
+                    uint _S1974 = 7U / _S1971;
+                    int3 _S1975 = int3(_S1973, int(_S1974), int(0));
+                    uint columns_21 = _S1970 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1975)).xy), uint(((_S1975)).z))).x * 255.0f)) << 8U);
+                    uint _S1976 = atlasWidth_21;
+                    uint _S1977 = 8U % atlasWidth_21;
+                    int _S1978 = int(_S1977);
+                    uint _S1979 = 8U / _S1976;
+                    int3 _S1980 = int3(_S1978, int(_S1979), int(0));
+                    uint _S1981 = uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1980)).xy), uint(((_S1980)).z))).x * 255.0f));
+                    uint _S1982 = atlasWidth_21;
+                    uint _S1983 = 9U % atlasWidth_21;
+                    int _S1984 = int(_S1983);
+                    uint _S1985 = 9U / _S1982;
+                    int3 _S1986 = int3(_S1984, int(_S1985), int(0));
+                    uint rows_21 = ((_S1981 | (uint(round((((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1986)).xy), uint(((_S1986)).z))).x * 255.0f)) << 8U)) + columns_21 - 1U) / columns_21;
+                    uint metadataRows_21 = (10U + 2U * _S1944 * _S1950 + atlasWidth_21 - 1U) / atlasWidth_21;
+                    uint _S1987 = atlasWidth_21 / columns_21;
+                    float _S1988 = float(_S1987);
+                    uint _S1989 = (atlasHeight_21 - metadataRows_21) / rows_21;
+                    float2 cellSize_42 = float2(_S1988, float(_S1989));
+                    uint _S1990 = slot_43 % columns_21;
+                    float _S1991 = float(_S1990);
+                    uint _S1992 = slot_43 / columns_21;
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(_S1991, float(_S1992)) * cellSize_42 + float2(1.5f, float(metadataRows_21) + 1.5f) + fract(detailSource_0) * max(cellSize_42 - float2(3.0f) , float2(0.0f) )) / float2(float(atlasWidth_21), float(atlasHeight_21)))));
                     break;
                 }
-                int2 _S1992 = int2(metadata_21.zw);
+                int2 _S1993 = int2(metadata_21.zw);
                 int2 tile_43 = int2(floor(detailSource_0)) - int2(metadata_21.xy);
                 if(any(tile_43 < (int2(int(0)) )))
                 {
@@ -5603,52 +5609,52 @@ struct KernelContext_0
                 }
                 else
                 {
-                    hasSceneLighting_0 = any(tile_43 >= _S1992);
+                    hasSceneLighting_0 = any(tile_43 >= _S1993);
                 }
                 if(hasSceneLighting_0)
                 {
-                    int3 _S1993 = int3(int(min(1U, atlasWidth_21 - 1U)), int(0), int(0));
-                    _S590 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1993)).xy), uint(((_S1993)).z)));
+                    int3 _S1994 = int3(int(min(1U, atlasWidth_21 - 1U)), int(0), int(0));
+                    _S591 = (((&kernelContext_0)->compositeTexture_0).read(vec<uint,2>(((_S1994)).xy), uint(((_S1994)).z)));
                     break;
                 }
-                uint _S1994 = atlasWidth_21 / uint(_S1992.x);
-                float _S1995 = float(_S1994);
-                uint _S1996 = (atlasHeight_21 - 1U) / uint(_S1992.y);
-                float2 cellSize_43 = float2(_S1995, float(_S1996));
-                _S590 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_43) * cellSize_43 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_43 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_21), float(atlasHeight_21)))));
+                uint _S1995 = atlasWidth_21 / uint(_S1993.x);
+                float _S1996 = float(_S1995);
+                uint _S1997 = (atlasHeight_21 - 1U) / uint(_S1993.y);
+                float2 cellSize_43 = float2(_S1996, float(_S1997));
+                _S591 = (((&kernelContext_0)->compositeTexture_0).sample(((&kernelContext_0)->compositeSampler_0), ((float2(tile_43) * cellSize_43 + float2(1.5f, 2.5f) + fract(detailSource_0) * max(cellSize_43 - float2(2.0f)  - float2(1.0f) , float2(0.0f) )) / float2(float(atlasWidth_21), float(atlasHeight_21)))));
                 break;
             }
-            uint operation_9 = uint(round(_S1920.y));
+            uint operation_9 = uint(round(_S1921.y));
             if(operation_9 == 1U)
             {
-                _S191 = _S191 * _S590;
+                _S192 = _S192 * _S591;
                 break;
             }
             if(operation_9 == 2U)
             {
-                _S191 = _S191 + _S590;
+                _S192 = _S192 + _S591;
                 break;
             }
             if(operation_9 == 3U)
             {
-                _S191 = _S191 - _S590;
+                _S192 = _S192 - _S591;
                 break;
             }
             if(operation_9 == 4U)
             {
-                float factor_9 = _S1920.z;
-                _S191 = _S191 * float4((1.0f - factor_9))  + _S590 * float4(factor_9) ;
+                float factor_9 = _S1921.z;
+                _S192 = _S192 * float4((1.0f - factor_9))  + _S591 * float4(factor_9) ;
                 break;
             }
             break;
         }
-        ior_0 = _S191.x;
+        ior_0 = _S192.x;
     }
     else
     {
-        ior_0 = _S170;
+        ior_0 = _S171;
     }
-    float opacityThreshold_0 = _S165.z;
+    float opacityThreshold_0 = _S166.z;
     if(opacityThreshold_0 > 0.0f)
     {
         if(opacity_0 < opacityThreshold_0)
@@ -5686,56 +5692,56 @@ struct KernelContext_0
     {
         worldNormal_2 = - worldNormal_1;
     }
-    float _S1997 = saturate(abs(dot(normal_2, unlitColor_0)) + 0.00000999999974738f);
-    float _S1998 = max(0.00100000004749745f, roughness_0);
-    float _S1999 = max(0.00100000004749745f, clearcoatRoughness_0);
+    float _S1998 = saturate(abs(dot(normal_2, unlitColor_0)) + 0.00000999999974738f);
+    float _S1999 = max(0.00100000004749745f, roughness_0);
+    float _S2000 = max(0.00100000004749745f, clearcoatRoughness_0);
     float reflectanceRatio_0 = (1.0f - ior_0) / (1.0f + ior_0);
-    float3 _S2000 = float3(3.14159274101257324f) ;
-    float3 diffuse_0 = diffuseColor_0 / _S2000;
-    bool omniPbrSpecular_0 = (_S173.w) >= 0.5f;
-    float dielectricLevel_0 = _S159.w;
+    float3 _S2001 = float3(3.14159274101257324f) ;
+    float3 diffuse_0 = diffuseColor_0 / _S2001;
+    bool omniPbrSpecular_0 = (_S174.w) >= 0.5f;
+    float dielectricLevel_0 = _S160.w;
     float3 normalIncidence_0;
     float3 grazingIncidence_0;
     float3 diffuse_1;
     if(omniPbrSpecular_0)
     {
-        float3 _S2001 = float3(dielectricLevel_0) ;
-        float3 _S2002 = float3(metallic_0) ;
-        float3 _S2003 = mix(_S2001, diffuseColor_0, _S2002);
+        float3 _S2002 = float3(dielectricLevel_0) ;
+        float3 _S2003 = float3(metallic_0) ;
+        float3 _S2004 = mix(_S2002, diffuseColor_0, _S2003);
         float3 diffuse_2 = diffuse_0 * float3((1.0f - metallic_0)) ;
-        normalIncidence_0 = mix(float3(0.07999999821186066f, 0.07999999821186066f, 0.07999999821186066f) * _S2001, diffuseColor_0, _S2002);
-        grazingIncidence_0 = _S2003;
+        normalIncidence_0 = mix(float3(0.07999999821186066f, 0.07999999821186066f, 0.07999999821186066f) * _S2002, diffuseColor_0, _S2003);
+        grazingIncidence_0 = _S2004;
         diffuse_1 = diffuse_2;
     }
     else
     {
-        if((_S165.w) >= 0.5f)
+        if((_S166.w) >= 0.5f)
         {
-            float3 _S2004 = float3(1.0f, 1.0f, 1.0f);
+            float3 _S2005 = float3(1.0f, 1.0f, 1.0f);
             normalIncidence_0 = specularColor_0;
-            grazingIncidence_0 = _S2004;
+            grazingIncidence_0 = _S2005;
             diffuse_1 = diffuse_0;
         }
         else
         {
-            float3 _S2005 = float3(metallic_0) ;
-            float3 specularTint_0 = mix(float3(1.0f, 1.0f, 1.0f), diffuseColor_0, _S2005);
+            float3 _S2006 = float3(metallic_0) ;
+            float3 specularTint_0 = mix(float3(1.0f, 1.0f, 1.0f), diffuseColor_0, _S2006);
             float3 diffuse_3 = diffuse_0 * float3((1.0f - metallic_0)) ;
-            normalIncidence_0 = mix(float3((reflectanceRatio_0 * reflectanceRatio_0))  * specularTint_0, specularTint_0, _S2005);
+            normalIncidence_0 = mix(float3((reflectanceRatio_0 * reflectanceRatio_0))  * specularTint_0, specularTint_0, _S2006);
             grazingIncidence_0 = specularTint_0;
             diffuse_1 = diffuse_3;
         }
     }
-    FragmentFrameParameters_0 _S2006 = _S2;
-    float _S2007 = _S2.ambientLight_0.w;
-    if(_S2007 > 0.5f)
+    FragmentFrameParameters_0 _S2007 = _S2;
+    float _S2008 = _S2.ambientLight_0.w;
+    if(_S2008 > 0.5f)
     {
         hasSceneLighting_0 = true;
     }
     else
     {
-        float3 _S2008 = _S2006.ambientLight_0.xyz;
-        hasSceneLighting_0 = (dot(_S2008, _S2008)) > 0.0f;
+        float3 _S2009 = _S2007.ambientLight_0.xyz;
+        hasSceneLighting_0 = (dot(_S2009, _S2009)) > 0.0f;
     }
     if(hasSceneLighting_0)
     {
@@ -5753,7 +5759,7 @@ struct KernelContext_0
     {
         hasSceneLighting_0 = (_S2.environmentControls_0.w) >= 0.5f;
     }
-    uint _S2009 = min(uint(_S2007), 128U);
+    uint _S2010 = min(uint(_S2008), 128U);
     float3 sceneEye_0 = normalize((((float4(unlitColor_0, 0.0f)) * (_S2.eyeToWorld_0))).xyz);
     float3 worldPosition_0 = (((float4(_S1.eyePosition_0, 1.0f)) * (_S2.eyeToWorld_0))).xyz;
     float3 worldGeometricNormal_0 = cross(dfdx(worldPosition_0), dfdy(worldPosition_0));
@@ -5766,23 +5772,23 @@ struct KernelContext_0
     {
         specularColor_0 = float3(0.0f, 0.0f, 1.0f);
     }
-    float4 _S2010 = float4(_S6->lightColorAmbient_0) ;
-    float3 color_1 = diffuseColor_0 * float3(_S2010.w) ;
-    uint domeLinkMask_0 = uint(max(_S175.x, 0.0f));
-    FragmentFrameParameters_0 _S2011 = _S2;
-    uint _S2012 = min(uint(max(_S2.domeControls_0.x, 0.0f)), 8U);
-    uint allDomes_0 = (1U << _S2012) - 1U;
+    float4 _S2011 = float4(_S7->lightColorAmbient_0) ;
+    float3 color_1 = diffuseColor_0 * float3(_S2011.w) ;
+    uint domeLinkMask_0 = uint(max(_S176.x, 0.0f));
+    FragmentFrameParameters_0 _S2012 = _S2;
+    uint _S2013 = min(uint(max(_S2.domeControls_0.x, 0.0f)), 8U);
+    uint allDomes_0 = (1U << _S2013) - 1U;
     bool allDomesLinked_0 = (domeLinkMask_0 & allDomes_0) == allDomes_0;
-    float3 _S2013 = _S2006.ambientLight_0.xyz;
+    float3 _S2014 = _S2007.ambientLight_0.xyz;
     float3 domeAmbient_1;
     if(!allDomesLinked_0)
     {
-        float3 _S2014 = float3(0.0f, 0.0f, 0.0f);
+        float3 _S2015 = float3(0.0f, 0.0f, 0.0f);
         lightCount_0 = 0U;
-        domeAmbient_1 = _S2014;
+        domeAmbient_1 = _S2015;
         for(;;)
         {
-            if(lightCount_0 < _S2012)
+            if(lightCount_0 < _S2013)
             {
             }
             else
@@ -5798,17 +5804,17 @@ struct KernelContext_0
     }
     else
     {
-        domeAmbient_1 = _S2013;
+        domeAmbient_1 = _S2014;
     }
     float3 color_2 = color_1 + diffuseColor_0 * domeAmbient_1;
-    bool _S2015 = !hasSceneLighting_0;
-    if(_S2015)
+    bool _S2016 = !hasSceneLighting_0;
+    if(_S2016)
     {
         lightCount_0 = 1U;
     }
     else
     {
-        lightCount_0 = _S2009;
+        lightCount_0 = _S2010;
     }
     uint lightIndex_0 = 0U;
     float3 color_3 = color_2;
@@ -5821,287 +5827,270 @@ struct KernelContext_0
         {
             break;
         }
-        bool _S2016;
+        bool _S2017;
         if(hasSceneLighting_0)
         {
-            _S2016 = (((uint4(_S6->lightLinkMask_0) )[lightIndex_0 / 32U]) & (1U << (lightIndex_0 % 32U))) == 0U;
+            _S2017 = (((uint4(_S7->lightLinkMask_0) )[lightIndex_0 / 32U]) & (1U << (lightIndex_0 % 32U))) == 0U;
         }
         else
         {
-            _S2016 = false;
+            _S2017 = false;
         }
-        if(_S2016)
+        if(_S2017)
         {
             lightIndex_0 = lightIndex_0 + 1U;
             continue;
         }
-        bool _S2017 = lightIndex_0 == 0U;
-        bool _S2018;
-        if(_S2017)
+        bool _S2018 = lightIndex_0 == 0U;
+        bool _S2019;
+        if(_S2018)
         {
-            _S2018 = _S2015;
+            _S2019 = _S2016;
         }
         else
         {
-            _S2018 = false;
+            _S2019 = false;
         }
-        if(_S2018)
+        if(_S2019)
         {
             lightType_0 = 1.0f;
         }
         else
         {
-            uint _S2019 = 224U + lightIndex_0 * 16U;
-            float _S2020 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2019)>>2]);
-            float _S2021 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2019 + 4U)>>2]);
-            float _S2022 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2019 + 8U)>>2]);
-            float _S2023 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2019 + 12U)>>2]);
-            lightType_0 = _S2023;
+            uint _S2020 = 224U + lightIndex_0 * 16U;
+            float _S2021 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2020)>>2]);
+            float _S2022 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2020 + 4U)>>2]);
+            float _S2023 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2020 + 8U)>>2]);
+            float _S2024 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2020 + 12U)>>2]);
+            lightType_0 = _S2024;
         }
-        bool _S2024;
-        if(_S2017)
+        bool _S2025;
+        if(_S2018)
         {
-            _S2024 = _S2015;
+            _S2025 = _S2016;
         }
         else
         {
-            _S2024 = false;
+            _S2025 = false;
         }
-        if(_S2024)
+        if(_S2025)
         {
-            lightDirection_0 = normalize((float4(_S6->lightDirectionIntensity_0) ).xyz);
+            lightDirection_0 = normalize((float4(_S7->lightDirectionIntensity_0) ).xyz);
         }
         else
         {
-            uint _S2025 = 2272U + lightIndex_0 * 16U;
-            float _S2026 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2025)>>2]);
-            float _S2027 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2025 + 4U)>>2]);
-            float _S2028 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2025 + 8U)>>2]);
-            float _S2029 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2025 + 12U)>>2]);
-            lightDirection_0 = normalize(float3(_S2026, _S2027, _S2028));
+            uint _S2026 = 2272U + lightIndex_0 * 16U;
+            float _S2027 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2026)>>2]);
+            float _S2028 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2026 + 4U)>>2]);
+            float _S2029 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2026 + 8U)>>2]);
+            float _S2030 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2026 + 12U)>>2]);
+            lightDirection_0 = normalize(float3(_S2027, _S2028, _S2029));
         }
-        bool _S2030;
-        if(_S2017)
+        bool _S2031;
+        if(_S2018)
         {
-            _S2030 = _S2015;
+            _S2031 = _S2016;
         }
         else
         {
-            _S2030 = false;
+            _S2031 = false;
         }
-        if(_S2030)
+        if(_S2031)
         {
-            roughness_0 = (float4(_S6->lightDirectionIntensity_0) ).w;
+            roughness_0 = (float4(_S7->lightDirectionIntensity_0) ).w;
         }
         else
         {
-            uint _S2031 = 4320U + lightIndex_0 * 16U;
-            float _S2032 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2031)>>2]);
-            float _S2033 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2031 + 4U)>>2]);
-            float _S2034 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2031 + 8U)>>2]);
-            float _S2035 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2031 + 12U)>>2]);
-            roughness_0 = _S2035;
+            uint _S2032 = 4320U + lightIndex_0 * 16U;
+            float _S2033 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2032)>>2]);
+            float _S2034 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2032 + 4U)>>2]);
+            float _S2035 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2032 + 8U)>>2]);
+            float _S2036 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2032 + 12U)>>2]);
+            roughness_0 = _S2036;
         }
-        bool _S2036;
-        if(_S2017)
+        bool _S2037;
+        if(_S2018)
         {
-            _S2036 = _S2015;
+            _S2037 = _S2016;
         }
         else
         {
-            _S2036 = false;
+            _S2037 = false;
         }
-        if(_S2036)
+        if(_S2037)
         {
-            diffuseColor_0 = _S2010.xyz;
+            diffuseColor_0 = _S2011.xyz;
         }
         else
         {
-            uint _S2037 = 4320U + lightIndex_0 * 16U;
-            float _S2038 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2037)>>2]);
-            float _S2039 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2037 + 4U)>>2]);
-            float _S2040 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2037 + 8U)>>2]);
-            float _S2041 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2037 + 12U)>>2]);
-            diffuseColor_0 = float3(_S2038, _S2039, _S2040);
+            uint _S2038 = 4320U + lightIndex_0 * 16U;
+            float _S2039 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2038)>>2]);
+            float _S2040 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2038 + 4U)>>2]);
+            float _S2041 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2038 + 8U)>>2]);
+            float _S2042 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2038 + 12U)>>2]);
+            diffuseColor_0 = float3(_S2039, _S2040, _S2041);
         }
-        bool _S2042;
-        if(_S2017)
+        bool _S2043;
+        if(_S2018)
         {
-            _S2042 = _S2015;
+            _S2043 = _S2016;
         }
         else
         {
-            _S2042 = false;
+            _S2043 = false;
         }
-        if(_S2042)
+        if(_S2043)
         {
             metallic_0 = 1.0f;
         }
         else
         {
-            uint _S2043 = 6368U + lightIndex_0 * 16U;
-            float _S2044 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2043)>>2]);
-            float _S2045 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2043 + 4U)>>2]);
-            float _S2046 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2043 + 8U)>>2]);
-            float _S2047 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2043 + 12U)>>2]);
-            metallic_0 = _S2044;
+            uint _S2044 = 6368U + lightIndex_0 * 16U;
+            float _S2045 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2044)>>2]);
+            float _S2046 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2044 + 4U)>>2]);
+            float _S2047 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2044 + 8U)>>2]);
+            float _S2048 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2044 + 12U)>>2]);
+            metallic_0 = _S2045;
         }
-        bool _S2048;
-        if(_S2017)
+        bool _S2049;
+        if(_S2018)
         {
-            _S2048 = _S2015;
+            _S2049 = _S2016;
         }
         else
         {
-            _S2048 = false;
+            _S2049 = false;
         }
-        if(_S2048)
+        if(_S2049)
         {
             clearcoatRoughness_0 = 1.0f;
         }
         else
         {
-            uint _S2049 = 6368U + lightIndex_0 * 16U;
-            float _S2050 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2049)>>2]);
-            float _S2051 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2049 + 4U)>>2]);
-            float _S2052 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2049 + 8U)>>2]);
-            float _S2053 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2049 + 12U)>>2]);
-            clearcoatRoughness_0 = _S2051;
+            uint _S2050 = 6368U + lightIndex_0 * 16U;
+            float _S2051 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2050)>>2]);
+            float _S2052 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2050 + 4U)>>2]);
+            float _S2053 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2050 + 8U)>>2]);
+            float _S2054 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2050 + 12U)>>2]);
+            clearcoatRoughness_0 = _S2052;
         }
-        bool _S2054;
-        if(_S2017)
+        bool _S2055;
+        if(_S2018)
         {
-            _S2054 = _S2015;
+            _S2055 = _S2016;
         }
         else
         {
-            _S2054 = false;
+            _S2055 = false;
         }
-        if(_S2054)
+        if(_S2055)
         {
             lightTangent_0 = float3(1.0f, 0.0f, 0.0f);
         }
         else
         {
-            uint _S2055 = 8416U + lightIndex_0 * 16U;
-            float _S2056 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2055)>>2]);
-            float _S2057 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2055 + 4U)>>2]);
-            float _S2058 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2055 + 8U)>>2]);
-            float _S2059 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2055 + 12U)>>2]);
-            lightTangent_0 = normalize(float3(_S2056, _S2057, _S2058));
+            uint _S2056 = 8416U + lightIndex_0 * 16U;
+            float _S2057 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2056)>>2]);
+            float _S2058 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2056 + 4U)>>2]);
+            float _S2059 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2056 + 8U)>>2]);
+            float _S2060 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2056 + 12U)>>2]);
+            lightTangent_0 = normalize(float3(_S2057, _S2058, _S2059));
         }
-        bool _S2060;
-        if(_S2017)
+        bool _S2061;
+        if(_S2018)
         {
-            _S2060 = _S2015;
+            _S2061 = _S2016;
         }
         else
         {
-            _S2060 = false;
+            _S2061 = false;
         }
-        if(_S2060)
+        if(_S2061)
         {
             lightBitangent_0 = float3(0.0f, 1.0f, 0.0f);
         }
         else
         {
-            uint _S2061 = 10464U + lightIndex_0 * 16U;
-            float _S2062 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2061)>>2]);
-            float _S2063 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2061 + 4U)>>2]);
-            float _S2064 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2061 + 8U)>>2]);
-            float _S2065 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2061 + 12U)>>2]);
-            lightBitangent_0 = normalize(float3(_S2062, _S2063, _S2064));
+            uint _S2062 = 10464U + lightIndex_0 * 16U;
+            float _S2063 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2062)>>2]);
+            float _S2064 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2062 + 4U)>>2]);
+            float _S2065 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2062 + 8U)>>2]);
+            float _S2066 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2062 + 12U)>>2]);
+            lightBitangent_0 = normalize(float3(_S2063, _S2064, _S2065));
         }
-        bool _S2066;
-        if(_S2017)
+        bool _S2067;
+        if(_S2018)
         {
-            _S2066 = _S2015;
+            _S2067 = _S2016;
         }
         else
         {
-            _S2066 = false;
+            _S2067 = false;
         }
         float shapeX_0;
-        if(_S2066)
+        if(_S2067)
         {
             shapeX_0 = 0.0f;
         }
         else
         {
-            uint _S2067 = 8416U + lightIndex_0 * 16U;
-            float _S2068 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2067)>>2]);
-            float _S2069 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2067 + 4U)>>2]);
-            float _S2070 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2067 + 8U)>>2]);
-            float _S2071 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2067 + 12U)>>2]);
-            shapeX_0 = _S2071;
+            uint _S2068 = 8416U + lightIndex_0 * 16U;
+            float _S2069 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2068)>>2]);
+            float _S2070 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2068 + 4U)>>2]);
+            float _S2071 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2068 + 8U)>>2]);
+            float _S2072 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2068 + 12U)>>2]);
+            shapeX_0 = _S2072;
         }
-        bool _S2072;
-        if(_S2017)
+        bool _S2073;
+        if(_S2018)
         {
-            _S2072 = _S2015;
+            _S2073 = _S2016;
         }
         else
         {
-            _S2072 = false;
+            _S2073 = false;
         }
         float shapeY_0;
-        if(_S2072)
+        if(_S2073)
         {
             shapeY_0 = 0.0f;
         }
         else
         {
-            uint _S2073 = 10464U + lightIndex_0 * 16U;
-            float _S2074 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2073)>>2]);
-            float _S2075 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2073 + 4U)>>2]);
-            float _S2076 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2073 + 8U)>>2]);
-            float _S2077 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2073 + 12U)>>2]);
-            shapeY_0 = _S2077;
+            uint _S2074 = 10464U + lightIndex_0 * 16U;
+            float _S2075 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2074)>>2]);
+            float _S2076 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2074 + 4U)>>2]);
+            float _S2077 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2074 + 8U)>>2]);
+            float _S2078 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2074 + 12U)>>2]);
+            shapeY_0 = _S2078;
         }
-        bool _S2078;
-        if(_S2017)
+        bool _S2079;
+        if(_S2018)
         {
-            _S2078 = _S2015;
+            _S2079 = _S2016;
         }
         else
         {
-            _S2078 = false;
+            _S2079 = false;
         }
         float lightRadius_0;
-        if(_S2078)
+        if(_S2079)
         {
             lightRadius_0 = 0.0f;
         }
         else
         {
-            uint _S2079 = 2272U + lightIndex_0 * 16U;
-            float _S2080 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2079)>>2]);
-            float _S2081 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2079 + 4U)>>2]);
-            float _S2082 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2079 + 8U)>>2]);
-            float _S2083 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2079 + 12U)>>2]);
-            lightRadius_0 = _S2083;
-        }
-        bool _S2084;
-        if(_S2017)
-        {
-            _S2084 = _S2015;
-        }
-        else
-        {
-            _S2084 = false;
-        }
-        if(_S2084)
-        {
-            domeAmbient_1 = unlitColor_0;
-        }
-        else
-        {
-            domeAmbient_1 = sceneEye_0;
+            uint _S2080 = 2272U + lightIndex_0 * 16U;
+            float _S2081 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2080)>>2]);
+            float _S2082 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2080 + 4U)>>2]);
+            float _S2083 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2080 + 8U)>>2]);
+            float _S2084 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2080 + 12U)>>2]);
+            lightRadius_0 = _S2084;
         }
         bool _S2085;
-        if(_S2017)
+        if(_S2018)
         {
-            _S2085 = _S2015;
+            _S2085 = _S2016;
         }
         else
         {
@@ -6109,32 +6098,49 @@ struct KernelContext_0
         }
         if(_S2085)
         {
-            _S191 = float4(0.0f, 0.0f, 0.0f, 0.0f);
+            domeAmbient_1 = unlitColor_0;
         }
         else
         {
-            uint _S2086 = 15296U + lightIndex_0 * 16U;
-            float _S2087 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2086)>>2]);
-            float _S2088 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2086 + 4U)>>2]);
-            float _S2089 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2086 + 8U)>>2]);
-            float _S2090 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2086 + 12U)>>2]);
-            _S191 = float4(_S2087, _S2088, _S2089, _S2090);
+            domeAmbient_1 = sceneEye_0;
+        }
+        bool _S2086;
+        if(_S2018)
+        {
+            _S2086 = _S2016;
+        }
+        else
+        {
+            _S2086 = false;
+        }
+        if(_S2086)
+        {
+            _S192 = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        }
+        else
+        {
+            uint _S2087 = 15296U + lightIndex_0 * 16U;
+            float _S2088 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2087)>>2]);
+            float _S2089 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2087 + 4U)>>2]);
+            float _S2090 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2087 + 8U)>>2]);
+            float _S2091 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2087 + 12U)>>2]);
+            _S192 = float4(_S2088, _S2089, _S2090, _S2091);
         }
         float shadowVisibility_0;
         if(hasSceneLighting_0)
         {
-            uint _S2091 = 12960U + lightIndex_0 * 16U;
-            float _S2092 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2091)>>2]);
-            float _S2093 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2091 + 4U)>>2]);
-            float _S2094 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2091 + 8U)>>2]);
-            float _S2095 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2091 + 12U)>>2]);
-            int shadowSlot_0 = int(_S2092);
+            uint _S2092 = 12960U + lightIndex_0 * 16U;
+            float _S2093 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2092)>>2]);
+            float _S2094 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2092 + 4U)>>2]);
+            float _S2095 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2092 + 8U)>>2]);
+            float _S2096 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2092 + 12U)>>2]);
+            int shadowSlot_0 = int(_S2093);
             if(shadowSlot_0 >= int(0))
             {
                 for(;;)
                 {
-                    FragmentFrameParameters_0 _S2096 = _S2;
                     FragmentFrameParameters_0 _S2097 = _S2;
+                    FragmentFrameParameters_0 _S2098 = _S2;
                     if((dot(specularColor_0, lightDirection_0)) < 0.0f)
                     {
                         color_0 = - specularColor_0;
@@ -6144,31 +6150,22 @@ struct KernelContext_0
                         color_0 = specularColor_0;
                     }
                     float slope_0 = clamp(1.0f - saturate(dot(color_0, lightDirection_0)), 0.0f, 1.0f);
-                    float4 lightClip_0 = (((float4(worldPosition_0 + color_0 * float3((_S2096.shadowControls_0[shadowSlot_0].y * slope_0)) , 1.0f)) * (_S2.shadowWorldToLightClip_0[shadowSlot_0])));
-                    float _S2098 = lightClip_0.w;
-                    if(_S2098 <= 0.0f)
+                    float4 lightClip_0 = (((float4(worldPosition_0 + color_0 * float3((_S2097.shadowControls_0[shadowSlot_0].y * slope_0)) , 1.0f)) * (_S2.shadowWorldToLightClip_0[shadowSlot_0])));
+                    float _S2099 = lightClip_0.w;
+                    if(_S2099 <= 0.0f)
                     {
                         ior_0 = 1.0f;
                         break;
                     }
-                    float3 ndc_0 = lightClip_0.xyz / float3(_S2098) ;
-                    bool _S2099;
-                    if((abs(ndc_0.x)) > 1.0f)
-                    {
-                        _S2099 = true;
-                    }
-                    else
-                    {
-                        _S2099 = (abs(ndc_0.y)) > 1.0f;
-                    }
+                    float3 ndc_0 = lightClip_0.xyz / float3(_S2099) ;
                     bool _S2100;
-                    if(_S2099)
+                    if((abs(ndc_0.x)) > 1.0f)
                     {
                         _S2100 = true;
                     }
                     else
                     {
-                        _S2100 = (ndc_0.z) < 0.0f;
+                        _S2100 = (abs(ndc_0.y)) > 1.0f;
                     }
                     bool _S2101;
                     if(_S2100)
@@ -6177,22 +6174,31 @@ struct KernelContext_0
                     }
                     else
                     {
-                        _S2101 = (ndc_0.z) > 1.0f;
+                        _S2101 = (ndc_0.z) < 0.0f;
                     }
+                    bool _S2102;
                     if(_S2101)
+                    {
+                        _S2102 = true;
+                    }
+                    else
+                    {
+                        _S2102 = (ndc_0.z) > 1.0f;
+                    }
+                    if(_S2102)
                     {
                         ior_0 = 1.0f;
                         break;
                     }
-                    float2 _S2102 = _S2097.shadowTile_0[shadowSlot_0].xy;
-                    float2 _S2103 = _S2097.shadowTile_0[shadowSlot_0].zw;
-                    float2 _S2104 = _S2102 + (ndc_0.xy * float2(0.5f, -0.5f) + float2(0.5f, 0.5f)) * _S2103;
-                    float texel_0 = _S2096.shadowControls_0[shadowSlot_0].w;
-                    float _S2105 = max(_S2096.shadowControls_0[shadowSlot_0].z, 0.0f);
-                    float _S2106 = ndc_0.z - _S2096.shadowControls_0[shadowSlot_0].x * (1.0f + 2.0f * slope_0);
-                    float2 _S2107 = float2((texel_0 * 0.5f)) ;
-                    float2 _S2108 = _S2102 + _S2107;
-                    float2 _S2109 = _S2102 + _S2103 - _S2107;
+                    float2 _S2103 = _S2098.shadowTile_0[shadowSlot_0].xy;
+                    float2 _S2104 = _S2098.shadowTile_0[shadowSlot_0].zw;
+                    float2 _S2105 = _S2103 + (ndc_0.xy * float2(0.5f, -0.5f) + float2(0.5f, 0.5f)) * _S2104;
+                    float texel_0 = _S2097.shadowControls_0[shadowSlot_0].w;
+                    float _S2106 = max(_S2097.shadowControls_0[shadowSlot_0].z, 0.0f);
+                    float _S2107 = ndc_0.z - _S2097.shadowControls_0[shadowSlot_0].x * (1.0f + 2.0f * slope_0);
+                    float2 _S2108 = float2((texel_0 * 0.5f)) ;
+                    float2 _S2109 = _S2103 + _S2108;
+                    float2 _S2110 = _S2103 + _S2104 - _S2108;
                     int y_0 = int(-1);
                     shadowVisibility_0 = 0.0f;
                     for(;;)
@@ -6214,7 +6220,7 @@ struct KernelContext_0
                             {
                                 break;
                             }
-                            if(_S2106 <= (((&kernelContext_0)->shadowAtlas_0).sample(((&kernelContext_0)->shadowSampler_0), (clamp(_S2104 + float2(float(x_0), float(y_0)) * float2((_S2105 * texel_0)) , _S2108, _S2109)), level((0.0f))).x))
+                            if(_S2107 <= (((&kernelContext_0)->shadowAtlas_0).sample(((&kernelContext_0)->shadowSampler_0), (clamp(_S2105 + float2(float(x_0), float(y_0)) * float2((_S2106 * texel_0)) , _S2109, _S2110)), level((0.0f))).x))
                             {
                                 ior_0 = 1.0f;
                             }
@@ -6243,12 +6249,12 @@ struct KernelContext_0
             shadowVisibility_0 = 1.0f;
         }
         thread array<float3, int(5)> sampleOffsets_0;
-        float3 _S2110 = float3(0.0f, 0.0f, 0.0f);
-        sampleOffsets_0[int(0)] = _S2110;
-        sampleOffsets_0[int(1)] = _S2110;
-        sampleOffsets_0[int(2)] = _S2110;
-        sampleOffsets_0[int(3)] = _S2110;
-        sampleOffsets_0[int(4)] = _S2110;
+        float3 _S2111 = float3(0.0f, 0.0f, 0.0f);
+        sampleOffsets_0[int(0)] = _S2111;
+        sampleOffsets_0[int(1)] = _S2111;
+        sampleOffsets_0[int(2)] = _S2111;
+        sampleOffsets_0[int(3)] = _S2111;
+        sampleOffsets_0[int(4)] = _S2111;
         float sampleCount_0;
         if(lightType_0 == 3.0f)
         {
@@ -6256,9 +6262,9 @@ struct KernelContext_0
             float3 halfHeight_0 = lightBitangent_0 * float3((shapeY_0 * 0.5f)) ;
             sampleOffsets_0[int(1)] = halfWidth_0 + halfHeight_0;
             sampleOffsets_0[int(2)] = halfWidth_0 - halfHeight_0;
-            float3 _S2111 = - halfWidth_0;
-            sampleOffsets_0[int(3)] = _S2111 + halfHeight_0;
-            sampleOffsets_0[int(4)] = _S2111 - halfHeight_0;
+            float3 _S2112 = - halfWidth_0;
+            sampleOffsets_0[int(3)] = _S2112 + halfHeight_0;
+            sampleOffsets_0[int(4)] = _S2112 - halfHeight_0;
             sampleCount_0 = 5.0f;
         }
         else
@@ -6307,15 +6313,15 @@ struct KernelContext_0
             float emissionScale_0;
             if(lightType_0 >= 2.0f)
             {
-                uint _S2112 = 224U + lightIndex_0 * 16U;
-                float _S2113 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2112)>>2]);
-                float _S2114 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2112 + 4U)>>2]);
-                float _S2115 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2112 + 8U)>>2]);
-                float _S2116 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2112 + 12U)>>2]);
-                float3 toLight_0 = float3(_S2113, _S2114, _S2115) + sampleOffsets_0[sampleIndex_0] - worldPosition_0;
-                float _S2117 = max(dot(toLight_0, toLight_0), 0.00100000004749745f);
-                float3 sampleDirection_1 = toLight_0 * float3(rsqrt(_S2117)) ;
-                float sampleIntensity_2 = sampleIntensity_0 / _S2117;
+                uint _S2113 = 224U + lightIndex_0 * 16U;
+                float _S2114 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2113)>>2]);
+                float _S2115 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2113 + 4U)>>2]);
+                float _S2116 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2113 + 8U)>>2]);
+                float _S2117 = as_type<float>((&kernelContext_0)->frameParameters_0[(_S2113 + 12U)>>2]);
+                float3 toLight_0 = float3(_S2114, _S2115, _S2116) + sampleOffsets_0[sampleIndex_0] - worldPosition_0;
+                float _S2118 = max(dot(toLight_0, toLight_0), 0.00100000004749745f);
+                float3 sampleDirection_1 = toLight_0 * float3(rsqrt(_S2118)) ;
+                float sampleIntensity_2 = sampleIntensity_0 / _S2118;
                 float emitterCosine_0 = dot(lightDirection_0, sampleDirection_1);
                 if(lightType_0 == 4.0f)
                 {
@@ -6325,18 +6331,18 @@ struct KernelContext_0
                 {
                     sampleIntensity_1 = 1.0f;
                 }
-                if((_S191.z) > 0.5f)
+                if((_S192.z) > 0.5f)
                 {
-                    if(emitterCosine_0 < (_S191.x))
+                    if(emitterCosine_0 < (_S192.x))
                     {
                         emissionScale_0 = 0.0f;
                     }
                     else
                     {
-                        float _S2118 = _S191.y;
-                        if(_S2118 > 0.0f)
+                        float _S2119 = _S192.y;
+                        if(_S2119 > 0.0f)
                         {
-                            ior_0 = pow(max(emitterCosine_0, 0.0f), _S2118);
+                            ior_0 = pow(max(emitterCosine_0, 0.0f), _S2119);
                         }
                         else
                         {
@@ -6362,62 +6368,62 @@ struct KernelContext_0
             float3 half_0 = normalize(sampleDirection_0 + domeAmbient_1);
             float normalDotLight_0 = saturate(dot(normal_2, sampleDirection_0));
             float normalDotHalf_0 = saturate(dot(normal_2, half_0));
-            float _S2119 = pow(max(0.0f, 1.0f - saturate(dot(domeAmbient_1, half_0))), 5.0f);
+            float _S2120 = pow(max(0.0f, 1.0f - saturate(dot(domeAmbient_1, half_0))), 5.0f);
             float3 diffuseFresnel_0;
             if(omniPbrSpecular_0)
             {
-                diffuseFresnel_0 = float3(dielectricLevel_0)  * float3(mix(0.07999999821186066f, 1.0f, _S2119)) ;
+                diffuseFresnel_0 = float3(dielectricLevel_0)  * float3(mix(0.07999999821186066f, 1.0f, _S2120)) ;
             }
             else
             {
-                diffuseFresnel_0 = mix(normalIncidence_0, grazingIncidence_0, float3(_S2119) );
+                diffuseFresnel_0 = mix(normalIncidence_0, grazingIncidence_0, float3(_S2120) );
             }
             float3 directDiffuse_0 = diffuse_1 * (float3(1.0f)  - diffuseFresnel_0);
-            float3 _S2120 = float3(_S2119) ;
-            float _S2121 = max(_S1998, 0.00100000004749745f);
-            float alpha_0 = _S2121 * _S2121;
+            float3 _S2121 = float3(_S2120) ;
+            float _S2122 = max(_S1999, 0.00100000004749745f);
+            float alpha_0 = _S2122 * _S2122;
             float alphaSquared_0 = alpha_0 * alpha_0;
             float lobeCosineSquared_0 = saturate(normalDotHalf_0 * normalDotHalf_0);
             float lobeComplement_0 = 1.0f - lobeCosineSquared_0;
             float denominator_0 = lobeCosineSquared_0 * alphaSquared_0 + lobeComplement_0;
             float k_0 = alpha_0 * 0.5f;
-            float _S2122 = 1.0f - k_0;
-            float3 _S2123 = float3(max(4.0f * normalDotLight_0 * _S1997, 1.00000000317107685e-30f)) ;
-            float3 _S2124 = mix(normalIncidence_0, grazingIncidence_0, _S2120) * float3((_S1997 / (_S1997 * _S2122 + k_0) * (normalDotLight_0 / (normalDotLight_0 * _S2122 + k_0))))  * float3((alphaSquared_0 / max(3.14159274101257324f * denominator_0 * denominator_0, 1.00000000317107685e-30f)))  / _S2123;
+            float _S2123 = 1.0f - k_0;
+            float3 _S2124 = float3(max(4.0f * normalDotLight_0 * _S1998, 1.00000000317107685e-30f)) ;
+            float3 _S2125 = mix(normalIncidence_0, grazingIncidence_0, _S2121) * float3((_S1998 / (_S1998 * _S2123 + k_0) * (normalDotLight_0 / (normalDotLight_0 * _S2123 + k_0))))  * float3((alphaSquared_0 / max(3.14159274101257324f * denominator_0 * denominator_0, 1.00000000317107685e-30f)))  / _S2124;
             float3 directSpecular_0;
             if(clearcoatAmount_0 > 0.0f)
             {
-                float _S2125 = max(_S1999, 0.00100000004749745f);
-                float alpha_1 = _S2125 * _S2125;
+                float _S2126 = max(_S2000, 0.00100000004749745f);
+                float alpha_1 = _S2126 * _S2126;
                 float alphaSquared_1 = alpha_1 * alpha_1;
                 float denominator_1 = lobeCosineSquared_0 * alphaSquared_1 + lobeComplement_0;
                 float k_1 = alpha_1 * 0.5f;
-                float _S2126 = 1.0f - k_1;
-                directSpecular_0 = _S2124 + float3(clearcoatAmount_0)  * (mix(float3((reflectanceRatio_0 * reflectanceRatio_0)) , float3(1.0f, 1.0f, 1.0f), _S2120) * float3((_S1997 / (_S1997 * _S2126 + k_1) * (normalDotLight_0 / (normalDotLight_0 * _S2126 + k_1))))  * float3((alphaSquared_1 / max(3.14159274101257324f * denominator_1 * denominator_1, 1.00000000317107685e-30f)))  / _S2123);
+                float _S2127 = 1.0f - k_1;
+                directSpecular_0 = _S2125 + float3(clearcoatAmount_0)  * (mix(float3((reflectanceRatio_0 * reflectanceRatio_0)) , float3(1.0f, 1.0f, 1.0f), _S2121) * float3((_S1998 / (_S1998 * _S2127 + k_1) * (normalDotLight_0 / (normalDotLight_0 * _S2127 + k_1))))  * float3((alphaSquared_1 / max(3.14159274101257324f * denominator_1 * denominator_1, 1.00000000317107685e-30f)))  / _S2124);
             }
             else
             {
-                directSpecular_0 = _S2124;
+                directSpecular_0 = _S2125;
             }
-            float3 _S2127 = diffuseColor_0 * float3(sampleIntensity_1) ;
-            color_0 = color_0 + float3((shadowVisibility_0 * occlusion_0 * emissionScale_0 * normalDotLight_0))  * (directDiffuse_0 * float3(metallic_0)  * (_S2127 * _S2000) + directSpecular_0 * float3(clearcoatRoughness_0)  * _S2127);
+            float3 _S2128 = diffuseColor_0 * float3(sampleIntensity_1) ;
+            color_0 = color_0 + float3((shadowVisibility_0 * occlusion_0 * emissionScale_0 * normalDotLight_0))  * (directDiffuse_0 * float3(metallic_0)  * (_S2128 * _S2001) + directSpecular_0 * float3(clearcoatRoughness_0)  * _S2128);
             sampleIndex_0 = sampleIndex_0 + 1U;
         }
         color_3 = color_0;
         lightIndex_0 = lightIndex_0 + 1U;
     }
-    FragmentFrameParameters_0 _S2128 = _S2;
+    FragmentFrameParameters_0 _S2129 = _S2;
     if((_S2.environmentControls_0.x) >= 0.5f)
     {
-        float _S2129 = saturate(saturate(abs(dot(worldNormal_2, sceneEye_0)) + 0.00000999999974738f));
-        float _S2130 = saturate(_S1998);
-        float2 _S2131 = (((&kernelContext_0)->environmentBrdf_0).sample(((&kernelContext_0)->environmentBrdfSampler_0), (float2(_S2129, _S2130)), level((0.0f)))).xy;
-        float _S2132 = _S2131.x;
-        float _S2133 = _S2131.y;
-        float3 specularWeight_0 = normalIncidence_0 * float3(_S2132)  + grazingIncidence_0 * float3(_S2133) ;
+        float _S2130 = saturate(saturate(abs(dot(worldNormal_2, sceneEye_0)) + 0.00000999999974738f));
+        float _S2131 = saturate(_S1999);
+        float2 _S2132 = (((&kernelContext_0)->environmentBrdf_0).sample(((&kernelContext_0)->environmentBrdfSampler_0), (float2(_S2130, _S2131)), level((0.0f)))).xy;
+        float _S2133 = _S2132.x;
+        float _S2134 = _S2132.y;
+        float3 specularWeight_0 = normalIncidence_0 * float3(_S2133)  + grazingIncidence_0 * float3(_S2134) ;
         if(omniPbrSpecular_0)
         {
-            lightDirection_0 = float3(dielectricLevel_0)  * float3((0.07999999821186066f * _S2132 + _S2133)) ;
+            lightDirection_0 = float3(dielectricLevel_0)  * float3((0.07999999821186066f * _S2133 + _S2134)) ;
         }
         else
         {
@@ -6425,100 +6431,100 @@ struct KernelContext_0
         }
         float3 diffuseWeight_0 = saturate(float3(1.0f, 1.0f, 1.0f) - lightDirection_0);
         float3 reflectionDirection_0 = reflect(- sceneEye_0, worldNormal_2);
-        float _S2134 = max(_S2011.domeControls_0.y, 1.0f);
-        float3 _S2135 = float3(0.0f, 0.0f, 0.0f);
+        float _S2135 = max(_S2012.domeControls_0.y, 1.0f);
+        float3 _S2136 = float3(0.0f, 0.0f, 0.0f);
         if(allDomesLinked_0)
         {
             hasSceneLighting_0 = true;
         }
         else
         {
-            hasSceneLighting_0 = _S2134 <= 1.0f;
+            hasSceneLighting_0 = _S2135 <= 1.0f;
         }
         if(hasSceneLighting_0)
         {
-            float composedGroup_0 = _S2011.domeControls_0.z;
-            float _S2136 = _S2011.domeControls_0.w;
+            float composedGroup_0 = _S2012.domeControls_0.z;
+            float _S2137 = _S2012.domeControls_0.w;
             for(;;)
             {
-                bool _S2137 = _S2134 <= 1.0f;
-                _S4 = _S2137;
-                if(_S2137)
+                bool _S2138 = _S2135 <= 1.0f;
+                _S5 = _S2138;
+                if(_S2138)
                 {
                     float3 unit_0 = normalize(worldNormal_2);
                     diffuseColor_0 = (((&kernelContext_0)->environmentIrradiance_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(fract((atan2(unit_0.z, unit_0.x) + 1.57079637050628662f) / 6.28318548202514648f), acos(clamp(unit_0.y, -1.0f, 1.0f)) / 3.14159274101257324f)), level((0.0f)))).xyz;
                     break;
                 }
                 float3 unit_1 = normalize(worldNormal_2);
-                float inset_0 = 0.5f / max(_S2136, 1.0f);
-                diffuseColor_0 = (((&kernelContext_0)->environmentIrradiance_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(fract((atan2(unit_1.z, unit_1.x) + 1.57079637050628662f) / 6.28318548202514648f), (composedGroup_0 + clamp(acos(clamp(unit_1.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_0, 1.0f - inset_0)) / _S2134)), level((0.0f)))).xyz;
+                float inset_0 = 0.5f / max(_S2137, 1.0f);
+                diffuseColor_0 = (((&kernelContext_0)->environmentIrradiance_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(fract((atan2(unit_1.z, unit_1.x) + 1.57079637050628662f) / 6.28318548202514648f), (composedGroup_0 + clamp(acos(clamp(unit_1.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_0, 1.0f - inset_0)) / _S2135)), level((0.0f)))).xyz;
                 break;
             }
-            float _S2138 = _S2128.environmentControls_0.y;
-            float _S2139 = _S2128.environmentControls_0.z;
+            float _S2139 = _S2129.environmentControls_0.y;
+            float _S2140 = _S2129.environmentControls_0.z;
             for(;;)
             {
-                if(_S4)
+                if(_S5)
                 {
                     float3 unit_2 = normalize(reflectionDirection_0);
                     float u_1 = fract((atan2(unit_2.z, unit_2.x) + 1.57079637050628662f) / 6.28318548202514648f);
-                    float _S2140 = max(_S2138, 1.0f);
-                    float _S2141 = _S2140 - 1.0f;
-                    float slice_0 = _S2130 * max(_S2141, 0.0f);
+                    float _S2141 = max(_S2139, 1.0f);
+                    float _S2142 = _S2141 - 1.0f;
+                    float slice_0 = _S2131 * max(_S2142, 0.0f);
                     float lower_0 = floor(slice_0);
-                    float inset_1 = 0.5f / max(_S2139, 1.0f);
+                    float inset_1 = 0.5f / max(_S2140, 1.0f);
                     float v_0 = clamp(acos(clamp(unit_2.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_1, 1.0f - inset_1);
-                    unlitColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_1, (lower_0 + v_0) / _S2140)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_1, (min(lower_0 + 1.0f, _S2141) + v_0) / _S2140)), level((0.0f)))).xyz, float3((slice_0 - lower_0)) );
+                    unlitColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_1, (lower_0 + v_0) / _S2141)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_1, (min(lower_0 + 1.0f, _S2142) + v_0) / _S2141)), level((0.0f)))).xyz, float3((slice_0 - lower_0)) );
                     break;
                 }
                 float3 unit_3 = normalize(reflectionDirection_0);
                 float u_2 = fract((atan2(unit_3.z, unit_3.x) + 1.57079637050628662f) / 6.28318548202514648f);
-                float _S2142 = max(_S2138, 1.0f);
-                float total_0 = _S2142 * _S2134;
-                float _S2143 = _S2142 - 1.0f;
-                float slice_1 = _S2130 * max(_S2143, 0.0f);
+                float _S2143 = max(_S2139, 1.0f);
+                float total_0 = _S2143 * _S2135;
+                float _S2144 = _S2143 - 1.0f;
+                float slice_1 = _S2131 * max(_S2144, 0.0f);
                 float lower_1 = floor(slice_1);
-                float inset_2 = 0.5f / max(_S2139, 1.0f);
+                float inset_2 = 0.5f / max(_S2140, 1.0f);
                 float v_1 = clamp(acos(clamp(unit_3.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_2, 1.0f - inset_2);
-                float base_0 = composedGroup_0 * _S2142;
-                unlitColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_2, (base_0 + lower_1 + v_1) / total_0)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_2, (base_0 + min(lower_1 + 1.0f, _S2143) + v_1) / total_0)), level((0.0f)))).xyz, float3((slice_1 - lower_1)) );
+                float base_0 = composedGroup_0 * _S2143;
+                unlitColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_2, (base_0 + lower_1 + v_1) / total_0)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_2, (base_0 + min(lower_1 + 1.0f, _S2144) + v_1) / total_0)), level((0.0f)))).xyz, float3((slice_1 - lower_1)) );
                 break;
             }
             if(clearcoatAmount_0 > 0.0f)
             {
                 for(;;)
                 {
-                    if(_S4)
+                    if(_S5)
                     {
                         float3 unit_4 = normalize(reflectionDirection_0);
                         float u_3 = fract((atan2(unit_4.z, unit_4.x) + 1.57079637050628662f) / 6.28318548202514648f);
-                        float _S2144 = max(_S2138, 1.0f);
-                        float _S2145 = _S2144 - 1.0f;
-                        float slice_2 = saturate(_S1999) * max(_S2145, 0.0f);
+                        float _S2145 = max(_S2139, 1.0f);
+                        float _S2146 = _S2145 - 1.0f;
+                        float slice_2 = saturate(_S2000) * max(_S2146, 0.0f);
                         float lower_2 = floor(slice_2);
-                        float inset_3 = 0.5f / max(_S2139, 1.0f);
+                        float inset_3 = 0.5f / max(_S2140, 1.0f);
                         float v_2 = clamp(acos(clamp(unit_4.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_3, 1.0f - inset_3);
-                        specularColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_3, (lower_2 + v_2) / _S2144)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_3, (min(lower_2 + 1.0f, _S2145) + v_2) / _S2144)), level((0.0f)))).xyz, float3((slice_2 - lower_2)) );
+                        specularColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_3, (lower_2 + v_2) / _S2145)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_3, (min(lower_2 + 1.0f, _S2146) + v_2) / _S2145)), level((0.0f)))).xyz, float3((slice_2 - lower_2)) );
                         break;
                     }
                     float3 unit_5 = normalize(reflectionDirection_0);
                     float u_4 = fract((atan2(unit_5.z, unit_5.x) + 1.57079637050628662f) / 6.28318548202514648f);
-                    float _S2146 = max(_S2138, 1.0f);
-                    float total_1 = _S2146 * _S2134;
-                    float _S2147 = _S2146 - 1.0f;
-                    float slice_3 = saturate(_S1999) * max(_S2147, 0.0f);
+                    float _S2147 = max(_S2139, 1.0f);
+                    float total_1 = _S2147 * _S2135;
+                    float _S2148 = _S2147 - 1.0f;
+                    float slice_3 = saturate(_S2000) * max(_S2148, 0.0f);
                     float lower_3 = floor(slice_3);
-                    float inset_4 = 0.5f / max(_S2139, 1.0f);
+                    float inset_4 = 0.5f / max(_S2140, 1.0f);
                     float v_3 = clamp(acos(clamp(unit_5.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_4, 1.0f - inset_4);
-                    float base_1 = composedGroup_0 * _S2146;
-                    specularColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_4, (base_1 + lower_3 + v_3) / total_1)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_4, (base_1 + min(lower_3 + 1.0f, _S2147) + v_3) / total_1)), level((0.0f)))).xyz, float3((slice_3 - lower_3)) );
+                    float base_1 = composedGroup_0 * _S2147;
+                    specularColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_4, (base_1 + lower_3 + v_3) / total_1)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_4, (base_1 + min(lower_3 + 1.0f, _S2148) + v_3) / total_1)), level((0.0f)))).xyz, float3((slice_3 - lower_3)) );
                     break;
                 }
                 color_0 = specularColor_0;
             }
             else
             {
-                color_0 = _S2135;
+                color_0 = _S2136;
             }
             lightTangent_0 = diffuseColor_0;
             lightBitangent_0 = unlitColor_0;
@@ -6526,12 +6532,12 @@ struct KernelContext_0
         else
         {
             sampleIndex_0 = 0U;
-            lightTangent_0 = _S2135;
-            lightBitangent_0 = _S2135;
-            color_0 = _S2135;
+            lightTangent_0 = _S2136;
+            lightBitangent_0 = _S2136;
+            color_0 = _S2136;
             for(;;)
             {
-                if(sampleIndex_0 < _S2012)
+                if(sampleIndex_0 < _S2013)
                 {
                 }
                 else
@@ -6549,51 +6555,51 @@ struct KernelContext_0
                     sampleIndex_0 = sampleIndex_0 + 1U;
                     continue;
                 }
-                float _S2148 = _S2011.domeControls_0.w;
+                float _S2149 = _S2012.domeControls_0.w;
                 for(;;)
                 {
-                    bool _S2149 = _S2134 <= 1.0f;
-                    _S5 = _S2149;
-                    if(_S2149)
+                    bool _S2150 = _S2135 <= 1.0f;
+                    _S6 = _S2150;
+                    if(_S2150)
                     {
                         float3 unit_6 = normalize(worldNormal_2);
                         diffuseColor_0 = (((&kernelContext_0)->environmentIrradiance_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(fract((atan2(unit_6.z, unit_6.x) + 1.57079637050628662f) / 6.28318548202514648f), acos(clamp(unit_6.y, -1.0f, 1.0f)) / 3.14159274101257324f)), level((0.0f)))).xyz;
                         break;
                     }
                     float3 unit_7 = normalize(worldNormal_2);
-                    float inset_5 = 0.5f / max(_S2148, 1.0f);
-                    diffuseColor_0 = (((&kernelContext_0)->environmentIrradiance_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(fract((atan2(unit_7.z, unit_7.x) + 1.57079637050628662f) / 6.28318548202514648f), (domeGroup_0 + clamp(acos(clamp(unit_7.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_5, 1.0f - inset_5)) / _S2134)), level((0.0f)))).xyz;
+                    float inset_5 = 0.5f / max(_S2149, 1.0f);
+                    diffuseColor_0 = (((&kernelContext_0)->environmentIrradiance_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(fract((atan2(unit_7.z, unit_7.x) + 1.57079637050628662f) / 6.28318548202514648f), (domeGroup_0 + clamp(acos(clamp(unit_7.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_5, 1.0f - inset_5)) / _S2135)), level((0.0f)))).xyz;
                     break;
                 }
                 float3 irradiance_0 = lightTangent_0 + diffuseColor_0;
-                float _S2150 = _S2128.environmentControls_0.y;
-                float _S2151 = _S2128.environmentControls_0.z;
+                float _S2151 = _S2129.environmentControls_0.y;
+                float _S2152 = _S2129.environmentControls_0.z;
                 for(;;)
                 {
-                    if(_S5)
+                    if(_S6)
                     {
                         float3 unit_8 = normalize(reflectionDirection_0);
                         float u_5 = fract((atan2(unit_8.z, unit_8.x) + 1.57079637050628662f) / 6.28318548202514648f);
-                        float _S2152 = max(_S2150, 1.0f);
-                        float _S2153 = _S2152 - 1.0f;
-                        float slice_4 = _S2130 * max(_S2153, 0.0f);
+                        float _S2153 = max(_S2151, 1.0f);
+                        float _S2154 = _S2153 - 1.0f;
+                        float slice_4 = _S2131 * max(_S2154, 0.0f);
                         float lower_4 = floor(slice_4);
-                        float inset_6 = 0.5f / max(_S2151, 1.0f);
+                        float inset_6 = 0.5f / max(_S2152, 1.0f);
                         float v_4 = clamp(acos(clamp(unit_8.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_6, 1.0f - inset_6);
-                        unlitColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_5, (lower_4 + v_4) / _S2152)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_5, (min(lower_4 + 1.0f, _S2153) + v_4) / _S2152)), level((0.0f)))).xyz, float3((slice_4 - lower_4)) );
+                        unlitColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_5, (lower_4 + v_4) / _S2153)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_5, (min(lower_4 + 1.0f, _S2154) + v_4) / _S2153)), level((0.0f)))).xyz, float3((slice_4 - lower_4)) );
                         break;
                     }
                     float3 unit_9 = normalize(reflectionDirection_0);
                     float u_6 = fract((atan2(unit_9.z, unit_9.x) + 1.57079637050628662f) / 6.28318548202514648f);
-                    float _S2154 = max(_S2150, 1.0f);
-                    float total_2 = _S2154 * _S2134;
-                    float _S2155 = _S2154 - 1.0f;
-                    float slice_5 = _S2130 * max(_S2155, 0.0f);
+                    float _S2155 = max(_S2151, 1.0f);
+                    float total_2 = _S2155 * _S2135;
+                    float _S2156 = _S2155 - 1.0f;
+                    float slice_5 = _S2131 * max(_S2156, 0.0f);
                     float lower_5 = floor(slice_5);
-                    float inset_7 = 0.5f / max(_S2151, 1.0f);
+                    float inset_7 = 0.5f / max(_S2152, 1.0f);
                     float v_5 = clamp(acos(clamp(unit_9.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_7, 1.0f - inset_7);
-                    float base_2 = domeGroup_0 * _S2154;
-                    unlitColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_6, (base_2 + lower_5 + v_5) / total_2)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_6, (base_2 + min(lower_5 + 1.0f, _S2155) + v_5) / total_2)), level((0.0f)))).xyz, float3((slice_5 - lower_5)) );
+                    float base_2 = domeGroup_0 * _S2155;
+                    unlitColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_6, (base_2 + lower_5 + v_5) / total_2)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_6, (base_2 + min(lower_5 + 1.0f, _S2156) + v_5) / total_2)), level((0.0f)))).xyz, float3((slice_5 - lower_5)) );
                     break;
                 }
                 float3 prefiltered_0 = lightBitangent_0 + unlitColor_0;
@@ -6601,30 +6607,30 @@ struct KernelContext_0
                 {
                     for(;;)
                     {
-                        if(_S5)
+                        if(_S6)
                         {
                             float3 unit_10 = normalize(reflectionDirection_0);
                             float u_7 = fract((atan2(unit_10.z, unit_10.x) + 1.57079637050628662f) / 6.28318548202514648f);
-                            float _S2156 = max(_S2150, 1.0f);
-                            float _S2157 = _S2156 - 1.0f;
-                            float slice_6 = saturate(_S1999) * max(_S2157, 0.0f);
+                            float _S2157 = max(_S2151, 1.0f);
+                            float _S2158 = _S2157 - 1.0f;
+                            float slice_6 = saturate(_S2000) * max(_S2158, 0.0f);
                             float lower_6 = floor(slice_6);
-                            float inset_8 = 0.5f / max(_S2151, 1.0f);
+                            float inset_8 = 0.5f / max(_S2152, 1.0f);
                             float v_6 = clamp(acos(clamp(unit_10.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_8, 1.0f - inset_8);
-                            specularColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_7, (lower_6 + v_6) / _S2156)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_7, (min(lower_6 + 1.0f, _S2157) + v_6) / _S2156)), level((0.0f)))).xyz, float3((slice_6 - lower_6)) );
+                            specularColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_7, (lower_6 + v_6) / _S2157)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_7, (min(lower_6 + 1.0f, _S2158) + v_6) / _S2157)), level((0.0f)))).xyz, float3((slice_6 - lower_6)) );
                             break;
                         }
                         float3 unit_11 = normalize(reflectionDirection_0);
                         float u_8 = fract((atan2(unit_11.z, unit_11.x) + 1.57079637050628662f) / 6.28318548202514648f);
-                        float _S2158 = max(_S2150, 1.0f);
-                        float total_3 = _S2158 * _S2134;
-                        float _S2159 = _S2158 - 1.0f;
-                        float slice_7 = saturate(_S1999) * max(_S2159, 0.0f);
+                        float _S2159 = max(_S2151, 1.0f);
+                        float total_3 = _S2159 * _S2135;
+                        float _S2160 = _S2159 - 1.0f;
+                        float slice_7 = saturate(_S2000) * max(_S2160, 0.0f);
                         float lower_7 = floor(slice_7);
-                        float inset_9 = 0.5f / max(_S2151, 1.0f);
+                        float inset_9 = 0.5f / max(_S2152, 1.0f);
                         float v_7 = clamp(acos(clamp(unit_11.y, -1.0f, 1.0f)) / 3.14159274101257324f, inset_9, 1.0f - inset_9);
-                        float base_3 = domeGroup_0 * _S2158;
-                        specularColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_8, (base_3 + lower_7 + v_7) / total_3)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_8, (base_3 + min(lower_7 + 1.0f, _S2159) + v_7) / total_3)), level((0.0f)))).xyz, float3((slice_7 - lower_7)) );
+                        float base_3 = domeGroup_0 * _S2159;
+                        specularColor_0 = mix((((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_8, (base_3 + lower_7 + v_7) / total_3)), level((0.0f)))).xyz, (((&kernelContext_0)->environmentSpecular_0).sample(((&kernelContext_0)->environmentSampler_0), (float2(u_8, (base_3 + min(lower_7 + 1.0f, _S2160) + v_7) / total_3)), level((0.0f)))).xyz, float3((slice_7 - lower_7)) );
                         break;
                     }
                     sampleDirection_0 = color_0 + specularColor_0;
@@ -6642,8 +6648,8 @@ struct KernelContext_0
         float3 color_4 = color_3 + float3(occlusion_0)  * diffuse_1 * lightTangent_0 * diffuseWeight_0 + float3(occlusion_0)  * lightBitangent_0 * specularWeight_0;
         if(clearcoatAmount_0 > 0.0f)
         {
-            float2 _S2160 = (((&kernelContext_0)->environmentBrdf_0).sample(((&kernelContext_0)->environmentBrdfSampler_0), (float2(_S2129, saturate(_S1999))), level((0.0f)))).xy;
-            color_3 = color_4 + float3((occlusion_0 * clearcoatAmount_0))  * color_0 * (float3((reflectanceRatio_0 * reflectanceRatio_0))  * float3(_S2160.x)  + float3(_S2160.y) );
+            float2 _S2161 = (((&kernelContext_0)->environmentBrdf_0).sample(((&kernelContext_0)->environmentBrdfSampler_0), (float2(_S2130, saturate(_S2000))), level((0.0f)))).xy;
+            color_3 = color_4 + float3((occlusion_0 * clearcoatAmount_0))  * color_0 * (float3((reflectanceRatio_0 * reflectanceRatio_0))  * float3(_S2161.x)  + float3(_S2161.y) );
         }
         else
         {
@@ -6659,6 +6665,6 @@ struct KernelContext_0
     {
         color_3 = color_5;
     }
-    pixelOutput_0 _S2161 = { float4(color_3, opacity_0) };
-    return _S2161;
+    pixelOutput_0 _S2162 = { float4(color_3, opacity_0) };
+    return _S2162;
 }

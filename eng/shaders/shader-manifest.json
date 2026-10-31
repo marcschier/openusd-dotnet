@@ -863,6 +863,103 @@
       "resources": []
     },
     {
+      "name": "shadow.mask.vertex",
+      "source": "eng/shaders/sources/shadow.vertex.slang",
+      "entryPoint": "shadowMaskedVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "shadowInstanceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "shadow.mask.fragment",
+      "source": "eng/shaders/sources/shadow.mask.fragment.slang",
+      "entryPoint": "shadowMaskedFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        {
+          "name": "surfaceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 7,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 7,
+            "set": 0
+          }
+        },
+        {
+          "name": "opacitySampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 16,
+            "set": 0
+          }
+        },
+        {
+          "name": "opacityTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 5,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 17,
+            "set": 0
+          }
+        },
+        {
+          "name": "compositeSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 12,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 28,
+            "set": 0
+          }
+        },
+        {
+          "name": "compositeTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 15,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 29,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "normal.vertex",
       "source": "eng/shaders/sources/normal.vertex.slang",
       "entryPoint": "normalVertexMain",

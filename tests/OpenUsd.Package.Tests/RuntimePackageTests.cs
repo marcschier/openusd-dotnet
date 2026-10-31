@@ -1423,6 +1423,70 @@ public sealed partial class RuntimePackageTests
     }
 
     [Test]
+    public async Task SilkPackageCarriesCheckedMaskedShadowShadersForEveryFramework()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            CommandResult result = await RunDotnetAsync(
+                repositoryRoot,
+                [
+                    "pack",
+                    Path.Combine(repositoryRoot, "src", "OpenUsd.Rendering.Silk", "OpenUsd.Rendering.Silk.csproj"),
+                    "-c", "Release", "--nologo", "-m:1",
+                    "-p:UseSharedCompilation=false",
+                    $"-p:PackageOutputPath={packageRoot}",
+                ]);
+            await Assert.That(result.ExitCode).IsEqualTo(0).Because(result.Output);
+            using ZipArchive package = ZipFile.OpenRead(FindPackage(packageRoot, "OpenUsd.Rendering.Silk"));
+            string[] artifacts =
+            [
+                "shadow.mask.vertex.dxil",
+                "shadow.mask.vertex.spv",
+                "shadow.mask.vertex.reflection.json",
+                "shadow.mask.fragment.dxil",
+                "shadow.mask.fragment.spv",
+                "shadow.mask.fragment.reflection.json",
+            ];
+            foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
+            {
+                ZipArchiveEntry entry = package.GetEntry($"lib/{framework}/OpenUsd.Rendering.Silk.dll") ??
+                    throw new InvalidDataException($"The package is missing the {framework} Silk assembly.");
+                using Stream source = entry.Open();
+                using var buffer = new MemoryStream();
+                await source.CopyToAsync(buffer);
+                buffer.Position = 0;
+                using var assembly = new PEReader(buffer);
+                MetadataReader metadata = assembly.GetMetadataReader();
+                PEMemoryBlock embedded = assembly.GetSectionData(
+                    assembly.PEHeaders.CorHeader!.ResourcesDirectory.RelativeVirtualAddress);
+                foreach (string artifact in artifacts)
+                {
+                    string name = $"OpenUsd.Rendering.Silk.Shaders.{artifact}";
+                    ManifestResource resource = metadata.GetManifestResource(metadata.ManifestResources.Single(
+                        handle => metadata.GetString(metadata.GetManifestResource(handle).Name) == name));
+                    await Assert.That(resource.Implementation.IsNil).IsTrue().Because(name);
+                    int offset = checked((int)resource.Offset);
+                    BlobReader reader = embedded.GetReader(offset, embedded.Length - offset);
+                    byte[] content = reader.ReadBytes(reader.ReadInt32());
+                    byte[] expected = await File.ReadAllBytesAsync(
+                        Path.Combine(repositoryRoot, "eng", "shaders", "checked", artifact));
+                    await Assert.That(SHA256.HashData(content).AsSpan().SequenceEqual(SHA256.HashData(expected)))
+                        .IsTrue()
+                        .Because($"{framework} must embed the checked {artifact} artifact.");
+                }
+            }
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task MissingCesiumShimFailsPackClearly()
     {
         string repositoryRoot = FindRepositoryRoot();

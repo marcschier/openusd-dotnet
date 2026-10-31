@@ -3894,8 +3894,9 @@ ungrouped bake is still admitted.
   authored image.
 - **`collection:shadowLink` on a dome is never applied.** It restricts which prims cast that dome's
   shadow, and hdSilk casts no dome shadow at all — the raster shadow slice renders maps for distant
-  lights only, and a dome has no light-space projection to render one from. A textured dome reports
-  `OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION` and an untextured one warns. Folding it into
+  lights and supported sphere spots, and a dome has no light-space projection to render one from. A
+  textured dome reports `OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION` and an untextured one
+  warns. Folding it into
   the dome mask would silently turn a caster restriction into a receiver restriction and darken exactly
   the prims the author asked to keep lit.
 - **A dome the prefilter refused is still maskable, through its ambient term.** Its mean-radiance
@@ -4062,21 +4063,24 @@ know it is rendering a different image. A `UsdPreviewSurface` caster with consta
 positive `opacityThreshold` casts either a solid shadow or none. Below the threshold the colour pass
 discards the entire surface, so it is omitted from every map without an unsupported-caster diagnostic.
 At or above the threshold the colour pass makes it opaque, so the depth-only pass draws its geometric
-coverage. Omitted opacity defaults to one. An opacity texture, a blended constant opacity without a
-positive threshold, or a positive threshold on another material kind excludes the caster and reports
-`OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED` against its prim path. The depth-only program binds no
-material and cannot reproduce variable or blended coverage. Unsupported casters are still lit and
-still receive shadows.
+coverage. Omitted opacity defaults to one. A PreviewSurface opacity texture with a positive threshold
+casts where its sampled opacity is at or above that threshold. An opacity texture or blended constant
+opacity without a positive threshold, or a positive threshold on another material kind, excludes the
+caster and reports `OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED` against its prim path. Unsupported casters
+are still lit and still receive shadows.
 
-**How it is drawn.** `shadow.vertex`/`shadow.fragment` are their own checked program family, not a
-permutation of the mesh family: a shadow pass binds no material, no surface constants and no frame
-constants, and a backend pipeline layout must declare every resource its binary references. The caster
-transform arrives already composed into light clip space in the same instance-table layout the mesh
-vertex stage reads, so an instanced batch casts with one draw. The pass binds no colour attachment at
-all — D3D12 sets zero render targets, Vulkan uses a depth-only render pass and framebuffer — and the
-depth image is transitioned to a shader-readable state at the end of the pass rather than left for the
-sampling path to discover. Backends advertise this through
-`SilkGraphicsCapabilities.SupportsRasterShadows`.
+**How it is drawn.** Opaque and masked shadow casters use separate checked pipeline layouts. The opaque
+program binds no material or surface constants. The masked program binds the surface block, opacity
+image and sampler, and the composite image and sampler; it selects and transforms the same primary or
+secondary UVs and calls the same opacity-sampling function as the colour pass. That function applies
+the texture channel, scale and bias, UDIM addressing, constant border and composite before comparing
+the saturated result with the threshold. A sample below the threshold is discarded; equality casts.
+The caster transform arrives already composed into light clip space in the same instance-table layout
+the mesh vertex stage reads, so an instanced batch casts with one draw. Masked casters are grouped by
+material, submitted and waited before their shared instance buffer or streamed texture working set is
+reused. The pass binds no colour attachment — D3D12 sets zero render targets, Vulkan uses a depth-only
+render pass and framebuffer — and transitions the depth image for sampling. Backends advertise this
+through `SilkGraphicsCapabilities.SupportsRasterShadows`.
 
 **How it is sampled.** Every map lives in one shadow atlas, bound to every mesh pipeline as a single
 sampled texture and sampler; the tile a map occupies is a runtime value in the frame constants rather
@@ -4097,8 +4101,14 @@ composite material image.
 
 **What is retained.** The atlas is re-rendered exactly when one of its inputs changes: the published
 descriptor table, the caster geometry revision (which moves on upsert, removal, deformation, and
-restoration), the material revision, the caster restriction, or the device generation. A material-only
-edit can change whether a caster is solid, invisible, or unsupported without changing its mesh. The
+restoration), the material revision, the caster restriction, the device generation, or a captured
+opacity-image dependency, or an explicit failed-texture retry. The dependency records file existence,
+length and last-write time for each successfully resolved ordinary image or UDIM tile used by the map,
+independently of whether texture streaming later evicts its GPU image. An in-place change to an
+already-resolved file invalidates the map; the dependency check does not discover newly added UDIM
+tiles or automatically recover a failed fallback. Calling either `RetryFailedTextures` overload
+invalidates the map so a repaired opacity image can change its coverage. A material-only edit can
+change whether a caster is solid, masked, invisible, or unsupported without changing its mesh. The
 maximum displacement of prepared casters expands the shadow frustum and depth range before rendering;
 if a perspective near plane would cross the emitter, preparation rejects the projection instead of
 publishing a map that can clip displaced geometry. The
@@ -4108,14 +4118,14 @@ submission drops every image the device held, including this atlas, without eith
 moving. An unchanged scene reuses the retained maps and reproduces the frame byte for byte; a retired
 descriptor table releases the atlas.
 
-**What a refused allocation leaves behind.** Only a resolution change replaces the image itself, and
-that is the one path a refused allocation can interrupt. The retained atlas is unpublished and released
-before the replacement is requested, so a device that declines the allocation leaves the cache holding
-nothing rather than a field still pointing at the image it just disposed. The colour pass then binds the
-one-texel stand-in — every light already resolves to slot `-1` in that state — and the next frame
-allocates and renders the atlas again. `SilkShadowAtlasRetentionTests` drives both directions: a refused
-first allocation and a refused reallocation, each followed by a frame that must recover to a live image
-of the resolution the descriptor asks for.
+**What a refused allocation leaves behind.** With resource admission configured, a replacement map
+and its texture updates are prepared before publication. A refused allocation or submission retains
+the previously published atlas, its dependency stamps and texture ownership; a later attempt can
+retry. Without admission, a resolution change releases the old image before allocating its replacement.
+If that allocation fails, the cache holds no disposed atlas and the colour pass binds the one-texel
+stand-in until a later frame allocates and renders the replacement. `SilkShadowAtlasRetentionTests`
+drives refused first allocations and reallocations, while `SilkShadowAdmissionTests` checks preservation
+and retry through admitted allocation and submission failures.
 
 **What is named rather than approximated.** A shadow-enabled light with no descriptor is reported as
 `OPENUSD_SILK_SHADOW_UNSUPPORTED` against its light-table index and resolved type, with the reason: a
@@ -4137,11 +4147,15 @@ convention relocates the shadow rather than removing it: the span is rows 36..50
 the convention applied, and 24..63 on Vulkan without it — a Y-symmetric scene cannot see the
 difference. A rotated, non-uniformly scaled receiver that is its own only caster must not darken a
 single pixel, and a blended caster must stop occluding and be named. `SilkShadowAdmissionTests` checks
-constant opacity below, at, and above its threshold, material-only transitions, retained-map reuse,
-diagnostics, and resource release on D3D12 WARP and Vulkan SwiftShader, with and without texture
-admission. `SilkShadowWireTests` pins the cutoff defaults, adjacent threshold values and invalid
+constant and textured opacity below, at, and above the threshold, material-only transitions, UV and
+composite sampling, instance groups, retained-map reuse, image edits, diagnostics, refusal, retry and
+resource release on D3D12 WARP and Vulkan SwiftShader, including admitted and streamed paths.
+`SilkGraphicsPipelineTests` pins the separate opaque and masked layouts, and package tests compare the
+checked masked shader payloads embedded for each target framework. `SilkShadowWireTests` pins the
+cutoff defaults, adjacent threshold values and invalid
 inputs as well as the wire layout and its rejections, including the reserved header field.
-`SilkTextureResidencyTests` keeps texture-driven opacity outside the supported caster set.
+`SilkTextureResidencyTests` keeps opacity textures without a positive threshold outside the supported
+caster set.
 `PerspectiveSpotShadowPixelsMatchAnalyticReceiver` checks shaped-sphere illumination against a
 perspective descriptor on both backends; `hdsilk_direct_lights_probe` pins native spot descriptor
 production and cone boundaries. `SilkShadowAtlasRetentionTests` checks perspective displacement
@@ -4175,9 +4189,8 @@ light model this producer has not derived; more than four simultaneous shadow ma
 camera-fitted light-space partitions, since the single map is fitted to the whole caster bound rather
 than to the view frustum; shadows from line and point
 topologies, which rasterize at one pixel and would publish a single-texel artefact rather than an
-occluder; texture-driven alpha tests, blended translucent shadow casters, and positive thresholds on
-non-PreviewSurface materials, which are dropped and named rather than approximated with a solid shadow
-because the depth-only program binds no material and cannot reproduce their coverage; and Metal, which is
+occluder; blended translucent shadow casters and positive thresholds on non-PreviewSurface materials,
+which are dropped and named rather than approximated with a solid shadow; and Metal, which is
 source-complete but reports no raster-shadow capability and is therefore unclaimed and unrun — a Metal
 device allocates no map and diagnoses every shadow-enabled light. Storm's own offscreen shadow path
 remains unusable as a reference (see "hdSilk UsdLux lights"), so all of the above is gated

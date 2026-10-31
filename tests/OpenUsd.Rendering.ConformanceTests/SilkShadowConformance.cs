@@ -666,6 +666,525 @@ internal static class SilkShadowConformance
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
     }
 
+    internal static async Task TexturedOpacityChangesCasterCoverage(
+        ISilkGraphicsDevice device, SilkGraphicsBackend backend, bool streaming)
+    {
+        SilkShaderBinaryFormat format = backend == SilkGraphicsBackend.D3D12
+            ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV;
+        var residency = new SilkTextureResidencyOptions(1_048_576, 1_048_576, streaming);
+        using var renderer = new SilkMeshRenderer(device, format, decode, textureResidencyOptions: residency);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var first = new OpenUsdSilkPage(30, 1,
+        [
+            .. CreateShadowLightFrame(),
+            .. SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                opacityThreshold: 0.5f),
+            .. CreateReceiver(),
+            .. CreateTexturedCaster(),
+            .. CreateShadow(),
+        ], 5);
+        _ = renderer.ApplyAndRender(first, color, depth);
+        byte[] initial = ReadPixels(color);
+        await AssertLit(initial, 16, "transparent half of the textured caster");
+        await AssertShadowed(initial, 24, "opaque half of the textured caster");
+        await Assert.That(HasCasterDiagnostic(renderer)).IsFalse();
+        ulong rendered = renderer.ShadowMapRenderCount;
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(initial)).IsTrue();
+
+        using var changed = new OpenUsdSilkPage(30, 2,
+            SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                assetName: 'B', opacityThreshold: 0.5f), 1);
+        _ = renderer.ApplyAndRender(changed, color, depth);
+        byte[] reversed = ReadPixels(color);
+        await AssertShadowed(reversed, 16, "updated opaque half of the textured caster");
+        await AssertLit(reversed, 24, "updated transparent half of the textured caster");
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++rendered);
+
+        SilkMeshRenderOptions disabled = SilkMeshRenderOptions.Default with { UseSceneMaterials = false };
+        _ = renderer.Render(color, depth, disabled);
+        byte[] withoutMaterials = ReadPixels(color);
+        await AssertShadowed(withoutMaterials, 16, "caster with scene materials disabled");
+        await AssertShadowed(withoutMaterials, 24, "caster with scene materials disabled");
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++rendered);
+
+        using var blended = new OpenUsdSilkPage(30, 3,
+            SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity), 1);
+        _ = renderer.ApplyAndRender(blended, color, depth);
+        byte[] unsupported = ReadPixels(color);
+        await AssertLit(unsupported, 16, "unsupported blended caster");
+        await AssertLit(unsupported, 24, "unsupported blended caster");
+        await Assert.That(HasCasterDiagnostic(renderer)).IsTrue();
+
+        static SilkDecodedImage decode(string asset, bool _)
+        {
+            byte[] pixels = asset switch
+            {
+                "A" => [0, 0, 0, 255, 255, 255, 255, 255],
+                "B" => [255, 255, 255, 255, 0, 0, 0, 255],
+                _ => throw new FileNotFoundException("Unexpected shadow texture.", asset),
+            };
+            return new SilkDecodedImage(2, 1, pixels);
+        }
+    }
+
+    internal static async Task InPlaceOpacityEditsInvalidateRetainedShadows(
+        ISilkGraphicsDevice device, SilkGraphicsBackend backend, bool streaming, bool udim,
+        SilkGpuTextureBudget? budget)
+    {
+        string directory = Directory.CreateTempSubdirectory("silk-shadow-opacity-").FullName;
+        string path = Path.Combine(directory, udim ? "opacity.1001.bin" : "opacity.bin");
+        string asset = udim ? Path.Combine(directory, "opacity.<UDIM>.bin") : path;
+        try
+        {
+            DateTime stamp = DateTime.UtcNow.AddMinutes(-3);
+            write([0, 255], stamp);
+            SilkShaderBinaryFormat format = backend == SilkGraphicsBackend.D3D12
+                ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV;
+            var residency = new SilkTextureResidencyOptions(1_048_576, 1_048_576, streaming);
+            using var renderer = new SilkMeshRenderer(device, format, decode,
+                udimResolver: udim ? _ => [new SilkUdimTile(1001, path)] : null,
+                textureResidencyOptions: residency);
+            using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+            using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+            using var first = new OpenUsdSilkPage(30, 1,
+            [
+                .. CreateShadowLightFrame(),
+                .. SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                    assetPath: asset, opacityThreshold: 0.5f),
+                .. CreateReceiver(),
+                .. CreateTexturedCaster(),
+                .. CreateShadow(),
+            ], 5);
+            _ = renderer.ApplyAndRender(first, color, depth);
+            byte[] initial = ReadPixels(color);
+            await AssertLit(initial, 16, "original transparent opacity image");
+            await AssertShadowed(initial, 24, "original opaque opacity image");
+            ulong rendered = renderer.ShadowMapRenderCount;
+            _ = renderer.Render(color, depth);
+            await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered);
+
+            write([255, 0], stamp.AddMinutes(1));
+            if (budget is not null)
+            {
+                using (IDisposable pressure = budget.Reserve(new SilkTextureDescriptor(
+                    checked((uint)((budget.MaximumBytes - budget.Usage.ReservedBytes) / 4)),
+                    1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled), 1))
+                {
+                    await Assert.That(() => renderer.Render(color, depth))
+                        .Throws<SilkGpuTextureBudgetExceededException>();
+                    await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered);
+                    await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(initial)).IsTrue();
+                }
+            }
+            _ = renderer.Render(color, depth);
+            byte[] updated = ReadPixels(color);
+            await AssertShadowed(updated, 16, "in-place opaque opacity image");
+            await AssertLit(updated, 24, "in-place transparent opacity image");
+            await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++rendered);
+            _ = renderer.Render(color, depth);
+            await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered);
+
+            write([0, 255], stamp.AddMinutes(2));
+            using var unchanged = new OpenUsdSilkPage(30, 2, [], 0);
+            _ = renderer.ApplyAndRender(unchanged, color, depth);
+            byte[] restored = ReadPixels(color);
+            await AssertLit(restored, 16, "restored transparent opacity image");
+            await AssertShadowed(restored, 24, "restored opaque opacity image");
+            await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++rendered);
+
+            void write(byte[] values, DateTime time)
+            {
+                File.WriteAllBytes(path, values);
+                File.SetLastWriteTimeUtc(path, time);
+            }
+
+            static SilkDecodedImage decode(string asset, bool _)
+            {
+                byte[] values = File.ReadAllBytes(asset);
+                return new SilkDecodedImage(2, 1,
+                    [values[0], values[0], values[0], 255, values[1], values[1], values[1], 255]);
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    internal static async Task RetryingFailedOpacityRebuildsRetainedShadows(
+        ISilkGraphicsDevice device, SilkGraphicsBackend backend, bool streaming, bool withScene)
+    {
+        string directory = Directory.CreateTempSubdirectory("silk-shadow-opacity-retry-").FullName;
+        string path = Path.Combine(directory, "opacity.bin");
+        try
+        {
+            SilkShaderBinaryFormat format = backend == SilkGraphicsBackend.D3D12
+                ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV;
+            var residency = new SilkTextureResidencyOptions(1_048_576, 1_048_576, streaming);
+            using var renderer = new SilkMeshRenderer(device, format, decode, textureResidencyOptions: residency);
+            using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+            using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+            using var page = new OpenUsdSilkPage(30, 1,
+            [
+                .. CreateShadowLightFrame(),
+                .. SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                    assetPath: path, fallback: [0, 0, 0, 1], opacityThreshold: 0.5f),
+                .. CreateReceiver(),
+                .. CreateTexturedCaster(),
+                .. CreateShadow(),
+            ], 5);
+            _ = renderer.ApplyAndRender(page, color, depth);
+            byte[] fallback = ReadPixels(color);
+            await AssertLit(fallback, 16, "missing opacity image, transparent fallback");
+            await AssertLit(fallback, 24, "missing opacity image, transparent fallback");
+            await Assert.That(renderer.GpuResources.Diagnostics.Entries.Any(static entry =>
+                entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed)).IsTrue();
+            ulong rendered = renderer.ShadowMapRenderCount;
+            _ = renderer.Render(color, depth);
+            await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered);
+
+            File.WriteAllBytes(path, [0, 255]);
+            if (withScene)
+            {
+                renderer.GpuResources.RetryFailedTextures(renderer.Scene);
+            }
+            else
+            {
+                renderer.GpuResources.RetryFailedTextures();
+            }
+            _ = renderer.Render(color, depth);
+            byte[] repaired = ReadPixels(color);
+            await AssertLit(repaired, 16, "repaired transparent half");
+            await AssertShadowed(repaired, 24, "repaired opaque half");
+            await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++rendered);
+            await Assert.That(renderer.GpuResources.Diagnostics.Entries.Any(static entry =>
+                entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed ||
+                entry.Code == SilkRenderDiagnosticCodes.TextureAssetNotFound)).IsFalse();
+            _ = renderer.Render(color, depth);
+            await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered);
+
+            static SilkDecodedImage decode(string asset, bool _)
+            {
+                byte[] values = File.ReadAllBytes(asset);
+                return new SilkDecodedImage(2, 1,
+                    [values[0], values[0], values[0], 255, values[1], values[1], values[1], 255]);
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    internal static async Task MaskedInstancesAndMaterialGroupsKeepTheirOwnCoverage(
+        ISilkGraphicsDevice device, SilkGraphicsBackend backend, bool streaming)
+    {
+        SilkShaderBinaryFormat format = backend == SilkGraphicsBackend.D3D12
+            ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV;
+        var residency = new SilkTextureResidencyOptions(1_048_576, 1_048_576, streaming);
+        using var renderer = new SilkMeshRenderer(device, format, decode, textureResidencyOptions: residency);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var first = new OpenUsdSilkPage(30, 1,
+        [
+            .. CreateShadowLightFrame(),
+            .. SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                opacityThreshold: 0.5f),
+            .. SilkMaterialStreamingTests.Material('B', false, scalarParameter: SilkMaterialParameter.Opacity,
+                opacityThreshold: 0.5f),
+            .. CreateReceiver(),
+            .. CreateTexturedCaster(0, -0.3, "/A", instanced: true),
+            .. CreateTexturedCaster(1, 0.3, "/A", instanced: true),
+            .. CreateShadow(),
+        ], 7);
+        _ = renderer.ApplyAndRender(first, color, depth);
+        SilkMeshGpuResource[] instances = [.. renderer.GpuResources.MeshValues.Where(mesh => mesh.Mesh.Path == Caster)];
+        await Assert.That(instances.Length).IsEqualTo(2);
+        await Assert.That(ReferenceEquals(instances[0].Geometry, instances[1].Geometry)).IsTrue();
+        await AssertShadowed(ReadPixels(color), 11, "first shared masked instance");
+        await AssertShadowed(ReadPixels(color), 30, "second shared masked instance");
+
+        using var split = new OpenUsdSilkPage(30, 2, CreateTexturedCaster(1, 0.3, "/B", instanced: true), 1);
+        _ = renderer.ApplyAndRender(split, color, depth);
+        await AssertShadowed(ReadPixels(color), 11, "opaque material group");
+        await AssertLit(ReadPixels(color), 30, "transparent material group");
+
+        using var exchanged = new OpenUsdSilkPage(30, 3,
+            [.. CreateTexturedCaster(0, -0.3, "/B", instanced: true),
+                .. CreateTexturedCaster(1, 0.3, "/A", instanced: true)], 2);
+        _ = renderer.ApplyAndRender(exchanged, color, depth);
+        await AssertLit(ReadPixels(color), 11, "exchanged transparent material group");
+        await AssertShadowed(ReadPixels(color), 30, "exchanged opaque material group");
+
+        static SilkDecodedImage decode(string asset, bool _)
+        {
+            byte value = asset switch
+            {
+                "A" => 255,
+                "B" => 0,
+                _ => throw new FileNotFoundException("Unexpected shadow texture.", asset),
+            };
+            return new SilkDecodedImage(1, 1, [value, value, value, 255]);
+        }
+    }
+
+    internal static async Task MaskedShadowsUseSecondaryUvAndAlternateTransform(
+        ISilkGraphicsDevice device, SilkGraphicsBackend backend, bool streaming)
+    {
+        SilkShaderBinaryFormat format = backend == SilkGraphicsBackend.D3D12
+            ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV;
+        var residency = new SilkTextureResidencyOptions(1_048_576, 1_048_576, streaming);
+        using var renderer = new SilkMeshRenderer(device, format, decode, textureResidencyOptions: residency);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var first = new OpenUsdSilkPage(30, 1,
+        [
+            .. CreateShadowLightFrame(),
+            .. SilkMaterialStreamingTests.Material('A', false, diffuseAndOpacity: true,
+                secondaryUvPrimvar: "st1", opacityThreshold: 0.5f),
+            .. CreateReceiver(),
+            .. CreateTexturedCaster(secondaryUv: true),
+            .. CreateShadow(),
+        ], 5);
+        _ = renderer.ApplyAndRender(first, color, depth);
+        byte[] initial = ReadPixels(color);
+        await AssertLit(initial, 16, "secondary UV transparent half");
+        await AssertShadowed(initial, 24, "secondary UV opaque half");
+        ulong rendered = renderer.ShadowMapRenderCount;
+        using var transformed = new OpenUsdSilkPage(30, 2,
+            SilkMaterialStreamingTests.Material('A', false, diffuseAndOpacity: true,
+                secondaryUvPrimvar: "st1", opacityThreshold: 0.5f,
+                alternateUvMask: 1u << (int)SilkMaterialParameter.Opacity,
+                alternateUvTranslate: 0.5f), 1);
+        _ = renderer.ApplyAndRender(transformed, color, depth);
+        byte[] updated = ReadPixels(color);
+        await AssertShadowed(updated, 16, "alternate UV opaque half");
+        await AssertLit(updated, 24, "alternate UV transparent half");
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered + 1);
+
+        static SilkDecodedImage decode(string asset, bool _) => asset switch
+        {
+            "A" => new SilkDecodedImage(1, 1, [255, 255, 255, 255]),
+            "B" => new SilkDecodedImage(2, 1, [0, 0, 0, 255, 255, 255, 255, 255]),
+            _ => throw new FileNotFoundException("Unexpected shadow texture.", asset),
+        };
+    }
+
+    internal static async Task MaskedShadowsUseOpacityChannelAffineCompositeAndBorder(
+        ISilkGraphicsDevice device, SilkGraphicsBackend backend, bool streaming)
+    {
+        SilkShaderBinaryFormat format = backend == SilkGraphicsBackend.D3D12
+            ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV;
+        var residency = new SilkTextureResidencyOptions(1_048_576, 1_048_576, streaming);
+        using var renderer = new SilkMeshRenderer(device, format, decode, textureResidencyOptions: residency);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var first = new OpenUsdSilkPage(30, 1,
+        [
+            .. CreateShadowLightFrame(),
+            .. SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                opacityThreshold: 0.75f, opacityChannel: SilkTextureChannel.G, opacityScale: 2, opacityBias: -0.5f),
+            .. CreateReceiver(),
+            .. CreateTexturedCaster(),
+            .. CreateShadow(),
+        ], 5);
+        _ = renderer.ApplyAndRender(first, color, depth);
+        await AssertLit(ReadPixels(color), 16, "green-channel affine below cutoff");
+        await AssertShadowed(ReadPixels(color), 24, "green-channel affine above cutoff");
+
+        const float equalThreshold = 0.5f;
+        using var equal = new OpenUsdSilkPage(30, 2,
+            SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                assetName: 'B', opacityChannel: SilkTextureChannel.G, opacityThreshold: equalThreshold), 1);
+        _ = renderer.ApplyAndRender(equal, color, depth);
+        await AssertShadowed(ReadPixels(color), 16, "opacity equal to cutoff");
+        await AssertShadowed(ReadPixels(color), 24, "opacity equal to cutoff");
+
+        using var above = new OpenUsdSilkPage(30, 3,
+            SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                assetName: 'B', opacityChannel: SilkTextureChannel.G, opacityThreshold: equalThreshold + 0.01f), 1);
+        _ = renderer.ApplyAndRender(above, color, depth);
+        await AssertLit(ReadPixels(color), 16, "opacity below cutoff");
+        await AssertLit(ReadPixels(color), 24, "opacity below cutoff");
+
+        using var subtract = new OpenUsdSilkPage(30, 4,
+            SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                composite: SilkCompositeOperator.Subtract, opacityThreshold: 0.75f), 1);
+        _ = renderer.ApplyAndRender(subtract, color, depth);
+        await AssertLit(ReadPixels(color), 16, "subtracted opacity composite");
+        await AssertLit(ReadPixels(color), 24, "subtracted opacity composite");
+
+        using var add = new OpenUsdSilkPage(30, 5,
+            SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                composite: SilkCompositeOperator.Add, opacityThreshold: 0.75f), 1);
+        _ = renderer.ApplyAndRender(add, color, depth);
+        await AssertLit(ReadPixels(color), 16, "added opacity composite below cutoff");
+        await AssertShadowed(ReadPixels(color), 24, "added opacity composite above cutoff");
+
+        using var border = new OpenUsdSilkPage(30, 6,
+            SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                uvTranslate: 2, wrap: SilkTextureWrap.Constant, fallback: [0, 0, 0, 0],
+                opacityThreshold: 0.5f), 1);
+        _ = renderer.ApplyAndRender(border, color, depth);
+        await AssertLit(ReadPixels(color), 16, "constant opacity border");
+        await AssertLit(ReadPixels(color), 24, "constant opacity border");
+
+        static SilkDecodedImage decode(string asset, bool _) => asset switch
+        {
+            "A" => new SilkDecodedImage(2, 1, [0, 64, 0, 255, 255, 160, 0, 255]),
+            "B" => HalfOpacityImage(),
+            _ => throw new FileNotFoundException("Unexpected shadow texture.", asset),
+        };
+    }
+
+    internal static async Task MaskedShadowCoverageMatchesColorPassAtCutoff(
+        ISilkGraphicsDevice device, SilkGraphicsBackend backend, bool streaming)
+    {
+        SilkShaderBinaryFormat format = backend == SilkGraphicsBackend.D3D12
+            ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV;
+        var residency = new SilkTextureResidencyOptions(1_048_576, 1_048_576, streaming);
+        SilkMeshRenderOptions options = SilkMeshRenderOptions.Default with
+        {
+            ClearColor = new SilkColor(0, 0, 0, 0),
+            BackfaceCulling = false,
+        };
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        (char Asset, float Threshold, bool? Visible, string Label)[] cases =
+        [
+            ('F', MathF.BitDecrement(0.5f), true, "float just above cutoff"),
+            ('F', 0.5f, true, "float exactly at cutoff"),
+            ('F', MathF.BitIncrement(0.5f), false, "float just below cutoff"),
+            ('U', 128f / 255f, null, "normalized eight-bit boundary"),
+        ];
+        foreach (var testCase in cases)
+        {
+            using var colorRenderer = new SilkMeshRenderer(device, format, decode, textureResidencyOptions: residency);
+            using var shadowRenderer = new SilkMeshRenderer(device, format, decode, textureResidencyOptions: residency);
+            byte[] material = SilkMaterialStreamingTests.Material(
+                'A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                assetName: testCase.Asset, opacityThreshold: testCase.Threshold);
+            using var colorPage = new OpenUsdSilkPage(30, 1,
+                [.. CreateShadowLightFrame(), .. material, .. CreateTexturedCaster()], 3);
+            _ = colorRenderer.ApplyAndRender(colorPage, color, depth, options);
+            byte[] colorPixels = ReadPixels(color);
+            byte colorAlpha = colorPixels[Offset(32) + 3];
+            await Assert.That(colorAlpha is 0 or 255).IsTrue().Because(testCase.Label);
+            bool visible = colorAlpha == 255;
+
+            using var shadowPage = new OpenUsdSilkPage(30, 1,
+                [.. CreateShadowLightFrame(), .. material, .. CreateReceiver(), .. CreateTexturedCaster(),
+                    .. CreateShadow()], 5);
+            _ = shadowRenderer.ApplyAndRender(shadowPage, color, depth, options);
+            byte[] shadowPixels = ReadPixels(color);
+            bool casts = shadowPixels[Offset(20)] < 40;
+            if (casts)
+            {
+                await AssertShadowed(shadowPixels, 20, testCase.Label);
+            }
+            else
+            {
+                await AssertLit(shadowPixels, 20, testCase.Label);
+            }
+            await Assert.That(casts).IsEqualTo(visible).Because(testCase.Label);
+            if (testCase.Visible is bool expected)
+            {
+                await Assert.That(visible).IsEqualTo(expected).Because(testCase.Label);
+            }
+        }
+
+        static SilkDecodedImage decode(string asset, bool _) => asset switch
+        {
+            "F" => HalfOpacityImage(),
+            "U" => new SilkDecodedImage(1, 1, [128, 128, 128, 255]),
+            _ => throw new FileNotFoundException("Unexpected shadow texture.", asset),
+        };
+    }
+
+    private static SilkDecodedImage HalfOpacityImage()
+    {
+        var pixels = new byte[4 * sizeof(float)];
+        BinaryPrimitives.WriteSingleLittleEndian(pixels.AsSpan(0), 0.5f);
+        BinaryPrimitives.WriteSingleLittleEndian(pixels.AsSpan(4), 0.5f);
+        BinaryPrimitives.WriteSingleLittleEndian(pixels.AsSpan(12), 1);
+        return new SilkDecodedImage(1, 1, pixels, SilkTextureFormat.Rgba32Float);
+    }
+
+    internal static async Task MaskedShadowSubmissionRefusalRestoresPriorFrameAndRetries(
+        SilkGraphicsBackend backend, bool streaming, int successfulSubmissions, bool textureAdmission = true)
+    {
+        using var device = new SilkGpuPublicationDevice(SilkDepthCaptureConformance.CreateDevice(backend));
+        var bufferBudget = new SilkGpuBufferBudget(4_194_304);
+        var textureBudget = textureAdmission ? new SilkGpuTextureBudget(67_108_864) : null;
+        bufferBudget.ConfigureDevice(device);
+        textureBudget?.ConfigureDevice(device);
+        var residency = new SilkTextureResidencyOptions(1_048_576, 1_048_576, streaming);
+        SilkShaderBinaryFormat format = backend == SilkGraphicsBackend.D3D12
+            ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV;
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
+        ulong? targetTextureBytes = textureBudget?.Usage.ReservedBytes;
+        ulong? targetReservations = textureBudget?.Usage.ReservationCount;
+        using var renderer = new SilkMeshRenderer(device, format, decode, textureResidencyOptions: residency);
+        using var first = new OpenUsdSilkPage(30, 1,
+        [
+            .. CreateShadowLightFrame(),
+            .. SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                opacityThreshold: 0.5f),
+            .. CreateReceiver(),
+            .. CreateTexturedCaster(),
+            .. CreateShadow(),
+        ], 5);
+        _ = renderer.ApplyAndRender(first, color, depth);
+        byte[] before = ReadPixels(color);
+        await AssertLit(before, 16, "original mask before submission refusal");
+        await AssertShadowed(before, 24, "original mask before submission refusal");
+        ulong rendered = renderer.ShadowMapRenderCount;
+        ulong bufferBytes = bufferBudget.Usage.ReservedBytes;
+        ulong? textureBytes = textureBudget?.Usage.ReservedBytes;
+
+        using var changed = new OpenUsdSilkPage(30, 2,
+            SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                assetName: 'B', opacityThreshold: 0.5f), 1);
+        device.RefuseSubmissionAfter = successfulSubmissions;
+        await Assert.That(() => renderer.ApplyAndRender(changed, color, depth))
+            .Throws<SilkGpuStagingBudgetExceededException>();
+        device.RefuseSubmissionAfter = null;
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered);
+        await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(bufferBytes);
+        if (textureBudget is not null)
+        {
+            await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(textureBytes);
+        }
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(before)).IsTrue();
+        _ = renderer.Render(color, depth);
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(before)).IsTrue();
+
+        _ = renderer.ApplyAndRender(changed, color, depth);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(2ul);
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(rendered + 1);
+        await AssertShadowed(ReadPixels(color), 16, "retried opaque mask");
+        await AssertLit(ReadPixels(color), 24, "retried transparent mask");
+        renderer.Dispose();
+        await Assert.That(bufferBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        if (textureBudget is not null)
+        {
+            await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(targetTextureBytes);
+            await Assert.That(textureBudget.Usage.ReservationCount).IsEqualTo(targetReservations);
+        }
+
+        static SilkDecodedImage decode(string asset, bool _) => asset switch
+        {
+            "A" => new SilkDecodedImage(2, 1, [0, 0, 0, 255, 255, 255, 255, 255]),
+            "B" => new SilkDecodedImage(2, 1, [255, 255, 255, 255, 0, 0, 0, 255]),
+            _ => throw new FileNotFoundException("Unexpected shadow texture.", asset),
+        };
+    }
+
     private static int Offset(int x) => checked(((SampleY * (int)Size) + x) * 4);
 
     /// <summary>
@@ -1193,6 +1712,46 @@ internal static class SilkShadowConformance
             [1, 1, 1, 1]);
 
     private static byte[] CreateCaster(double x) => CreateCaster(x, 0);
+
+    private static byte[] CreateTexturedCaster(
+        ulong instance = 2, double x = 0, string materialPath = "/A", bool secondaryUv = false,
+        bool instanced = false)
+    {
+        byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
+            instanced ? 2ul : instance,
+            Caster,
+            [
+                -0.25f, -0.25f, CasterDepth,
+                 0.25f, -0.25f, CasterDepth,
+                 0.25f,  0.25f, CasterDepth,
+                -0.25f,  0.25f, CasterDepth,
+            ],
+            [0, 2, 1, 0, 3, 2],
+            x, 0, [1, 1, 1, 1], 1, null, null, null,
+            secondaryUv
+                ? [("st", (uint)SilkAttributeSemantic.TexCoord, 2, new float[8]),
+                    ("st1", (uint)SilkAttributeSemantic.TexCoord, 2, [0, 0, 1, 0, 1, 1, 0, 1])]
+                : [("st", (uint)SilkAttributeSemantic.TexCoord, 2, [0, 0, 1, 0, 1, 1, 0, 1])]);
+        mesh = VolumeCommandAuthoring.WithMaterialBinding(mesh, materialPath);
+        if (!instanced)
+        {
+            return mesh;
+        }
+        byte[] path = Encoding.UTF8.GetBytes("/Instancer");
+        var result = new byte[mesh.Length + (2 * path.Length) + 8];
+        mesh.CopyTo(result, 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(4), checked((uint)result.Length));
+        BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(20), 7);
+        BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(24), checked((int)instance));
+        BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(260), checked((uint)path.Length));
+        BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(264), 1);
+        path.CopyTo(result, mesh.Length);
+        int context = mesh.Length + path.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(context), checked((uint)path.Length));
+        BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(context + 4), checked((int)instance));
+        path.CopyTo(result, context + 8);
+        return result;
+    }
 
     private static byte[] CreateCaster(double x, double y) =>
         SilkMeshRendererConformance.CreateMeshCommand(

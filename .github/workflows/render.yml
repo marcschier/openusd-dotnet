@@ -381,7 +381,7 @@ jobs:
             -Project $project `
             -Framework net10.0 `
             -Configuration Release `
-            -MinimumExpectedTests 8 `
+            -MinimumExpectedTests 108 `
             -TestArguments @(
               '--treenode-filter',
               '/*/*/SilkShadowAdmissionTests/*')

@@ -3338,7 +3338,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         string? VolumeKey,
         TextureCacheEntry Entry);
 
-    private readonly record struct TextureDependency(
+    internal readonly record struct TextureDependency(
         string Asset,
         long Length,
         DateTime LastWriteTimeUtc);
@@ -3606,6 +3606,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     /// here would leave a displaced prim drawn from vertices whose verdict the
     /// renderer had thrown away and could not restate. Use
     /// <see cref="RetryFailedTextures(SilkSceneState)"/> to re-resolve them.
+    /// Retained masked shadow maps are rebuilt on the next render so repaired
+    /// opacity textures can change their coverage.
     /// </remarks>
     public void RetryFailedTextures()
     {
@@ -3613,6 +3615,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ClearFailedTextureCache();
         RemoveTextureDiagnostics();
         DiscardDisplacementImages();
+        TextureRetryRevision++;
     }
 
     /// <summary>
@@ -3699,6 +3702,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
         CommitRetryTransaction(transaction);
         RefreshDisplacementDiagnostics(scene);
+        TextureRetryRevision++;
     }
 
     /// <summary>
@@ -3881,6 +3885,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private ulong _bufferAllocationBytes;
     private ulong _bufferWriteBytes;
     private ulong _textureUploadBytes;
+
+    internal ulong TextureRetryRevision { get; private set; }
 
     /// <summary>Prepares all changed mesh resources before publishing a scene delta.</summary>
     /// <remarks>
@@ -6877,7 +6883,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         return result.ToArray();
     }
 
-    private static bool DependenciesChanged(TextureDependency[]? dependencies)
+    internal static bool DependenciesChanged(TextureDependency[]? dependencies)
     {
         if (dependencies is null)
         {

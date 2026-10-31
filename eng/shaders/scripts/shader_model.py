@@ -106,6 +106,7 @@ REQUIRED_CHECKED_INPUTS = (
     "eng/shaders/prepare-metal-library.ps1",
     "eng/shaders/select-xcode.ps1",
     "eng/shaders/shader-manifest.json",
+    "eng/shaders/sources/material.surface.slang",
     "eng/shaders/test-checked-corruption.ps1",
     "eng/shaders/test-checked-input-line-endings.ps1",
     "eng/shaders/test-expand-verified-archive.ps1",

@@ -1096,25 +1096,24 @@ Raster shadow maps cover authored UsdLuxDistantLights and zero-radius UsdLuxSphe
 greater than 0 and less than 90 degrees. The cone angle is the half-angle used by the shading cutoff; wider cones,
 unshaped point lights and finite-radius spheres need other projections or multiple maps. hdSilk derives one bounded
 orthographic descriptor for each supported distant light and one perspective descriptor for each supported sphere spot
-from the world bounds of the published casters. It carries the descriptors on the ABI v19 SHADOW command with map index,
-square power-of-two resolution, depth bias, world-space normal bias and PCF radius; the table is compared and published
-whole, so an unchanged scene publishes no command and a consumer keeps every retained map. Managed Silk retains the
-table, allocates one bounded shadow atlas, renders supported casters from light space through a dedicated depth-only
-pipeline family that binds no colour attachment, expands perspective frusta for prepared caster displacement, and
-samples the atlas with a nine-tap filter in every checked mesh fragment permutation. collection:shadowLink is resolved
-independently of collection:lightLink, as UsdLux defines them, so an unlit or off-screen blocker can still cast; a prim
-the shadow collection excludes is not drawn into that light's map, while receiving is not restricted by shadowLink. A
-UsdPreviewSurface caster with constant opacity and a positive opacityThreshold is omitted without an unsupported-caster
-diagnostic when its opacity is below the threshold, and casts a solid shadow at or above the threshold; omitted opacity
-defaults to one. Opacity textures, blended constant opacity without a positive threshold, and positive thresholds on
-other material kinds remain unsupported and are reported as OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED against the prim
-path. The depth-only program binds no material and cannot reproduce variable or blended coverage; unsupported casters
-remain lit and still receive shadows. A retained map is reused byte for byte until the descriptor table, caster
-geometry, material, caster restriction, or device generation changes, and is released when the table retires. A spot
-whose caster bounds cannot fit in a finite perspective frustum is rejected. The table is bounded at four maps of at most
-2048 texels; unsupported light shapes, scenes with no caster extent, map-budget overflow, and devices that cannot record
-a depth-only pass are reported as OPENUSD_SILK_SHADOW_UNSUPPORTED against the named light. Metal is source-complete and
-unclaimed: it reports no raster-shadow capability, so it allocates no map and diagnoses every shadow-enabled light
+from the world bounds of the published casters. The ABI v19 SHADOW command carries map index, resolution, depth bias,
+world-space normal bias and PCF radius; an unchanged table publishes no command. Managed Silk retains one bounded shadow
+atlas, renders supported casters through opaque or masked depth-only pipelines, expands perspective frusta for prepared
+caster displacement, and samples the atlas with a nine-tap filter. collection:shadowLink restricts casters independently
+of collection:lightLink and does not restrict receiving. A UsdPreviewSurface caster with a positive opacityThreshold
+casts where constant or textured opacity is at or above the threshold. Masked sampling shares the colour pass's UV
+transforms, channels, scale and bias, UDIM addressing, constant borders and composite operation. Texture-driven opacity
+or blended constant opacity without a positive threshold, and positive thresholds on other material kinds, remain
+unsupported and are reported as OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED; those casters remain lit and still receive
+shadows. A retained map is reused until its descriptor table, caster geometry, material, caster restriction, device
+generation, captured opacity-image dependencies or explicit failed-texture retry changes. Dependency checks detect
+in-place edits to resolved images and UDIM tiles by existence, length and last-write time, but do not discover new UDIM
+tiles or automatically recover failed fallbacks. Admitted replacement failures preserve the prior map and texture
+ownership. A spot whose caster bounds cannot fit in a finite perspective frustum is rejected. The table is bounded at
+four maps of at most 2048 texels; unsupported light shapes, scenes with no caster extent, map-budget overflow, and
+devices that cannot record a depth-only pass are reported as OPENUSD_SILK_SHADOW_UNSUPPORTED against the named light.
+Metal is source-complete and unclaimed: it reports no raster-shadow capability, so it allocates no map and diagnoses
+every shadow-enabled light
 
 ### `dome-light-linking`
 

@@ -129,6 +129,12 @@
                       LogicalName="OpenUsd.Rendering.Silk.Shaders.shadow.vertex.reflection.json" />
     <EmbeddedResource Include="..\..\eng\shaders\checked\shadow.fragment.reflection.json"
                       LogicalName="OpenUsd.Rendering.Silk.Shaders.shadow.fragment.reflection.json" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\shadow.mask.*.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\shadow.mask.*.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\shadow.mask.*.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\eng\shaders\checked\normal.vertex.dxil"
                       LogicalName="OpenUsd.Rendering.Silk.Shaders.normal.vertex.dxil" />
     <EmbeddedResource Include="..\..\eng\shaders\checked\normal.fragment.dxil"

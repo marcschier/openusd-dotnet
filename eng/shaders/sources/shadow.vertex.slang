@@ -22,6 +22,21 @@ struct ShadowVertexOutput
     float4 position : SV_Position;
 };
 
+struct ShadowMaskedVertexInput
+{
+    float3 position : POSITION;
+    float3 normal : NORMAL;
+    float2 texCoord : TEXCOORD0;
+    float2 texCoord1 : TEXCOORD1;
+};
+
+struct ShadowMaskedVertexOutput
+{
+    float4 position : SV_Position;
+    float2 texCoord : TEXCOORD0;
+    float2 texCoord1 : TEXCOORD1;
+};
+
 struct ShadowInstanceParameters
 {
     float4x4 objectToLightClip;
@@ -39,5 +54,18 @@ ShadowVertexOutput shadowVertexMain(
     ShadowInstanceParameters instance = shadowInstanceParameters[instanceId];
     ShadowVertexOutput output;
     output.position = mul(instance.objectToLightClip, float4(input.position, 1.0));
+    return output;
+}
+
+[shader("vertex")]
+ShadowMaskedVertexOutput shadowMaskedVertexMain(
+    ShadowMaskedVertexInput input,
+    uint instanceId : SV_InstanceID)
+{
+    ShadowInstanceParameters instance = shadowInstanceParameters[instanceId];
+    ShadowMaskedVertexOutput output;
+    output.position = mul(instance.objectToLightClip, float4(input.position, 1.0));
+    output.texCoord = input.texCoord;
+    output.texCoord1 = input.texCoord1;
     return output;
 }

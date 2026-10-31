@@ -829,6 +829,24 @@ public readonly record struct SilkBindingLayoutDescriptor(
         ]
     };
 
+    internal static SilkBindingLayoutDescriptor ShadowMaskedParameters => ShadowParameters with
+    {
+        MaterialSlots =
+        [
+            .. ShadowParameters.MaterialSlots,
+            new(0, SurfaceParametersBinding, SilkBindingKind.StorageBuffer, 0,
+                SilkShaderStageVisibility.Fragment),
+            new(0, OpacitySamplerBinding, SilkBindingKind.Sampler, 0,
+                SilkShaderStageVisibility.Fragment),
+            new(0, OpacityTextureBinding, SilkBindingKind.SampledTexture, 0,
+                SilkShaderStageVisibility.Fragment),
+            new(0, CompositeSamplerBinding, SilkBindingKind.Sampler, 0,
+                SilkShaderStageVisibility.Fragment),
+            new(0, CompositeTextureBinding, SilkBindingKind.SampledTexture, 0,
+                SilkShaderStageVisibility.Fragment)
+        ]
+    };
+
     /// <summary>
     /// Creates the world-space normal capture layout.
     /// </summary>
@@ -1431,11 +1449,12 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkVertexLayoutDescriptor vertexLayout,
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
-        SilkCullMode cullMode = SilkCullMode.None)
+        SilkCullMode cullMode = SilkCullMode.None,
+        bool masked = false)
     {
         DeviceGenerationKey generation = ReadDeviceGeneration(_device);
         PipelineCacheKey key = new(
-            "shadow-caster-depth-only",
+            masked ? "shadow-caster-masked" : "shadow-caster-depth-only",
             CreateVertexLayoutKey(vertexLayout),
             colorFormat,
             depthFormat,
@@ -1457,7 +1476,7 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
 
             if (!_entries.TryGetValue(key, out CachedPipelineEntry? entry))
             {
-                entry = CreateShadowEntry(vertexLayout, colorFormat, depthFormat, cullMode);
+                entry = CreateShadowEntry(vertexLayout, colorFormat, depthFormat, cullMode, masked);
                 _entries.Add(key, entry);
             }
 
@@ -1644,7 +1663,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkVertexLayoutDescriptor vertexLayout,
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
-        SilkCullMode cullMode)
+        SilkCullMode cullMode,
+        bool masked)
     {
         ISilkGraphicsShaderModule? vertexShader = null;
         ISilkGraphicsShaderModule? fragmentShader = null;
@@ -1654,11 +1674,17 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         try
         {
             vertexShader = _device.CreateShaderModule(
-                SilkCheckedShaderAssets.LoadShadowVertex(_shaderFormat));
+                masked
+                    ? SilkCheckedShaderAssets.LoadMaskedShadowVertex(_shaderFormat)
+                    : SilkCheckedShaderAssets.LoadShadowVertex(_shaderFormat));
             fragmentShader = _device.CreateShaderModule(
-                SilkCheckedShaderAssets.LoadShadowFragment(_shaderFormat));
+                masked
+                    ? SilkCheckedShaderAssets.LoadMaskedShadowFragment(_shaderFormat)
+                    : SilkCheckedShaderAssets.LoadShadowFragment(_shaderFormat));
             bindingLayout = _device.CreateBindingLayout(
-                SilkBindingLayoutDescriptor.ShadowParameters);
+                masked
+                    ? SilkBindingLayoutDescriptor.ShadowMaskedParameters
+                    : SilkBindingLayoutDescriptor.ShadowParameters);
             program = _device.CreateShaderProgram(new SilkShaderProgramDescriptor(
                 vertexShader,
                 fragmentShader,
@@ -2148,6 +2174,22 @@ public static partial class SilkCheckedShaderAssets
             SilkShaderStage.Fragment,
             format,
             "shadowFragmentMain");
+
+    internal static SilkShaderModuleDescriptor LoadMaskedShadowVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModule(
+            "shadow.mask",
+            SilkShaderStage.Vertex,
+            format,
+            "shadowMaskedVertexMain");
+
+    internal static SilkShaderModuleDescriptor LoadMaskedShadowFragment(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModule(
+            "shadow.mask",
+            SilkShaderStage.Fragment,
+            format,
+            "shadowMaskedFragmentMain");
 
     /// <summary>Loads the checked world-space normal capture vertex module.</summary>
     public static SilkShaderModuleDescriptor LoadNormalVertex(

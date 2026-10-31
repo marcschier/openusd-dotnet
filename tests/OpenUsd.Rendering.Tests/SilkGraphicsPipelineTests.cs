@@ -631,6 +631,35 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(transparent.Descriptor.DepthWriteEnabled).IsFalse();
     }
 
+    [Test]
+    [Arguments(SilkShaderBinaryFormat.Dxil)]
+    [Arguments(SilkShaderBinaryFormat.SpirV)]
+    public async Task ShadowPipelineSeparatesOpaqueAndMaskedBindings(SilkShaderBinaryFormat format)
+    {
+        using var device = new CountingPipelineDevice();
+        using var cache = new SilkGraphicsPipelineCache(device, format);
+        using ISilkGraphicsPipeline opaque = cache.GetOrCreateShadowPipeline(
+            SilkVertexLayoutDescriptor.PositionNormalTexCoord,
+            SilkTextureFormat.Rgba8Unorm, SilkTextureFormat.D32Float);
+        using ISilkGraphicsPipeline masked = cache.GetOrCreateShadowPipeline(
+            SilkVertexLayoutDescriptor.PositionNormalTexCoord,
+            SilkTextureFormat.Rgba8Unorm, SilkTextureFormat.D32Float, masked: true);
+        using ISilkGraphicsPipeline maskedAgain = cache.GetOrCreateShadowPipeline(
+            SilkVertexLayoutDescriptor.PositionNormalTexCoord,
+            SilkTextureFormat.Rgba8Unorm, SilkTextureFormat.D32Float, masked: true);
+
+        await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
+        await Assert.That(opaque.Descriptor.DepthOnly).IsTrue();
+        await Assert.That(masked.Descriptor.DepthOnly).IsTrue();
+        await Assert.That(opaque.Descriptor.Program.BindingLayout.Descriptor.MaterialSlots
+            .Select(static slot => slot.Binding).SequenceEqual([6u])).IsTrue();
+        await Assert.That(masked.Descriptor.Program.BindingLayout.Descriptor.MaterialSlots
+            .Select(static slot => slot.Binding).SequenceEqual([6u, 7u, 16u, 17u, 28u, 29u])).IsTrue();
+        await Assert.That(maskedAgain.Descriptor.Program.BindingLayout.Descriptor.MaterialSlots.Count).IsEqualTo(6);
+        await Assert.That(SilkCheckedShaderAssets.LoadMaskedShadowVertex(format).Code.IsEmpty).IsFalse();
+        await Assert.That(SilkCheckedShaderAssets.LoadMaskedShadowFragment(format).Code.IsEmpty).IsFalse();
+    }
+
     /// <summary>
     /// The pipeline descriptor accepts every cull mode the renderer can resolve,
     /// and still rejects an unknown one.

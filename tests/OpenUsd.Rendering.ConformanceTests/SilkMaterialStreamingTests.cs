@@ -2306,7 +2306,7 @@ public sealed class SilkMaterialStreamingTests
             checked((uint)commands.Count));
     }
 
-    private static byte[] Material(
+    internal static byte[] Material(
         char name, bool transparent, bool normalMap = false, bool multipleMaps = false, bool extended = false,
         SilkMaterialParameter? scalarParameter = null, SilkCompositeOperator composite = SilkCompositeOperator.None,
         bool udim = false, float uvTranslate = 0, char? assetName = null,
@@ -2314,7 +2314,9 @@ public sealed class SilkMaterialStreamingTests
         bool promotedNormals = false, SilkTextureWrap wrap = SilkTextureWrap.Repeat, bool normalScalarMaps = false,
         bool flipNormalGreen = false, bool emissiveOnly = false, uint colorComponents = 3,
         string uvPrimvar = "st", string secondaryUvPrimvar = "",
-        uint alternateUvMask = 0, float alternateUvTranslate = 0, float[]? fallback = null)
+        uint alternateUvMask = 0, float alternateUvTranslate = 0, float[]? fallback = null,
+        float? opacityThreshold = null, bool diffuseAndOpacity = false,
+        SilkTextureChannel opacityChannel = SilkTextureChannel.R, float? opacityScale = null, float? opacityBias = null)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
@@ -2324,13 +2326,19 @@ public sealed class SilkMaterialStreamingTests
         writer.Write(VolumeCommandAuthoring.ComputeStableHash(path));
         writer.Write((uint)path.Length);
         writer.Write((uint)(promotedNormals ? SilkSurfaceKind.MdlDistilled : SilkSurfaceKind.PreviewSurface));
-        writer.Write(promotedNormals ? 3u : 1u);
-        writer.Write(normalScalarMaps ? 5u :
+        writer.Write((promotedNormals ? 3u : 1u) + (opacityThreshold.HasValue ? 1u : 0u));
+        writer.Write(normalScalarMaps ? 5u : diffuseAndOpacity ? 2u :
             multipleMaps || vectorNormals ? 3u : composite != SilkCompositeOperator.None ? 2u : 1u);
         writer.Write(Encoding.UTF8.GetBytes(path));
         writer.Write((uint)SilkMaterialParameter.Opacity);
         writer.Write(1u);
         writer.Write(transparent ? 0.5f : 1f);
+        if (opacityThreshold is float threshold)
+        {
+            writer.Write((uint)SilkMaterialParameter.OpacityThreshold);
+            writer.Write(1u);
+            writer.Write(threshold);
+        }
         if (promotedNormals)
         {
             writer.Write((uint)SilkMaterialParameter.DetailUvRow0);
@@ -2349,6 +2357,7 @@ public sealed class SilkMaterialStreamingTests
         SilkMaterialParameter[] parameters = normalScalarMaps
             ? [SilkMaterialParameter.DiffuseColor, SilkMaterialParameter.Normal, SilkMaterialParameter.DetailNormal,
                 SilkMaterialParameter.Roughness, SilkMaterialParameter.Metallic]
+            : diffuseAndOpacity ? [SilkMaterialParameter.DiffuseColor, SilkMaterialParameter.Opacity]
             : vectorNormals
             ? [emissiveOnly ? SilkMaterialParameter.EmissiveColor : SilkMaterialParameter.DiffuseColor,
                 SilkMaterialParameter.Normal, SilkMaterialParameter.DetailNormal]
@@ -2362,7 +2371,9 @@ public sealed class SilkMaterialStreamingTests
         {
             byte[] asset = Encoding.UTF8.GetBytes(assetPath ?? (normalScalarMaps && map > 2 ? "A" : udim ? "A<UDIM>" :
                 ((char)(normalMap ? 'N' : (assetName ?? name) + map)).ToString()));
-            bool scalar = scalarParameter is not null ||
+            bool scalar = (scalarParameter is not null &&
+                !(diffuseAndOpacity && parameters[map] == SilkMaterialParameter.DiffuseColor)) ||
+                parameters[map] == SilkMaterialParameter.Opacity ||
                 parameters[map] is SilkMaterialParameter.Roughness or SilkMaterialParameter.Metallic;
             writer.Write((uint)parameters[map]);
             writer.Write((uint)wrap);
@@ -2377,6 +2388,11 @@ public sealed class SilkMaterialStreamingTests
             float gain = (extended && (!vectorNormals || map == 0)) || promotedNormal ? 2 : 1;
             float bias = promotedNormal ? -0.5f :
                 scalarParameter is null || !extended ? 0 : -0.75f;
+            if (parameters[map] == SilkMaterialParameter.Opacity)
+            {
+                gain = opacityScale ?? gain;
+                bias = opacityBias ?? bias;
+            }
             float[] fallbackValues = fallback ?? [1, 1, 1, 1];
             foreach (float value in new float[] { gain, promotedNormal && flipNormalGreen ? -gain : gain,
                 promotedNormal ? 1 : gain, 1, bias, promotedNormal && flipNormalGreen ? 1.5f : bias,
@@ -2385,7 +2401,8 @@ public sealed class SilkMaterialStreamingTests
             {
                 writer.Write(value);
             }
-            writer.Write((uint)(scalar ? SilkTextureChannel.R : SilkTextureChannel.Rgb));
+            writer.Write((uint)(parameters[map] == SilkMaterialParameter.Opacity ? opacityChannel :
+                scalar ? SilkTextureChannel.R : SilkTextureChannel.Rgb));
             writer.Write((uint)(map == 1 ? composite : SilkCompositeOperator.None));
             writer.Write(map == 1 && composite == SilkCompositeOperator.Mix ? 0.375f : 0f);
             writer.Write(asset);

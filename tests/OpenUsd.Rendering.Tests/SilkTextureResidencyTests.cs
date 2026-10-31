@@ -1127,7 +1127,7 @@ public sealed class SilkTextureResidencyTests
     }
 
     [Test]
-    public async Task TextureDrivenOpacityRemainsAnUnsupportedShadowCaster()
+    public async Task TextureDrivenOpacityRequiresAnAuthoredShadowCutoff()
     {
         const string materialPath = "/World/Materials/Cutout";
         const string meshPath = "/World/Cutout";
@@ -1140,6 +1140,15 @@ public sealed class SilkTextureResidencyTests
         byte[] mesh = CreateMeshUpsert(meshPath, materialPath, primId: 7);
         _ = scene.Apply(Concat(material, mesh), 2, 1);
 
+        await Assert.That(SilkShadowMapCache.ClassifyOpacity(scene, scene.MeshesByPath[(meshPath, 0)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Masked);
+
+        byte[] blendedMaterial = CreateMaterialUpsert(
+            materialPath,
+            SilkSurfaceKind.PreviewSurface,
+            [ScalarTexture(SilkMaterialParameter.Opacity, "opacity.png", SilkTextureChannel.R)],
+            []);
+        _ = scene.Apply(blendedMaterial, 1, 2);
         await Assert.That(SilkShadowMapCache.ClassifyOpacity(scene, scene.MeshesByPath[(meshPath, 0)]))
             .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
     }
