@@ -189,6 +189,20 @@ public sealed class VolumeRenderingConformanceTests
     }
 
     [Test]
+    public async Task TimeSampledVdbFilePathFollowsSyncTime()
+    {
+        await VerifyTimeSampledVdbSelection(
+            "path-vulkan", VulkanSilkGraphicsDevice.Create, animateGridName: false).ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task TimeSampledVdbGridNameFollowsSyncTime()
+    {
+        await VerifyTimeSampledVdbSelection(
+            "grid-vulkan", VulkanSilkGraphicsDevice.Create, animateGridName: true).ConfigureAwait(false);
+    }
+
+    [Test]
     public async Task SampledOpenVdbDensityAgreesBetweenD3D12AndVulkan()
     {
         // Self-divergence alone cannot tell a correctly sampled volume from a
@@ -531,6 +545,177 @@ public sealed class VolumeRenderingConformanceTests
 
         await VerifyExternalNamedDensityField(
             backendName, createDevice, asset, sampled, decoded!).ConfigureAwait(false);
+        await VerifyTimeSampledVdbSelection(
+            $"path-{backendName}", createDevice, animateGridName: false).ConfigureAwait(false);
+        await VerifyTimeSampledVdbSelection(
+            $"grid-{backendName}", createDevice, animateGridName: true).ConfigureAwait(false);
+    }
+
+    private static async Task VerifyTimeSampledVdbSelection(
+        string name,
+        Func<ISilkGraphicsDevice> createDevice,
+        bool animateGridName)
+    {
+        string firstAsset = ResolveOpenVdbAsset("sampled_density.vdb");
+        string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
+        // This fixture contains those two unchanged grids under the names density and shifted.
+        string multiGridAsset = animateGridName
+            ? ResolveOpenVdbAsset("sampled_density_grid_variants.vdb")
+            : firstAsset;
+        ParityImage firstReference = CaptureStage(
+            WriteVdbStage($"volume-{name}-first", firstAsset, 0, 1, sampleDensity: true),
+            createDevice,
+            out byte[]? firstDensity);
+        if (!TryGetMeanDensity(firstDensity, out _))
+        {
+            Skip.Test("hioOpenVDB reader is unavailable in the native profile.");
+        }
+        ParityImage shiftedReference = CaptureStage(
+            WriteVdbStage($"volume-{name}-shifted", shiftedAsset, 0, 1, sampleDensity: true),
+            createDevice,
+            out byte[]? shiftedDensity);
+        await Assert.That(shiftedDensity).IsNotNull();
+        await Assert.That(firstDensity!.SequenceEqual(shiftedDensity!)).IsFalse()
+            .Because("the two grids must supply different decoded values.");
+        await Assert.That(ImageDelta.Compare(firstReference, shiftedReference).MeanChannelDelta)
+            .IsGreaterThanOrEqualTo(MinimumTranslatedMeanDelta)
+            .Because("the two grids must produce distinguishable rendered references.");
+        ParityImage uniformReference = CaptureStage(
+            WriteVdbStage($"volume-{name}-uniform", firstAsset, 0, 1, sampleDensity: false),
+            createDevice);
+
+        string stagePath = Path.Combine(StageDirectory, $"volume-{name}-animated.usda");
+        File.WriteAllText(
+            stagePath,
+            CreateTimeSampledVdbStage(firstAsset, shiftedAsset, multiGridAsset, animateGridName),
+            new UTF8Encoding(false));
+        byte[] source = File.ReadAllBytes(stagePath);
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stagePath);
+        using ISilkGraphicsDevice device = createDevice();
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                checked((uint)Width),
+                checked((uint)Height),
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(checked((uint)Width), checked((uint)Height)));
+        using var renderer = new SilkMeshRenderer(device);
+        var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
+        var camera = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []);
+        const string materialPath = "/World/Vdb/Volume/__hdSilkVolumeMaterial";
+
+        async Task assertPage(OpenUsdSilkPage page, ParityImage expectedImage, byte[]? expectedDensity)
+        {
+            _ = renderer.ApplyAndRender(page, color, depth, options);
+            _ = renderer.ApplyAndRender(page, color, depth, options);
+            SilkMaterialTexture? texture = renderer.Scene.Materials[materialPath]
+                .GetTexture(SilkMaterialParameter.VolumeDensity);
+            if (expectedDensity is null)
+            {
+                await Assert.That(texture).IsNull()
+                    .Because("a missing selected file or grid must use uniform density.");
+            }
+            else
+            {
+                await Assert.That(texture).IsNotNull();
+                await Assert.That(ReadVolumeDensity(texture!).SequenceEqual(expectedDensity)).IsTrue()
+                    .Because("the sampled file and grid must provide the selected field's decoded values.");
+            }
+            byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+            color.ReadbackForTesting(pixels);
+            var actualImage = new ParityImage(Width, Height, pixels);
+            await Assert.That(ImageDelta.Compare(expectedImage, actualImage).MaximumChannelDelta)
+                .IsEqualTo((byte)0)
+                .Because("the selected field must match the independent static reference.");
+        }
+
+        async Task assertAt(double time, ParityImage expectedImage, byte[]? expectedDensity)
+        {
+            using OpenUsdSilkPage page = session.Sync(Width, Height, time, camera);
+            await assertPage(page, expectedImage, expectedDensity).ConfigureAwait(false);
+        }
+
+        using OpenUsdSilkPage firstPage = session.Sync(Width, Height, 1, camera);
+        await assertPage(firstPage, firstReference, firstDensity).ConfigureAwait(false);
+        await assertAt(1.5, firstReference, firstDensity).ConfigureAwait(false);
+        await assertAt(2, shiftedReference, shiftedDensity).ConfigureAwait(false);
+
+        ParityImage deferredFirst = CapturePage(firstPage, createDevice, out byte[]? deferredDensity);
+        await Assert.That(deferredDensity!.SequenceEqual(firstDensity!)).IsTrue()
+            .Because("a later sync must not change an earlier page's selected field.");
+        await Assert.That(ImageDelta.Compare(firstReference, deferredFirst).MaximumChannelDelta)
+            .IsEqualTo((byte)0);
+
+        await assertAt(3, uniformReference, expectedDensity: null).ConfigureAwait(false);
+        await assertAt(4, firstReference, firstDensity).ConfigureAwait(false);
+        await assertAt(5, firstReference, firstDensity).ConfigureAwait(false);
+        await assertAt(2, shiftedReference, shiftedDensity).ConfigureAwait(false);
+        await assertAt(1, firstReference, firstDensity).ConfigureAwait(false);
+        await Assert.That(File.ReadAllBytes(stagePath).SequenceEqual(source)).IsTrue();
+        renderer.Dispose();
+        await Assert.That(renderer.GpuResources.Statistics.TextureResidentGpuBytes).IsEqualTo(0UL);
+        await Assert.That(renderer.GpuResources.Statistics.TextureResidentDecodedBytes).IsEqualTo(0UL);
+    }
+
+    private static string CreateTimeSampledVdbStage(
+        string firstAsset,
+        string shiftedAsset,
+        string multiGridAsset,
+        bool animateGridName)
+    {
+        string firstPath = firstAsset.Replace("\\", "/");
+        string shiftedPath = shiftedAsset.Replace("\\", "/");
+        string selectedPath = (animateGridName ? multiGridAsset : firstAsset).Replace("\\", "/");
+        string missingPath = Path.Combine(StageDirectory, "missing-animated-field.vdb").Replace("\\", "/");
+        string fileSamples = animateGridName
+            ? string.Empty
+            : $$"""
+                asset filePath.timeSamples = {
+                    1: @{{firstPath}}@,
+                    2: @{{shiftedPath}}@,
+                    3: @{{missingPath}}@,
+                    4: @{{firstPath}}@
+                }
+                """;
+        string gridSamples = animateGridName
+            ? """
+                token fieldName.timeSamples = {
+                    1: "density",
+                    2: "shifted",
+                    3: "missing",
+                    4: "density"
+                }
+                """
+            : string.Empty;
+        return $$"""
+            #usda 1.0
+            (
+                defaultPrim = "World"
+                startTimeCode = 1
+                endTimeCode = 5
+                upAxis = "Y"
+            )
+            def Xform "World"
+            {
+                def Xform "Vdb"
+                {
+                    def Volume "Volume"
+                    {
+                        custom float hdsilk:density = 1
+                        custom bool hdsilk:sampleDensity = true
+                        rel field:density = </World/Vdb/Volume/Density>
+                        def OpenVDBAsset "Density"
+                        {
+                            asset filePath = @{{selectedPath}}@
+                            {{fileSamples}}
+                            token fieldName = "density"
+                            {{gridSamples}}
+                        }
+                    }
+                }
+            }
+            """;
     }
 
     private static async Task VerifyTimeSampledVolumeDensity()

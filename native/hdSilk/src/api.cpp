@@ -899,6 +899,7 @@ void RetirePreviousVolumes(SilkSessionState* state)
 bool ResolveDensityField(
     const UsdStageRefPtr& stage,
     const UsdVolVolume& volume,
+    UsdTimeCode time,
     SdfPath* fieldPath,
     SdfAssetPath* assetPath)
 {
@@ -918,7 +919,7 @@ bool ResolveDensityField(
     }
 
     SdfAssetPath filePath;
-    if (!asset.GetFilePathAttr().Get(&filePath) || filePath.GetAssetPath().empty())
+    if (!asset.GetFilePathAttr().Get(&filePath, time) || filePath.GetAssetPath().empty())
     {
         return false;
     }
@@ -1038,7 +1039,7 @@ bool TryCreateVolumeTexture(
 
     const UsdVolOpenVDBAsset asset(fieldPrim);
     TfToken fieldName("density");
-    asset.GetFieldNameAttr().Get(&fieldName);
+    asset.GetFieldNameAttr().Get(&fieldName, time);
     VolumeFieldBuffer field;
     if (!TryReadVolumeWithHio(resolvedPath, fieldName.GetString(), &field))
     {
@@ -1195,7 +1196,7 @@ void PublishVolumes(
 
         SdfPath fieldPath;
         SdfAssetPath assetPath;
-        if (!ResolveDensityField(state->stage, volume, &fieldPath, &assetPath))
+        if (!ResolveDensityField(state->stage, volume, time, &fieldPath, &assetPath))
         {
             TF_WARN(
                 "hdSilk skipped volume '%s': no usable density OpenVDBAsset field or file path.",

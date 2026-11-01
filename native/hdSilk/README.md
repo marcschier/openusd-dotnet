@@ -116,15 +116,23 @@ filtered before field loading.
 
 The `field:density` relationship selects one `UsdVolOpenVDBAsset`; its target
 can be outside the volume, and its `fieldName` selects the grid inside the VDB.
-Other field relationships do not add shading. The volume's `hdsilk:density`
-and `hdsilk:sampleDensity` attributes are read at the requested sync time.
+Other field relationships do not add shading. The field's `filePath` and
+`fieldName` and the volume's `hdsilk:density` and `hdsilk:sampleDensity`
+attributes are read at the requested sync time. USD holds path and token samples
+between their authored times.
 Finite negative density clamps to zero, and non-finite density rejects the sync.
 The defaults are density one and sampling enabled.
 
 An unavailable VDB or unreadable grid uses uniform density with a native warning;
 a later sync retries sampling. A missing usable density field or file path skips
-the volume with a warning. The file path and grid name are still read at default
-time.
+the volume with a warning.
+
+The animated-selection tests compare decoded values and pixels with the separate
+`sampled_density.vdb` and `sampled_density_shifted.vdb` fixtures. The
+`sampled_density_grid_variants.vdb` fixture combines those two grids with an OpenVDB
+writer and names them `density` and `shifted`; the tests compare its decoded values
+against the original files. The backend gates exercise held samples, missing values,
+recovery and retained earlier pages.
 
 Each sampled field is decoded into private storage owned by the native page and
 its retained leases. Its texture asset begins with `hdsilk-volume:` and names the
