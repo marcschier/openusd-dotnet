@@ -26,7 +26,7 @@ namespace
 {
 using namespace hdsilk_direct_lights_test;
 
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 31u);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 32u);
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 7u);
 static_assert(OPENUSD_SILK_SCENE_INGESTION_VERSION == 1u);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128u);
