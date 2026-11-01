@@ -303,9 +303,15 @@ producer's guarantee independently and reject ambiguous metadata.
 A separate Storm-only reference renders four Ptex faces with authored offsets
 and compares them with reordered topology and indexed offsets. Individual-face
 and missing-texture controls demonstrate that the reference responds to those
-inputs. In this Loop-mesh fixture, an authored uniform `ptexFaceIndex` does not
-remap the faces; that observation is not a general rule for other producers or
-shaders. None of the helpers has a renderer caller; hdSilk does not publish
+inputs. A second reference uses four isolated quad faces and constant per-face
+colours. It checks authored Catmull-Clark and bilinear schemes at Storm's default
+complexity: offsets match reordered topology, and an authored uniform
+`ptexFaceIndex` leaves both the baseline and offset renders unchanged. The Loop
+fixture gives the same face-index observation. These references do not establish
+face-index behavior for other producers or shaders, refined corner mapping, or
+filtering across Ptex face boundaries. The generator in
+`test-assets/native-profile/ptex/generate_quad_fixture.cpp` creates the quad
+Ptex file. None of the helpers has a renderer caller; hdSilk does not publish
 Ptex coordinates or sample Ptex textures.
 
 ## Wire format

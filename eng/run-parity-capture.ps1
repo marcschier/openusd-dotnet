@@ -610,6 +610,7 @@ try
     $windowsWglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'PtexQuadReferenceRespondsToOffsetsAndAuthoredFaceIndices',
         'PtexReferenceRespondsToAuthoredFaceOffsets',
         'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
@@ -655,6 +656,7 @@ try
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'PtexQuadReferenceRespondsToOffsetsAndAuthoredFaceIndices',
         'PtexReferenceRespondsToAuthoredFaceOffsets',
         'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
@@ -668,6 +670,7 @@ try
     $linuxGlxTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'PtexQuadReferenceRespondsToOffsetsAndAuthoredFaceIndices',
         'PtexReferenceRespondsToAuthoredFaceOffsets',
         'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
