@@ -2748,6 +2748,8 @@ public sealed class SilkMeshData
     /// the element connectivity, which a deformation never changes. Recomputing it would be
     /// harmless but would hide that a deformed mesh is the same mesh, and the geometry cache
     /// already separates deformed geometry through its own point fingerprint.
+    /// Ptex face IDs and coordinates follow that unchanged topology. The replacement shares
+    /// their arrays and preserves the mapping status, including a refusal.
     /// </para>
     /// <para>
     /// Authored normals are dropped, because they describe the rest pose. Carrying them over shades
@@ -2786,6 +2788,9 @@ public sealed class SilkMeshData
             SubprimUnsupported = SubprimUnsupported,
             PointOriginArray = _pointOrigins,
             CornerEdgeArray = _cornerEdges,
+            PtexMappingStatus = PtexMappingStatus,
+            PtexFaceIndices = _ptexFaceIndices,
+            PtexCoordinates = _ptexCoordinates,
             AuthoredEdgeCount = AuthoredEdgeCount,
             AuthoredPointCount = AuthoredPointCount,
             InstancerPath = InstancerPath,

@@ -447,7 +447,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneState.cs",
-      "sha256": "346bbf7e32419d7b0f815f5f0d9adaf0b286d15fbbe1fbb15a3db632d7b0f785"
+      "sha256": "cf9d45166f2caf7d196d5f158026f90d14f77bd0ab36f5a01a04a1820d0bafac"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSurfaceUniformWriter.cs",
@@ -471,7 +471,7 @@
     },
     {
       "path": "tests/OpenUsd.Package.Tests/RuntimePackageTests.cs",
-      "sha256": "40dc7917e748dae2823f7e98056e3a6382c7176881b6dd286dcdd6406484c2f8"
+      "sha256": "e15432ba02f57f63f5349b0d3c4fa05412fc74781929d98da41f1dc8966893c0"
     }
   ],
   "programs": [

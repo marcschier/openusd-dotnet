@@ -1898,6 +1898,74 @@ openusd_silk_get_page_abi_version(void) noexcept
     return OPENUSD_SILK_PAGE_ABI_VERSION;
 }
 
+namespace
+{
+template <typename TAction>
+openusd_status GuardPtex(openusd_error_buffer* error, TAction&& action) noexcept
+{
+    try
+    {
+        return action();
+    }
+    catch (const std::invalid_argument& exception)
+    {
+        WriteError(error, exception.what());
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& exception)
+    {
+        WriteError(error, exception.what());
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+    catch (...)
+    {
+        WriteError(error, "Unknown native Ptex decode failure.");
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+}
+
+openusd_silk_ptex_decode_info PtexDecodeInfo(const HdSilkPtexDecodedFaces& decoded)
+{
+    return {
+        static_cast<uint32_t>(sizeof(openusd_silk_ptex_decode_info)),
+        OPENUSD_SILK_PTEX_DECODE_VERSION,
+        decoded.meshType,
+        decoded.dataType,
+        decoded.channelCount,
+        decoded.alphaChannel,
+        decoded.fileFaceCount,
+        static_cast<uint32_t>(decoded.faces.size()),
+        decoded.requiredByteCount};
+}
+
+void CopyPtexFaceLayouts(
+    const HdSilkPtexDecodedFaces& decoded,
+    openusd_silk_ptex_face_layout* faces)
+{
+    for (size_t index = 0; index < decoded.faces.size(); ++index)
+    {
+        const HdSilkPtexFaceData& source = decoded.faces[index];
+        openusd_silk_ptex_face_layout& destination = faces[index];
+        destination.struct_size =
+            static_cast<uint32_t>(sizeof(openusd_silk_ptex_face_layout));
+        destination.face_id = source.faceId;
+        destination.width = source.width;
+        destination.height = source.height;
+        destination.row_stride_bytes = source.rowStrideBytes;
+        destination.flags = source.flags;
+        destination.data_offset_bytes = source.dataOffsetBytes;
+        std::copy(
+            source.adjacentFaceIds.begin(),
+            source.adjacentFaceIds.end(),
+            destination.adjacent_face_ids);
+        std::copy(
+            source.adjacentEdgeIds.begin(),
+            source.adjacentEdgeIds.end(),
+            destination.adjacent_edge_ids);
+    }
+}
+}
+
 extern "C" OPENUSD_HDSILK_API openusd_status
 openusd_silk_ptex_decode_faces(
     const char* path,
@@ -1928,7 +1996,7 @@ openusd_silk_ptex_decode_faces(
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
 
-    try
+    return GuardPtex(error, [&]()
     {
         const HdSilkPtexDecodedFaces decoded = HdSilkDecodePtexFacesInto(
             path,
@@ -1940,17 +2008,7 @@ openusd_silk_ptex_decode_faces(
             pixels,
             pixel_capacity);
 
-        openusd_silk_ptex_decode_info result{
-            static_cast<uint32_t>(sizeof(openusd_silk_ptex_decode_info)),
-            OPENUSD_SILK_PTEX_DECODE_VERSION,
-            decoded.meshType,
-            decoded.dataType,
-            decoded.channelCount,
-            decoded.alphaChannel,
-            decoded.fileFaceCount,
-            static_cast<uint32_t>(decoded.faces.size()),
-            decoded.requiredByteCount};
-        *info = result;
+        *info = PtexDecodeInfo(decoded);
 
         if (!decoded.pixelsDecoded)
         {
@@ -1958,44 +2016,52 @@ openusd_silk_ptex_decode_faces(
             return OPENUSD_STATUS_BUFFER_TOO_SMALL;
         }
 
-        for (size_t index = 0; index < decoded.faces.size(); ++index)
-        {
-            const HdSilkPtexFaceData& source = decoded.faces[index];
-            openusd_silk_ptex_face_layout& destination = faces[index];
-            destination.struct_size =
-                static_cast<uint32_t>(sizeof(openusd_silk_ptex_face_layout));
-            destination.face_id = source.faceId;
-            destination.width = source.width;
-            destination.height = source.height;
-            destination.row_stride_bytes = source.rowStrideBytes;
-            destination.flags = source.flags;
-            destination.data_offset_bytes = source.dataOffsetBytes;
-            std::copy(
-                source.adjacentFaceIds.begin(),
-                source.adjacentFaceIds.end(),
-                destination.adjacent_face_ids);
-            std::copy(
-                source.adjacentEdgeIds.begin(),
-                source.adjacentEdgeIds.end(),
-                destination.adjacent_edge_ids);
-        }
+        CopyPtexFaceLayouts(decoded, faces);
         return OPENUSD_STATUS_OK;
-    }
-    catch (const std::invalid_argument& exception)
+    });
+}
+
+extern "C" OPENUSD_HDSILK_API openusd_status
+openusd_silk_ptex_describe_faces(
+    const char* path,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) noexcept
+{
+    if (info == nullptr ||
+        info->struct_size < static_cast<uint32_t>(sizeof(openusd_silk_ptex_decode_info)) ||
+        info->version != OPENUSD_SILK_PTEX_DECODE_VERSION)
     {
-        WriteError(error, exception.what());
+        WriteError(error, "A valid version-1 Ptex decode info packet is required.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
-    catch (const std::exception& exception)
+    if (path == nullptr || path[0] == '\0' || maximum_face_dimension == 0 ||
+        (face_count != 0 && face_ids == nullptr) ||
+        (faces == nullptr && face_capacity != 0))
     {
-        WriteError(error, exception.what());
-        return OPENUSD_STATUS_NATIVE_ERROR;
+        WriteError(error, "The Ptex describe path, limits, and buffer pointers are invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
-    catch (...)
+
+    return GuardPtex(error, [&]()
     {
-        WriteError(error, "Unknown native Ptex decode failure.");
-        return OPENUSD_STATUS_NATIVE_ERROR;
-    }
+        const HdSilkPtexDecodedFaces decoded = HdSilkDescribePtexFaces(
+            path, face_ids, face_count, maximum_face_dimension, maximum_decoded_bytes);
+        *info = PtexDecodeInfo(decoded);
+        if (face_capacity < decoded.faces.size())
+        {
+            WriteError(error, "The Ptex face-layout output buffer is too small.");
+            return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+        }
+
+        CopyPtexFaceLayouts(decoded, faces);
+        return OPENUSD_STATUS_OK;
+    });
 }
 
 openusd_status openusd_silk_session_create_from_stage(

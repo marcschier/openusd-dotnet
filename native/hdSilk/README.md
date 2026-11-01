@@ -328,6 +328,20 @@ info packet. If either output buffer is undersized, the call returns
 `BUFFER_TOO_SMALL` and leaves both data buffers unchanged. Successful calls
 preserve request order and duplicates.
 
+`openusd_silk_ptex_describe_faces` exposes the same face layouts without
+requesting decoded face pixels. It accepts the same face IDs and output limits;
+each reported offset refers to the packed pixel buffer that the corresponding
+decode would produce. A short layout buffer returns `BUFFER_TOO_SMALL`, reports
+the required counts in the info packet and leaves the layout buffer unchanged.
+An empty selection returns texture metadata without a layout buffer.
+
+Each describe or decode call opens the asset independently. A caller that
+discovers neighbors before decoding must compare the decoded layouts with the
+descriptions it used; the asset can change between calls. Matching layouts do
+not prove that the asset identity or its pixel values stayed unchanged. The
+face limit applies to each request, so the caller must also bound the combined
+sampled and neighbor IDs before its final decode.
+
 The byte limit covers only the returned pixel array. It does not bound Ptex
 file-open or decoder allocations, allocator overhead or later GPU storage. This
 entry point passes its path to Ptex unchanged, so non-ASCII Windows path
@@ -346,8 +360,9 @@ fixture gives the same face-index observation. These references do not establish
 face-index behavior for other producers or shaders, refined corner mapping, or
 filtering across Ptex face boundaries. The generator in
 `test-assets/native-profile/ptex/generate_quad_fixture.cpp` creates the quad
-Ptex file. None of the helpers has a renderer caller; hdSilk does not publish
-Ptex coordinates or sample Ptex textures.
+Ptex file. Page ABI 32 publishes the mapping status and, when mapping succeeds,
+one Ptex face ID and three corner coordinates per emitted triangle. The
+renderer does not yet consume those mappings or sample Ptex textures.
 
 ## Wire format
 

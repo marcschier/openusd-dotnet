@@ -3997,6 +3997,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("PAGE_COPY_ACKNOWLEDGEMENT=true");
             await Assert.That(result.Output).Contains("VOLUME_LEASE_EXPORTS=true");
             await Assert.That(result.Output).Contains("PTEX_FACE_DECODE_EXPORT=true");
+            await Assert.That(result.Output).Contains("PTEX_FACE_DESCRIBE_EXPORT=true");
             await Assert.That(result.Output).Contains("VOLUME_BUDGET_ADMISSION=true");
             await Assert.That(result.Output).Contains("COMMAND_STORAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("MATERIAL_STREAMING=true");
@@ -7761,6 +7762,12 @@ public sealed partial class RuntimePackageTests
                                 throw new InvalidOperationException(
                                     "The native package omitted openusd_silk_ptex_decode_faces");
                             }
+                            if (!NativeLibrary.TryGetExport(
+                                volumeLibrary, "openusd_silk_ptex_describe_faces", out _))
+                            {
+                                throw new InvalidOperationException(
+                                    "The native package omitted openusd_silk_ptex_describe_faces");
+                            }
                         }
                         finally
                         {
@@ -7768,6 +7775,7 @@ public sealed partial class RuntimePackageTests
                         }
                         Console.WriteLine("VOLUME_LEASE_EXPORTS=true");
                         Console.WriteLine("PTEX_FACE_DECODE_EXPORT=true");
+                        Console.WriteLine("PTEX_FACE_DESCRIBE_EXPORT=true");
                         using (var volumeBudget = new SilkVolumeFieldBudget(ulong.MaxValue))
                         using (var volumeSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
                         {

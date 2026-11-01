@@ -78,12 +78,19 @@ public sealed class SilkPtexAtlasPackerTests
         using SilkDecodedPtexFaces decoded = CreateDecoded(0, 4, 3, 1, source, adjacent);
 
         using SilkPackedPtexAtlas atlas = SilkPtexAtlasPacker.Pack(decoded, 8);
+        using SilkPackedPtexAtlas selected = SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0 }, 4);
         SilkPtexAtlasTile tile = atlas.Tiles[0];
+        SilkPtexAtlasTile selectedTile = selected.Tiles[0];
         int contentX = Convert.ToInt32(tile.ContentX);
         int contentY = Convert.ToInt32(tile.ContentY);
 
         await Assert.That(ReadPixel(atlas, contentX, contentY - 1)[0]).IsEqualTo(expectedFirst);
         await Assert.That(ReadPixel(atlas, contentX + 1, contentY - 1)[0]).IsEqualTo(expectedSecond);
+        await Assert.That(ReadPixel(selected, (int)selectedTile.ContentX, (int)selectedTile.ContentY - 1)[0])
+            .IsEqualTo(expectedFirst);
+        await Assert.That(ReadPixel(selected, (int)selectedTile.ContentX + 1, (int)selectedTile.ContentY - 1)[0])
+            .IsEqualTo(expectedSecond);
+        await Assert.That(selected.Tiles.Count).IsEqualTo(1);
     }
 
     [Test]
@@ -100,12 +107,19 @@ public sealed class SilkPtexAtlasPackerTests
         using SilkDecodedPtexFaces decoded = CreateDecoded(0, 4, 3, 1, source, adjacent);
 
         using SilkPackedPtexAtlas atlas = SilkPtexAtlasPacker.Pack(decoded, 12);
+        using SilkPackedPtexAtlas selected = SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0 }, 4);
         SilkPtexAtlasTile tile = atlas.Tiles[0];
+        SilkPtexAtlasTile selectedTile = selected.Tiles[0];
         int contentX = Convert.ToInt32(tile.ContentX);
         int contentY = Convert.ToInt32(tile.ContentY);
 
         await Assert.That(ReadPixel(atlas, contentX, contentY - 1)[0]).IsEqualTo((byte)10);
         await Assert.That(ReadPixel(atlas, contentX + 1, contentY - 1)[0]).IsEqualTo((byte)50);
+        await Assert.That(ReadPixel(selected, (int)selectedTile.ContentX, (int)selectedTile.ContentY - 1)[0])
+            .IsEqualTo((byte)10);
+        await Assert.That(ReadPixel(selected, (int)selectedTile.ContentX + 1, (int)selectedTile.ContentY - 1)[0])
+            .IsEqualTo((byte)50);
+        await Assert.That(selected.Tiles.Count).IsEqualTo(1);
     }
 
     [Test]
@@ -144,6 +158,441 @@ public sealed class SilkPtexAtlasPackerTests
             atlas,
             Convert.ToInt32(tile.ContentX) - 1,
             Convert.ToInt32(tile.ContentY) - 1).AsSpan().SequenceEqual(new byte[] { 90, 80, 70, 255 })).IsTrue();
+    }
+
+    [Test]
+    public async Task Pack_SelectedFaceUsesNeighborWithoutPackingItsUnrelatedNeighbors()
+    {
+        FaceSpec source = Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 0, 1, 2);
+        FaceSpec neighbor = Connect(
+            Connect(new FaceSpec(1, 1, 1, [90, 80, 70, 255]), 2, 0, 0), 0, 2, 2);
+        FaceSpec unrelated = new(3, 1, 1, [4, 5, 6, 255], Flags: 8);
+        using SilkDecodedPtexFaces decoded = CreateDecoded(0, 4, 3, 1, source, neighbor, unrelated);
+        var budget = new SilkCpuTextureBudget(36);
+
+        using SilkPackedPtexAtlas atlas = SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0 }, 3, budget);
+        SilkPtexAtlasTile tile = atlas.Tiles[0];
+
+        await Assert.That(atlas.Tiles.Count).IsEqualTo(1);
+        await Assert.That(atlas.Tiles.ContainsKey(1)).IsFalse();
+        await Assert.That(atlas.Tiles.ContainsKey(3)).IsFalse();
+        await Assert.That(atlas.Pixels.Length).IsEqualTo(36);
+        await Assert.That(ReadPixel(atlas, (int)tile.ContentX, (int)tile.ContentY - 1)
+            .AsSpan().SequenceEqual(new byte[] { 90, 80, 70, 255 })).IsTrue();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(36ul);
+        await Assert.That(() => SilkPtexAtlasPacker.Pack(decoded, 16))
+            .Throws<InvalidDataException>()
+            .WithMessageContaining("adjacent face 2");
+    }
+
+    [Test]
+    public async Task Pack_SelectedCornerMatchesClosedAtlasWithoutPackingDependencyFaces()
+    {
+        FaceSpec source = Connect(Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 0, 2, 2), 3, 1, 1);
+        FaceSpec left = Connect(Connect(new FaceSpec(1, 1, 1, [4, 5, 6, 255]), 1, 0, 3), 0, 3, 2);
+        FaceSpec bottom = Connect(Connect(new FaceSpec(2, 1, 1, [7, 8, 9, 255]), 2, 0, 0), 3, 3, 1);
+        FaceSpec diagonal = Connect(Connect(new FaceSpec(3, 1, 1, [90, 80, 70, 255]), 2, 1, 0), 1, 2, 3);
+        FaceSpec extendedDiagonal = Connect(diagonal, 0, 4, 2);
+        FaceSpec unrelated = new(5, 1, 1, [10, 11, 12, 255]);
+        using SilkDecodedPtexFaces closed = CreateDecoded(0, 4, 3, 1, source, left, bottom, diagonal);
+        using SilkDecodedPtexFaces partial = CreateDecoded(
+            0, 4, 3, 1, source, left, bottom, extendedDiagonal, unrelated);
+        using SilkPackedPtexAtlas full = SilkPtexAtlasPacker.Pack(closed, 16);
+        var budget = new SilkCpuTextureBudget(36);
+        using SilkPackedPtexAtlas selected = SilkPtexAtlasPacker.Pack(partial, new uint[] { 0 }, 3, budget);
+        SilkPtexAtlasTile fullTile = full.Tiles[0];
+        SilkPtexAtlasTile selectedTile = selected.Tiles[0];
+
+        await Assert.That(selected.Tiles.Count).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(36ul);
+        for (int y = -1; y <= 1; y++)
+        {
+            for (int x = -1; x <= 1; x++)
+            {
+                byte[] expected = ReadPixel(full, (int)fullTile.ContentX + x, (int)fullTile.ContentY + y);
+                byte[] actual = ReadPixel(selected, (int)selectedTile.ContentX + x, (int)selectedTile.ContentY + y);
+                await Assert.That(actual.AsSpan().SequenceEqual(expected)).IsTrue();
+            }
+        }
+        await Assert.That(ReadPixel(selected, (int)selectedTile.ContentX - 1, (int)selectedTile.ContentY - 1)
+            .AsSpan().SequenceEqual(new byte[] { 90, 80, 70, 255 })).IsTrue();
+        selected.Dispose();
+        selected.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task SamplingNeighborhoodDiscoversOnlySampledEdgeAndCornerFaces()
+    {
+        FaceSpec source = Connect(Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 0, 2, 2), 3, 1, 1);
+        FaceSpec left = Connect(Connect(new FaceSpec(1, 1, 1, [4, 5, 6, 255]), 1, 0, 3), 0, 3, 2);
+        FaceSpec bottom = Connect(Connect(new FaceSpec(2, 1, 1, [7, 8, 9, 255]), 2, 0, 0), 3, 3, 1);
+        FaceSpec diagonal = Connect(
+            Connect(Connect(new FaceSpec(3, 1, 1, [90, 80, 70, 255]), 2, 1, 0), 1, 2, 3), 0, 4, 2);
+        FaceSpec unused = new(4, 1, 1, [10, 11, 12, 255], Flags: 8);
+        var faces = new[] { source, left, bottom, diagonal, unused }.ToDictionary(static face => face.FaceId);
+        var batches = new List<uint[]>();
+
+        SilkPtexFaceNeighborhood neighborhood = SilkPtexFaceNeighborhood.Discover(
+            [0, 0], 1, 16, ids =>
+            {
+                batches.Add((uint[])ids.Clone());
+                return DescribeSelection(ids, 1, 5, faces);
+            });
+
+        await Assert.That(neighborhood.FaceIds.SequenceEqual(new uint[] { 0, 1, 2, 3 })).IsTrue();
+        await Assert.That(batches.Count).IsEqualTo(3);
+        await Assert.That(batches[0].AsSpan().SequenceEqual(new uint[] { 0 })).IsTrue();
+        await Assert.That(batches[1].AsSpan().SequenceEqual(new uint[] { 1, 2 })).IsTrue();
+        await Assert.That(batches[2].AsSpan().SequenceEqual(new uint[] { 3 })).IsTrue();
+        using SilkDecodedPtexFaces decoded = neighborhood.Decode(ids => DecodeSelection(ids, 1, 5, faces));
+        using SilkPackedPtexAtlas atlas = SilkPtexAtlasPacker.Pack(decoded, [0], 3);
+        SilkPtexAtlasTile tile = atlas.Tiles[0];
+        await Assert.That(atlas.Tiles.Count).IsEqualTo(1);
+        await Assert.That(ReadPixel(atlas, (int)tile.ContentX - 1, (int)tile.ContentY - 1)
+            .AsSpan().SequenceEqual(new byte[] { 90, 80, 70, 255 })).IsTrue();
+    }
+
+    [Test]
+    [Arguments(0, 3)]
+    [Arguments(1, 0)]
+    [Arguments(2, 1)]
+    [Arguments(3, 2)]
+    public async Task SamplingNeighborhoodFollowsCornerAcrossEveryEdgeRotation(
+        int adjacentEdge,
+        int diagonalEdge)
+    {
+        FaceSpec source = Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 3, 1, adjacentEdge);
+        FaceSpec adjacent = Connect(
+            Connect(new FaceSpec(1, 1, 1, [4, 5, 6, 255]), adjacentEdge, 0, 3),
+            diagonalEdge, 2, 2);
+        FaceSpec diagonal = Connect(new FaceSpec(2, 1, 1, [90, 80, 70, 255]), 2, 1, diagonalEdge);
+        var faces = new[] { source, adjacent, diagonal }.ToDictionary(static face => face.FaceId);
+
+        SilkPtexFaceNeighborhood neighborhood = SilkPtexFaceNeighborhood.Discover(
+            [0], 1, 12, ids => DescribeSelection(ids, 1, 3, faces));
+        using SilkDecodedPtexFaces decoded = neighborhood.Decode(ids => DecodeSelection(ids, 1, 3, faces));
+        using SilkPackedPtexAtlas atlas = SilkPtexAtlasPacker.Pack(decoded, [0], 3);
+        SilkPtexAtlasTile tile = atlas.Tiles[0];
+
+        await Assert.That(neighborhood.FaceIds.SequenceEqual(new uint[] { 0, 1, 2 })).IsTrue();
+        await Assert.That(ReadPixel(atlas, (int)tile.ContentX - 1, (int)tile.ContentY - 1)
+            .AsSpan().SequenceEqual(new byte[] { 90, 80, 70, 255 })).IsTrue();
+    }
+
+    [Test]
+    public async Task SamplingNeighborhoodDescribesEmptySelectionWithoutPixelOwnership()
+    {
+        var faces = new[] { new FaceSpec(0, 1, 1, [1, 2, 3, 255]) }
+            .ToDictionary(static face => face.FaceId);
+        int calls = 0;
+        SilkPtexFaceNeighborhood neighborhood = SilkPtexFaceNeighborhood.Discover([], 1, 0, ids =>
+        {
+            calls++;
+            return DescribeSelection(ids, 1, 1, faces);
+        });
+        using SilkDecodedPtexFaces decoded = neighborhood.Decode(ids => DecodeSelection(ids, 1, 1, faces));
+
+        await Assert.That(calls).IsEqualTo(1);
+        await Assert.That(neighborhood.FaceIds.IsEmpty).IsTrue();
+        await Assert.That(decoded.Info.FileFaceCount).IsEqualTo(1u);
+        await Assert.That(decoded.Pixels).IsEmpty();
+    }
+
+    [Test]
+    public async Task SamplingNeighborhoodDeduplicatesAndPreservesLargeFaceIds()
+    {
+        const uint largeId = 16_777_217;
+        var faces = new[]
+        {
+            new FaceSpec(2, 1, 1, [1, 2, 3, 255]),
+            new FaceSpec(largeId, 1, 1, [4, 5, 6, 255])
+        }.ToDictionary(static face => face.FaceId);
+        var batches = new List<uint[]>();
+
+        SilkPtexFaceNeighborhood neighborhood = SilkPtexFaceNeighborhood.Discover(
+            [largeId, 2, largeId], 1, 8, ids =>
+            {
+                batches.Add((uint[])ids.Clone());
+                return DescribeSelection(ids, 1, largeId + 1, faces);
+            });
+        using SilkDecodedPtexFaces decoded = neighborhood.Decode(
+            ids => DecodeSelection(ids, 1, largeId + 1, faces));
+
+        await Assert.That(batches.Count).IsEqualTo(1);
+        await Assert.That(neighborhood.FaceIds.SequenceEqual(new uint[] { 2, largeId })).IsTrue();
+        await Assert.That(decoded.Faces[1].FaceId).IsEqualTo(largeId);
+    }
+
+    [Test]
+    public async Task SamplingNeighborhoodBoundsTheUnionAndKeepsDecodeAndAtlasReservationsTogether()
+    {
+        FaceSpec source = Connect(Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 0, 2, 2), 3, 1, 1);
+        FaceSpec left = Connect(Connect(new FaceSpec(1, 1, 1, [4, 5, 6, 255]), 1, 0, 3), 0, 3, 2);
+        FaceSpec bottom = Connect(Connect(new FaceSpec(2, 1, 1, [7, 8, 9, 255]), 2, 0, 0), 3, 3, 1);
+        FaceSpec diagonal = Connect(Connect(new FaceSpec(3, 1, 1, [90, 80, 70, 255]), 2, 1, 0), 1, 2, 3);
+        var faces = new[] { source, left, bottom, diagonal }.ToDictionary(static face => face.FaceId);
+        var budget = new SilkCpuTextureBudget(52);
+        int descriptionCalls = 0;
+
+        await Assert.That(() => SilkPtexFaceNeighborhood.Discover([0], 1, 15, ids =>
+        {
+            descriptionCalls++;
+            return DescribeSelection(ids, 1, 4, faces);
+        })).Throws<InvalidDataException>().WithMessageContaining("decoded-byte limit");
+        await Assert.That(descriptionCalls).IsEqualTo(3);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+
+        SilkPtexFaceNeighborhood neighborhood = SilkPtexFaceNeighborhood.Discover(
+            [0], 1, 16, ids => DescribeSelection(ids, 1, 4, faces));
+        using SilkDecodedPtexFaces decoded = neighborhood.Decode(
+            ids => DecodeSelection(ids, 1, 4, faces, budget.Reserve(16)));
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(16ul);
+        using (SilkPackedPtexAtlas atlas = SilkPtexAtlasPacker.Pack(decoded, [0], 3, budget))
+        {
+            await Assert.That(atlas.Pixels.Length).IsEqualTo(36);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(52ul);
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(16ul);
+        decoded.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task SamplingNeighborhoodRejectsMetadataChangesAndReleasesFailedDecode()
+    {
+        FaceSpec source = Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 0, 1, 2);
+        FaceSpec neighbor = Connect(new FaceSpec(1, 1, 1, [4, 5, 6, 255]), 2, 0, 0);
+        var faces = new[] { source, neighbor }.ToDictionary(static face => face.FaceId);
+        int descriptionCalls = 0;
+
+        await Assert.That(() => SilkPtexFaceNeighborhood.Discover([0], 1, 8, ids =>
+        {
+            SilkPtexFaceDescription description = DescribeSelection(ids, 1, 2, faces);
+            if (++descriptionCalls == 2)
+            {
+                SilkPtexDecodeInfo changed = description.Info;
+                changed.FileFaceCount++;
+                return new SilkPtexFaceDescription(changed, description.Faces);
+            }
+            return description;
+        })).Throws<InvalidDataException>().WithMessageContaining("metadata changed");
+
+        SilkPtexFaceNeighborhood neighborhood = SilkPtexFaceNeighborhood.Discover(
+            [0], 1, 8, ids => DescribeSelection(ids, 1, 2, faces));
+        var budget = new SilkCpuTextureBudget(12);
+        using IDisposable earlierOwner = budget.Reserve(4);
+        await Assert.That(() => neighborhood.Decode(ids =>
+        {
+            SilkDecodedPtexFaces decoded = DecodeSelection(ids, 1, 2, faces, budget.Reserve(8));
+            SilkPtexFaceLayout changed = decoded.Faces[0];
+            changed.Flags = 8;
+            decoded.Faces[0] = changed;
+            return decoded;
+        })).Throws<InvalidDataException>().WithMessageContaining("changed between discovery and decoding");
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(4ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+    }
+
+    [Test]
+    [Arguments("triangle")]
+    [Arguments("subface")]
+    [Arguments("nonreciprocal")]
+    public async Task SamplingNeighborhoodRefusesUnsupportedOrInvalidTopology(string defect)
+    {
+        FaceSpec source = Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 0, 1, 2);
+        FaceSpec neighbor = new(1, 1, 1, [4, 5, 6, 255], Flags: defect == "subface" ? 8u : 0u);
+        if (defect != "nonreciprocal")
+        {
+            neighbor = Connect(neighbor, 2, 0, 0);
+        }
+        var faces = new[] { source, neighbor }.ToDictionary(static face => face.FaceId);
+        uint meshType = defect == "triangle" ? 0u : 1u;
+
+        if (defect == "nonreciprocal")
+        {
+            await Assert.That(() => SilkPtexFaceNeighborhood.Discover(
+                [0], 1, 8, ids => DescribeSelection(ids, meshType, 2, faces)))
+                .Throws<InvalidDataException>().WithMessageContaining("not reciprocal");
+        }
+        else
+        {
+            await Assert.That(() => SilkPtexFaceNeighborhood.Discover(
+                [0], 1, 8, ids => DescribeSelection(ids, meshType, 2, faces)))
+                .Throws<NotSupportedException>();
+        }
+    }
+
+    [Test]
+    public async Task SamplingNeighborhoodBoundsTotalUniqueFacesBeforeDescribingNeighbors()
+    {
+        const int limit = SilkNativePtexDecoder.MaximumRequestedFaces;
+        FaceSpec[] entries = Enumerable.Range(0, limit)
+            .Select(static id => new FaceSpec((uint)id, 1, 1, [1, 2, 3, 255]))
+            .ToArray();
+        entries[0] = Connect(entries[0], 0, limit, 2);
+        var faces = entries.ToDictionary(static face => face.FaceId);
+        uint[] sampled = Enumerable.Range(0, limit).Select(static id => (uint)id).ToArray();
+        int descriptionCalls = 0;
+
+        await Assert.That(() => SilkPtexFaceNeighborhood.Discover(sampled, 1, (ulong)limit * 4, ids =>
+        {
+            descriptionCalls++;
+            return DescribeSelection(ids, 1, limit + 1, faces);
+        })).Throws<InvalidDataException>().WithMessageContaining("face-count limit");
+        await Assert.That(descriptionCalls).IsEqualTo(1);
+        await Assert.That(() => SilkPtexFaceNeighborhood.Discover(
+            new uint[limit + 1], 1, 0, ids => DescribeSelection(ids, 1, limit + 1, faces)))
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    [Arguments("missing")]
+    [Arguments("nonreciprocal")]
+    [Arguments("subface")]
+    public async Task Pack_SelectedCornerRejectsInvalidDiagonalBeforeReserving(string defect)
+    {
+        FaceSpec source = Connect(Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 0, 2, 2), 3, 1, 1);
+        FaceSpec left = Connect(Connect(new FaceSpec(1, 1, 1, [4, 5, 6, 255]), 1, 0, 3), 0, 3, 2);
+        FaceSpec bottom = Connect(Connect(new FaceSpec(2, 1, 1, [7, 8, 9, 255]), 2, 0, 0), 3, 3, 1);
+        FaceSpec diagonal = Connect(
+            Connect(new FaceSpec(3, 1, 1, [90, 80, 70, 255], Flags: defect == "subface" ? 8u : 0u),
+                2, 1, defect == "nonreciprocal" ? 1 : 0),
+            1, 2, 3);
+        FaceSpec unrelated = new(5, 1, 1, [10, 11, 12, 255]);
+        FaceSpec[] faces = defect == "missing"
+            ? [source, left, bottom, unrelated]
+            : [source, left, bottom, diagonal, unrelated];
+        using SilkDecodedPtexFaces decoded = CreateDecoded(0, 4, 3, 1, faces);
+        var budget = new SilkCpuTextureBudget(36);
+
+        if (defect == "subface")
+        {
+            await Assert.That(() => SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0 }, 3, budget))
+                .Throws<NotSupportedException>()
+                .WithMessageContaining("subface");
+        }
+        else
+        {
+            await Assert.That(() => SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0 }, 3, budget))
+                .Throws<InvalidDataException>()
+                .WithMessageContaining(defect == "missing" ? "adjacent face 3" : "not reciprocal");
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments("missing")]
+    [Arguments("nonreciprocal")]
+    [Arguments("subface")]
+    [Arguments("triangle")]
+    public async Task Pack_SelectedFaceRejectsInvalidEdgeBeforeReserving(string defect)
+    {
+        FaceSpec source = Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 0, 1, 2);
+        FaceSpec neighbor = Connect(
+            new FaceSpec(1, 1, 1, [4, 5, 6, 255], Flags: defect == "subface" ? 8u : 0u),
+            2, 0, defect == "nonreciprocal" ? 1 : 0);
+        FaceSpec unrelated = new(3, 1, 1, [7, 8, 9, 255]);
+        FaceSpec[] faces = defect == "missing" ? [source, unrelated] : [source, neighbor, unrelated];
+        uint meshType = defect == "triangle" ? 0u : 1u;
+        using SilkDecodedPtexFaces decoded = CreateDecoded(0, 4, 3, meshType, faces);
+        var budget = new SilkCpuTextureBudget(36);
+
+        if (defect is "subface" or "triangle")
+        {
+            await Assert.That(() => SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0 }, 3, budget))
+                .Throws<NotSupportedException>()
+                .WithMessageContaining(defect == "subface" ? "subface" : "quad-based");
+        }
+        else
+        {
+            await Assert.That(() => SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0 }, 3, budget))
+                .Throws<InvalidDataException>()
+                .WithMessageContaining(defect == "missing" ? "adjacent face 1" : "not reciprocal");
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task Pack_SelectedFaceIdsAreDeduplicatedAndOrderedIndependentlyOfRequest()
+    {
+        using SilkDecodedPtexFaces decoded = CreateDecoded(
+            0, 4, 3,
+            new FaceSpec(2, 1, 1, [21, 22, 23, 24]),
+            new FaceSpec(1, 1, 1, [11, 12, 13, 14]),
+            new FaceSpec(0, 1, 1, [1, 2, 3, 4]));
+        using SilkPackedPtexAtlas first = SilkPtexAtlasPacker.Pack(decoded, new uint[] { 2, 0, 2 }, 8);
+        using SilkPackedPtexAtlas reordered = SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0, 2 }, 8);
+        var emptyBudget = new SilkCpuTextureBudget(1);
+        using SilkPackedPtexAtlas empty = SilkPtexAtlasPacker.Pack(decoded, Array.Empty<uint>(), 8, emptyBudget);
+
+        await Assert.That(first.Tiles.Count).IsEqualTo(2);
+        await Assert.That(first.Tiles.ContainsKey(0)).IsTrue();
+        await Assert.That(first.Tiles.ContainsKey(1)).IsFalse();
+        await Assert.That(first.Tiles.ContainsKey(2)).IsTrue();
+        await Assert.That(reordered.Width).IsEqualTo(first.Width);
+        await Assert.That(reordered.Height).IsEqualTo(first.Height);
+        await Assert.That(reordered.Pixels.AsSpan().SequenceEqual(first.Pixels)).IsTrue();
+        await Assert.That(reordered.Tiles[0]).IsEqualTo(first.Tiles[0]);
+        await Assert.That(reordered.Tiles[2]).IsEqualTo(first.Tiles[2]);
+        await Assert.That(ReadPixel(first, (int)first.Tiles[0].ContentX, (int)first.Tiles[0].ContentY)
+            .AsSpan().SequenceEqual(new byte[] { 1, 2, 3, 4 })).IsTrue();
+        await Assert.That(ReadPixel(first, (int)first.Tiles[2].ContentX, (int)first.Tiles[2].ContentY)
+            .AsSpan().SequenceEqual(new byte[] { 21, 22, 23, 24 })).IsTrue();
+        await Assert.That(empty.Tiles.Count).IsEqualTo(0);
+        await Assert.That(empty.Pixels).IsEmpty();
+        await Assert.That(emptyBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(emptyBudget.Usage.PeakReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task Pack_SelectedFaceMissingFromDecodedInputIsRejectedBeforeReserving()
+    {
+        using SilkDecodedPtexFaces decoded = CreateDecoded(0, 4, 3, new FaceSpec(0, 1, 1, [1, 2, 3, 4]));
+        var budget = new SilkCpuTextureBudget(36);
+
+        await Assert.That(() => SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0, 1 }, 3, budget))
+            .Throws<InvalidDataException>()
+            .WithMessageContaining("Ptex face 1");
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task Pack_SelectedFaceBudgetRefusalPreservesPriorOwnerAndAllowsRetry()
+    {
+        FaceSpec source = Connect(new FaceSpec(0, 1, 1, [1, 2, 3, 255]), 0, 1, 2);
+        FaceSpec neighbor = Connect(new FaceSpec(1, 1, 1, [4, 5, 6, 255]), 2, 0, 0);
+        using SilkDecodedPtexFaces decoded = CreateDecoded(0, 4, 3, 1, source, neighbor);
+        var budget = new SilkCpuTextureBudget(39);
+        using IDisposable earlierOwner = budget.Reserve(4);
+
+        SilkCpuTextureBudgetExceededException? failure = await Assert.That(() =>
+            SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0 }, 3, budget))
+            .Throws<SilkCpuTextureBudgetExceededException>();
+
+        await Assert.That(failure!.RequestedBytes).IsEqualTo(36ul);
+        await Assert.That(failure.ReservedBytes).IsEqualTo(4ul);
+        await Assert.That(failure.MaximumBytes).IsEqualTo(39ul);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(4ul);
+        await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(4ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+        earlierOwner.Dispose();
+        using (SilkPackedPtexAtlas retry = SilkPtexAtlasPacker.Pack(decoded, new uint[] { 0 }, 3, budget))
+        {
+            await Assert.That(retry.Tiles.Count).IsEqualTo(1);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(36ul);
+            await Assert.That(budget.Usage.PeakReservedBytes).IsEqualTo(36ul);
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
     }
 
     [Test]
@@ -610,6 +1059,39 @@ public sealed class SilkPtexAtlasPackerTests
         info.RequestedFaceCount = checked((uint)faces.Length);
         info.RequiredByteCount = checked((ulong)pixels.Count);
         return new SilkDecodedPtexFaces(info, layouts, pixels.ToArray(), null);
+    }
+
+    private static SilkPtexFaceDescription DescribeSelection(
+        uint[] ids,
+        uint meshType,
+        uint fileFaceCount,
+        IReadOnlyDictionary<uint, FaceSpec> faces)
+    {
+        using SilkDecodedPtexFaces decoded = DecodeSelection(ids, meshType, fileFaceCount, faces);
+        return new SilkPtexFaceDescription(decoded.Info, decoded.Faces);
+    }
+
+    private static SilkDecodedPtexFaces DecodeSelection(
+        uint[] ids,
+        uint meshType,
+        uint fileFaceCount,
+        IReadOnlyDictionary<uint, FaceSpec> faces,
+        IDisposable? reservation = null)
+    {
+        try
+        {
+            FaceSpec[] requested = ids.Select(id => faces[id]).ToArray();
+            using SilkDecodedPtexFaces decoded = CreateDecoded(0, 4, 3, meshType, requested);
+            SilkPtexDecodeInfo info = decoded.Info;
+            info.FileFaceCount = fileFaceCount;
+            var result = new SilkDecodedPtexFaces(info, decoded.Faces, decoded.Pixels, reservation);
+            reservation = null;
+            return result;
+        }
+        finally
+        {
+            reservation?.Dispose();
+        }
     }
 
     private static FaceSpec Connect(FaceSpec face, int edge, uint adjacentFaceId, int adjacentEdgeId)

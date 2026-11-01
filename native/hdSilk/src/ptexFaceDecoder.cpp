@@ -10,9 +10,18 @@
 #include <stdexcept>
 #include <string>
 
+#if defined(OPENUSD_HDSILK_ENABLE_TEST_HOOKS)
+#include "openusd_hdsilk.h"
+#include <atomic>
+#endif
+
 namespace
 {
 constexpr size_t MaximumRequestedFaces = 65536;
+
+#if defined(OPENUSD_HDSILK_ENABLE_TEST_HOOKS)
+std::atomic<uint64_t> g_ptexFaceReads{0};
+#endif
 
 struct PtexTextureDeleter
 {
@@ -147,6 +156,9 @@ void DecodePixels(
 {
     for (const HdSilkPtexFaceData& face : decoded.faces)
     {
+#if defined(OPENUSD_HDSILK_ENABLE_TEST_HOOKS)
+        g_ptexFaceReads.fetch_add(1, std::memory_order_relaxed);
+#endif
         texture.getData(
             static_cast<int>(face.faceId),
             pixels + static_cast<size_t>(face.dataOffsetBytes),
@@ -170,6 +182,20 @@ std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> OpenPtexTexture(
 
 } // namespace
 
+HdSilkPtexDecodedFaces HdSilkDescribePtexFaces(
+    const std::string& path,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes)
+{
+    ValidateRequest(path, faceIds, faceCount, maximumFaceDimension);
+    std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> texture =
+        OpenPtexTexture(path);
+    return DescribePtexFaces(
+        *texture, faceIds, faceCount, maximumFaceDimension, maximumDecodedBytes);
+}
+
 HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
     const std::string& path,
     const uint32_t* faceIds,
@@ -190,6 +216,14 @@ HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
     result.pixelsDecoded = true;
     return result;
 }
+
+#if defined(OPENUSD_HDSILK_ENABLE_TEST_HOOKS)
+extern "C" OPENUSD_HDSILK_API uint64_t
+openusd_hdsilk_test_get_ptex_face_read_count(void)
+{
+    return g_ptexFaceReads.load(std::memory_order_relaxed);
+}
+#endif
 
 HdSilkPtexDecodedFaces HdSilkDecodePtexFacesInto(
     const std::string& path,

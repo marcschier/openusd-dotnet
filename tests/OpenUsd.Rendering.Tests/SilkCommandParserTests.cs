@@ -261,6 +261,51 @@ public sealed class SilkCommandParserTests
     }
 
     [Test]
+    [Arguments(SilkPtexMappingStatus.Mapped)]
+    [Arguments(SilkPtexMappingStatus.NotRequested)]
+    [Arguments(SilkPtexMappingStatus.TextureFaceOutOfRange)]
+    public async Task SimulatedPointsPreservePtexMappingAndRefusal(SilkPtexMappingStatus status)
+    {
+        using var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(
+            ptexMappingStatus: status,
+            ptexMappings: status == SilkPtexMappingStatus.Mapped ? MappedPtexFixture : null), 1, 1);
+        SilkMeshData original = scene.Meshes[42];
+        float[] originalPoints = original.Points.ToArray();
+        float[] changedPoints = original.Points.ToArray();
+        changedPoints[0] += 1;
+        SilkDeformationResult result = scene.ReplacePoints(
+            original.Path, original.InstanceIndex, changedPoints, out ulong id);
+        SilkMeshData simulated = scene.Meshes[42];
+        changedPoints[1] += 1;
+        SilkDeformationResult repeated = scene.ReplacePoints(
+            original.Path, original.InstanceIndex, changedPoints, out _);
+        SilkMeshData repeatedMesh = scene.Meshes[42];
+        bool restoredAuthored = scene.RestoreAuthoredPoints(id);
+        SilkMeshData restored = scene.Meshes[42];
+        int[] expectedFaces = status == SilkPtexMappingStatus.Mapped ? ExpectedPtexFaceIndices : [];
+        float[] expectedCoordinates = status == SilkPtexMappingStatus.Mapped ? ExpectedPtexCoordinates : [];
+
+        await Assert.That(result).IsEqualTo(SilkDeformationResult.Applied);
+        await Assert.That(repeated).IsEqualTo(SilkDeformationResult.Applied);
+        await Assert.That(restoredAuthored).IsTrue();
+        await Assert.That(original.Points.Span.SequenceEqual(originalPoints)).IsTrue();
+        await Assert.That(simulated.Points.Span[0]).IsEqualTo(changedPoints[0]);
+        await Assert.That(simulated.Points.Span[1]).IsEqualTo(originalPoints[1]);
+        await Assert.That(repeatedMesh.Points.Span.SequenceEqual(changedPoints)).IsTrue();
+        await Assert.That(restored.Points.Span.SequenceEqual(originalPoints)).IsTrue();
+        await Assert.That(simulated.Indices.Span.SequenceEqual(original.Indices.Span)).IsTrue();
+        foreach (SilkMeshData mesh in new[] { simulated, repeatedMesh, restored })
+        {
+            await Assert.That(mesh.PtexMappingStatus).IsEqualTo(status);
+            await Assert.That(mesh.PtexFaceIndices.SequenceEqual(expectedFaces)).IsTrue();
+            await Assert.That(mesh.PtexCoordinates.SequenceEqual(expectedCoordinates)).IsTrue();
+            await Assert.That(ReferenceEquals(mesh.PtexFaceIndices, original.PtexFaceIndices)).IsTrue();
+            await Assert.That(ReferenceEquals(mesh.PtexCoordinates, original.PtexCoordinates)).IsTrue();
+        }
+    }
+
+    [Test]
     public async Task RejectsUnknownPtexMappingStatus()
     {
         byte[] malformed = CreateMeshCommand();

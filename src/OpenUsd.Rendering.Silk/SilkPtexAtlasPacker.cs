@@ -65,15 +65,32 @@ internal static unsafe class SilkPtexAtlasPacker
     internal static SilkPackedPtexAtlas Pack(
         SilkDecodedPtexFaces decoded,
         uint maximumDimension,
-        SilkCpuTextureBudget? budget = null)
+        SilkCpuTextureBudget? budget = null) =>
+        PackCore(decoded, default, true, maximumDimension, budget);
+
+    internal static SilkPackedPtexAtlas Pack(
+        SilkDecodedPtexFaces decoded,
+        ReadOnlySpan<uint> sampledFaceIds,
+        uint maximumDimension,
+        SilkCpuTextureBudget? budget = null) =>
+        PackCore(decoded, sampledFaceIds, false, maximumDimension, budget);
+
+    private static SilkPackedPtexAtlas PackCore(
+        SilkDecodedPtexFaces decoded,
+        ReadOnlySpan<uint> sampledFaceIds,
+        bool allFaces,
+        uint maximumDimension,
+        SilkCpuTextureBudget? budget)
     {
         ArgumentNullException.ThrowIfNull(decoded);
         ArgumentOutOfRangeException.ThrowIfZero(maximumDimension);
 
         SilkPtexDecodeInfo info = decoded.Info;
         ValidateSupportedFormat(info);
-        List<FaceSource> faces = ValidateFaces(decoded);
-        if (faces.Count == 0)
+        List<FaceSource> decodedFaces = ValidateFaces(decoded);
+        Dictionary<uint, FaceSource> facesById = decodedFaces.ToDictionary(static face => face.Layout.FaceId);
+        List<FaceSource> sampledFaces = SelectFaces(decodedFaces, facesById, sampledFaceIds, allFaces);
+        if (sampledFaces.Count == 0)
         {
             return new SilkPackedPtexAtlas(
                 0,
@@ -82,10 +99,9 @@ internal static unsafe class SilkPtexAtlasPacker
                 SilkPackedPtexAtlas.EmptyTiles,
                 null);
         }
-        Dictionary<uint, FaceSource> facesById = faces.ToDictionary(static face => face.Layout.FaceId);
-        ValidateSamplingTopology(faces, facesById, info.MeshType);
+        ValidateSamplingTopology(sampledFaces, facesById, info.MeshType);
 
-        List<PendingTile> pendingTiles = PlanTiles(faces, maximumDimension, out uint width, out uint height);
+        List<PendingTile> pendingTiles = PlanTiles(sampledFaces, maximumDimension, out uint width, out uint height);
         ulong byteCount = checked((ulong)width * height * BytesPerPixel);
         if (byteCount > int.MaxValue)
         {
@@ -99,7 +115,7 @@ internal static unsafe class SilkPtexAtlasPacker
             var tiles = new Dictionary<uint, SilkPtexAtlasTile>(pendingTiles.Count);
             foreach (PendingTile pending in pendingTiles)
             {
-                WriteTile(pixels, width, height, info.ChannelCount, pending, facesById);
+                WriteTile(pixels, width, height, info.ChannelCount, info.MeshType, pending, facesById);
                 uint contentX = checked(pending.X + GutterWidth);
                 uint contentY = checked(pending.Y + GutterWidth);
                 uint contentEndX = checked(contentX + pending.Source.Layout.Width);
@@ -140,6 +156,29 @@ internal static unsafe class SilkPtexAtlasPacker
         {
             reservation?.Dispose();
         }
+    }
+
+    private static List<FaceSource> SelectFaces(
+        List<FaceSource> decodedFaces,
+        IReadOnlyDictionary<uint, FaceSource> facesById,
+        ReadOnlySpan<uint> sampledFaceIds,
+        bool allFaces)
+    {
+        if (allFaces)
+        {
+            return decodedFaces;
+        }
+
+        var selected = new HashSet<uint>();
+        foreach (uint faceId in sampledFaceIds)
+        {
+            if (!facesById.ContainsKey(faceId))
+            {
+                throw new InvalidDataException($"Ptex face {faceId} was not included in the decoded face selection.");
+            }
+            selected.Add(faceId);
+        }
+        return decodedFaces.FindAll(face => selected.Contains(face.Layout.FaceId));
     }
 
     private static void ValidateSupportedFormat(SilkPtexDecodeInfo info)
@@ -245,47 +284,50 @@ internal static unsafe class SilkPtexAtlasPacker
         IReadOnlyDictionary<uint, FaceSource> facesById,
         uint meshType)
     {
-        const uint subfaceFlag = 1u << 3;
         foreach (FaceSource source in faces)
         {
-            if ((source.Layout.Flags & subfaceFlag) != 0)
-            {
-                throw new NotSupportedException("Ptex subface sampling is not supported.");
-            }
+            ValidateSupportedFace(source);
 
             for (int edge = 0; edge < 4; edge++)
             {
-                int adjacentFaceId = source.Layout.GetAdjacentFaceId(edge);
-                if (adjacentFaceId < 0)
-                {
-                    continue;
-                }
-
-                if (meshType != 1)
-                {
-                    throw new NotSupportedException(
-                        "Ptex adjacency sampling requires quad-based face textures.");
-                }
-                if (!facesById.TryGetValue((uint)adjacentFaceId, out FaceSource adjacent))
-                {
-                    throw new InvalidDataException(
-                        $"Ptex face {source.Layout.FaceId} references adjacent face {adjacentFaceId}, " +
-                        "which was not included in the decoded face selection.");
-                }
-                if ((adjacent.Layout.Flags & subfaceFlag) != 0)
-                {
-                    throw new NotSupportedException("Ptex subface sampling is not supported.");
-                }
-
-                int adjacentEdge = checked((int)source.Layout.GetAdjacentEdgeId(edge));
-                if (adjacent.Layout.GetAdjacentFaceId(adjacentEdge) != source.Layout.FaceId ||
-                    adjacent.Layout.GetAdjacentEdgeId(adjacentEdge) != (uint)edge)
-                {
-                    throw new InvalidDataException(
-                        $"Ptex adjacency from face {source.Layout.FaceId}, edge {edge}, is not reciprocal.");
-                }
+                _ = TryGetAdjacent(source, edge, facesById, meshType, out _);
             }
+
+            int width = checked((int)source.Layout.Width);
+            int height = checked((int)source.Layout.Height);
+            _ = ResolveGutterSample(source, -1, -1, facesById, meshType);
+            _ = ResolveGutterSample(source, width, -1, facesById, meshType);
+            _ = ResolveGutterSample(source, -1, height, facesById, meshType);
+            _ = ResolveGutterSample(source, width, height, facesById, meshType);
         }
+    }
+
+    private static void ValidateSupportedFace(FaceSource face)
+        => SilkPtexFaceTopology.ValidateSupportedFace(face.Layout);
+
+    private static bool TryGetAdjacent(
+        FaceSource source,
+        int edge,
+        IReadOnlyDictionary<uint, FaceSource> facesById,
+        uint meshType,
+        out FaceSource adjacent)
+    {
+        int adjacentFaceId = source.Layout.GetAdjacentFaceId(edge);
+        if (adjacentFaceId < 0)
+        {
+            adjacent = default;
+            return false;
+        }
+        SilkPtexFaceTopology.RequireQuadAdjacency(meshType);
+        if (!facesById.TryGetValue((uint)adjacentFaceId, out adjacent))
+        {
+            throw new InvalidDataException(
+                $"Ptex face {source.Layout.FaceId} references adjacent face {adjacentFaceId}, " +
+                "which was not included in the decoded face selection.");
+        }
+        ValidateSupportedFace(adjacent);
+        SilkPtexFaceTopology.ValidateReciprocal(source.Layout, edge, adjacent.Layout);
+        return true;
     }
 
     private static bool EquivalentFace(FaceSource left, FaceSource right)
@@ -368,6 +410,7 @@ internal static unsafe class SilkPtexAtlasPacker
         uint atlasWidth,
         uint atlasHeight,
         uint channelCount,
+        uint meshType,
         PendingTile pending,
         IReadOnlyDictionary<uint, FaceSource> facesById)
     {
@@ -409,7 +452,8 @@ internal static unsafe class SilkPtexAtlasPacker
                         x,
                         y,
                         channels,
-                        facesById);
+                        facesById,
+                        meshType);
                 }
             }
         }
@@ -422,7 +466,19 @@ internal static unsafe class SilkPtexAtlasPacker
         int x,
         int y,
         int channels,
-        IReadOnlyDictionary<uint, FaceSource> facesById)
+        IReadOnlyDictionary<uint, FaceSource> facesById,
+        uint meshType)
+    {
+        GutterSample sample = ResolveGutterSample(source, x, y, facesById, meshType);
+        SampleBilinear(destination, destinationOffset, sample.Source, sample.U, sample.V, channels);
+    }
+
+    private static GutterSample ResolveGutterSample(
+        FaceSource source,
+        int x,
+        int y,
+        IReadOnlyDictionary<uint, FaceSource> facesById,
+        uint meshType)
     {
         SilkPtexFaceLayout layout = source.Layout;
         double u = (x + 0.5) / layout.Width;
@@ -431,77 +487,27 @@ internal static unsafe class SilkPtexAtlasPacker
         int crossings = 0;
         while (true)
         {
-            int edge = u < 0 ? 3 : u > 1 ? 1 : v < 0 ? 0 : v > 1 ? 2 : -1;
+            int edge = SilkPtexFaceTopology.GetOutsideEdge(u, v);
             if (edge < 0)
             {
-                break;
+                return new GutterSample(sampleSource, u, v);
             }
 
             SilkPtexFaceLayout sampleLayout = sampleSource.Layout;
-            int adjacentFaceId = sampleLayout.GetAdjacentFaceId(edge);
-            if (adjacentFaceId < 0)
+            if (!TryGetAdjacent(sampleSource, edge, facesById, meshType, out FaceSource adjacent))
             {
-                switch (edge)
-                {
-                    case 0:
-                        v = 0;
-                        break;
-                    case 1:
-                        u = 1;
-                        break;
-                    case 2:
-                        v = 1;
-                        break;
-                    case 3:
-                        u = 0;
-                        break;
-                }
+                SilkPtexFaceTopology.ClampToEdge(ref u, ref v, edge);
                 continue;
             }
 
-            if (++crossings > 2 ||
-                !facesById.TryGetValue((uint)adjacentFaceId, out FaceSource adjacent))
+            if (++crossings > 2)
             {
                 throw new InvalidDataException("Ptex adjacency traversal exceeded the supported face neighborhood.");
             }
 
             int adjacentEdge = checked((int)sampleLayout.GetAdjacentEdgeId(edge));
-            CrossAdjacentEdge(ref u, ref v, edge, adjacentEdge);
+            SilkPtexFaceTopology.CrossAdjacentEdge(ref u, ref v, edge, adjacentEdge);
             sampleSource = adjacent;
-        }
-
-        SampleBilinear(destination, destinationOffset, sampleSource, u, v, channels);
-    }
-
-    private static void CrossAdjacentEdge(ref double u, ref double v, int edge, int adjacentEdge)
-    {
-        switch (edge)
-        {
-            case 0:
-                v += 1;
-                break;
-            case 1:
-                u -= 1;
-                break;
-            case 2:
-                v -= 1;
-                break;
-            case 3:
-                u += 1;
-                break;
-        }
-
-        switch ((edge - adjacentEdge + 2) & 3)
-        {
-            case 1:
-                (u, v) = (v, 1 - u);
-                break;
-            case 2:
-                (u, v) = (1 - u, 1 - v);
-                break;
-            case 3:
-                (u, v) = (1 - v, u);
-                break;
         }
     }
 
@@ -559,6 +565,8 @@ internal static unsafe class SilkPtexAtlasPacker
     }
 
     private readonly record struct FaceSource(SilkPtexFaceLayout Layout, int Offset, byte[] Pixels);
+
+    private readonly record struct GutterSample(FaceSource Source, double U, double V);
 
     private readonly record struct PendingTile(FaceSource Source, uint X, uint Y);
 }

@@ -85,10 +85,50 @@ internal unsafe struct SilkPtexDecodeInfo
     };
 }
 
+internal readonly record struct SilkPtexFaceDescription(
+    SilkPtexDecodeInfo Info,
+    SilkPtexFaceLayout[] Faces);
+
 internal static unsafe partial class SilkNativePtexDecoder
 {
-    private const uint MaximumRequestedFaces = 65_536;
+    internal const int MaximumRequestedFaces = 65_536;
     private const int ErrorBufferSize = 1024;
+
+    internal static SilkPtexFaceDescription Describe(
+        string asset,
+        ReadOnlySpan<uint> faceIds,
+        uint maximumFaceDimension,
+        ulong maximumDecodedBytes)
+    {
+        ValidateRequest(asset, faceIds, maximumFaceDimension);
+        var faces = new SilkPtexFaceLayout[faceIds.Length];
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* error = errorBytes)
+        fixed (uint* ids = faceIds)
+        fixed (SilkPtexFaceLayout* faceBuffer = faces)
+        {
+            var errorBuffer = new NativeErrorBuffer(error, (nuint)errorBytes.Length);
+            SilkPtexDecodeInfo info = SilkPtexDecodeInfo.Create();
+            OpenUsdNativeStatus status = DescribeFaces(
+                asset,
+                ids,
+                (uint)faceIds.Length,
+                maximumFaceDimension,
+                maximumDecodedBytes,
+                faceBuffer,
+                (uint)faces.Length,
+                ref info,
+                ref errorBuffer);
+            if (status != OpenUsdNativeStatus.Ok)
+            {
+                ThrowIfFailed(status, errorBytes, errorBuffer);
+            }
+
+            ValidateInfo(info, faceIds.Length, maximumDecodedBytes);
+            ValidateFaces(faces, faceIds, info, maximumFaceDimension, checked((int)info.RequiredByteCount));
+            return new SilkPtexFaceDescription(info, faces);
+        }
+    }
 
     internal static SilkDecodedPtexFaces Decode(
         string asset,
@@ -97,12 +137,7 @@ internal static unsafe partial class SilkNativePtexDecoder
         ulong maximumDecodedBytes,
         SilkCpuTextureBudget? budget = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(asset);
-        ArgumentOutOfRangeException.ThrowIfZero(maximumFaceDimension);
-        if (faceIds.Length > MaximumRequestedFaces)
-        {
-            throw new ArgumentOutOfRangeException(nameof(faceIds));
-        }
+        ValidateRequest(asset, faceIds, maximumFaceDimension);
 
         Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
         fixed (byte* error = errorBytes)
@@ -185,7 +220,37 @@ internal static unsafe partial class SilkNativePtexDecoder
         }
     }
 
-    private static void ValidateInfo(
+    internal static SilkDecodedPtexFaces DecodeSamplingNeighborhood(
+        string asset,
+        ReadOnlySpan<uint> sampledFaceIds,
+        uint maximumFaceDimension,
+        ulong maximumDecodedBytes,
+        SilkCpuTextureBudget? budget = null)
+    {
+        ValidateRequest(asset, sampledFaceIds, maximumFaceDimension);
+        SilkPtexFaceNeighborhood neighborhood = SilkPtexFaceNeighborhood.Discover(
+            sampledFaceIds,
+            maximumFaceDimension,
+            maximumDecodedBytes,
+            ids => Describe(asset, ids, maximumFaceDimension, maximumDecodedBytes));
+        return neighborhood.Decode(ids =>
+            Decode(asset, ids, maximumFaceDimension, maximumDecodedBytes, budget));
+    }
+
+    private static void ValidateRequest(
+        string asset,
+        ReadOnlySpan<uint> faceIds,
+        uint maximumFaceDimension)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(asset);
+        ArgumentOutOfRangeException.ThrowIfZero(maximumFaceDimension);
+        if (faceIds.Length > MaximumRequestedFaces)
+        {
+            throw new ArgumentOutOfRangeException(nameof(faceIds));
+        }
+    }
+
+    internal static void ValidateInfo(
         SilkPtexDecodeInfo info,
         int requestedFaceCount,
         ulong maximumDecodedBytes)
@@ -202,7 +267,7 @@ internal static unsafe partial class SilkNativePtexDecoder
         }
     }
 
-    private static void ValidateFaces(
+    internal static void ValidateFaces(
         ReadOnlySpan<SilkPtexFaceLayout> faces,
         ReadOnlySpan<uint> requestedFaceIds,
         SilkPtexDecodeInfo info,
@@ -224,6 +289,7 @@ internal static unsafe partial class SilkNativePtexDecoder
             ulong faceBytes = checked((ulong)face.RowStrideBytes * face.Height);
             if (face.StructSize != (uint)sizeof(SilkPtexFaceLayout) ||
                 face.FaceId != requestedFaceIds[index] ||
+                face.FaceId >= info.FileFaceCount ||
                 face.Width == 0 || face.Height == 0 ||
                 face.Width > maximumFaceDimension || face.Height > maximumFaceDimension ||
                 face.RowStrideBytes != checked((ulong)face.Width * bytesPerPixel) ||
@@ -251,14 +317,17 @@ internal static unsafe partial class SilkNativePtexDecoder
         }
     }
 
-    private static bool SameResult(SilkPtexDecodeInfo left, SilkPtexDecodeInfo right) =>
+    internal static bool SameFileMetadata(SilkPtexDecodeInfo left, SilkPtexDecodeInfo right) =>
         left.StructSize == right.StructSize &&
         left.Version == right.Version &&
         left.MeshType == right.MeshType &&
         left.DataType == right.DataType &&
         left.ChannelCount == right.ChannelCount &&
         left.AlphaChannel == right.AlphaChannel &&
-        left.FileFaceCount == right.FileFaceCount &&
+        left.FileFaceCount == right.FileFaceCount;
+
+    private static bool SameResult(SilkPtexDecodeInfo left, SilkPtexDecodeInfo right) =>
+        SameFileMetadata(left, right) &&
         left.RequestedFaceCount == right.RequestedFaceCount &&
         left.RequiredByteCount == right.RequiredByteCount;
 
@@ -285,6 +354,22 @@ internal static unsafe partial class SilkNativePtexDecoder
         internal nuint Capacity = capacity;
         internal nuint Required;
     }
+
+    [LibraryImport(
+        "openusd_hdsilk",
+        EntryPoint = "openusd_silk_ptex_describe_faces",
+        StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial OpenUsdNativeStatus DescribeFaces(
+        string asset,
+        uint* faceIds,
+        uint faceCount,
+        uint maximumFaceDimension,
+        ulong maximumDecodedBytes,
+        SilkPtexFaceLayout* faces,
+        uint faceCapacity,
+        ref SilkPtexDecodeInfo info,
+        ref NativeErrorBuffer error);
 
     [LibraryImport(
         "openusd_hdsilk",

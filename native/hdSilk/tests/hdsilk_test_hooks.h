@@ -71,6 +71,9 @@ openusd_hdsilk_test_end_ptex_observation(
 OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_ptex_synthetic_sync(const char* stagePath, int32_t mode);
 
+OPENUSD_HDSILK_API uint64_t
+openusd_hdsilk_test_get_ptex_face_read_count(void);
+
 OPENUSD_HDSILK_API size_t
 openusd_hdsilk_test_get_session_in_flight(openusd_silk_session* session);
 

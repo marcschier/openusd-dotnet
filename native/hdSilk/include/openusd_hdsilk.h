@@ -1559,8 +1559,8 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_session_resolve_source_identities
     size_t* required,
     openusd_error_buffer* error);
 
-/// One selected Ptex face in a packed full-resolution decode result.
-/// data_offset_bytes addresses the first byte in the caller-owned pixel buffer.
+/// One selected Ptex face in a full-resolution selection. data_offset_bytes
+/// addresses the first byte in the corresponding packed pixel buffer.
 /// Flags use OPENUSD_SILK_PTEX_FACE_* bits. Adjacency entries use Ptex edge
 /// order: bottom, right, top, left; -1 means no adjacent face. Size is 64 bytes
 /// on shipped 64-bit RIDs.
@@ -1696,17 +1696,18 @@ OPENUSD_HDSILK_API uint32_t openusd_silk_get_page_abi_version(void)
     OPENUSD_HDSILK_NOEXCEPT;
 
 /// Decodes the selected faces at full resolution into one packed caller-owned
-/// buffer. maximum_face_dimension and maximum_decoded_bytes are hard output
-/// limits; the latter does not include Ptex's internal allocations or the
-/// caller-owned pixel buffer. path is passed to Ptex unchanged. face IDs are
-/// preserved in request order, including duplicates. A short faces or pixels
-/// buffer returns BUFFER_TOO_SMALL, sets info to the exact required face and
-/// byte counts, and leaves both data buffers unchanged. A sizing call with both
-/// output buffers null inspects face metadata but does not decode texels. The
-/// caller can reserve the reported byte count before calling again with output
-/// buffers. info must be initialized with sizeof(openusd_silk_ptex_decode_info)
-/// and version 1. Requires no session and does not change session/page ABI
-/// versions.
+/// buffer. maximum_face_dimension limits each face dimension.
+/// maximum_decoded_bytes limits the packed pixel bytes, not Ptex's internal
+/// allocations, layout buffers, allocator overhead or later GPU storage.
+/// path is passed to Ptex unchanged. Face IDs are preserved in request order,
+/// including duplicates; a request admits at most 65,536 IDs. A short faces or
+/// pixels buffer returns BUFFER_TOO_SMALL, sets info to the exact required face
+/// and byte counts, and leaves both data buffers unchanged. A sizing call with
+/// both output buffers null inspects face metadata but does not decode texels.
+/// The caller can reserve the reported byte count before calling again with
+/// output buffers. info must be initialized with
+/// sizeof(openusd_silk_ptex_decode_info) and version 1. Requires no session and
+/// does not change session/page ABI versions.
 OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_decode_faces(
     const char* path,
     const uint32_t* face_ids,
@@ -1717,6 +1718,25 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_decode_faces(
     uint32_t face_capacity,
     uint8_t* pixels,
     uint64_t pixel_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) OPENUSD_HDSILK_NOEXCEPT;
+
+/// Describes selected Ptex faces without requesting their pixels. Face IDs,
+/// limits, info initialization and request ordering follow ptex_decode_faces.
+/// Layout offsets and required_byte_count describe the packed pixel buffer a
+/// matching decode would require. A short faces buffer returns BUFFER_TOO_SMALL,
+/// sets info to the required counts and leaves faces unchanged. Each call opens
+/// the asset independently; callers must verify the layouts used by a later
+/// decode before consuming them. Requires no session and does not change the
+/// session/page ABI versions.
+OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_describe_faces(
+    const char* path,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
     openusd_silk_ptex_decode_info* info,
     openusd_error_buffer* error) OPENUSD_HDSILK_NOEXCEPT;
 

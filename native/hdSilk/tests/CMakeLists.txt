@@ -421,9 +421,14 @@ else()
         hdsilk_ptex_decode_api_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_dependencies(hdsilk_ptex_decode_api_probe hdsilk_probe_runtime)
+get_filename_component(
+    HDSILK_PTEX_ADJACENCY_FIXTURE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/native-profile/ptex/tetrahedron.ptx"
+    ABSOLUTE)
 add_test(
     NAME hdsilk_ptex_decode_api
-    COMMAND hdsilk_ptex_decode_api_probe "${HDSILK_PTEX_DECODE_FIXTURE}")
+    COMMAND hdsilk_ptex_decode_api_probe
+        "${HDSILK_PTEX_DECODE_FIXTURE}" "${HDSILK_PTEX_ADJACENCY_FIXTURE}")
 set_tests_properties(hdsilk_ptex_decode_api
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
 

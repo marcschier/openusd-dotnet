@@ -34,6 +34,13 @@ struct HdSilkPtexDecodedFaces
     std::vector<uint8_t> pixels;
 };
 
+HdSilkPtexDecodedFaces HdSilkDescribePtexFaces(
+    const std::string& path,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes);
+
 HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
     const std::string& path,
     const uint32_t* faceIds,
