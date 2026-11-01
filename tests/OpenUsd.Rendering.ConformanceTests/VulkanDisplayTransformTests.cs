@@ -274,9 +274,13 @@ public sealed class VulkanDisplayTransformTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task SwiftShaderReuploadsTheLatticeWhenTheConfigChangesBetweenRenders(bool nonAsciiPath)
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task SwiftShaderReuploadsTheLatticeWhenTheConfigChangesBetweenRenders(
+        bool nonAsciiPath,
+        bool archive)
     {
         if (!IsSupportedPlatform())
         {
@@ -287,14 +291,13 @@ public sealed class VulkanDisplayTransformTests
         string sourceConfig = RequireTransformableConfigPath();
         var clearColor = new SilkColor(0.25f, 0.5f, 0.75f, 1);
         string prefix = nonAsciiPath ? "swiftshader-config-\u8272-" : "swiftshader-config-edit-";
-        string root = Path.Combine(
-            Path.GetFullPath(AppContext.BaseDirectory),
-            $"{prefix}{Guid.NewGuid():N}");
+        string root = Path.Combine(Path.GetTempPath(), $"{prefix}{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
-        string configPath = Path.Combine(root, "config.ocio");
+        string configPath = Path.Combine(root, archive ? "config.ocioz" : "config.ocio");
         try
         {
-            File.Copy(sourceConfig, configPath);
+            string content = File.ReadAllText(sourceConfig);
+            DisplayTransformConformance.WriteOcioConfig(configPath, content, archive);
 
             using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
             RequireSwiftShader(device);
@@ -317,10 +320,10 @@ public sealed class VulkanDisplayTransformTests
             _ = renderer.Render(display, depth, options);
             byte[] before = ReadPixels(display);
 
-            File.WriteAllText(
+            DisplayTransformConformance.WriteOcioConfig(
                 configPath,
-                File.ReadAllText(configPath)
-                    .Replace("gamma: 2.4", "gamma: 1.6", StringComparison.Ordinal));
+                content.Replace("gamma: 2.4", "gamma: 1.6", StringComparison.Ordinal),
+                archive);
             await Task.Delay(
                 SilkOpenColorIoConfigIdentityProvider.DefaultRevalidationInterval +
                 TimeSpan.FromMilliseconds(150));

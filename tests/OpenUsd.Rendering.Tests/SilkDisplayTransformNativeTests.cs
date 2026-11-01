@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using OpenUsd.Interop;
 using OpenUsd.Rendering.Silk;
@@ -469,6 +470,130 @@ public sealed class SilkDisplayTransformNativeTests
             {
                 Directory.Delete(root, recursive: true);
             }
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ArchiveIdentity_TracksArchivedNestedLutAndIgnoresExternalDecoys(bool nonAsciiPath)
+    {
+        RequireNativeOcio();
+        string prefix = nonAsciiPath ? "ocio-archive-\u8272-" : "ocio-archive-ascii-";
+        string root = Path.Combine(Path.GetTempPath(), $"{prefix}{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        string archivePath = Path.Combine(root, "config.ocioz");
+        string decoyPath = Path.Combine(root, "outer.ctf");
+        string previousDirectory = Directory.GetCurrentDirectory();
+        try
+        {
+            WriteNestedCtfArchive(archivePath, 0.5f);
+            File.WriteAllText(decoyPath, CreateScaleCtf(0.9f));
+            Directory.SetCurrentDirectory(root);
+            DateTime timestamp = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            File.SetLastWriteTimeUtc(archivePath, timestamp);
+            long originalLength = new FileInfo(archivePath).Length;
+
+            var provider = new SilkOpenColorIoConfigIdentityProvider(TimeSpan.Zero);
+            var cache = new SilkDisplayTransformLatticeCache(identityProvider: provider);
+            var transform = new RenderDisplayTransform(
+                archivePath, "linear", "CtfDisplay", "CtfView", latticeSize: 16);
+            SilkDisplayTransformConfigIdentity firstIdentity = provider.GetIdentity(archivePath);
+            SilkDisplayTransformLattice first = cache.Get(transform);
+            await Assert.That(firstIdentity.IsExhaustive).IsTrue();
+            await Assert.That(firstIdentity.Value).IsNotEmpty();
+            await Assert.That(ApplyNestedCtf(archivePath, 1f)).IsEqualTo(0.5f).Within(Tolerance);
+
+            File.WriteAllText(decoyPath, CreateScaleCtf(0.1f));
+            SilkDisplayTransformConfigIdentity unchanged = provider.GetIdentity(archivePath);
+            await Assert.That(unchanged.Value).IsEqualTo(firstIdentity.Value);
+            await Assert.That(cache.Get(transform)).IsSameReferenceAs(first);
+            await Assert.That(ApplyNestedCtf(archivePath, 1f)).IsEqualTo(0.5f).Within(Tolerance);
+
+            WriteNestedCtfArchive(archivePath, 0.25f);
+            File.SetLastWriteTimeUtc(archivePath, timestamp);
+            await Assert.That(new FileInfo(archivePath).Length).IsEqualTo(originalLength);
+            await Assert.That(File.GetLastWriteTimeUtc(archivePath)).IsEqualTo(timestamp);
+            SilkDisplayTransformConfigIdentity changed = provider.GetIdentity(archivePath);
+            SilkDisplayTransformLattice second = cache.Get(transform);
+            await Assert.That(changed.IsExhaustive).IsTrue();
+            await Assert.That(changed.Value).IsNotEqualTo(firstIdentity.Value);
+            await Assert.That(second).IsNotSameReferenceAs(first);
+            await Assert.That(second.Rgba8.Span.SequenceEqual(first.Rgba8.Span)).IsFalse();
+            await Assert.That(cache.Builds).IsEqualTo(2UL);
+            await Assert.That(cache.Invalidations).IsEqualTo(1UL);
+            await Assert.That(ApplyNestedCtf(archivePath, 1f)).IsEqualTo(0.25f).Within(Tolerance);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(previousDirectory);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ArchiveIdentity_EnforcesTheContentBudgetAndRecoversAfterShrink()
+    {
+        RequireNativeOcio();
+        const int maximumBytes = 64 * 1024 * 1024;
+        string root = Path.Combine(Path.GetTempPath(), $"ocio-archive-budget-\u8272-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        string archivePath = Path.Combine(root, "config.ocioz");
+        try
+        {
+            WriteNestedCtfArchive(archivePath, 0.5f, paddingBytes: 0);
+            int paddingBytes = checked(maximumBytes - (int)new FileInfo(archivePath).Length);
+            await Assert.That(paddingBytes).IsGreaterThan(0);
+            WriteNestedCtfArchive(archivePath, 0.5f, paddingBytes);
+            await Assert.That(new FileInfo(archivePath).Length).IsEqualTo((long)maximumBytes);
+
+            var provider = new SilkOpenColorIoConfigIdentityProvider(TimeSpan.Zero);
+            var cache = new SilkDisplayTransformLatticeCache(identityProvider: provider);
+            var transform = new RenderDisplayTransform(
+                archivePath, "linear", "CtfDisplay", "CtfView", latticeSize: 8);
+            await Assert.That(provider.GetIdentity(archivePath).IsExhaustive).IsTrue();
+            _ = cache.Get(transform);
+
+            WriteNestedCtfArchive(archivePath, 0.5f, paddingBytes + 1);
+            await Assert.That(new FileInfo(archivePath).Length).IsEqualTo((long)maximumBytes + 1);
+            await Assert.That(provider.GetIdentity(archivePath).IsExhaustive).IsFalse();
+            SilkDisplayTransformException refusal =
+                Assert.Throws<SilkDisplayTransformException>(() => cache.Get(transform));
+            await Assert.That(refusal.Status).IsEqualTo(SilkDisplayTransformStatus.TransformUnsupported);
+            await Assert.That(cache.Count).IsEqualTo(0);
+            await Assert.That(cache.PartialIdentityRefusals).IsEqualTo(1UL);
+
+            WriteNestedCtfArchive(archivePath, 0.5f, paddingBytes);
+            _ = cache.Get(transform);
+            await Assert.That(cache.Builds).IsEqualTo(2UL);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ArchiveProcessor_ResolvesUnicodeSearchPathsAndNestedLuts()
+    {
+        RequireNativeOcio();
+        string root = Path.Combine(Path.GetTempPath(), $"ocio-archive-search-\u8272-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        string archivePath = Path.Combine(root, "config.ocioz");
+        try
+        {
+            WriteSearchPathArchive(archivePath, 0.5f, 0.9f);
+            await Assert.That(ApplyNestedCtf(archivePath, 1f)).IsEqualTo(0.5f).Within(Tolerance);
+
+            WriteSearchPathArchive(archivePath, 0.5f, 0.1f);
+            await Assert.That(ApplyNestedCtf(archivePath, 1f)).IsEqualTo(0.5f).Within(Tolerance);
+
+            WriteSearchPathArchive(archivePath, 0.25f, 0.1f);
+            await Assert.That(ApplyNestedCtf(archivePath, 1f)).IsEqualTo(0.25f).Within(Tolerance);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
         }
     }
 
@@ -1190,6 +1315,31 @@ public sealed class SilkDisplayTransformNativeTests
     }
 
     [Test]
+    public async Task ArchiveIdentity_ResolvesRelativeArchiveInNonAsciiWorkingDirectory()
+    {
+        RequireNativeOcio();
+        string root = Path.Combine(Path.GetTempPath(), $"ocio-archive-working-\u8272-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        string previousDirectory = Directory.GetCurrentDirectory();
+        try
+        {
+            WriteNestedCtfArchive(Path.Combine(root, "config.ocioz"), 0.5f);
+            Directory.SetCurrentDirectory(root);
+
+            var provider = new SilkOpenColorIoConfigIdentityProvider(TimeSpan.Zero);
+            SilkDisplayTransformConfigIdentity identity = provider.GetIdentity("config.ocioz");
+            await Assert.That(identity.IsExhaustive).IsTrue();
+            await Assert.That(identity.Value).IsNotEmpty();
+            await Assert.That(ApplyNestedCtf("config.ocioz", 1f)).IsEqualTo(0.5f).Within(Tolerance);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(previousDirectory);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task ConfigIdentity_CostsExactlyOneDependencyWalkPerRevalidation()
     {
         RequireNativeOcio();
@@ -1498,6 +1648,57 @@ colorspaces:
                 </LUT1D>
             </ProcessList>
             """);
+
+    private static void WriteNestedCtfArchive(string path, float scale, int? paddingBytes = null)
+    {
+        using FileStream stream = File.Create(path);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
+        WriteArchiveEntry(archive, "config.ocio", NestedCtfConfig);
+        WriteArchiveEntry(archive, "outer.ctf", OuterReferenceCtf);
+        WriteArchiveEntry(archive, "inner.ctf", CreateScaleCtf(scale));
+        if (paddingBytes is int remaining)
+        {
+            ZipArchiveEntry entry = archive.CreateEntry("unused.bin", CompressionLevel.NoCompression);
+            entry.LastWriteTime = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            using Stream padding = entry.Open();
+            byte[] zeroes = new byte[64 * 1024];
+            while (remaining > 0)
+            {
+                int count = Math.Min(remaining, zeroes.Length);
+                padding.Write(zeroes, 0, count);
+                remaining -= count;
+            }
+        }
+
+    }
+
+    private static void WriteSearchPathArchive(string path, float selected, float decoy)
+    {
+        const string firstDirectory = "first-\u8272";
+        const string secondDirectory = "second-\u00e4";
+        const string outerName = "outer-\u00e4.ctf";
+        const string innerName = "inner-\u8272.ctf";
+        string config = NestedCtfConfig.Replace(
+            "search_path: \"\"",
+            $"search_path:\n  - {firstDirectory}\n  - {secondDirectory}",
+            StringComparison.Ordinal).Replace("outer.ctf", outerName, StringComparison.Ordinal);
+        string outer = OuterReferenceCtf.Replace("inner.ctf", innerName, StringComparison.Ordinal);
+
+        using FileStream stream = File.Create(path);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
+        WriteArchiveEntry(archive, "config.ocio", config);
+        WriteArchiveEntry(archive, $"{secondDirectory}/{outerName}", outer);
+        WriteArchiveEntry(archive, $"{firstDirectory}/{innerName}", CreateScaleCtf(selected));
+        WriteArchiveEntry(archive, $"{secondDirectory}/{innerName}", CreateScaleCtf(decoy));
+    }
+
+    private static void WriteArchiveEntry(ZipArchive archive, string name, string content)
+    {
+        ZipArchiveEntry entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
+        entry.LastWriteTime = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        using var writer = new StreamWriter(entry.Open());
+        writer.Write(content);
+    }
 
     private static float ApplyNestedCtf(string configPath, float value)
     {

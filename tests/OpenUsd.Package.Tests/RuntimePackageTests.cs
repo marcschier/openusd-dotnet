@@ -4025,6 +4025,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("PLUGIN_LAYOUT=true");
             await Assert.That(result.Output).Contains("OCIO_DISPLAY_TRANSFORM=true");
             await Assert.That(result.Output).Contains("OCIO_UNICODE_CONFIG=true");
+            await Assert.That(result.Output).Contains("OCIO_UNICODE_ARCHIVE=true");
             await Assert.That(result.Output).Contains("PNG_ROW_ORDER=true");
             await Assert.That(result.Output).Contains("RENDER_DISK_JOB=true");
             await Assert.That(result.Output).Contains("DEPTH_CAPTURE=true");
@@ -7515,6 +7516,7 @@ public sealed partial class RuntimePackageTests
         $$"""
         using System;
         using System.IO;
+        using System.IO.Compression;
         using System.Runtime.InteropServices;
         using OpenUsd.Rendering;
         using OpenUsd.Rendering.Silk;
@@ -8024,12 +8026,33 @@ public sealed partial class RuntimePackageTests
                         {
                             throw new InvalidOperationException("The packaged Unicode OCIO config changed output.");
                         }
+
+                        string unicodeArchivePath = Path.Combine(unicodeDirectory, "config.ocioz");
+                        using (ZipArchive archive = ZipFile.Open(unicodeArchivePath, ZipArchiveMode.Create))
+                        {
+                            ZipArchiveEntry entry = archive.CreateEntry("config.ocio");
+                            using Stream destination = entry.Open();
+                            using Stream source = File.OpenRead(ocioConfigPath);
+                            source.CopyTo(destination);
+                        }
+                        SilkDisplayTransformConfigIdentity archiveIdentity =
+                            identityProvider.GetIdentity(unicodeArchivePath);
+                        using var archiveProcessor = new SilkOpenColorIoDisplayTransform(
+                            unicodeArchivePath, "linear", "TestDisplay", "TestView").CreateProcessor();
+                        byte[] archivePixel = new byte[4];
+                        archiveProcessor.Apply(linearPixel, archivePixel, 1, 1, 0);
+                        if (!archiveIdentity.IsExhaustive || string.IsNullOrEmpty(archiveIdentity.Value) ||
+                            !archivePixel.AsSpan().SequenceEqual(displayPixel))
+                        {
+                            throw new InvalidOperationException("The packaged Unicode OCIO archive changed output.");
+                        }
                     }
                     finally
                     {
                         Directory.Delete(unicodeDirectory, recursive: true);
                     }
                     Console.WriteLine("OCIO_UNICODE_CONFIG=true");
+                    Console.WriteLine("OCIO_UNICODE_ARCHIVE=true");
 
                     using (var png = new MemoryStream())
                     {

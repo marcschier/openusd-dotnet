@@ -554,22 +554,23 @@ public sealed class D3D12DisplayTransformTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task WarpReuploadsTheLatticeWhenTheConfigChangesBetweenRenders(bool nonAsciiPath)
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task WarpReuploadsTheLatticeWhenTheConfigChangesBetweenRenders(bool nonAsciiPath, bool archive)
     {
         RequireWindows();
         string sourceConfig = RequireTransformableConfigPath();
         var clearColor = new SilkColor(0.25f, 0.5f, 0.75f, 1);
         string prefix = nonAsciiPath ? "warp-config-\u8272-" : "warp-config-edit-";
-        string root = Path.Combine(
-            Path.GetFullPath(AppContext.BaseDirectory),
-            $"{prefix}{Guid.NewGuid():N}");
+        string root = Path.Combine(Path.GetTempPath(), $"{prefix}{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
-        string configPath = Path.Combine(root, "config.ocio");
+        string configPath = Path.Combine(root, archive ? "config.ocioz" : "config.ocio");
         try
         {
-            File.Copy(sourceConfig, configPath);
+            string content = File.ReadAllText(sourceConfig);
+            DisplayTransformConformance.WriteOcioConfig(configPath, content, archive);
 
             using D3D12SilkGraphicsDevice device =
                 D3D12SilkGraphicsDevice.Create(useWarp: true);
@@ -598,10 +599,10 @@ public sealed class D3D12DisplayTransformTests
             // unchanged. Only the file's contents moved. Keying the uploaded texture on
             // the request rather than on the baked lattice left the old bytes on the GPU
             // and produced the previous image from a rebaked lattice.
-            File.WriteAllText(
+            DisplayTransformConformance.WriteOcioConfig(
                 configPath,
-                File.ReadAllText(configPath)
-                    .Replace("gamma: 2.4", "gamma: 1.6", StringComparison.Ordinal));
+                content.Replace("gamma: 2.4", "gamma: 1.6", StringComparison.Ordinal),
+                archive);
 
             // Past the documented revalidation window, so this exercises the production
             // path -- the shared identity provider's real throttle -- rather than a test

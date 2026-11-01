@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <clocale>
 #include <cstdlib>
 #include <filesystem>
 #include <set>
@@ -246,6 +247,63 @@ std::string FromPath(const std::filesystem::path& path)
 #endif
 }
 
+#if defined(_WIN32) && defined(_MSC_VER) && defined(_DLL)
+OCIO::ConstConfigRcPtr LoadWindowsArchive(const std::string& path)
+{
+    const int previousMode = _configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
+    if (previousMode == -1)
+    {
+        throw OCIO::Exception("Could not enable the calling thread's OpenColorIO locale.");
+    }
+
+    OCIO::ConstConfigRcPtr config;
+    try
+    {
+        const char* currentLocale = std::setlocale(LC_CTYPE, nullptr);
+        if (currentLocale == nullptr)
+        {
+            throw OCIO::Exception("Could not read the calling thread's OpenColorIO locale.");
+        }
+        const std::string previousLocale(currentLocale);
+        if (std::setlocale(LC_CTYPE, ".UTF8") == nullptr)
+        {
+            throw OCIO::Exception("Could not enable UTF-8 for the calling thread's OpenColorIO locale.");
+        }
+
+        try
+        {
+            config = OCIO::Config::CreateFromFile(path.c_str());
+        }
+        catch (...)
+        {
+            if (std::setlocale(LC_CTYPE, previousLocale.c_str()) == nullptr)
+            {
+                throw OCIO::Exception("Could not restore the calling thread's OpenColorIO locale.");
+            }
+            throw;
+        }
+        if (std::setlocale(LC_CTYPE, previousLocale.c_str()) == nullptr)
+        {
+            throw OCIO::Exception("Could not restore the calling thread's OpenColorIO locale.");
+        }
+    }
+    catch (...)
+    {
+        if (_configthreadlocale(previousMode) == -1)
+        {
+            throw OCIO::Exception("Could not restore the calling thread's OpenColorIO locale mode.");
+        }
+        throw;
+    }
+
+    if (_configthreadlocale(previousMode) == -1)
+    {
+        throw OCIO::Exception("Could not restore the calling thread's OpenColorIO locale mode.");
+    }
+    return config;
+}
+#endif
+
 OCIO::ConstConfigRcPtr LoadConfig(const char* configPath)
 {
 #ifdef _WIN32
@@ -271,8 +329,15 @@ OCIO::ConstConfigRcPtr LoadConfig(const char* configPath)
             if (stream.gcount() == static_cast<std::streamsize>(sizeof(signature)) &&
                 signature[0] == 'P' && signature[1] == 'K')
             {
+#if defined(_MSC_VER) && defined(_DLL)
+                // OCIO's archive reader accepts UTF-8; its filesystem preflight uses the
+                // CRT locale. Restrict that change to this thread and restore it on failure.
+                stream.close();
+                return LoadWindowsArchive(utf8Path);
+#else
                 throw OCIO::Exception(
-                    "OpenColorIO archives at non-ASCII Windows paths are not supported by the pinned runtime.");
+                    "OpenColorIO archives at non-ASCII Windows paths require the shared Windows CRT.");
+#endif
             }
             stream.clear();
             stream.seekg(0);
@@ -1628,13 +1693,19 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_config_cache_id(
 
         enqueue(configPath);
 
-        std::vector<std::string> sources;
-        CollectConfigFileTransforms(config, sources);
-        std::sort(sources.begin(), sources.end());
-        sources.erase(std::unique(sources.begin(), sources.end()), sources.end());
-        for (const std::string& source : sources)
+        // An OCIOZ config owns a proxy that resolves all LUTs inside the archive.
+        // Hashing the archive accounts for those bytes without treating similarly named
+        // files in the process working directory as dependencies.
+        if (!config->getConfigIOProxy())
         {
-            enqueue(resolveThroughContext(source));
+            std::vector<std::string> sources;
+            CollectConfigFileTransforms(config, sources);
+            std::sort(sources.begin(), sources.end());
+            sources.erase(std::unique(sources.begin(), sources.end()), sources.end());
+            for (const std::string& source : sources)
+            {
+                enqueue(resolveThroughContext(source));
+            }
         }
 
         uint64_t digest = 1469598103934665603ull;

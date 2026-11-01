@@ -1402,10 +1402,11 @@ SilkFrameCaptureResult result = SilkFrameCapture.Capture(
     session, device, 1920, 1080, renderSettings, processor);
 ```
 
-On Windows, text `.ocio` configs and referenced LUTs can use non-ASCII paths. Relative processor
-paths are resolved against the current working directory. Archives whose effective `.ocioz` path
-contains non-ASCII characters are not supported by the pinned Windows runtime; the processor
-reports an error. Place those archives under an ASCII path.
+On Windows, `.ocio` configs, `.ocioz` archives, and referenced LUTs can use non-ASCII paths.
+Relative processor paths resolve against the current working directory. Opening a non-ASCII archive
+temporarily selects a UTF-8 character locale for the calling thread, then restores its locale and
+mode, including when loading fails. This path requires the pinned build's shared MSVC runtime;
+Windows builds without the shared runtime reject non-ASCII archive paths.
 
 `RenderSettings.Exposure` is applied to linear RGB channels **before** the OCIO display/view
 transform. `RenderSettings.OutputTransform` must be `Identity` when an OCIO processor is
@@ -1479,18 +1480,23 @@ the transformed image to match the untransformed one row for row.
 **Configuration identity.** A path is not an identity, and neither is file metadata. Every lattice
 lookup revalidates the configuration through a content-aware digest: OpenColorIO's own
 `Config::getCacheID` taken with the config's current context, combined with a hash of the config
-file's bytes and of the bytes of every file its transforms reference, resolved through that same
-context. Metadata alone is not enough, because a LUT rewritten to the same length inside one clock
-tick keeps its size and its modification time while changing every rendered pixel -- and that is
-exactly what `Config::getCacheID` misses. The walk covers colour spaces, looks, view transforms,
-and named transforms, recursing through group transforms, and is bounded at 256 files and 64 MiB;
-beyond either bound the identity is marked as bounded rather than silently claiming to be
-exhaustive. An edit, a changed or deleted referenced LUT, a retargeted link, and a context change
-that resolves a reference elsewhere therefore each invalidate the cached lattice on the CPU and,
-because the pass keys its uploaded texture on the lattice the cache returned rather than on the
-transform that was asked for, on the GPU as well.
+file's bytes. For text configs, the digest also hashes every referenced file, resolved through the
+same context. For `.ocioz` configs, LUTs resolve inside the archive, so the digest hashes the
+archive bytes rather than similarly named external files. Metadata alone is not enough, because a
+LUT rewritten to the same length inside one clock tick keeps its size and modification time while
+changing rendered pixels.
 
-The walk is transitive, not one level deep. A `FileTransform` naming a CTF or CLF file is opened
+The text-config walk covers colour spaces, looks, view transforms, and named transforms, recursing
+through group transforms. It is bounded at 256 files and 64 MiB of content. An archive uses the
+same 64-MiB content bound on its stored bytes; exactly 64 MiB is accepted, while a larger archive
+produces a partial identity. This bound does not limit OpenColorIO's decompression memory. Beyond
+either bound the identity is marked partial rather than silently claiming to be exhaustive. An
+edit, a changed or deleted referenced LUT, a retargeted link, and a context change that resolves a
+reference elsewhere therefore each invalidate the cached lattice on the CPU and, because the pass
+keys its uploaded texture on the lattice the cache returned rather than on the transform that was
+asked for, on the GPU as well.
+
+The text-config walk is transitive, not one level deep. A `FileTransform` naming a CTF or CLF file is opened
 and its `Reference` elements are followed to the files they name, recursively, so editing a LUT
 that only a referenced process list mentions still changes the identity. Whether a dependency *is*
 a process list is decided by its content, never by its name: the leading bytes are inspected for an

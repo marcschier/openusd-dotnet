@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.IO.Compression;
 using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Rendering.ConformanceTests;
@@ -11,6 +12,21 @@ internal static class DisplayTransformConformance
 {
     internal const uint Width = 32;
     internal const uint Height = 24;
+
+    internal static void WriteOcioConfig(string path, string content, bool archive)
+    {
+        if (!archive)
+        {
+            File.WriteAllText(path, content);
+            return;
+        }
+
+        using FileStream stream = File.Create(path);
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
+        ZipArchiveEntry entry = zip.CreateEntry("config.ocio");
+        using var writer = new StreamWriter(entry.Open());
+        writer.Write(content);
+    }
 
     internal static async Task OutputResizeUsesExactOverlap(SilkGraphicsBackend backend, bool oneByteShort)
     {
