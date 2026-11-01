@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.Vulkan;
 
 namespace OpenUsd.Rendering.ConformanceTests;
@@ -13,9 +14,13 @@ public sealed class VulkanSlangInstanceIndexPatchTests
     private const uint OpISub = (5u << 16) | 130u;
     private const uint OpCopyObject = (4u << 16) | 83u;
     private const uint OpNop = 1u << 16;
+    private const uint OpCapability = (2u << 16) | 17u;
+    private const uint OpVariable = (4u << 16) | 59u;
     private const uint DecorationBuiltIn = 11;
     private const uint BuiltInInstanceIndex = 43;
     private const uint BuiltInBaseInstance = 4425;
+    private const uint BuiltInDrawIndex = 4426;
+    private const uint CapabilityDrawParameters = 4427;
 
     [Test]
     public async Task PatchesOnlySlangInstanceIndexMinusBaseInstanceLowering()
@@ -43,6 +48,265 @@ public sealed class VulkanSlangInstanceIndexPatchTests
         await Assert.That(patchedWords[subtractOffset + 2]).IsEqualTo(subtractionResult);
         await Assert.That(patchedWords[subtractOffset + 3]).IsEqualTo(instanceIndexLoad);
         await Assert.That(patchedWords[subtractOffset + 4]).IsEqualTo(OpNop);
+    }
+
+    [Test]
+    [Arguments("mesh")]
+    [Arguments("mesh-uv")]
+    [Arguments("mesh-uv-normal")]
+    [Arguments("normal")]
+    [Arguments("shadow")]
+    [Arguments("shadow-mask")]
+    public async Task RemovesUnusedDrawParametersFromCheckedInstanceShaders(string shader)
+    {
+        SilkShaderModuleDescriptor descriptor = shader switch
+        {
+            "mesh" => SilkCheckedShaderAssets.LoadMeshVertex(SilkShaderBinaryFormat.SpirV),
+            "mesh-uv" => SilkCheckedShaderAssets.LoadMeshVertex(
+                SilkShaderBinaryFormat.SpirV,
+                new SilkShaderPermutationId(SilkShaderFeatures.Uv)),
+            "mesh-uv-normal" => SilkCheckedShaderAssets.LoadMeshVertex(
+                SilkShaderBinaryFormat.SpirV,
+                new SilkShaderPermutationId(SilkShaderFeatures.Uv | SilkShaderFeatures.NormalMap)),
+            "normal" => SilkCheckedShaderAssets.LoadNormalVertex(SilkShaderBinaryFormat.SpirV),
+            "shadow" => SilkCheckedShaderAssets.LoadShadowVertex(SilkShaderBinaryFormat.SpirV),
+            "shadow-mask" => SilkCheckedShaderAssets.LoadMaskedShadowVertex(SilkShaderBinaryFormat.SpirV),
+            _ => throw new ArgumentOutOfRangeException(nameof(shader))
+        };
+        uint[][] original = Instructions(descriptor.Code.ToArray());
+        uint baseInstance = original.Single(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpDecorate &&
+            instruction[2] == DecorationBuiltIn &&
+            instruction[3] == BuiltInBaseInstance)[1];
+        uint[][] patched = Instructions(
+            VulkanSilkGraphicsDevice.PatchSlangInstanceIndexLowering(descriptor.Code.Span));
+
+        await Assert.That(original.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsFalse();
+        await Assert.That(patched.Any(instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpDecorate &&
+            instruction[1] == baseInstance)).IsFalse();
+        await Assert.That(patched.Any(instruction =>
+            instruction.Length >= 4 &&
+            (instruction[0] & 0xffff) == 59 &&
+            instruction[2] == baseInstance)).IsFalse();
+        await Assert.That(patched.Any(instruction =>
+            instruction.Length >= 4 &&
+            (instruction[0] & 0xffff) == 61 &&
+            instruction[3] == baseInstance)).IsFalse();
+        await Assert.That(patched.Any(instruction =>
+            (instruction[0] & 0xffff) == 15 &&
+            instruction.Skip(5).Contains(baseInstance))).IsFalse();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpDecorate &&
+            instruction[2] == DecorationBuiltIn &&
+            instruction[3] == BuiltInInstanceIndex)).IsTrue();
+        await Assert.That(patched.Any(static instruction => instruction[0] == OpCopyObject)).IsTrue();
+        int firstFunction = Array.FindIndex(patched, static instruction => (instruction[0] & 0xffff) == 54);
+        await Assert.That(firstFunction).IsGreaterThan(0);
+        await Assert.That(patched.Take(firstFunction).Any(static instruction => instruction[0] == OpNop)).IsFalse();
+    }
+
+    [Test]
+    public async Task KeepsDrawParametersWhenAnotherDrawBuiltinIsPresent()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11, 12),
+            DecorateBuiltIn(10, BuiltInInstanceIndex),
+            DecorateBuiltIn(11, BuiltInBaseInstance),
+            DecorateBuiltIn(12, BuiltInDrawIndex),
+            [OpVariable, 1, 11, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21));
+
+        uint[][] patched = Instructions(VulkanSilkGraphicsDevice.PatchSlangInstanceIndexLowering(module));
+
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpDecorate &&
+            instruction[1] == 12 &&
+            instruction[3] == BuiltInDrawIndex)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpCopyObject &&
+            instruction[2] == 22 &&
+            instruction[3] == 20)).IsTrue();
+    }
+
+    [Test]
+    public async Task RemovesTheUnusedInterfaceFromEveryEntryPointWithoutReordering()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11, 12),
+            EntryPoint(11, 10),
+            DecorateBuiltIn(10, BuiltInInstanceIndex),
+            DecorateBuiltIn(11, BuiltInBaseInstance),
+            [OpVariable, 1, 11, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21));
+
+        uint[][] entryPoints = Instructions(VulkanSilkGraphicsDevice.PatchSlangInstanceIndexLowering(module))
+            .Where(static instruction => (instruction[0] & 0xffff) == 15)
+            .ToArray();
+
+        await Assert.That(entryPoints.Length).IsEqualTo(2);
+        await Assert.That(entryPoints[0].Skip(5).SequenceEqual([10u, 12u])).IsTrue();
+        await Assert.That(entryPoints[1].Skip(5).SequenceEqual([10u])).IsTrue();
+        await Assert.That(entryPoints[0][0] >> 16).IsEqualTo(7u);
+        await Assert.That(entryPoints[1][0] >> 16).IsEqualTo(6u);
+    }
+
+    [Test]
+    public async Task KeepsDrawParametersWhenAStructMemberUsesAnotherDrawBuiltin()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11),
+            DecorateBuiltIn(10, BuiltInInstanceIndex),
+            DecorateBuiltIn(11, BuiltInBaseInstance),
+            [(5u << 16) | 72u, 40, 0, DecorationBuiltIn, BuiltInDrawIndex],
+            [OpVariable, 1, 11, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21));
+
+        uint[][] patched = Instructions(VulkanSilkGraphicsDevice.PatchSlangInstanceIndexLowering(module));
+
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 5 &&
+            (instruction[0] & 0xffff) == 72 &&
+            instruction[4] == BuiltInDrawIndex)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpVariable &&
+            instruction[2] == 11)).IsTrue();
+    }
+
+    [Test]
+    public async Task KeepsBaseInstanceWhenItsLoadedValueHasAnotherUse()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11),
+            DecorateBuiltIn(10, BuiltInInstanceIndex),
+            DecorateBuiltIn(11, BuiltInBaseInstance),
+            [OpVariable, 1, 11, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21),
+            [OpCopyObject, 1, 23, 21]);
+
+        uint[][] patched = Instructions(VulkanSilkGraphicsDevice.PatchSlangInstanceIndexLowering(module));
+
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpLoad &&
+            instruction[2] == 21 &&
+            instruction[3] == 11)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpVariable &&
+            instruction[2] == 11)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            (instruction[0] & 0xffff) == 15 &&
+            instruction.Skip(5).Contains(11u))).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpCopyObject &&
+            instruction[2] == 23 &&
+            instruction[3] == 21)).IsTrue();
+    }
+
+    [Test]
+    public async Task KeepsBaseInstanceWhenItsVariableHasAnotherUse()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11),
+            DecorateBuiltIn(10, BuiltInInstanceIndex),
+            DecorateBuiltIn(11, BuiltInBaseInstance),
+            [OpVariable, 1, 11, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21),
+            [OpCopyObject, 1, 23, 11]);
+
+        uint[][] patched = Instructions(VulkanSilkGraphicsDevice.PatchSlangInstanceIndexLowering(module));
+
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpVariable &&
+            instruction[2] == 11)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpCopyObject &&
+            instruction[2] == 23 &&
+            instruction[3] == 11)).IsTrue();
+    }
+
+    [Test]
+    public async Task KeepsDrawParametersWhenGroupedDecorationsPreventUseAnalysis()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11),
+            DecorateBuiltIn(10, BuiltInInstanceIndex),
+            DecorateBuiltIn(11, BuiltInBaseInstance),
+            [(3u << 16) | 74u, 30, 11],
+            [OpVariable, 1, 11, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21));
+
+        uint[][] patched = Instructions(VulkanSilkGraphicsDevice.PatchSlangInstanceIndexLowering(module));
+
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 3 &&
+            (instruction[0] & 0xffff) == 74 &&
+            instruction[2] == 11)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpVariable &&
+            instruction[2] == 11)).IsTrue();
     }
 
     [Test]
@@ -105,6 +369,9 @@ public sealed class VulkanSlangInstanceIndexPatchTests
 
     private static uint[] Header() => [Magic, 0x00010000, 0, 64, 0];
 
+    private static uint[] EntryPoint(params uint[] interfaceIds) =>
+        [((uint)(5 + interfaceIds.Length) << 16) | 15, 0, 2, 0x6e69616d, 0, .. interfaceIds];
+
     private static uint[] DecorateBuiltIn(uint target, uint builtIn) =>
         [OpDecorate, target, DecorationBuiltIn, builtIn];
 
@@ -143,5 +410,18 @@ public sealed class VulkanSlangInstanceIndexPatchTests
                 bytes.AsSpan(i * sizeof(uint), sizeof(uint)));
         }
         return words;
+    }
+
+    private static uint[][] Instructions(byte[] module)
+    {
+        uint[] words = ToWords(module);
+        var instructions = new List<uint[]>();
+        for (int offset = 5; offset < words.Length;)
+        {
+            int count = checked((int)(words[offset] >> 16));
+            instructions.Add(words.AsSpan(offset, count).ToArray());
+            offset += count;
+        }
+        return [.. instructions];
     }
 }

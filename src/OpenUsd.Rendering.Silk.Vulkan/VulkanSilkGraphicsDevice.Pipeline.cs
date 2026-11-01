@@ -158,9 +158,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
         int patchOffset = patchOffsets[0];
         uint instanceLoad = readWord(code, patchOffset + 3);
+        uint baseInstanceLoad = readWord(code, patchOffset + 4);
         writeWord(code, patchOffset, ((uint)4 << 16) | opCopyObject);
         writeWord(code, patchOffset + 3, instanceLoad);
         writeWord(code, patchOffset + 4, 1u << 16);
+        RemoveUnusedDrawParameters(ref code, baseInstanceVariable, baseInstanceLoad);
         return code;
 
         static void assignUniqueBuiltin(ref uint current, uint target, string name)
