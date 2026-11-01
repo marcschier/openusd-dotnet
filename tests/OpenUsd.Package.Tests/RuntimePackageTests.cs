@@ -1637,6 +1637,70 @@ public sealed partial class RuntimePackageTests
     }
 
     [Test]
+    [Arguments("NuGetPackageRoot")]
+    [Arguments("NUGETPACKAGEROOT")]
+    public async Task PackageConsumersIgnoreInheritedNuGetPackageRootWhenSelectingAnIsolatedCache(
+        string overrideName)
+    {
+        string workRoot = CreateWorkRoot(FindRepositoryRoot());
+        Dictionary<string, string?> oldPackageRoots = Environment.GetEnvironmentVariables()
+            .Cast<System.Collections.DictionaryEntry>()
+            .Where(static entry => string.Equals((string)entry.Key, "NuGetPackageRoot",
+                StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(static entry => (string)entry.Key, static entry => (string?)entry.Value,
+                StringComparer.Ordinal);
+        try
+        {
+            foreach (string name in oldPackageRoots.Keys)
+            {
+                Environment.SetEnvironmentVariable(name, null);
+            }
+            string consumerRoot = Path.Combine(workRoot, "isolated-consumer");
+            string parentPackageRoot = Path.Combine(workRoot, "parent packages");
+            string consumerPackages = Path.Combine(workRoot, "consumer packages");
+            WriteTestFile(Path.Combine(consumerRoot, "Consumer.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+                </Project>
+                """);
+            Environment.SetEnvironmentVariable(overrideName, parentPackageRoot);
+            string[] arguments =
+            [
+                "msbuild", "Consumer.csproj", "-nologo",
+                "-p:ImportDirectoryBuildProps=false", "-p:ImportDirectoryBuildTargets=false",
+                "-getProperty:NUGET_PACKAGES,NuGetPackageRoot"
+            ];
+
+            CommandResult isolated = await RunDotnetAsync(consumerRoot, arguments, consumerPackages);
+            await Assert.That(isolated.ExitCode).IsEqualTo(0).Because(isolated.Output);
+            using (JsonDocument properties = JsonDocument.Parse(isolated.Output))
+            {
+                JsonElement values = properties.RootElement.GetProperty("Properties");
+                await Assert.That(values.GetProperty("NUGET_PACKAGES").GetString()).IsEqualTo(consumerPackages);
+                await Assert.That(values.GetProperty("NuGetPackageRoot").GetString()).IsEqualTo(string.Empty);
+            }
+
+            CommandResult inherited = await RunDotnetAsync(consumerRoot, arguments);
+            await Assert.That(inherited.ExitCode).IsEqualTo(0).Because(inherited.Output);
+            using (JsonDocument properties = JsonDocument.Parse(inherited.Output))
+            {
+                await Assert.That(properties.RootElement.GetProperty("Properties")
+                    .GetProperty("NuGetPackageRoot").GetString()).IsEqualTo(parentPackageRoot);
+            }
+            await Assert.That(Environment.GetEnvironmentVariable(overrideName)).IsEqualTo(parentPackageRoot);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(overrideName, null);
+            foreach ((string name, string? value) in oldPackageRoots)
+            {
+                Environment.SetEnvironmentVariable(name, value);
+            }
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task RuntimePackageMetadataUsesTheSelectedIntermediateDirectory(bool sdkArtifacts)
@@ -10452,6 +10516,12 @@ public sealed partial class RuntimePackageTests
         }
         if (nugetPackagesRoot is not null)
         {
+            foreach (string name in process.StartInfo.Environment.Keys
+                .Where(static key => string.Equals(key, "NuGetPackageRoot", StringComparison.OrdinalIgnoreCase))
+                .ToArray())
+            {
+                process.StartInfo.Environment.Remove(name);
+            }
             process.StartInfo.Environment["NUGET_PACKAGES"] = nugetPackagesRoot;
             // A clean package consumer owns its build state as well as its restore cache.
             process.StartInfo.Environment["UseArtifactsOutput"] = "false";

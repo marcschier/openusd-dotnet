@@ -182,8 +182,7 @@ def Xform "World"
         IncludeFields = true
     };
 
-    [Test]
-    public async Task SyntheticMaterialCommandsPreserveTextureEntriesAcrossPageAbi()
+    internal static byte[] CreateSyntheticMultiTextureMaterialCommand()
     {
         MaterialTextureSpec[] textures =
         [
@@ -207,19 +206,7 @@ def Xform "World"
                 "st2",
                 SilkTextureChannel.R),
         ];
-
-        using var scene = new SilkSceneState();
-        scene.Apply(CreateTexturedMaterialCommand("/Synthetic", textures, []), 1, 1);
-        SilkMaterialData material = scene.Materials["/Synthetic"];
-        await Assert.That(material.Textures.Count).IsEqualTo(2);
-        await Assert.That(material.Textures[0].SourceKind).IsEqualTo(SilkTextureSourceKind.Standard);
-        await Assert.That(material.Textures[0].Asset).IsEqualTo("textures/albedo.ptx");
-        await Assert.That(material.Textures[0].UvPrimvar).IsEqualTo("st");
-        await Assert.That(material.Textures[0].Parameter).IsEqualTo(SilkMaterialParameter.DiffuseColor);
-        await Assert.That(material.Textures[1].SourceKind).IsEqualTo(SilkTextureSourceKind.Standard);
-        await Assert.That(material.Textures[1].Asset).IsEqualTo("textures/roughness.png");
-        await Assert.That(material.Textures[1].UvPrimvar).IsEqualTo("st2");
-        await Assert.That(material.Textures[1].Parameter).IsEqualTo(SilkMaterialParameter.Roughness);
+        return CreateTexturedMaterialCommand("/Synthetic", textures, []);
     }
 
     [Test]

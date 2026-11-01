@@ -110,6 +110,52 @@ jobs:
         if: runner.os == 'Linux'
         shell: pwsh
         run: ./eng/test-render-capability-gates.ps1
+      - name: Test synthetic material command ABI
+        if: runner.os != 'macOS'
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          $started = [DateTime]::UtcNow
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -MinimumExpectedTests 1 `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/SyntheticMaterialCommandTests/SyntheticMaterialCommandsPreserveTextureEntriesAcrossPageAbi')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $target = @(dotnet msbuild $project -nologo '-p:Configuration=Release' `
+            '-p:TargetFramework=net10.0' '-getProperty:TargetPath')
+          if ($LASTEXITCODE -ne 0 -or $target.Count -ne 1 -or
+              -not [IO.Path]::IsPathFullyQualified($target[0])) {
+            throw 'Could not resolve the conformance test assembly path.'
+          }
+          $platform = if ($IsWindows) { 'windows' } else { 'linux' }
+          $reportPath = Join-Path ([IO.Path]::GetDirectoryName($target[0])) `
+            "TestResults/OpenUsd.Rendering.ConformanceTests-$platform-net10.0.tunit-report.json"
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf) -or
+              (Get-Item -LiteralPath $reportPath).LastWriteTimeUtc -lt $started) {
+            throw 'A fresh synthetic material ABI test report is required.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $passed = @(
+            foreach ($group in $report.groups) {
+              if ($group.className -ceq 'SyntheticMaterialCommandTests') {
+                $group.tests | Where-Object {
+                  $_.methodName -ceq 'SyntheticMaterialCommandsPreserveTextureEntriesAcrossPageAbi' -and
+                    $_.status -ceq 'passed'
+                }
+              }
+            }
+          )
+          if ($report.summary.total -ne 1 -or $report.summary.passed -ne 1 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $passed.Count -ne 1) {
+            throw 'The synthetic material ABI test must execute and pass without skips.'
+          }
       - name: Verify Vulkan test runtime
         if: runner.os != 'macOS'
         shell: pwsh
