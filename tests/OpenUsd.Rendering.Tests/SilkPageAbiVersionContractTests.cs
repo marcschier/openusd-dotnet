@@ -60,6 +60,9 @@ public sealed class SilkPageAbiVersionContractTests
         await Assert.That(Marshal.SizeOf<OpenUsdSilkRuntime.NativeSceneIngestionRequest>()).IsEqualTo(32);
         await Assert.That(Marshal.OffsetOf<OpenUsdSilkRuntime.NativeSceneIngestionRequest>(
             nameof(OpenUsdSilkRuntime.NativeSceneIngestionRequest.MaterialBindingPurpose)).ToInt64()).IsEqualTo(24L);
+        await Assert.That(Marshal.SizeOf<OpenUsdSilkRuntime.NativeVolumeBudgetUsage>()).IsEqualTo(40);
+        await Assert.That(Marshal.OffsetOf<OpenUsdSilkRuntime.NativeVolumeBudgetUsage>(
+            nameof(OpenUsdSilkRuntime.NativeVolumeBudgetUsage.ReservationCount)).ToInt64()).IsEqualTo(32L);
         await Assert.That(header).Contains("#define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u");
         await Assert.That(header).Contains("openusd_silk_get_session_abi_version");
         await Assert.That(header).Contains("openusd_silk_get_page_abi_version");
@@ -67,6 +70,10 @@ public sealed class SilkPageAbiVersionContractTests
         await Assert.That(header).Contains("openusd_silk_page_retain_volume_assets");
         await Assert.That(header).Contains("openusd_silk_volume_assets_copy");
         await Assert.That(header).Contains("openusd_silk_volume_assets_release");
+        await Assert.That(header).Contains("openusd_silk_volume_budget_create");
+        await Assert.That(header).Contains("openusd_silk_session_set_volume_budget");
+        await Assert.That(header).Contains("openusd_silk_volume_budget_get_usage");
+        await Assert.That(header).Contains("openusd_silk_volume_budget_release");
     }
 
     [Test]

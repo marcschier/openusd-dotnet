@@ -72,10 +72,75 @@ namespace
 constexpr size_t VolumeFieldTargetBytes = 64ull * 1024ull * 1024ull;
 constexpr size_t VolumeTransferBytes = 64ull * 1024ull;
 
+class SilkVolumeFieldBudget final
+{
+public:
+    explicit SilkVolumeFieldBudget(uint64_t maximum) : _maximum(maximum) {}
+
+    void Reserve(uint64_t bytes)
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        if (bytes > _maximum - _reserved)
+        {
+            throw std::runtime_error(
+                "hdSilk decoded volume field admission refused " + std::to_string(bytes) +
+                " bytes with " + std::to_string(_reserved) + " reserved (limit " +
+                std::to_string(_maximum) + ").");
+        }
+        _reserved += bytes;
+        _peak = std::max(_peak, _reserved);
+        ++_count;
+    }
+
+    void Release(uint64_t bytes) noexcept
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _reserved -= bytes;
+        --_count;
+    }
+
+    openusd_silk_volume_budget_usage Snapshot() const
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        return {sizeof(openusd_silk_volume_budget_usage), OPENUSD_SILK_VOLUME_BUDGET_VERSION,
+            _maximum, _reserved, _peak, _count};
+    }
+
+private:
+    const uint64_t _maximum;
+    mutable std::mutex _mutex;
+    uint64_t _reserved = 0;
+    uint64_t _peak = 0;
+    uint64_t _count = 0;
+};
+
+class SilkVolumeFieldReservation final
+{
+public:
+    SilkVolumeFieldReservation(std::shared_ptr<SilkVolumeFieldBudget> budget, uint64_t bytes)
+        : _budget(std::move(budget)), _bytes(bytes)
+    {
+        if (_budget) { _budget->Reserve(_bytes); }
+    }
+
+    ~SilkVolumeFieldReservation()
+    {
+        if (_budget) { _budget->Release(_bytes); }
+    }
+
+    SilkVolumeFieldReservation(const SilkVolumeFieldReservation&) = delete;
+    SilkVolumeFieldReservation& operator=(const SilkVolumeFieldReservation&) = delete;
+
+private:
+    std::shared_ptr<SilkVolumeFieldBudget> _budget;
+    uint64_t _bytes;
+};
+
 struct SilkVolumeAsset
 {
-    explicit SilkVolumeAsset(const std::vector<float>& values)
-        : file(values.size() * sizeof(float),
+    SilkVolumeAsset(const std::vector<float>& values, const std::shared_ptr<SilkVolumeFieldBudget>& budget)
+        : reservation(budget, values.size() * sizeof(float)),
+          file(values.size() * sizeof(float),
             std::min(values.size() * sizeof(float), VolumeTransferBytes))
     {
         file.Append(
@@ -84,12 +149,18 @@ struct SilkVolumeAsset
         file.Flush();
     }
 
+    SilkVolumeFieldReservation reservation;
     HdSilkCommandFile file;
     std::mutex readMutex;
 };
 
 using SilkVolumeAssetMap = std::unordered_map<std::string, std::shared_ptr<SilkVolumeAsset>>;
 }
+
+struct openusd_silk_volume_budget
+{
+    std::shared_ptr<SilkVolumeFieldBudget> state;
+};
 
 namespace
 {
@@ -299,6 +370,7 @@ struct SilkSessionState
     size_t maximumSessionCommandPageBytes = SIZE_MAX;
     std::shared_ptr<HdSilkCommandStorageBudget> commandStorageBudget;
     openusd_silk_command_storage_limits commandStorageLimits{};
+    std::shared_ptr<SilkVolumeFieldBudget> volumeBudget;
     bool synchronizationStarted = false;
     bool pageAcknowledgementEnabled = false;
     uint64_t pendingPageRevision = 0;
@@ -337,6 +409,24 @@ struct openusd_silk_volume_assets
 {
     SilkVolumeAssetMap assets;
 };
+
+namespace
+{
+class VolumePublicationTransaction final
+{
+public:
+    explicit VolumePublicationTransaction(SilkSessionState* state) : _state(state) {}
+    ~VolumePublicationTransaction()
+    {
+        if (!_committed) { _state->volumeAssets.clear(); }
+    }
+    void Commit() noexcept { _committed = true; }
+
+private:
+    SilkSessionState* _state;
+    bool _committed = false;
+};
+}
 
 namespace
 {
@@ -1066,7 +1156,7 @@ bool TryCreateVolumeTexture(
 
     try
     {
-        auto stored = std::make_shared<SilkVolumeAsset>(field.values);
+        auto stored = std::make_shared<SilkVolumeAsset>(field.values, state->volumeBudget);
         if (!state->volumeAssets.emplace(materialPath, std::move(stored)).second)
         {
             throw std::logic_error("A volume material was published more than once in one sync.");
@@ -1563,6 +1653,7 @@ openusd_status SyncSessionWithSceneIngestionState(
             camera->clip_planes,
             sizeof(frame.clipPlanes));
         state->sceneState->SetFrame(frame);
+        VolumePublicationTransaction volumePublication(state);
         PublishVolumes(state, UsdTimeCode(time_code), ingestionState.includedPurposeMask);
         for (const UsdPrim& prim : state->stage->Traverse())
         {
@@ -1633,6 +1724,7 @@ openusd_status SyncSessionWithSceneIngestionState(
             g_live_page_count.fetch_add(1, std::memory_order_relaxed) + 1;
         UpdatePeak(g_peak_page_count, live);
         *page = result.release();
+        volumePublication.Commit();
         state->sceneSyncRecoveryPending = false;
         return OPENUSD_STATUS_OK;
     }
@@ -2076,6 +2168,76 @@ openusd_status openusd_silk_volume_assets_copy(
 void openusd_silk_volume_assets_release(openusd_silk_volume_assets* assets) noexcept
 {
     delete assets;
+}
+
+openusd_status openusd_silk_volume_budget_create(
+    uint64_t maximum_bytes,
+    openusd_silk_volume_budget** budget,
+    openusd_error_buffer* error)
+{
+    if (budget != nullptr) { *budget = nullptr; }
+    if (maximum_bytes == 0 || budget == nullptr)
+    {
+        WriteError(error, "A positive decoded-field byte ceiling and budget output are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        auto result = std::make_unique<openusd_silk_volume_budget>();
+        result->state = std::make_shared<SilkVolumeFieldBudget>(maximum_bytes);
+        *budget = result.release();
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_session_set_volume_budget(
+    openusd_silk_session* session,
+    const openusd_silk_volume_budget* budget,
+    openusd_error_buffer* error)
+{
+    if (budget == nullptr || !budget->state)
+    {
+        WriteError(error, "A valid decoded-field budget is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state) { return OPENUSD_STATUS_INVALID_ARGUMENT; }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->volumeBudget == budget->state) { return OPENUSD_STATUS_OK; }
+        if (state->synchronizationStarted || state->volumeBudget)
+        {
+            WriteError(error, "A decoded-field budget must be configured once before synchronization starts.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        state->volumeBudget = budget->state;
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_volume_budget_get_usage(
+    const openusd_silk_volume_budget* budget,
+    openusd_silk_volume_budget_usage* usage,
+    openusd_error_buffer* error)
+{
+    if (budget == nullptr || !budget->state || usage == nullptr ||
+        usage->struct_size < sizeof(*usage) || usage->version != OPENUSD_SILK_VOLUME_BUDGET_VERSION)
+    {
+        WriteError(error, "A valid decoded-field budget and complete version-1 usage output are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        *usage = budget->state->Snapshot();
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+void openusd_silk_volume_budget_release(openusd_silk_volume_budget* budget) noexcept
+{
+    delete budget;
 }
 
 openusd_status openusd_silk_session_set_command_storage_limits(

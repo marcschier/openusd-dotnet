@@ -3986,6 +3986,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("SESSION_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("PAGE_COPY_ACKNOWLEDGEMENT=true");
             await Assert.That(result.Output).Contains("VOLUME_LEASE_EXPORTS=true");
+            await Assert.That(result.Output).Contains("VOLUME_BUDGET_ADMISSION=true");
             await Assert.That(result.Output).Contains("COMMAND_STORAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("MATERIAL_STREAMING=true");
             await Assert.That(result.Output).Contains("SCALAR_R8_MIPS=true");
@@ -7728,7 +7729,11 @@ public sealed partial class RuntimePackageTests
                             {
                                 "openusd_silk_page_retain_volume_assets",
                                 "openusd_silk_volume_assets_copy",
-                                "openusd_silk_volume_assets_release"
+                                "openusd_silk_volume_assets_release",
+                                "openusd_silk_volume_budget_create",
+                                "openusd_silk_session_set_volume_budget",
+                                "openusd_silk_volume_budget_get_usage",
+                                "openusd_silk_volume_budget_release"
                             })
                             {
                                 if (!NativeLibrary.TryGetExport(volumeLibrary, export, out _))
@@ -7742,6 +7747,19 @@ public sealed partial class RuntimePackageTests
                             NativeLibrary.Free(volumeLibrary);
                         }
                         Console.WriteLine("VOLUME_LEASE_EXPORTS=true");
+                        using (var volumeBudget = new SilkVolumeFieldBudget(ulong.MaxValue))
+                        using (var volumeSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
+                        {
+                            volumeSession.ConfigureVolumeFieldBudget(volumeBudget);
+                            using OpenUsdSilkPage volumePage = volumeSession.Sync(16, 16);
+                            SilkVolumeFieldUsage volumeUsage = volumeBudget.Usage;
+                            if (volumeUsage.MaximumBytes != ulong.MaxValue || volumeUsage.ReservedBytes != 0 ||
+                                volumeUsage.PeakReservedBytes != 0 || volumeUsage.ReservationCount != 0)
+                            {
+                                throw new InvalidOperationException("The package changed decoded-field admission.");
+                            }
+                        }
+                        Console.WriteLine("VOLUME_BUDGET_ADMISSION=true");
                         using var storedSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath,
                             new SilkPreparationLimits(1_000_000, admitted.ByteLength,
                                 new SilkCommandStorageLimits((ulong)admitted.ByteLength,

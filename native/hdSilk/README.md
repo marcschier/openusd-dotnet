@@ -147,8 +147,18 @@ unmarked file-backed textures remain supported.
 Private-storage failure emits a warning and uses uniform density until a later
 sync can retry. A decoded field larger than 64 MiB is refused. This is a
 per-field limit, not a limit on all fields held by pages, scenes or sessions.
-OpenVDB/Hio allocations before that check and filesystem caching are also outside
-the limit.
+
+An application can configure a shared `SilkVolumeFieldBudget` before a session's
+first sync. The budget counts each private decoded field once across configured
+sessions, pages, replay snapshots and scenes until its last owner releases it.
+If another field would exceed the limit, the entire sync is refused without a
+page; releasing retained fields allows the same session to retry. Disposing the
+budget handle does not invalidate configured sessions or their field leases.
+Unconfigured sessions retain their previous behavior.
+
+The shared limit counts logical decoded-field bytes. It does not bound OpenVDB/Hio
+allocations before admission, filesystem caching, allocator overhead, host memory
+or GPU memory.
 
 ## Bounded direct lighting
 

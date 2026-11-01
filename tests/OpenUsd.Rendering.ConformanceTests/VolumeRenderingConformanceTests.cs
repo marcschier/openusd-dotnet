@@ -13,7 +13,7 @@ using OpenUsd.Rendering.Storm;
 namespace OpenUsd.Rendering.ConformanceTests;
 
 [NotInParallel]
-public sealed class VolumeRenderingConformanceTests
+public sealed partial class VolumeRenderingConformanceTests
 {
     private const int Width = 160;
     private const int Height = 128;
@@ -562,10 +562,18 @@ public sealed class VolumeRenderingConformanceTests
         string multiGridAsset = animateGridName
             ? ResolveOpenVdbAsset("sampled_density_grid_variants.vdb")
             : firstAsset;
-        ParityImage firstReference = CaptureStage(
-            WriteVdbStage($"volume-{name}-first", firstAsset, 0, 1, sampleDensity: true),
-            createDevice,
-            out byte[]? firstDensity);
+        string firstStage = WriteVdbStage($"volume-{name}-first", firstAsset, 0, 1, sampleDensity: true);
+        ParityImage firstReference;
+        byte[]? firstDensity;
+        try
+        {
+            firstReference = CaptureStage(firstStage, createDevice, out firstDensity);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            Skip.Test($"The hdSilk native runtime or graphics backend is unavailable: {exception.Message}");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
+        }
         if (!TryGetMeanDensity(firstDensity, out _))
         {
             Skip.Test("hioOpenVDB reader is unavailable in the native profile.");

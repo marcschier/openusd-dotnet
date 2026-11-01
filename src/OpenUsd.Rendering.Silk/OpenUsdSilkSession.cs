@@ -38,6 +38,21 @@ public sealed class OpenUsdSilkSession : IDisposable
     /// <summary>Gets immutable session ceilings, or null for historical per-request-only admission.</summary>
     public SilkPreparationLimits? PreparationLimits { get; }
 
+    /// <summary>Configures a shared decoded-field budget before the first sync attempt.</summary>
+    /// <remarks>
+    /// Repeating the same budget is allowed. Replacing it or configuring an already-used unbounded
+    /// session is refused. The session and its retained fields remain valid if the budget handle is disposed.
+    /// </remarks>
+    public void ConfigureVolumeFieldBudget(SilkVolumeFieldBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_handle.IsClosed || _handle.IsInvalid, this);
+            budget.Configure(_handle.DangerousGetHandle());
+        }
+    }
+
     internal bool HasSynchronized
     {
         get

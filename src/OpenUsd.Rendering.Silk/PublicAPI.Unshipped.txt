@@ -111,6 +111,17 @@ OpenUsd.Rendering.Silk.SilkPreparationLimits.MaximumCommandPageBytes.get -> int
 static OpenUsd.Rendering.Silk.SilkPreparationLimits.FromConfiguration(string? maximumMeshPreparationReservationBytes, string? maximumCommandPageBytes) -> OpenUsd.Rendering.Silk.SilkPreparationLimits?
 static OpenUsd.Rendering.Silk.SilkPreparationLimits.FromConfiguration(string? maximumMeshPreparationReservationBytes, string? maximumCommandPageBytes, OpenUsd.Rendering.Silk.SilkCommandStorageLimits? commandStorage) -> OpenUsd.Rendering.Silk.SilkPreparationLimits?
 OpenUsd.Rendering.Silk.OpenUsdSilkSession.PreparationLimits.get -> OpenUsd.Rendering.Silk.SilkPreparationLimits?
+OpenUsd.Rendering.Silk.OpenUsdSilkSession.ConfigureVolumeFieldBudget(OpenUsd.Rendering.Silk.SilkVolumeFieldBudget! budget) -> void
+OpenUsd.Rendering.Silk.SilkVolumeFieldBudget
+OpenUsd.Rendering.Silk.SilkVolumeFieldBudget.SilkVolumeFieldBudget(ulong maximumBytes) -> void
+OpenUsd.Rendering.Silk.SilkVolumeFieldBudget.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkVolumeFieldBudget.Usage.get -> OpenUsd.Rendering.Silk.SilkVolumeFieldUsage!
+OpenUsd.Rendering.Silk.SilkVolumeFieldBudget.Dispose() -> void
+OpenUsd.Rendering.Silk.SilkVolumeFieldUsage
+OpenUsd.Rendering.Silk.SilkVolumeFieldUsage.MaximumBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkVolumeFieldUsage.ReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkVolumeFieldUsage.PeakReservedBytes.get -> ulong
+OpenUsd.Rendering.Silk.SilkVolumeFieldUsage.ReservationCount.get -> ulong
 static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, string! stagePath, OpenUsd.Rendering.Silk.SilkPreparationLimits? preparationLimits) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
 static OpenUsd.Rendering.Silk.OpenUsdSilkRuntime.Create(string! pluginPath, OpenUsd.UsdStageRenderSource! source, OpenUsd.Rendering.Silk.SilkPreparationLimits? preparationLimits) -> OpenUsd.Rendering.Silk.OpenUsdSilkSession!
 OpenUsd.Rendering.Silk.SilkSceneIngestionOptions.SilkSceneIngestionOptions(OpenUsd.Rendering.RenderPurpose includedPurposes, string! materialBindingPurpose, ulong maximumMeshPreparationReservationBytes, int maximumCommandPageBytes) -> void

@@ -1422,6 +1422,7 @@ extern "C" {
 typedef struct openusd_silk_session openusd_silk_session;
 typedef struct openusd_silk_page openusd_silk_page;
 typedef struct openusd_silk_volume_assets openusd_silk_volume_assets;
+typedef struct openusd_silk_volume_budget openusd_silk_volume_budget;
 
 /// A native-owned, immutable view over a single serialized page of wire
 /// commands. The memory referenced by "data" remains valid until the
@@ -1458,6 +1459,7 @@ typedef struct openusd_silk_scene_ingestion_request
 #define OPENUSD_SILK_MESH_PREPARATION_VERSION 1u
 #define OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION 2u
 #define OPENUSD_SILK_COMMAND_STORAGE_VERSION 1u
+#define OPENUSD_SILK_VOLUME_BUDGET_VERSION 1u
 #define OPENUSD_SILK_SOURCE_IDENTITY_VERSION 1u
 #define OPENUSD_SILK_MAX_SOURCE_IDENTITY_QUERIES 1024u
 #define OPENUSD_SILK_MAX_SOURCE_IDENTITY_PATH_BYTES 4096u
@@ -1546,6 +1548,19 @@ typedef struct openusd_silk_command_storage_usage
     uint64_t live_bytes;
     uint64_t peak_live_bytes;
 } openusd_silk_command_storage_usage;
+
+/// One consistent snapshot of logical decoded-field reservations. The packet
+/// is 40 bytes. A reservation is counted once while any session, page or lease
+/// owns the corresponding field.
+typedef struct openusd_silk_volume_budget_usage
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint64_t maximum_bytes;
+    uint64_t reserved_bytes;
+    uint64_t peak_reserved_bytes;
+    uint64_t reservation_count;
+} openusd_silk_volume_budget_usage;
 
 /// Optional v1 admission of coarse meshes, point Rprims and supported linear curves at
 /// Low complexity and SmoothShaded draw mode. The limit is a conservative logical buffer-reservation
@@ -1644,6 +1659,35 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_session_get_command_storage_usage
     openusd_silk_session* session,
     openusd_silk_command_storage_usage* usage,
     openusd_error_buffer* error);
+
+/// Creates an optional shared decoded-field budget with a positive byte limit.
+/// The limit covers private decoded-field storage, not Hio's earlier decode
+/// allocations, filesystem cache, allocator overhead, host memory or GPU memory.
+/// This extension is independent of the session and page ABI versions.
+OPENUSD_HDSILK_API openusd_status openusd_silk_volume_budget_create(
+    uint64_t maximum_bytes,
+    openusd_silk_volume_budget** budget,
+    openusd_error_buffer* error);
+
+/// Installs a shared budget before the first sync attempt. Repeating the same
+/// budget is allowed; replacement and retroactive configuration are refused.
+/// Each session retains the budget independently of the caller's handle.
+/// Admission failure rejects the sync without publishing a page.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_set_volume_budget(
+    openusd_silk_session* session,
+    const openusd_silk_volume_budget* budget,
+    openusd_error_buffer* error);
+
+/// Copies a version-1 accounting snapshot. The caller must serialize release
+/// of its budget handle against calls that use that same handle.
+OPENUSD_HDSILK_API openusd_status openusd_silk_volume_budget_get_usage(
+    const openusd_silk_volume_budget* budget,
+    openusd_silk_volume_budget_usage* usage,
+    openusd_error_buffer* error);
+
+/// Releases this handle. Sessions and field leases retain their own ownership.
+OPENUSD_HDSILK_API void openusd_silk_volume_budget_release(
+    openusd_silk_volume_budget* budget) OPENUSD_HDSILK_NOEXCEPT;
 
 /// Copies the successful page's immutable version-1 reservation snapshot.
 /// An unbounded page reports zero counters. The page need not retain its session.

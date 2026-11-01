@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -1115,6 +1116,78 @@ bool VerifyStoredUpdatesOwnBytesAndEnforceLiveQuota(const char* pluginPath)
     return true;
 }
 
+bool VerifyVolumeBudgetExtension(const char* pluginPath)
+{
+    static_assert(sizeof(openusd_silk_volume_budget_usage) == 40);
+    static_assert(offsetof(openusd_silk_volume_budget_usage, reservation_count) == 32);
+    EditableSession editable = CreateEditableSession(pluginPath);
+    openusd_silk_volume_budget* budget = nullptr;
+    openusd_silk_volume_budget* other = nullptr;
+    try
+    {
+        char errorBytes[4096]{};
+        openusd_error_buffer error{errorBytes, sizeof(errorBytes), 0};
+        budget = reinterpret_cast<openusd_silk_volume_budget*>(static_cast<uintptr_t>(1));
+        Require(openusd_silk_volume_budget_create(0, &budget, &error) == OPENUSD_STATUS_INVALID_ARGUMENT &&
+            budget == nullptr, "A zero volume budget was accepted or returned a handle.");
+        Require(openusd_silk_volume_budget_create(1, nullptr, &error) == OPENUSD_STATUS_INVALID_ARGUMENT,
+            "A volume budget was created without an output.");
+        RequireStatus(openusd_silk_volume_budget_create(std::numeric_limits<uint64_t>::max(), &budget, &error),
+            error, "Could not create a full-width volume budget");
+        RequireStatus(openusd_silk_volume_budget_create(1, &other, &error),
+            error, "Could not create a second volume budget");
+        openusd_silk_volume_budget_usage usage{sizeof(usage), 1, 0, 0, 0, 0};
+        RequireStatus(openusd_silk_volume_budget_get_usage(budget, &usage, &error),
+            error, "Could not read the initial volume budget");
+        Require(usage.maximum_bytes == std::numeric_limits<uint64_t>::max() &&
+            usage.reserved_bytes == 0 && usage.peak_reserved_bytes == 0 && usage.reservation_count == 0,
+            "The initial volume accounting was not empty or truncated the ceiling.");
+        auto shortUsage = usage;
+        shortUsage.struct_size--;
+        Require(openusd_silk_volume_budget_get_usage(budget, &shortUsage, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT && shortUsage.struct_size == sizeof(usage) - 1 &&
+            shortUsage.maximum_bytes == usage.maximum_bytes, "A truncated usage packet was accepted or overwritten.");
+        auto badVersion = usage;
+        badVersion.version++;
+        Require(openusd_silk_volume_budget_get_usage(budget, &badVersion, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT && badVersion.version == 2,
+            "An unsupported usage packet version was accepted or overwritten.");
+        Require(openusd_silk_volume_budget_get_usage(nullptr, &usage, &error) == OPENUSD_STATUS_INVALID_ARGUMENT &&
+            openusd_silk_volume_budget_get_usage(budget, nullptr, &error) == OPENUSD_STATUS_INVALID_ARGUMENT,
+            "A null budget or usage output was accepted.");
+        Require(openusd_silk_session_set_volume_budget(editable.session, nullptr, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "A null volume budget was configured.");
+        RequireStatus(openusd_silk_session_set_volume_budget(editable.session, budget, &error),
+            error, "Could not configure volume admission");
+        RequireStatus(openusd_silk_session_set_volume_budget(editable.session, budget, &error),
+            error, "Repeating the same volume budget was not idempotent");
+        Require(openusd_silk_session_set_volume_budget(editable.session, other, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "A configured volume budget was replaced.");
+        const openusd_render_camera camera = MakeCamera();
+        SyncLegacy(editable.session, camera);
+        RequireStatus(openusd_silk_session_set_volume_budget(editable.session, budget, &error),
+            error, "Repeating the configured volume budget after sync failed");
+        openusd_silk_volume_budget_release(budget);
+        budget = nullptr;
+        SyncLegacy(editable.session, camera);
+        DestroyEditableSession(&editable);
+        editable = CreateEditableSession(pluginPath);
+        SyncLegacy(editable.session, camera);
+        Require(openusd_silk_session_set_volume_budget(editable.session, other, &error) ==
+            OPENUSD_STATUS_INVALID_ARGUMENT, "An already-used unbounded session was configured retroactively.");
+        DestroyEditableSession(&editable);
+    }
+    catch (...)
+    {
+        openusd_silk_volume_budget_release(budget);
+        openusd_silk_volume_budget_release(other);
+        DestroyEditableSession(&editable);
+        throw;
+    }
+    openusd_silk_volume_budget_release(other);
+    return true;
+}
+
 bool VerifyRetainedInvalidation(const char* pluginPath)
 {
     Require(
@@ -1686,7 +1759,8 @@ int main(int argc, char** argv)
             return 2;
         }
 
-        if (!VerifyStoredUpdatesOwnBytesAndEnforceLiveQuota(argv[1]) ||
+        if (!VerifyVolumeBudgetExtension(argv[1]) ||
+             !VerifyStoredUpdatesOwnBytesAndEnforceLiveQuota(argv[1]) ||
              !VerifyAcknowledgedPagesRetainOwnershipAndBlockSync(argv[1]) ||
             !VerifySessionLimitsCannotBeBypassed(argv[1]) ||
             !VerifySessionLimitsPreserveLegacyChoicesAndPageSnapshots(argv[1]) ||
