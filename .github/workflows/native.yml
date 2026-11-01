@@ -59,6 +59,9 @@ on:
       - 'Directory.Packages.props'
       - 'src/OpenUsd.Mcp/**'
       - 'tests/OpenUsd.Mcp.Tests/**'
+      - 'src/OpenUsd.Rendering.Silk/**'
+      - 'tests/OpenUsd.Rendering.Tests/**'
+      - 'test-assets/native-profile/ptex/**'
       - 'eng/prepare-mesa-wgl-test-runtime.ps1'
       - 'eng/mesa-wgl-test-runtime.lock.json'
       - 'eng/native-fuzz-lsan.supp'
@@ -122,6 +125,9 @@ on:
       - 'Directory.Packages.props'
       - 'src/OpenUsd.Mcp/**'
       - 'tests/OpenUsd.Mcp.Tests/**'
+      - 'src/OpenUsd.Rendering.Silk/**'
+      - 'tests/OpenUsd.Rendering.Tests/**'
+      - 'test-assets/native-profile/ptex/**'
       - 'eng/prepare-mesa-wgl-test-runtime.ps1'
       - 'eng/mesa-wgl-test-runtime.lock.json'
       - 'eng/native-fuzz-lsan.supp'
@@ -831,6 +837,34 @@ jobs:
           path: |
             artifacts/native-mcp-integration/win-x64/
             tests/OpenUsd.Mcp.Tests/bin/Release/net10.0/TestResults/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Run Windows native Ptex decoder tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'
+        run: |
+          $testProject = Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\OpenUsd.Rendering.Tests.csproj'
+          dotnet build $testProject --configuration Release --framework net10.0
+          if ($LASTEXITCODE -ne 0) { throw 'Ptex decoder test build failed.' }
+          $env:OPENUSD_PARITY_RUNTIME_ROOT = Join-Path $PWD 'native\install\shim\win-x64'
+          ./eng/run-native-managed-tests.ps1 `
+            -Project $testProject `
+            -Framework net10.0 `
+            -Rid win-x64 `
+            -Configuration Release `
+            -MinimumExpectedTests 5 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkNativePtexDecoderTests/*')
+      - name: Upload native Ptex decoder test reports
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openusd-native-ptex-decoder-${{ github.run_attempt }}
+          path: |
+            tests/OpenUsd.Rendering.Tests/TestResults/*.tunit-report.json
+            tests/OpenUsd.Rendering.Tests/TestResults/*-report.html
           if-no-files-found: warn
           retention-days: 14
       - name: Run Linux native CTest under Xvfb
