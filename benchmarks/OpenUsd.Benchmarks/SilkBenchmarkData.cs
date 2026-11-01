@@ -8,6 +8,8 @@ namespace OpenUsd.Benchmarks;
 
 internal static class SilkBenchmarkData
 {
+    private const int MeshCommandFixedSize = 276;
+
     internal static byte[] CreateFrameCommand(int width = 1920, int height = 1080)
     {
         var bytes = new byte[536];
@@ -41,7 +43,7 @@ internal static class SilkBenchmarkData
         const int pointCount = 3;
         int indexCount = checked(triangleCount * 3);
         int size = checked(
-            268 +
+            MeshCommandFixedSize +
             path.Length +
             (pointCount * 3 * sizeof(float)) +
             (indexCount * sizeof(uint)) +
@@ -74,9 +76,9 @@ internal static class SilkBenchmarkData
                 component == 3 ? 1 : color);
         }
         WriteIdentityMatrix(bytes.AsSpan(80, 16 * sizeof(double)));
-        path.CopyTo(bytes, 268);
+        path.CopyTo(bytes, MeshCommandFixedSize);
 
-        int pointsOffset = 268 + path.Length;
+        int pointsOffset = MeshCommandFixedSize + path.Length;
         ReadOnlySpan<float> points = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         for (int index = 0; index < points.Length; index++)
         {
