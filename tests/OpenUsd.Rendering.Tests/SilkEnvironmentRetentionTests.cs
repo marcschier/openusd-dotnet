@@ -70,7 +70,8 @@ public sealed class SilkEnvironmentRetentionTests
         SilkEnvironmentFrameBinding binding = resources.EnvironmentBinding;
         ulong reserved = budget.Usage.ReservedBytes;
         int originalAttempts = attempts;
-        using var update = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, Upsert(DomePath, SecondTexturePath), 1);
+        using var update = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, Upsert(DomePath, SecondTexturePath), 1);
         refuse = true;
         await Assert.That(() => apply(update)).Throws<OutOfMemoryException>();
         await Assert.That(attempts).IsEqualTo(originalAttempts + 1);

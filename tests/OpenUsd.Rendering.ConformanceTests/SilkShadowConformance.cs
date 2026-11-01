@@ -907,7 +907,8 @@ internal static class SilkShadowConformance
         await AssertShadowed(ReadPixels(color), 11, "first shared masked instance");
         await AssertShadowed(ReadPixels(color), 30, "second shared masked instance");
 
-        using var split = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, CreateTexturedCaster(1, 0.3, "/B", instanced: true), 1);
+        using var split = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, CreateTexturedCaster(1, 0.3, "/B", instanced: true), 1);
         _ = renderer.ApplyAndRender(split, color, depth);
         await AssertShadowed(ReadPixels(color), 11, "opaque material group");
         await AssertLit(ReadPixels(color), 30, "transparent material group");

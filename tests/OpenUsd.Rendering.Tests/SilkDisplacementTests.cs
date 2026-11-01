@@ -250,7 +250,8 @@ internal sealed class SilkDisplacementTests
     private static void ApplyBudgetedPage(
         SilkSceneState scene, SilkSceneGpuResources resources, ulong revision, params byte[][] commands)
     {
-        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, revision, commands.SelectMany(command => command).ToArray(),
+        using var page = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, revision, commands.SelectMany(command => command).ToArray(),
             checked((uint)commands.Length));
         using SilkSceneState.PreparedPage cpu = scene.PreparePage(page);
         using SilkSceneGpuResources.PreparedMeshUpdate? gpu = resources.Prepare(

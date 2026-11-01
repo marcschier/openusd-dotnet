@@ -777,7 +777,8 @@ public static class SilkDeformationRenderConformance
             command.CopyTo(page, offset);
             offset += command.Length;
         }
-        using var owned = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, revision, page, checked((uint)all.Length));
+        using var owned = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, revision, page, checked((uint)all.Length));
         renderer.ApplyPage(owned);
     }
 

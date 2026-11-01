@@ -383,7 +383,8 @@ public sealed class SilkMeshRendererTests
         byte[] removal = CreateRemoval("/Removed");
         byte[] movedFrame = CreateFrameCommand();
         BinaryPrimitives.WriteDoubleLittleEndian(movedFrame.AsSpan(16 + 12 * sizeof(double)), 2);
-        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [.. movedFrame, .. replacement, .. tint, .. added, .. removal], 5);
+        using var page = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, [.. movedFrame, .. replacement, .. tint, .. added, .. removal], 5);
         SilkSceneDelta delta = coordinated ? default : scene.Apply(page);
         device.BufferFailureCountdown = failWrite ? null : failure;
         device.WriteFailureCountdown = failWrite ? failure : null;
@@ -425,7 +426,8 @@ public sealed class SilkMeshRendererTests
     {
         using var device = new TestGraphicsDevice();
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
+        using var first = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
         renderer.ApplyPage(first);
         using var quiet = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, CreateFrameCommand(), 1);
         SilkMeshGpuResource original = renderer.GpuResources.Meshes[7];

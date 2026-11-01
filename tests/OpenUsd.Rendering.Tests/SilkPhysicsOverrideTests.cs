@@ -134,7 +134,8 @@ public sealed class SilkPhysicsOverrideTests
         PhysicsRenderOverrideView view = CreateView(id, 1, 2, 3);
         ulong speculativeRevision;
         int speculativeCount;
-        using (var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, CreateMeshCommand(path: "/Outside", primId: 8), 1))
+        using (var page = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, CreateMeshCommand(path: "/Outside", primId: 8), 1))
         using (SilkSceneState.PreparedPage transaction = scene.PreparePage(page))
         {
             speculativeRevision = scene.GeometryRevision;

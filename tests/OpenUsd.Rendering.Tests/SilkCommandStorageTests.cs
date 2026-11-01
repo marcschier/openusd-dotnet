@@ -198,7 +198,8 @@ public sealed class SilkCommandStorageTests
         storage = new MemoryStorage(bytes, transfer);
         try
         {
-            return new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 7, storage, commands, null, Math.Max(8, bytes.Length));
+            return new OpenUsdSilkPage(
+                SilkCommandParser.PageAbiVersion, 7, storage, commands, null, Math.Max(8, bytes.Length));
         }
         finally
         {
