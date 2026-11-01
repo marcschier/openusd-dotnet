@@ -479,13 +479,16 @@ bool TestPtexFaceOffsetSceneIndex()
         TfToken("uniformOffset"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform);
     const UsdGeomPrimvar indexed = primvars.CreatePrimvar(
         TfToken("indexedOffset"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform);
+    const UsdGeomPrimvar explicitOnePrimvar = primvars.CreatePrimvar(
+        TfToken("explicitOne"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform, 1);
     UsdGeomPrimvar grouped = primvars.CreatePrimvar(
         TfToken("groupedOffset"), SdfValueTypeNames->IntArray, UsdGeomTokens->uniform, 2);
     const UsdTimeCode first(1.0);
     const UsdTimeCode second(2.0);
-    if (!mesh || !uniform || !indexed || !grouped ||
+    if (!mesh || !uniform || !indexed || !explicitOnePrimvar || !grouped ||
         !uniform.Set(VtIntArray{1, 1, 1, -3}, first) ||
         !uniform.Set(VtIntArray{0, 0, 0, 0}, second) ||
+        !explicitOnePrimvar.Set(VtIntArray{1, 1, 1, -3}) ||
         !indexed.Set(VtIntArray{-3, 1}, first) ||
         !indexed.SetIndices(VtIntArray{1, 1, 1, 0}, first) ||
         !indexed.Set(VtIntArray{0}, second) ||
@@ -506,9 +509,15 @@ bool TestPtexFaceOffsetSceneIndex()
     };
     const HdPrimvarSchema uniformSchema = getPrimvar(TfToken("uniformOffset"));
     const HdPrimvarSchema indexedSchema = getPrimvar(TfToken("indexedOffset"));
+    const HdPrimvarSchema explicitOneSchema = getPrimvar(TfToken("explicitOne"));
     const HdPrimvarSchema groupedSchema = getPrimvar(TfToken("groupedOffset"));
-    if (!uniformSchema || !indexedSchema || !groupedSchema ||
+    if (explicitOnePrimvar.GetElementSize() != 1)
+    {
+        return Fail("Ptex scene index", "USD explicit-one primvar lost its authored default");
+    }
+    if (!uniformSchema || !indexedSchema || !explicitOneSchema || !groupedSchema ||
         uniformSchema.GetElementSize() || indexedSchema.GetElementSize() ||
+        explicitOneSchema.GetElementSize() ||
         !groupedSchema.GetElementSize() ||
         groupedSchema.GetElementSize()->GetTypedValue(0.0F) != 2)
     {
@@ -573,7 +582,9 @@ bool TestPtexFaceOffsetSceneIndex()
 
     const std::array<uint32_t, 4> rotated{{1, 2, 3, 0}};
     const std::array<uint32_t, 4> identity{{0, 1, 2, 3}};
-    if (!expectMapped(uniformSchema, 0.0F, rotated) ||
+    if (!expectRefused(explicitOneSchema, 0.0F,
+            HdSilkPtexMissingElementSize::Reject) ||
+        !expectMapped(uniformSchema, 0.0F, rotated) ||
         !expectRefused(indexedSchema, 0.0F) ||
         !expectMapped(uniformSchema, 1.0F, identity) ||
         !expectRefused(indexedSchema, 1.0F) ||
