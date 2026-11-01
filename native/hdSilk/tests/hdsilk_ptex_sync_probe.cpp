@@ -6,7 +6,10 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
+#include <string>
+#include <system_error>
 #include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -37,11 +40,34 @@ void Print(const openusd_hdsilk_test_ptex_observation& observation)
               << " strict=" << observation.strict_status
               << " default=" << observation.default_one_status
               << " mapped=" << observation.mapped_faces[0] << ","
-              << observation.mapped_faces[1] << "\n";
+              << observation.mapped_faces[1]
+              << " material=" << observation.terminal_material
+              << " ptexConnection=" << observation.ptex_material_connection
+              << " materialMatches=" << observation.ptex_material_delegate_matches
+              << " asset=" << observation.ptex_material_asset
+              << " resolved=" << observation.ptex_material_resolved_asset << "\n";
+}
+
+bool CheckPtexMaterial(
+    const openusd_hdsilk_test_ptex_observation& observation,
+    const std::filesystem::path& fixtureDirectory,
+    bool updated)
+{
+    const std::string file = updated ? "quad-colors.ptx" : "tetrahedron.ptx";
+    const std::filesystem::path resolved(observation.ptex_material_resolved_asset);
+    std::error_code error;
+    const bool sameFile = std::filesystem::equivalent(
+        resolved, fixtureDirectory / "native-profile" / "ptex" / file, error);
+    return observation.terminal_material && observation.ptex_material_connection &&
+        observation.ptex_material_delegate_matches && !observation.ptex_material_path_truncated &&
+        observation.ptex_material_asset == std::string("native-profile/ptex/") + file &&
+        resolved.is_absolute() && !error && sameFile;
 }
 
 bool CheckFrame(
-    const std::vector<openusd_hdsilk_test_ptex_observation>& observations, bool updated)
+    const std::vector<openusd_hdsilk_test_ptex_observation>& observations,
+    const std::filesystem::path& fixtureDirectory,
+    bool updated)
 {
     bool ordinary = false;
     bool indexedDefault = false;
@@ -87,12 +113,14 @@ bool CheckFrame(
         {
             missing = !observation.has_primvar &&
                 !observation.usd_default_one_proven &&
+                !observation.terminal_material && !observation.ptex_material_connection &&
                 observation.strict_status == Invalid && observation.default_one_status == Invalid;
             continue;
         }
         if (std::strcmp(observation.path, "/World/IndexedDefault") == 0)
         {
             indexedDefault = !observation.instanced && observation.has_primvar &&
+                observation.terminal_material && !observation.ptex_material_connection &&
                 !observation.has_element_size && observation.delegate_matches &&
                 observation.value_count == 2 && observation.index_count == 2 &&
                 observation.values[0] == (updated ? 9 : 7) &&
@@ -117,7 +145,8 @@ bool CheckFrame(
                 observation.default_one_status == Mapped && !observation.instanced &&
                 observation.values[0] == first && observation.values[1] == second &&
                 observation.mapped_faces[0] == static_cast<uint32_t>(first) &&
-                observation.mapped_faces[1] == static_cast<uint32_t>(second + 1);
+                observation.mapped_faces[1] == static_cast<uint32_t>(second + 1) &&
+                CheckPtexMaterial(observation, fixtureDirectory, updated);
         }
         else if (observation.values[0] == (updated ? 6 : 5) &&
                  observation.values[1] == (updated ? 2 : 3))
@@ -151,6 +180,22 @@ bool CheckFrame(
         valid = false;
     }
     return valid;
+}
+
+bool CheckRestoredMaterial(
+    const std::vector<openusd_hdsilk_test_ptex_observation>& observations,
+    const std::filesystem::path& fixtureDirectory)
+{
+    for (const auto& observation : observations)
+    {
+        if (std::strcmp(observation.path, "/World/Ordinary") == 0)
+        {
+            Print(observation);
+            return CheckPtexMaterial(observation, fixtureDirectory, false);
+        }
+    }
+    std::cerr << "Restored Ptex material observation was missing.\n";
+    return false;
 }
 
 bool Sync(
@@ -210,8 +255,13 @@ int main(int argc, char** argv)
     bool valid;
     if (std::strcmp(argv[1], "usd") == 0)
     {
-        valid = Sync(session, 0.0, &observations, &error) && CheckFrame(observations, false);
-        valid = Sync(session, 1.0, &observations, &error) && CheckFrame(observations, true) && valid;
+        const std::filesystem::path fixtureDirectory = std::filesystem::path(argv[3]).parent_path();
+        valid = Sync(session, 0.0, &observations, &error) &&
+            CheckFrame(observations, fixtureDirectory, false);
+        valid = Sync(session, 1.0, &observations, &error) &&
+            CheckFrame(observations, fixtureDirectory, true) && valid;
+        valid = Sync(session, 0.0, &observations, &error) &&
+            CheckRestoredMaterial(observations, fixtureDirectory) && valid;
     }
     else
     {

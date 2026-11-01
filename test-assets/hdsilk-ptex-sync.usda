@@ -21,8 +21,11 @@ class Xform "PtexAsset"
 
 def Xform "World"
 {
-    def Mesh "Ordinary"
+    def Mesh "Ordinary" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
     {
+        rel material:binding = </World/PtexMaterial>
         uniform token subdivisionScheme = "none"
         point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
         int[] faceVertexCounts = [3, 3]
@@ -30,8 +33,11 @@ def Xform "World"
         int[] primvars:ptexFaceOffset (interpolation = "uniform")
         int[] primvars:ptexFaceOffset.timeSamples = { 0: [2, 3], 1: [4, 1] }
     }
-    def Mesh "IndexedDefault"
+    def Mesh "IndexedDefault" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
     {
+        rel material:binding = </World/UvMaterial>
         uniform token subdivisionScheme = "none"
         point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
         int[] faceVertexCounts = [3, 3]
@@ -69,6 +75,41 @@ def Xform "World"
         point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
         int[] faceVertexCounts = [3, 3]
         int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+    }
+    def Material "PtexMaterial"
+    {
+        token outputs:surface.connect = </World/PtexMaterial/Surface.outputs:surface>
+        def Shader "Surface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:emissiveColor.connect = </World/PtexMaterial/Texture.outputs:rgb>
+            token outputs:surface
+        }
+        def Shader "Texture"
+        {
+            uniform token info:id = "HwPtexTexture_1"
+            asset inputs:file.timeSamples = {
+                0: @native-profile/ptex/tetrahedron.ptx@,
+                1: @native-profile/ptex/quad-colors.ptx@
+            }
+            float3 outputs:rgb
+        }
+    }
+    def Material "UvMaterial"
+    {
+        token outputs:surface.connect = </World/UvMaterial/Surface.outputs:surface>
+        def Shader "Surface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:emissiveColor.connect = </World/UvMaterial/Texture.outputs:rgb>
+            token outputs:surface
+        }
+        def Shader "Texture"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @native-profile/ptex/tetrahedron.ptx@
+            float3 outputs:rgb
+        }
     }
     def Xform "A" (instanceable = true; prepend references = </PtexAsset>)
     {

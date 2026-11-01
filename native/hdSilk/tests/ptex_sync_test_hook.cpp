@@ -12,6 +12,12 @@
 #include "pxr/base/vt/value.h"
 #include "pxr/imaging/hd/changeTracker.h"
 #include "pxr/imaging/hd/filteringSceneIndex.h"
+#include "pxr/imaging/hd/material.h"
+#include "pxr/imaging/hd/materialConnectionSchema.h"
+#include "pxr/imaging/hd/materialNetworkSchema.h"
+#include "pxr/imaging/hd/materialNodeParameterSchema.h"
+#include "pxr/imaging/hd/materialNodeSchema.h"
+#include "pxr/imaging/hd/materialSchema.h"
 #include "pxr/imaging/hd/primvarSchema.h"
 #include "pxr/imaging/hd/primvarsSchema.h"
 #include "pxr/imaging/hd/renderIndex.h"
@@ -21,6 +27,7 @@
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/imaging/hd/unitTestDelegate.h"
 #include "pxr/imaging/pxOsd/tokens.h"
+#include "pxr/usd/sdf/assetPath.h"
 #include "pxr/usd/sdf/path.h"
 #include "pxr/usd/usd/stage.h"
 #include "pxr/usdImaging/usdImaging/stageSceneIndex.h"
@@ -143,6 +150,122 @@ private:
         _SendPrimsDirtied(entries);
     }
 };
+
+void ObservePtexMaterial(
+    HdSceneDelegate* sceneDelegate,
+    const SdfPath& id,
+    const HdSceneIndexBaseRefPtr& terminal,
+    openusd_hdsilk_test_ptex_observation* result)
+{
+    const SdfPath materialId = sceneDelegate->GetMaterialId(id);
+    if (materialId.IsEmpty() || !terminal)
+    {
+        return;
+    }
+
+    const HdSceneIndexPrim materialPrim = terminal->GetPrim(materialId);
+    result->terminal_material = materialPrim.primType == HdPrimTypeTokens->material;
+    const HdMaterialSchema material = HdMaterialSchema::GetFromParent(materialPrim.dataSource);
+    const HdMaterialNetworkSchema network = material.GetMaterialNetwork();
+    const HdMaterialConnectionSchema surfaceConnection =
+        network.GetTerminals().Get(HdMaterialSchemaTokens->surface);
+    const HdTokenDataSourceHandle surfacePath = surfaceConnection.GetUpstreamNodePath();
+    const HdTokenDataSourceHandle surfaceOutput = surfaceConnection.GetUpstreamNodeOutputName();
+    if (!surfacePath || !surfaceOutput || surfaceOutput->GetTypedValue(0.0f) != TfToken("surface"))
+    {
+        return;
+    }
+    const TfToken surfaceName = surfacePath->GetTypedValue(0.0f);
+    const HdMaterialNodeContainerSchema nodes = network.GetNodes();
+    const HdMaterialNodeSchema surface = nodes.Get(surfaceName);
+    const HdTokenDataSourceHandle surfaceIdentifier = surface.GetNodeIdentifier();
+    const HdMaterialConnectionVectorSchema connections =
+        surface.GetInputConnections().Get(TfToken("emissiveColor"));
+    if (!surfaceIdentifier || surfaceIdentifier->GetTypedValue(0.0f) != TfToken("UsdPreviewSurface") ||
+        !connections || connections.GetNumElements() != 1)
+    {
+        return;
+    }
+    const HdMaterialConnectionSchema textureConnection = connections.GetElement(0);
+    const HdTokenDataSourceHandle texturePath = textureConnection.GetUpstreamNodePath();
+    const HdTokenDataSourceHandle textureOutput = textureConnection.GetUpstreamNodeOutputName();
+    if (!texturePath || !textureOutput || textureOutput->GetTypedValue(0.0f) != TfToken("rgb"))
+    {
+        return;
+    }
+    const TfToken textureName = texturePath->GetTypedValue(0.0f);
+    const HdMaterialNodeSchema texture = nodes.Get(textureName);
+    const HdTokenDataSourceHandle identifier = texture.GetNodeIdentifier();
+    const HdSampledDataSourceHandle file =
+        texture.GetParameters().Get(TfToken("file")).GetValue();
+    if (!identifier || identifier->GetTypedValue(0.0f) != TfToken("HwPtexTexture_1") || !file)
+    {
+        return;
+    }
+    const VtValue terminalFile = file->GetValue(0.0f);
+    if (!terminalFile.IsHolding<SdfAssetPath>())
+    {
+        return;
+    }
+    result->ptex_material_connection = 1;
+    const SdfAssetPath& asset = terminalFile.UncheckedGet<SdfAssetPath>();
+    auto copy = [&](const std::string& value, char* destination, size_t capacity)
+    {
+        const size_t count = std::min(value.size(), capacity - 1);
+        std::memcpy(destination, value.data(), count);
+        result->ptex_material_path_truncated |= count != value.size();
+    };
+    copy(asset.GetAssetPath(), result->ptex_material_asset, sizeof(result->ptex_material_asset));
+    copy(
+        asset.GetResolvedPath(),
+        result->ptex_material_resolved_asset,
+        sizeof(result->ptex_material_resolved_asset));
+
+    const VtValue resource = sceneDelegate->GetMaterialResource(materialId);
+    if (!resource.IsHolding<HdMaterialNetworkMap>())
+    {
+        return;
+    }
+    const HdMaterialNetworkMap& networkMap = resource.UncheckedGet<HdMaterialNetworkMap>();
+    const auto entry = networkMap.map.find(HdMaterialTerminalTokens->surface);
+    if (entry == networkMap.map.end())
+    {
+        return;
+    }
+    const HdMaterialNetwork& delegateNetwork = entry->second;
+    const SdfPath surfaceNode(surfaceName.GetString());
+    const SdfPath textureNode(textureName.GetString());
+    const auto node = std::find_if(
+        delegateNetwork.nodes.begin(),
+        delegateNetwork.nodes.end(),
+        [&](const HdMaterialNode& value)
+        {
+            return value.path == textureNode && value.identifier == TfToken("HwPtexTexture_1");
+        });
+    const auto surfaceNodeEntry = std::find_if(
+        delegateNetwork.nodes.begin(),
+        delegateNetwork.nodes.end(),
+        [&](const HdMaterialNode& value)
+        {
+            return value.path == surfaceNode && value.identifier == TfToken("UsdPreviewSurface");
+        });
+    const auto relationship = std::find_if(
+        delegateNetwork.relationships.begin(),
+        delegateNetwork.relationships.end(),
+        [&](const HdMaterialRelationship& value)
+        {
+            return value.outputId == surfaceNode && value.outputName == TfToken("emissiveColor") &&
+                value.inputId == textureNode && value.inputName == TfToken("rgb");
+        });
+    if (node == delegateNetwork.nodes.end() || surfaceNodeEntry == delegateNetwork.nodes.end() ||
+        relationship == delegateNetwork.relationships.end())
+    {
+        return;
+    }
+    const auto delegateFile = node->parameters.find(TfToken("file"));
+    result->ptex_material_delegate_matches =
+        delegateFile != node->parameters.end() && delegateFile->second == terminalFile;
+}
 }
 
 void
@@ -169,6 +292,7 @@ HdSilkTestObservePtexSync(
     const HdSceneIndexBaseRefPtr terminal = renderIndex.GetTerminalSceneIndex();
     const HdSceneIndexPrim terminalPrim = terminal ? terminal->GetPrim(id) : HdSceneIndexPrim{};
     result.terminal_mesh = terminalPrim.primType == HdPrimTypeTokens->mesh;
+    ObservePtexMaterial(sceneDelegate, id, terminal, &result);
     const TfToken name("ptexFaceOffset");
     const HdPrimvarSchema primvar =
         HdPrimvarsSchema::GetFromParent(terminalPrim.dataSource).GetPrimvar(name);

@@ -59,6 +59,12 @@ typedef struct openusd_hdsilk_test_ptex_observation
     int32_t strict_status;
     int32_t default_one_status;
     uint32_t mapped_faces[2];
+    int32_t terminal_material;
+    int32_t ptex_material_connection;
+    int32_t ptex_material_delegate_matches;
+    int32_t ptex_material_path_truncated;
+    char ptex_material_asset[512];
+    char ptex_material_resolved_asset[1024];
 } openusd_hdsilk_test_ptex_observation;
 
 OPENUSD_HDSILK_API void
