@@ -286,15 +286,13 @@ public sealed partial class VolumeRenderingConformanceTests
         session.ConfigureVolumeFieldBudget(budget);
         string blocked = Path.Combine(StageDirectory, "volume-budget-not-a-directory");
         File.WriteAllText(blocked, "not a directory");
-        string? temp = Environment.GetEnvironmentVariable("TEMP");
-        string? tmp = Environment.GetEnvironmentVariable("TMP");
-        string? tmpdir = Environment.GetEnvironmentVariable("TMPDIR");
+        OpenUsdSilkPage? fallback = null;
         try
         {
-            Environment.SetEnvironmentVariable("TEMP", blocked);
-            Environment.SetEnvironmentVariable("TMP", blocked);
-            Environment.SetEnvironmentVariable("TMPDIR", blocked);
-            using OpenUsdSilkPage fallback = session.Sync(Width, Height, TimeCode);
+            using (new NativeTemporaryDirectoryScope(blocked))
+            {
+                fallback = session.Sync(Width, Height, TimeCode);
+            }
             using var scene = new SilkSceneState();
             _ = scene.Apply(fallback);
             await Assert.That(scene.Materials[BudgetMaterialPath]
@@ -302,10 +300,14 @@ public sealed partial class VolumeRenderingConformanceTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable("TEMP", temp);
-            Environment.SetEnvironmentVariable("TMP", tmp);
-            Environment.SetEnvironmentVariable("TMPDIR", tmpdir);
-            File.Delete(blocked);
+            try
+            {
+                fallback?.Dispose();
+            }
+            finally
+            {
+                File.Delete(blocked);
+            }
         }
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
         await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);

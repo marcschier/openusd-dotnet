@@ -854,37 +854,26 @@ public sealed partial class VolumeRenderingConformanceTests
 
             ParityImage renderAt(double time, string? tempDirectory = null)
             {
-                string? originalTemp = Environment.GetEnvironmentVariable("TEMP");
-                string? originalTmp = Environment.GetEnvironmentVariable("TMP");
-                string? originalTmpDir = Environment.GetEnvironmentVariable("TMPDIR");
-                OpenUsdSilkPage page;
+                OpenUsdSilkPage? page = null;
                 try
                 {
-                    if (tempDirectory is not null)
+                    using (tempDirectory is null ? null : new NativeTemporaryDirectoryScope(tempDirectory))
                     {
-                        Environment.SetEnvironmentVariable("TEMP", tempDirectory);
-                        Environment.SetEnvironmentVariable("TMP", tempDirectory);
-                        Environment.SetEnvironmentVariable("TMPDIR", tempDirectory);
+                        page = session.Sync(
+                            Width,
+                            Height,
+                            time,
+                            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
                     }
-                    page = session.Sync(
-                        Width,
-                        Height,
-                        time,
-                        new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
-                }
-                finally
-                {
-                    Environment.SetEnvironmentVariable("TEMP", originalTemp);
-                    Environment.SetEnvironmentVariable("TMP", originalTmp);
-                    Environment.SetEnvironmentVariable("TMPDIR", originalTmpDir);
-                }
-                using (page)
-                {
                     _ = renderer.ApplyAndRender(page, color, depth, options);
                     _ = renderer.ApplyAndRender(page, color, depth, options);
                     byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
                     color.ReadbackForTesting(pixels);
                     return new ParityImage(Width, Height, pixels);
+                }
+                finally
+                {
+                    page?.Dispose();
                 }
             }
 
