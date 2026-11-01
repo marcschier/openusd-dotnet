@@ -262,6 +262,7 @@ add_test(NAME hdsilk_displacement_uv COMMAND hdsilk_probe --displacement-uv)
 add_test(NAME hdsilk_preview_unsupported_input COMMAND hdsilk_probe --preview-unsupported-input)
 add_test(NAME hdsilk_linear_curve_topology COMMAND hdsilk_probe --linear-curve-topology)
 add_test(NAME hdsilk_curve_invalid_points COMMAND hdsilk_probe --curve-invalid-points)
+add_test(NAME hdsilk_points_invalid_points COMMAND hdsilk_probe --points-invalid-points)
 add_test(NAME hdsilk_curve_non_geometry_sync COMMAND hdsilk_probe --curve-non-geometry-sync)
 add_test(NAME hdsilk_geometry_non_geometry_sync COMMAND hdsilk_probe --geometry-non-geometry-sync)
 add_test(NAME hdsilk_surface_uv_fallback COMMAND hdsilk_probe --surface-uv-fallback)
@@ -290,6 +291,7 @@ add_test(NAME hdsilk_source_identity_transform_stack COMMAND hdsilk_probe --deco
     /World/A/Mesh /World/B/Mesh)
 set_tests_properties(hdsilk_probe hdsilk_vertex_layout hdsilk_volume_bounds hdsilk_texture_metadata hdsilk_uv_fallback
     hdsilk_displacement_uv hdsilk_preview_unsupported_input hdsilk_linear_curve_topology hdsilk_curve_invalid_points
+    hdsilk_points_invalid_points
     hdsilk_curve_non_geometry_sync hdsilk_geometry_non_geometry_sync hdsilk_surface_uv_fallback
     hdsilk_independent_uv_fallback
     hdsilk_composite_uv_fallback hdsilk_independent_fallback_publication hdsilk_mdl_identifiers

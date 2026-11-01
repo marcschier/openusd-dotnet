@@ -160,6 +160,10 @@ Version 1 admits Low-complexity, SmoothShaded meshes, point Rprims and linear ba
 with segmented, nonperiodic, periodic or pinned wraps. It refuses Skel/external computations,
 cubic or unsupported curves and volumes. Point Rprims reserve 48 logical bytes per source
 point; this does not change their one-pixel rendering or add authored-width support.
+For point Rprims, an unresolved or wrongly typed points value removes published geometry
+and emits a native warning in an unbounded session. Bounded preparation refuses the sync
+and retains the previous record. A typed empty array removes the points in either mode;
+a later valid edit republishes them.
 The numeric buffer metric excludes source/SDK materialization,
 allocator capacity/overhead, material/instance metadata, pages, texture caches and GPU storage.
 It is not a total-process memory guarantee. The exact charge formula and ownership contract

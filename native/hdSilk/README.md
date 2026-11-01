@@ -385,6 +385,11 @@ origins, including when the separate identity budget refuses the origin table. E
 point arrays cost zero; counts beyond the 32-bit index range are refused. The existing
 renderer draws one-pixel points and does not use authored widths.
 
+An unresolved or wrongly typed points value removes all published instances of the
+point Rprim in an unbounded session and emits a native warning. A bounded session
+refuses the sync and retains the previous record; a typed empty array removes the
+points in either mode. A later valid edit republishes the points.
+
 A producer and its retained record share one reservation lease. A replacement reserves
 new work while the old lease remains live; failed partial preparation retains both until
 recovery destroys that owner. Concurrent Hydra workers cannot overcommit the ceiling.

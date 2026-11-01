@@ -162,9 +162,17 @@ HdSilkPoints::_Sync(
         _UpdateVisibility(sceneDelegate, dirtyBits);
     }
 
+    bool invalidPoints = false;
     if (pointsDirty)
     {
-        ExtractPoints(sceneDelegate->Get(id, HdTokens->points), &_points);
+        invalidPoints = !ExtractPoints(sceneDelegate->Get(id, HdTokens->points), &_points);
+        if (invalidPoints)
+        {
+            _points.clear();
+            TF_WARN(
+                "hdSilk skipped points '%s': points must resolve to a float3 or double3 array",
+                id.GetText());
+        }
         if (_topologyRevision == std::numeric_limits<uint64_t>::max())
         {
             throw std::overflow_error(
@@ -200,7 +208,10 @@ HdSilkPoints::_Sync(
     {
         if (_points.empty())
         {
-            TF_WARN("hdSilk skipped points '%s': empty points array", id.GetText());
+            if (!invalidPoints)
+            {
+                TF_WARN("hdSilk skipped points '%s': empty points array", id.GetText());
+            }
             silkRenderParam->GetSceneState().RemoveMesh(id.GetString());
             if (preparation) { preparation->Complete(); }
             *dirtyBits = HdChangeTracker::Clean;

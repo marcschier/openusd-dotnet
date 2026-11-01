@@ -103,6 +103,117 @@ public sealed class SilkPointPreparationNativeTests
     }
 
     [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task BlockedPointsRetirePointPrimitiveAndRecover(SilkGraphicsBackend backend)
+    {
+        using var fixture = new Fixture(Points);
+        using var emptyFixture = new Fixture(string.Empty);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using OpenUsdSilkSession empty = emptyFixture.Open();
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var emptyRenderer = new SilkMeshRenderer(device);
+
+        byte[] background = Capture(empty, device, emptyRenderer);
+        byte[] initial = Capture(session, device, renderer);
+        await Assert.That(initial.SequenceEqual(background)).IsFalse();
+        await Assert.That(renderer.Scene.Meshes.Values.Single().Points.Length).IsEqualTo(9);
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Points").GetAttribute("points").BlockValue());
+        byte[] blocked = Capture(session, device, renderer);
+        await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(0);
+        await Assert.That(renderer.GpuResources.MeshValues.Count).IsEqualTo(0);
+        await Assert.That(blocked.SequenceEqual(background)).IsTrue();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Points").SetVec3fArray(
+            "points", [new(-0.25f, -0.5f, 0), new(0.25f, -0.5f, 0), new(0, 0.25f, 0)]));
+        byte[] recovered = Capture(session, device, renderer);
+        await Assert.That(renderer.Scene.Meshes.Values.Single().Points.Span.SequenceEqual(
+            new float[] { -0.25f, -0.5f, 0, 0.25f, -0.5f, 0, 0, 0.25f, 0 })).IsTrue();
+        await Assert.That(recovered.SequenceEqual(initial)).IsFalse();
+        await Assert.That(recovered.SequenceEqual(background)).IsFalse();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Points").SetVec3fArray(
+            "points", [new(-0.5f, -0.5f, 0), new(0.5f, -0.5f, 0), new(0, 0.5f, 0)]));
+        await Assert.That(Capture(session, device, renderer).SequenceEqual(initial)).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + Points);
+        renderer.Dispose();
+        emptyRenderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task BlockedPrototypeRetiresEveryPointInstanceAndRecovers(SilkGraphicsBackend backend)
+    {
+        using var fixture = new Fixture(InstancedPoints);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+
+        byte[] initial = Capture(session, device, renderer);
+        await Assert.That(renderer.Scene.Meshes.Values.Count(
+            mesh => mesh.Path.StartsWith("/Instances/Points/", StringComparison.Ordinal))).IsEqualTo(2);
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Instances/Points").GetAttribute("points").BlockValue());
+        byte[] blocked = Capture(session, device, renderer);
+        await Assert.That(renderer.Scene.Meshes.Values.Any(
+            mesh => mesh.Path.StartsWith("/Instances/Points/", StringComparison.Ordinal))).IsFalse();
+        await Assert.That(renderer.Scene.Meshes.Values.Any(
+            mesh => mesh.Path.StartsWith("/Instances/Other/", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(blocked.SequenceEqual(initial)).IsFalse();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Instances/Points").SetVec3fArray(
+            "points", [new(0, 0, 0), new(0, 0.5f, 0)]));
+        byte[] recovered = Capture(session, device, renderer);
+        await Assert.That(renderer.Scene.Meshes.Values.Count(
+            mesh => mesh.Path.StartsWith("/Instances/Points/", StringComparison.Ordinal))).IsEqualTo(2);
+        await Assert.That(recovered.SequenceEqual(initial)).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + InstancedPoints);
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task BoundedBlockedPointsRefuseAndRecoverWithoutReplacingRetainedGeometry()
+    {
+        using var fixture = new Fixture(Points);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using OpenUsdSilkPage initial = session.Sync(16, 16, Options(4096));
+        using var scene = new SilkSceneState();
+        scene.Apply(initial);
+        SilkMeshData expected = scene.Meshes.Values.Single();
+        await Assert.That(initial.MeshPreparationUsage!.ReservedBytes).IsEqualTo(PointCost);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Points").GetAttribute("points").BlockValue());
+        await Assert.That(() => session.Sync(16, 16, Options(4096)))
+            .Throws<OpenUsdSilkException>()
+            .WithMessageContaining("requires resolved float3 or double3 points");
+        using var retained = new SilkSceneState();
+        retained.Apply(initial);
+        await AssertSameGeometry(expected, retained.Meshes.Values.Single());
+        await AssertSameGeometry(expected, scene.Meshes.Values.Single());
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Points").SetVec3fArray(
+            "points", [new(-0.5f, -0.5f, 0), new(0.5f, -0.5f, 0), new(0, 0.5f, 0)]));
+        using OpenUsdSilkPage retry = session.Sync(16, 16, Options(4096));
+        await Assert.That(retry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(PointCost);
+        scene.Apply(retry);
+        await AssertSameGeometry(expected, scene.Meshes.Values.Single());
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + Points);
+    }
+
+    [Test]
     public async Task EmptyPointsCostNothingAndCanBePopulatedAfterward()
     {
         using var fixture = new Fixture("""

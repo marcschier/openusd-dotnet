@@ -2,9 +2,11 @@
 
 #include "hdsilk_test_hooks.h"
 
+#include "geometry_sync_page.h"
 #include "renderDelegate.h"
 
 #include "pxr/base/gf/matrix4f.h"
+#include "pxr/base/gf/vec3d.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/vt/array.h"
 #include "pxr/base/vt/value.h"
@@ -17,11 +19,37 @@
 
 #include <cstdio>
 #include <memory>
+#include <string>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace
 {
+class PointOverrideDelegate final : public HdUnitTestDelegate
+{
+public:
+    using HdUnitTestDelegate::HdUnitTestDelegate;
+
+    VtValue Get(const SdfPath& id, const TfToken& key) override
+    {
+        if (_overridePoints && id == SdfPath("/Points") && key == HdTokens->points)
+        {
+            return _points;
+        }
+        return HdUnitTestDelegate::Get(id, key);
+    }
+
+    void SetPoints(const VtValue& points)
+    {
+        _points = points;
+        _overridePoints = true;
+    }
+
+private:
+    VtValue _points;
+    bool _overridePoints = false;
+};
+
 enum class GeometryKind
 {
     Points,
@@ -258,4 +286,133 @@ extern "C" OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_mesh_non_geometry_dirty(int32_t dirtyKind, int32_t exactLimit)
 {
     return TestNonGeometryDirty(GeometryKind::Mesh, dirtyKind, exactLimit);
+}
+
+extern "C" OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_points_invalid_points(int32_t invalidKind, int32_t bounded)
+{
+    HdSilkRenderDelegate renderDelegate;
+    std::unique_ptr<HdRenderIndex> index(HdRenderIndex::New(&renderDelegate, {}));
+    if (!index || invalidKind < 0 || invalidKind > 3 || (bounded != 0 && bounded != 1))
+    {
+        return 1;
+    }
+
+    PointOverrideDelegate scene(index.get(), SdfPath::AbsoluteRootPath());
+    const SdfPath id("/Points");
+    const VtVec3fArray points{GfVec3f(0.0f, 0.0f, 0.0f), GfVec3f(1.0f, 0.0f, 0.0f)};
+    scene.AddPoints(
+        id, points, VtValue(GfVec3f(1.0f, 1.0f, 1.0f)), HdInterpolationConstant,
+        VtValue(1.0f), HdInterpolationConstant, VtValue(1.0f), HdInterpolationConstant);
+    HdRprim* rprim = const_cast<HdRprim*>(index->GetRprim(id));
+    if (rprim == nullptr)
+    {
+        return 2;
+    }
+    const auto& state = renderDelegate.GetSceneState();
+    const auto& budget = state->MeshPreparationBudget();
+    if (bounded != 0)
+    {
+        budget->Configure(1024);
+    }
+    HdDirtyBits dirty = rprim->GetInitialDirtyBitsMask();
+    rprim->Sync(&scene, renderDelegate.GetRenderParam(), &dirty, TfToken("hull"));
+    if (dirty != HdChangeTracker::Clean || budget->Refused() ||
+        !state->HasMeshPath(id.GetString()))
+    {
+        return 3;
+    }
+    uint32_t initialCommands = 0;
+    const std::vector<uint8_t> initialPage = state->BuildPage(nullptr, &initialCommands);
+    uint32_t quietCommands = 0;
+    state->BuildPage(nullptr, &quietCommands);
+    if (initialCommands <= quietCommands ||
+        !HdSilkTest::HasMeshPoints(initialPage, id.GetString(), points))
+    {
+        return 4;
+    }
+    const uint64_t originalReservation = budget->Reserved();
+    if (bounded != 0 && originalReservation != 96)
+    {
+        return 5;
+    }
+
+    if (invalidKind == 0)
+    {
+        scene.SetPoints(VtValue());
+    }
+    else if (invalidKind == 1)
+    {
+        scene.SetPoints(VtValue(1.0f));
+    }
+    else if (invalidKind == 2)
+    {
+        scene.SetPoints(VtValue(VtVec3fArray()));
+    }
+    else
+    {
+        scene.SetPoints(VtValue(VtVec3dArray()));
+    }
+    HdChangeTracker& tracker = index->GetChangeTracker();
+    const auto syncPoints = [&]
+    {
+        tracker.MarkRprimClean(id, HdChangeTracker::Clean);
+        tracker.MarkRprimDirty(id, HdChangeTracker::DirtyPoints);
+        dirty = rprim->PropagateRprimDirtyBits(tracker.GetRprimDirtyBits(id));
+        rprim->Sync(&scene, renderDelegate.GetRenderParam(), &dirty, TfToken("hull"));
+    };
+    syncPoints();
+    uint32_t invalidCommands = 0;
+    const std::vector<uint8_t> invalidPage = state->BuildPage(nullptr, &invalidCommands);
+    const bool mustRefuse = bounded != 0 && invalidKind < 2;
+    if (dirty != HdChangeTracker::Clean ||
+        !HdSilkTest::HasMeshPoints(initialPage, id.GetString(), points))
+    {
+        return 6;
+    }
+    if (mustRefuse)
+    {
+        if (!budget->Refused() || !state->HasMeshPath(id.GetString()) ||
+            budget->Reserved() != originalReservation || invalidCommands != quietCommands)
+        {
+            return 7;
+        }
+        try
+        {
+            budget->ThrowIfRefused();
+            return 8;
+        }
+        catch (const HdSilkMeshPreparationExceeded& error)
+        {
+            if (std::string(error.what()).find("requires resolved float3 or double3 points") ==
+                std::string::npos)
+            {
+                return 9;
+            }
+        }
+        budget->Configure(1024);
+    }
+    else if (budget->Refused() || state->HasMeshPath(id.GetString()) ||
+        invalidCommands <= quietCommands || !HdSilkTest::HasMeshRemoval(invalidPage, id.GetString()) ||
+        budget->Reserved() != 0)
+    {
+        return 10;
+    }
+
+    const VtVec3dArray recovered{
+        GfVec3d(0.0, 0.0, 0.0), GfVec3d(2.0, 0.0, 0.0)};
+    scene.SetPoints(VtValue(recovered));
+    syncPoints();
+    uint32_t recoveredCommands = 0;
+    const std::vector<uint8_t> recoveredPage = state->BuildPage(nullptr, &recoveredCommands);
+    if (dirty != HdChangeTracker::Clean || budget->Refused() ||
+        !state->HasMeshPath(id.GetString()) || recoveredCommands <= quietCommands ||
+        (bounded != 0 && budget->Reserved() != originalReservation) ||
+        !HdSilkTest::HasMeshPoints(
+            recoveredPage, id.GetString(),
+            VtVec3fArray{GfVec3f(0.0f, 0.0f, 0.0f), GfVec3f(2.0f, 0.0f, 0.0f)}))
+    {
+        return 11;
+    }
+    return 0;
 }
