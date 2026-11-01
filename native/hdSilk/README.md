@@ -397,9 +397,22 @@ transition retains the current points. If every source is unresolved or wrongly
 typed, an unbounded session warns and removes the mesh and its instances. A
 bounded session refuses the sync before replacing the previous record, and does
 not admit Skel or computed primvars. A typed empty result removes the mesh in
-either mode. Refinement retains its topology across this removal, so a valid
-edit restores the refined mesh. Supported attribute edits made while points
-are absent are applied when the geometry returns.
+either mode. A nonempty array that does not cover the emitted triangles removes
+the mesh in an unbounded session; bounded preparation refuses it before
+replacing the previous record. If face counts are invalid or require more
+indices than supplied, an unbounded sync warns and removes the mesh and its
+instances before triangulation. Bounded preparation refuses that topology when
+points are nonempty; a typed empty array still removes the mesh in either mode.
+The invalid topology remains excluded from attribute and subdivision refresh
+until valid topology returns. In the unrefined path, indices in skipped
+holes, degenerate faces and trailing topology data do not invalidate emitted
+triangles. An active subdivision refiner requires its complete control-point
+array, including points used only by hole faces. For point-source removal,
+refinement retains its topology, so a valid edit restores the refined mesh.
+Supported attribute edits made while points are absent are applied when the
+geometry returns. Unreferenced trailing points remain valid for unexpanded
+meshes. When an unexpanded point count changes, the pick-topology revision
+advances and vertex attributes are checked against the new count.
 
 A producer and its retained record share one reservation lease. A replacement reserves
 new work while the old lease remains live; failed partial preparation retains both until

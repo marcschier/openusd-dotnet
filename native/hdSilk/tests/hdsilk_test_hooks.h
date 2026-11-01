@@ -31,6 +31,9 @@ OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_mesh_invalid_points(int32_t invalidKind, int32_t bounded, int32_t topologyOnly);
 
 OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_mesh_empty_truncated_topology(int32_t bounded);
+
+OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_mesh_computed_points(void);
 
 OPENUSD_HDSILK_API int32_t

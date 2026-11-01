@@ -9,9 +9,11 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class SilkMeshInvalidPointsNativeTests
 {
     [Test]
-    [Arguments(SilkGraphicsBackend.D3D12)]
-    [Arguments(SilkGraphicsBackend.Vulkan)]
-    public async Task BlockedMeshPointsRetireGeometryAndRecover(SilkGraphicsBackend backend)
+    [Arguments(SilkGraphicsBackend.D3D12, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true)]
+    public async Task InvalidMeshPointsRetireGeometryAndRecover(SilkGraphicsBackend backend, bool shortPoints)
     {
         using Fixture fixture = Create(Mesh);
         using Fixture emptyFixture = Create(string.Empty);
@@ -30,7 +32,18 @@ public sealed class SilkMeshInvalidPointsNativeTests
         await Assert.That(initial.SequenceEqual(background)).IsFalse();
         await Assert.That(renderer.Scene.Meshes.Values.Single().Points.Length).IsEqualTo(9);
 
-        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").GetAttribute("points").BlockValue());
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            if (shortPoints)
+            {
+                mesh.SetVec3fArray("points", [.. OriginalPoints.Take(2)]);
+            }
+            else
+            {
+                mesh.GetAttribute("points").BlockValue();
+            }
+        });
         byte[] blocked = Capture(session, device, renderer);
         await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(0);
         await Assert.That(renderer.GpuResources.MeshValues.Count).IsEqualTo(0);
@@ -53,9 +66,12 @@ public sealed class SilkMeshInvalidPointsNativeTests
     }
 
     [Test]
-    [Arguments(SilkGraphicsBackend.D3D12)]
-    [Arguments(SilkGraphicsBackend.Vulkan)]
-    public async Task BlockedMeshPrototypeRetiresEveryInstanceAndRecovers(SilkGraphicsBackend backend)
+    [Arguments(SilkGraphicsBackend.D3D12, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true)]
+    public async Task InvalidMeshPrototypeRetiresEveryInstanceAndRecovers(
+        SilkGraphicsBackend backend, bool shortPoints)
     {
         using Fixture fixture = Create(InstancedMesh);
         await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
@@ -69,7 +85,18 @@ public sealed class SilkMeshInvalidPointsNativeTests
         byte[] initial = Capture(session, device, renderer);
         await Assert.That(renderer.Scene.Meshes.Values.Count(
             mesh => mesh.Path.StartsWith("/Instances/Mesh/", StringComparison.Ordinal))).IsEqualTo(2);
-        await scheduler.InvokeAsync(stage => stage.GetPrim("/Instances/Mesh").GetAttribute("points").BlockValue());
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Instances/Mesh");
+            if (shortPoints)
+            {
+                mesh.SetVec3fArray("points", [.. OriginalPoints.Take(2)]);
+            }
+            else
+            {
+                mesh.GetAttribute("points").BlockValue();
+            }
+        });
         byte[] blocked = Capture(session, device, renderer);
         await Assert.That(renderer.Scene.Meshes.Values.Any(
             mesh => mesh.Path.StartsWith("/Instances/Mesh/", StringComparison.Ordinal))).IsFalse();
@@ -124,6 +151,544 @@ public sealed class SilkMeshInvalidPointsNativeTests
         scene.Apply(retry);
         await AssertGeometry(expected, scene);
         await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + geometry);
+    }
+
+    [Test]
+    [Arguments(RenderComplexity.Low, false)]
+    [Arguments(RenderComplexity.Low, true)]
+    [Arguments(RenderComplexity.Medium, false)]
+    [Arguments(RenderComplexity.Medium, true)]
+    public async Task MeshRetiresAndRecoversAfterShortPoints(RenderComplexity complexity, bool attributes)
+    {
+        string geometry = attributes ? RefinedMesh : SimpleRefinedMesh;
+        using Fixture fixture = Create(geometry);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage initial = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(initial);
+        SilkMeshData original = scene.Meshes.Values.Single();
+        float[] points = original.Points.ToArray();
+        uint[] indices = original.Indices.ToArray();
+        float[] normals = original.AuthoredNormals.ToArray();
+        float[]? uvs = original.FindTexCoord("st")?.Data.ToArray();
+        await Assert.That(points.Length).IsGreaterThanOrEqualTo(12);
+        if (complexity == RenderComplexity.Medium)
+        {
+            await Assert.That(points.Length).IsGreaterThan(12);
+        }
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray(
+            "points", [.. QuadPoints.Take(3)]));
+        using OpenUsdSilkPage incompatible = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(incompatible);
+        await Assert.That(scene.Meshes.Count).IsEqualTo(0);
+        using var retained = new SilkSceneState();
+        retained.Apply(initial);
+        await Assert.That(retained.Meshes.Values.Single().Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(retained.Meshes.Values.Single().Indices.Span.SequenceEqual(indices)).IsTrue();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points", QuadPoints));
+        using OpenUsdSilkPage recovered = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(recovered);
+        SilkMeshData restored = scene.Meshes.Values.Single();
+        await Assert.That(restored.Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(restored.Indices.Span.SequenceEqual(indices)).IsTrue();
+        await Assert.That(restored.AuthoredNormals.Span.SequenceEqual(normals)).IsTrue();
+        if (uvs is null)
+        {
+            await Assert.That(restored.FindTexCoord("st")).IsNull();
+        }
+        else
+        {
+            await Assert.That(restored.FindTexCoord("st")!.Data.Span.SequenceEqual(uvs)).IsTrue();
+        }
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + geometry);
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task BoundedMissingPointsRefuseWithoutReplacingRetainedGeometry(bool instanced, bool changeTopology)
+    {
+        string geometry = instanced ? InstancedMesh : Mesh;
+        string path = instanced ? "/Instances/Mesh" : "/Mesh";
+        using Fixture fixture = Create(geometry);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using OpenUsdSilkPage initial = session.Sync(16, 16, Options);
+        using var scene = new SilkSceneState();
+        scene.Apply(initial);
+        var expected = scene.Meshes.Values
+            .OrderBy(static mesh => mesh.Path, StringComparer.Ordinal)
+            .Select(static mesh => (mesh.Path, Points: mesh.Points.ToArray(), Indices: mesh.Indices.ToArray()))
+            .ToArray();
+        await Assert.That(expected.Length).IsEqualTo(instanced ? 3 : 1);
+        ulong reserved = initial.MeshPreparationUsage!.ReservedBytes;
+        await Assert.That(reserved).IsGreaterThan(0ul);
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim(path);
+            if (changeTopology)
+            {
+                mesh.SetInt32Array("faceVertexIndices", [0, 1, 3]);
+            }
+            else
+            {
+                mesh.SetVec3fArray("points", [.. OriginalPoints.Take(2)]);
+            }
+        });
+        await Assert.That(() => session.Sync(16, 16, Options))
+            .Throws<OpenUsdSilkException>()
+            .WithMessageContaining("topology references a missing point");
+        using var retained = new SilkSceneState();
+        retained.Apply(initial);
+        await AssertGeometry(expected, retained);
+        await AssertGeometry(expected, scene);
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim(path);
+            if (changeTopology)
+            {
+                mesh.SetInt32Array("faceVertexIndices", [0, 1, 2]);
+            }
+            else
+            {
+                mesh.SetVec3fArray("points", OriginalPoints);
+            }
+        });
+        using OpenUsdSilkPage retry = session.Sync(16, 16, Options);
+        scene.Apply(retry);
+        await AssertGeometry(expected, scene);
+        await Assert.That(retry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(reserved);
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + geometry);
+    }
+
+    [Test]
+    [Arguments(RenderComplexity.Low)]
+    [Arguments(RenderComplexity.Medium)]
+    public async Task MeshRetiresAndRecoversAfterTopologyReferencesMissingPoints(RenderComplexity complexity)
+    {
+        using Fixture fixture = Create(SimpleRefinedMesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage initial = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(initial);
+        float[] points = scene.Meshes.Values.Single().Points.ToArray();
+        uint[] indices = scene.Meshes.Values.Single().Indices.ToArray();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetInt32Array(
+            "faceVertexIndices", [0, 1, 2, 4]));
+        using OpenUsdSilkPage invalid = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(invalid);
+        await Assert.That(scene.Meshes.Count).IsEqualTo(0);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetInt32Array(
+            "faceVertexIndices", [0, 1, 2, 3]));
+        using OpenUsdSilkPage recovered = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(recovered);
+        await Assert.That(scene.Meshes.Values.Single().Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(scene.Meshes.Values.Single().Indices.Span.SequenceEqual(indices)).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + SimpleRefinedMesh);
+    }
+
+    [Test]
+    public Task EmptyPointsRetireBeforeIncompleteTopologyIsTriangulated() =>
+        InvalidTopologyRetiresAndRecovers(Array.Empty<UsdVec3f>(), [3]);
+
+    [Test]
+    public Task ResolvedPointsRetireBeforeIncompleteTopologyIsTriangulated() =>
+        InvalidTopologyRetiresAndRecovers(OriginalPoints, [3]);
+
+    [Test]
+    public Task NegativeFaceCountsRetireBeforeTopologyIsTriangulated() =>
+        InvalidTopologyRetiresAndRecovers(OriginalPoints, [-1]);
+
+    private static async Task InvalidTopologyRetiresAndRecovers(
+        UsdVec3f[] points,
+        int[] faceVertexCounts)
+    {
+        using Fixture fixture = Create(Mesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            mesh.SetVec3fArray("points", points);
+            mesh.SetInt32Array("faceVertexCounts", faceVertexCounts);
+            mesh.SetInt32Array("faceVertexIndices", Array.Empty<int>());
+        });
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage invalid = session.Sync(16, 16);
+        scene.Apply(invalid);
+        await Assert.That(scene.Meshes.Count).IsEqualTo(0);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray(
+            "points", points.Length == 0 ? OriginalPoints : Array.Empty<UsdVec3f>()));
+        using OpenUsdSilkPage stillInvalid = session.Sync(
+            16, 16, complexity: RenderComplexity.Medium);
+        scene.Apply(stillInvalid);
+        await Assert.That(scene.Meshes.Count).IsEqualTo(0);
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            mesh.SetVec3fArray("points", OriginalPoints);
+            mesh.SetInt32Array("faceVertexCounts", [3]);
+            mesh.SetInt32Array("faceVertexIndices", [0, 1, 2]);
+        });
+        using OpenUsdSilkPage recovered = session.Sync(16, 16);
+        scene.Apply(recovered);
+        await Assert.That(scene.Meshes.Count).IsEqualTo(1);
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + Mesh);
+    }
+
+    [Test]
+    [Arguments(0, false, -1)]
+    [Arguments(0, false, 9)]
+    [Arguments(0, true, -1)]
+    [Arguments(0, true, 9)]
+    [Arguments(1, false, -1)]
+    [Arguments(1, false, 9)]
+    [Arguments(1, true, -1)]
+    [Arguments(1, true, 9)]
+    [Arguments(2, false, -1)]
+    [Arguments(2, false, 9)]
+    [Arguments(2, true, -1)]
+    [Arguments(2, true, 9)]
+    public async Task UnemittedTopologyIndicesDoNotInvalidateMesh(int topologyKind, bool bounded, int unusedIndex)
+    {
+        using Fixture fixture = Create(Mesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage initial = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(initial);
+        float[] points = scene.Meshes.Values.Single().Points.ToArray();
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            switch (topologyKind)
+            {
+                case 0:
+                    mesh.SetInt32Array("faceVertexCounts", [3, 3]);
+                    mesh.SetInt32Array("faceVertexIndices", [0, 1, 2, 0, 1, unusedIndex]);
+                    mesh.SetInt32Array("holeIndices", [1]);
+                    break;
+                case 1:
+                    mesh.SetInt32Array("faceVertexCounts", [3, 2, 3]);
+                    mesh.SetInt32Array("faceVertexIndices", [0, 1, 2, 0, unusedIndex, 0, 1, 2]);
+                    break;
+                default:
+                    mesh.SetInt32Array("faceVertexIndices", [0, 1, 2, unusedIndex]);
+                    break;
+            }
+        });
+        using OpenUsdSilkPage updated = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(updated);
+        SilkMeshData updatedMesh = scene.Meshes.Values.Single();
+        await Assert.That(updatedMesh.Points.Span.SequenceEqual(points)).IsTrue();
+        uint[] expectedIndices = topologyKind == 1 ? [0, 1, 2, 0, 1, 2] : [0, 1, 2];
+        await Assert.That(updatedMesh.Indices.Span.SequenceEqual(expectedIndices)).IsTrue();
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            mesh.SetInt32Array("faceVertexCounts", [3]);
+            mesh.SetInt32Array("faceVertexIndices", [0, 1, 2]);
+            mesh.SetInt32Array("holeIndices", []);
+        });
+        using OpenUsdSilkPage restored = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(restored);
+        await Assert.That(scene.Meshes.Values.Single().Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(scene.Meshes.Values.Single().Indices.Span.SequenceEqual(new uint[] { 0, 1, 2 })).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + Mesh);
+    }
+
+    [Test]
+    public async Task BoundedIncompleteFaceIndicesRefuseWithoutReplacingRetainedGeometry()
+    {
+        using Fixture fixture = Create(Mesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage initial = session.Sync(16, 16, Options);
+        scene.Apply(initial);
+        float[] points = scene.Meshes.Values.Single().Points.ToArray();
+        uint[] indices = scene.Meshes.Values.Single().Indices.ToArray();
+        ulong reserved = initial.MeshPreparationUsage!.ReservedBytes;
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetInt32Array("faceVertexCounts", [4]));
+        await Assert.That(() => session.Sync(16, 16, Options))
+            .Throws<OpenUsdSilkException>()
+            .WithMessageContaining("fewer indices than its face counts require");
+        await Assert.That(scene.Meshes.Values.Single().Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(scene.Meshes.Values.Single().Indices.Span.SequenceEqual(indices)).IsTrue();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetInt32Array("faceVertexCounts", [3]));
+        using OpenUsdSilkPage restored = session.Sync(16, 16, Options);
+        scene.Apply(restored);
+        await Assert.That(restored.MeshPreparationUsage!.ReservedBytes).IsEqualTo(reserved);
+        await Assert.That(scene.Meshes.Values.Single().Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(scene.Meshes.Values.Single().Indices.Span.SequenceEqual(indices)).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + Mesh);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DegenerateHoleDoesNotMaskMissingPointsInLaterEmittedFace(bool bounded)
+    {
+        using Fixture fixture = Create(Mesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage initial = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(initial);
+        float[] points = scene.Meshes.Values.Single().Points.ToArray();
+        uint[] indices = scene.Meshes.Values.Single().Indices.ToArray();
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            mesh.SetInt32Array("faceVertexCounts", [3, 2, 3]);
+            mesh.SetInt32Array("faceVertexIndices", [0, 1, 2, 0, 1, 0, 1, 9]);
+            mesh.SetInt32Array("holeIndices", [1, 2]);
+        });
+        if (bounded)
+        {
+            await Assert.That(() => SyncMesh(session, RenderComplexity.Low, bounded))
+                .Throws<OpenUsdSilkException>()
+                .WithMessageContaining("topology references a missing point");
+            await Assert.That(scene.Meshes.Values.Single().Points.Span.SequenceEqual(points)).IsTrue();
+            await Assert.That(scene.Meshes.Values.Single().Indices.Span.SequenceEqual(indices)).IsTrue();
+        }
+        else
+        {
+            using OpenUsdSilkPage retired = SyncMesh(session, RenderComplexity.Low, bounded);
+            scene.Apply(retired);
+            await Assert.That(scene.Meshes.Count).IsEqualTo(0);
+        }
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            mesh.SetInt32Array("faceVertexCounts", [3]);
+            mesh.SetInt32Array("faceVertexIndices", [0, 1, 2]);
+            mesh.SetInt32Array("holeIndices", []);
+        });
+        using OpenUsdSilkPage restored = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(restored);
+        await Assert.That(scene.Meshes.Values.Single().Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(scene.Meshes.Values.Single().Indices.Span.SequenceEqual(indices)).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + Mesh);
+    }
+
+    [Test]
+    [Arguments(RenderComplexity.Low)]
+    [Arguments(RenderComplexity.Medium)]
+    public async Task RefinedMeshRequiresControlPointsUsedOnlyByHoleFaces(RenderComplexity complexity)
+    {
+        using Fixture fixture = Create(SimpleRefinedMesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            mesh.SetInt32Array("faceVertexCounts", [3, 3]);
+            mesh.SetInt32Array("faceVertexIndices", [0, 1, 2, 1, 0, 3]);
+            mesh.SetInt32Array("holeIndices", [1]);
+        });
+        using OpenUsdSilkPage initial = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(initial);
+        float[] points = scene.Meshes.Values.Single().Points.ToArray();
+        uint[] indices = scene.Meshes.Values.Single().Indices.ToArray();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray(
+            "points", [.. QuadPoints.Take(3)]));
+        using OpenUsdSilkPage shorter = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(shorter);
+        if (complexity == RenderComplexity.Medium)
+        {
+            await Assert.That(scene.Meshes.Count).IsEqualTo(0);
+        }
+        else
+        {
+            await Assert.That(scene.Meshes.Values.Single().Points.Length).IsEqualTo(9);
+            await Assert.That(scene.Meshes.Values.Single().Indices.Span.SequenceEqual(indices)).IsTrue();
+        }
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points", QuadPoints));
+        using OpenUsdSilkPage restored = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(restored);
+        await Assert.That(scene.Meshes.Values.Single().Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(scene.Meshes.Values.Single().Indices.Span.SequenceEqual(indices)).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + SimpleRefinedMesh);
+    }
+
+    [Test]
+    [Arguments(RenderComplexity.Low, false)]
+    [Arguments(RenderComplexity.Low, true)]
+    [Arguments(RenderComplexity.Medium, false)]
+    public async Task UnreferencedTrailingPointsRemainValid(RenderComplexity complexity, bool bounded)
+    {
+        using Fixture fixture = Create(SimpleRefinedMesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage initial = SyncMesh(session, complexity, bounded);
+        scene.Apply(initial);
+        float[] points = scene.Meshes.Values.Single().Points.ToArray();
+        uint[] indices = scene.Meshes.Values.Single().Indices.ToArray();
+        ulong initialTopologyRevision = scene.Meshes.Values.Single().TopologyRevision;
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray(
+            "points", [.. QuadPoints, new(3, 4, 5)]));
+        using OpenUsdSilkPage updated = SyncMesh(session, complexity, bounded);
+        scene.Apply(updated);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        await Assert.That(mesh.Indices.Span.SequenceEqual(indices)).IsTrue();
+        if (complexity == RenderComplexity.Medium)
+        {
+            await Assert.That(mesh.Points.Span.SequenceEqual(points)).IsTrue();
+            await Assert.That(mesh.TopologyRevision).IsEqualTo(initialTopologyRevision);
+        }
+        else
+        {
+            await Assert.That(mesh.Points.Span.SequenceEqual([.. points, 3f, 4f, 5f])).IsTrue();
+            await Assert.That(mesh.TopologyRevision).IsGreaterThan(initialTopologyRevision);
+            await Assert.That(mesh.PointOrigins.Span.SequenceEqual([0, 1, 2, 3, -1])).IsTrue();
+            await Assert.That(mesh.AuthoredPointCount).IsEqualTo(4);
+        }
+        ulong updatedTopologyRevision = mesh.TopologyRevision;
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points", QuadPoints));
+        using OpenUsdSilkPage restored = SyncMesh(session, complexity, bounded);
+        scene.Apply(restored);
+        mesh = scene.Meshes.Values.Single();
+        await Assert.That(mesh.Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(mesh.Indices.Span.SequenceEqual(indices)).IsTrue();
+        if (complexity == RenderComplexity.Medium)
+        {
+            await Assert.That(mesh.TopologyRevision).IsEqualTo(updatedTopologyRevision);
+        }
+        else
+        {
+            await Assert.That(mesh.TopologyRevision).IsGreaterThan(updatedTopologyRevision);
+            await Assert.That(mesh.PointOrigins.Span.SequenceEqual([0, 1, 2, 3])).IsTrue();
+        }
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + SimpleRefinedMesh);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task PointCountChangesRefreshVertexAttributes(bool bounded)
+    {
+        using Fixture fixture = Create(VertexNormalRefinedMesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage initial = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(initial);
+        float[] normals = scene.Meshes.Values.Single().AuthoredNormals.ToArray();
+        await Assert.That(normals.Length).IsEqualTo(12);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray(
+            "points", [.. QuadPoints, new(3, 4, 5)]));
+        using OpenUsdSilkPage extraPoint = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(extraPoint);
+        await Assert.That(scene.Meshes.Values.Single().AuthoredNormals.IsEmpty).IsTrue();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray(
+            "normals", [.. OriginalNormals, new(0, 0, 1)]));
+        using OpenUsdSilkPage extraNormal = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(extraNormal);
+        await Assert.That(scene.Meshes.Values.Single().AuthoredNormals.Length).IsEqualTo(15);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points", QuadPoints));
+        using OpenUsdSilkPage restoredPoints = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(restoredPoints);
+        await Assert.That(scene.Meshes.Values.Single().AuthoredNormals.IsEmpty).IsTrue();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("normals", OriginalNormals));
+        using OpenUsdSilkPage restoredNormals = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(restoredNormals);
+        await Assert.That(scene.Meshes.Values.Single().AuthoredNormals.Span.SequenceEqual(normals)).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + VertexNormalRefinedMesh);
+    }
+
+    [Test]
+    [Arguments(RenderComplexity.Low, false)]
+    [Arguments(RenderComplexity.Low, true)]
+    [Arguments(RenderComplexity.Medium, false)]
+    [Arguments(RenderComplexity.Medium, true)]
+    public async Task ConstantNormalsAndUvEditsRecoverAfterPointsAreRemoved(
+        RenderComplexity complexity, bool shortPoints)
+    {
+        using Fixture fixture = Create(ConstantNormalRefinedMesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage initial = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(initial);
+        SilkMeshData original = scene.Meshes.Values.Single();
+        float[] points = original.Points.ToArray();
+        uint[] indices = original.Indices.ToArray();
+        float[] normals = original.AuthoredNormals.ToArray();
+        float[] uvs = original.FindTexCoord("st")!.Data.ToArray();
+        await Assert.That(normals.Length).IsGreaterThan(0);
+        await Assert.That(uvs.Length).IsGreaterThan(0);
+
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            if (shortPoints)
+            {
+                mesh.SetVec3fArray("points", [.. QuadPoints.Take(3)]);
+            }
+            else
+            {
+                mesh.SetVec3fArray("points", []);
+            }
+        });
+        using OpenUsdSilkPage invalid = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(invalid);
+        await Assert.That(scene.Meshes.Count).IsEqualTo(0);
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec2fArray("primvars:st", HalfUvs));
+        using OpenUsdSilkPage uvEdit = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(uvEdit);
+        await Assert.That(scene.Meshes.Count).IsEqualTo(0);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points", QuadPoints));
+        using OpenUsdSilkPage recovered = session.Sync(16, 16, complexity: complexity);
+        scene.Apply(recovered);
+        SilkMeshData restored = scene.Meshes.Values.Single();
+        await Assert.That(restored.Points.Span.SequenceEqual(points)).IsTrue();
+        await Assert.That(restored.Indices.Span.SequenceEqual(indices)).IsTrue();
+        await Assert.That(restored.AuthoredNormals.Span.SequenceEqual(normals)).IsTrue();
+        await Assert.That(restored.FindTexCoord("st")!.Data.Span.SequenceEqual(
+            uvs.Select(static value => value * 0.5f).ToArray())).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path))
+            .IsEqualTo("#usda 1.0\n" + ConstantNormalRefinedMesh);
     }
 
     [Test]
@@ -252,12 +817,16 @@ public sealed class SilkMeshInvalidPointsNativeTests
     }
 
     [Test]
-    [Arguments(SilkGraphicsBackend.D3D12, false)]
-    [Arguments(SilkGraphicsBackend.D3D12, true)]
-    [Arguments(SilkGraphicsBackend.Vulkan, false)]
-    [Arguments(SilkGraphicsBackend.Vulkan, true)]
+    [Arguments(SilkGraphicsBackend.D3D12, false, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, false, true)]
+    [Arguments(SilkGraphicsBackend.D3D12, true, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true, true)]
     public async Task RetiredMeshAttributeEditsMatchIndependentReferencePixels(
-        SilkGraphicsBackend backend, bool refined)
+        SilkGraphicsBackend backend, bool refined, bool shortPoints)
     {
         string geometry = TexturedMesh();
         using Fixture actualFixture = Create(geometry);
@@ -297,7 +866,18 @@ public sealed class SilkMeshInvalidPointsNativeTests
             .Select(index => Convert.ToHexString(initial.AsSpan(index * 4, 3))).Distinct().Count();
         await Assert.That(colors).IsGreaterThan(4);
 
-        await actualScheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").GetAttribute("points").BlockValue());
+        await actualScheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            if (shortPoints)
+            {
+                mesh.SetVec3fArray("points", [.. QuadPoints.Take(3)]);
+            }
+            else
+            {
+                mesh.GetAttribute("points").BlockValue();
+            }
+        });
         byte[] retired = Capture(actual, device, renderer, complexity);
         await Assert.That(retired.SequenceEqual(initial)).IsFalse();
         await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(0);
@@ -464,6 +1044,38 @@ public sealed class SilkMeshInvalidPointsNativeTests
                 (-0.2,0,1), (0.2,0,1), (0,0.2,1), (0,-0.2,1)
             ] (interpolation = "vertex")
             texCoord2f[] primvars:st = [(0,0), (1,0), (1,1), (0,1)] (interpolation = "faceVarying")
+        }
+        """;
+
+    private const string SimpleRefinedMesh = """
+        def Mesh "Mesh" {
+            uniform token subdivisionScheme = "catmullClark"
+            point3f[] points = [(-0.5,-0.5,0), (0.5,-0.5,0), (0.5,0.5,0), (-0.5,0.5,0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0,1,2,3]
+        }
+        """;
+
+    private const string ConstantNormalRefinedMesh = """
+        def Mesh "Mesh" {
+            uniform token subdivisionScheme = "catmullClark"
+            point3f[] points = [(-0.5,-0.5,0), (0.5,-0.5,0), (0.5,0.5,0), (-0.5,0.5,0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0,1,2,3]
+            normal3f[] normals = [(0,0,1)] (interpolation = "constant")
+            texCoord2f[] primvars:st = [(0,0), (1,0), (1,1), (0,1)] (interpolation = "faceVarying")
+        }
+        """;
+
+    private const string VertexNormalRefinedMesh = """
+        def Mesh "Mesh" {
+            uniform token subdivisionScheme = "catmullClark"
+            point3f[] points = [(-0.5,-0.5,0), (0.5,-0.5,0), (0.5,0.5,0), (-0.5,0.5,0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0,1,2,3]
+            normal3f[] normals = [
+                (-0.2,0,1), (0.2,0,1), (0,0.2,1), (0,-0.2,1)
+            ] (interpolation = "vertex")
         }
         """;
 }

@@ -165,6 +165,17 @@ If all sources are unresolved or wrongly typed, an unbounded sync warns and remo
 the mesh and its instances. Bounded preparation refuses the sync and retains the previous
 record. A typed empty array removes the mesh in either mode; a later valid edit restores
 the mesh, including refinement and supported attribute edits made while points were absent.
+A nonempty array that cannot cover the emitted triangles removes the mesh in an unbounded
+session and is refused by bounded preparation. If face counts are invalid or require more
+indices than supplied, an unbounded sync warns and removes the mesh and its instances
+before triangulation. Bounded preparation refuses that topology when points are nonempty;
+a typed empty array still removes the mesh in either mode. The invalid topology remains
+excluded from attribute and subdivision refresh until valid topology returns. In the
+unrefined path, indices in skipped holes, degenerate faces and trailing topology data do
+not invalidate emitted triangles. An active subdivision refiner requires its complete
+control-point array, including points used only by hole faces. Unreferenced trailing
+points remain valid for unexpanded meshes; changing their count advances pick topology
+and rechecks vertex attributes.
 For point Rprims, an unresolved or wrongly typed points value removes published geometry
 and emits a native warning in an unbounded session. Bounded preparation refuses the sync
 and retains the previous record. A typed empty array removes the points in either mode;
@@ -1304,7 +1315,9 @@ Loop, and bilinear schemes with USD boundary, face-varying, crease, corner, tria
 Points and vertex, varying, face-varying, and uniform primvars follow the refined topology; animated points reuse the
 cached refiner, and normals are normalized after interpolation. Refinement is refused before allocation when its
 predicted vertices or faces exceed the `1 << 21` bounds. Unsupported or invalid topology and undescribable face-varying
-channels publish the complete control cage with a bounded diagnostic, never a partial surface. The analytic
+channels publish the complete control cage with a bounded diagnostic when its points cover the emitted triangles.
+A refiner that needs more control points than the resolved array contains removes the mesh until valid points return.
+The analytic
 `hdsilk_subdivision_probe` gates exact level counts, known Catmull-Clark positions, primvar partition of unity,
 creases/corners, holes, subset mapping, face-varying values and normals, bilinear and Loop refinement, cache reuse, and
 bounded fallback.

@@ -122,6 +122,27 @@ bool ExtractPoints(const VtValue& value, VtVec3fArray* out)
     return false;
 }
 
+bool HasCompleteFaceVertexIndices(const HdMeshTopology& topology)
+{
+    const VtIntArray& counts = topology.GetFaceVertexCounts();
+    const VtIntArray& indices = topology.GetFaceVertexIndices();
+    size_t offset = 0;
+    for (int faceVertexCount : counts)
+    {
+        if (faceVertexCount < 0)
+        {
+            return false;
+        }
+        const size_t count = static_cast<size_t>(faceVertexCount);
+        if (count > indices.size() - offset)
+        {
+            return false;
+        }
+        offset += count;
+    }
+    return true;
+}
+
 /// Flattens a primvar value into tightly packed floats, returning the component
 /// count per element, or zero when the value holds a type this delegate cannot
 /// represent on the wire. Only float-convertible scalar and vector types are
@@ -1681,7 +1702,8 @@ HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) 
         }
         if (count >= 3)
         {
-            triangles = HdSilkMeshPreparationPlan::Add(triangles, static_cast<uint64_t>(count - 2));
+            triangles = HdSilkMeshPreparationPlan::Add(
+                triangles, static_cast<uint64_t>(count - 2));
         }
     }
     const VtValue pointValue = sceneDelegate->Get(id, HdTokens->points);
@@ -1698,6 +1720,43 @@ HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) 
     {
         throw std::invalid_argument(
             "The bounded hdSilk mesh preparation profile requires resolved float3 or double3 points.");
+    }
+    if (points != 0)
+    {
+        if (!HasCompleteFaceVertexIndices(topology))
+        {
+            throw std::invalid_argument(
+                "The bounded hdSilk mesh topology has invalid face counts or fewer "
+                "indices than its face counts require.");
+        }
+        const VtIntArray& counts = topology.GetFaceVertexCounts();
+        const VtIntArray& indices = topology.GetFaceVertexIndices();
+        const VtIntArray& holes = topology.GetHoleIndices();
+        size_t offset = 0;
+        size_t holeIndex = 0;
+        for (size_t face = 0; face < counts.size(); ++face)
+        {
+            const size_t count = static_cast<size_t>(counts[face]);
+            // HdMeshUtil skips degenerate faces before advancing the hole cursor.
+            if (count >= 3 && holeIndex < holes.size() &&
+                static_cast<size_t>(holes[holeIndex]) == face)
+            {
+                ++holeIndex;
+            }
+            else if (count >= 3)
+            {
+                for (size_t corner = 0; corner < count; ++corner)
+                {
+                    const int index = indices[offset + corner];
+                    if (index < 0 || static_cast<uint64_t>(index) >= points)
+                    {
+                        throw std::invalid_argument(
+                            "The bounded hdSilk mesh topology references a missing point.");
+                    }
+                }
+            }
+            offset += count;
+        }
     }
     HdSilkMeshPreparationPlan plan(points, triangles);
     for (HdInterpolation interpolation : {HdInterpolationConstant, HdInterpolationVertex,
@@ -1818,7 +1877,9 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         topologyRefreshed || pointsDirty || transformDirty || visibilityDirty ||
         displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
         materialDirty || cullDirty || subdivisionRefreshed;
-    const bool emittedPointsWereEmpty = _EmittedPoints().empty();
+    const size_t previousEmittedPointCount = _EmittedPoints().size();
+    const uint64_t previousTopologyRevision = _topologyRevision;
+    bool invalidTopology = false;
 
     std::shared_ptr<HdSilkMeshPreparationLease> preparation;
     if (preparationBudget->Enabled() && (recordDirty || !_preparationLease))
@@ -1856,85 +1917,113 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         }
         ++_topologyRevision;
 
-        HdMeshUtil meshUtil(&_topology, id);
-        VtVec3iArray triangleIndices;
-        VtIntArray primitiveParams;
-        meshUtil.ComputeTriangleIndices(&triangleIndices, &primitiveParams);
-        if (primitiveParams.size() != triangleIndices.size())
+        if (!HasCompleteFaceVertexIndices(_topology))
         {
-            throw std::runtime_error(
-                "HdMeshUtil returned mismatched triangle and primitiveParams counts.");
-        }
-        if (triangleIndices.size() >
-            std::numeric_limits<size_t>::max() / 3)
-        {
-            throw std::overflow_error(
-                "The hdSilk triangle index component count overflows size_t.");
-        }
-
-        _coarseTriangleIndices.clear();
-        _coarseTriangleIndices.reserve(triangleIndices.size() * 3);
-        _coarseTriangleSubprims.clear();
-        _coarseTriangleSubprims.reserve(primitiveParams.size());
-        // Authored winding is HdMeshUtil's job, not this delegate's. USD's
-        // "orientation" makes rightHanded faces counter-clockwise seen from the
-        // front and leftHanded clockwise, and ComputeTriangleIndices already
-        // emits a leftHanded face with its corners reversed, so the triangles
-        // that arrive here are always wound counter-clockwise-front. Every
-        // backend hdSilk targets rasterizes with counter-clockwise front faces,
-        // so the wire needs no orientation flag and no correction here.
-        // Reversing them again would invert facing for exactly the prims USD
-        // already handled, which is measured by the orientation case in
-        // hdsilk_probe. The refined path preserves the same contract by handing
-        // OpenSubdiv the authored orientation instead of a pre-reversed cage.
-        for (size_t triangleIndex = 0;
-             triangleIndex < triangleIndices.size();
-             ++triangleIndex)
-        {
-            const GfVec3i& triangle = triangleIndices[triangleIndex];
-            for (int component = 0; component < 3; ++component)
-            {
-                if (triangle[component] < 0)
-                {
-                    throw std::runtime_error(
-                        "HdMeshUtil returned a negative triangle vertex index.");
-                }
-                _coarseTriangleIndices.push_back(
-                    static_cast<uint32_t>(triangle[component]));
-            }
-
-            const int faceIndex =
-                HdMeshUtil::DecodeFaceIndexFromCoarseFaceParam(
-                    primitiveParams[triangleIndex]);
-            if (faceIndex < 0)
-            {
-                throw std::runtime_error(
-                    "HdMeshUtil returned a negative authored face index.");
-            }
-            _coarseTriangleSubprims.push_back(static_cast<uint32_t>(faceIndex));
-        }
-
-        // The authored-edge table indexes the coarse triangulation, so it is
-        // rebuilt exactly when that triangulation is. A topology this delegate
-        // cannot walk publishes no table at all, which refuses exact edge
-        // picking with a reason rather than answering it with a diagonal.
-        if (!BuildAuthoredEdgeTable(
-                _topology,
-                _coarseTriangleIndices,
-                &_coarseCornerEdges,
-                &_coarseAuthoredEdgeCount))
-        {
+            invalidTopology = true;
             TF_WARN(
-                "hdSilk could not derive authored edges for mesh '%s'; exact "
-                "edge picking is unavailable for it",
+                "hdSilk skipped mesh '%s': face counts are invalid or exceed the "
+                "supplied face indices",
                 id.GetText());
+            _coarseTriangleIndices.clear();
+            _requiredPointCount = 0;
+            _coarseTriangleSubprims.clear();
             _coarseCornerEdges.clear();
             _coarseAuthoredEdgeCount = 0;
+            _subdivision.Clear();
+            _refineLevel = requestedRefineLevel;
+            _refinedPoints.clear();
+        }
+        else
+        {
+            HdMeshUtil meshUtil(&_topology, id);
+            VtVec3iArray triangleIndices;
+            VtIntArray primitiveParams;
+            meshUtil.ComputeTriangleIndices(&triangleIndices, &primitiveParams);
+            if (primitiveParams.size() != triangleIndices.size())
+            {
+                throw std::runtime_error(
+                    "HdMeshUtil returned mismatched triangle and primitiveParams counts.");
+            }
+            if (triangleIndices.size() >
+                std::numeric_limits<size_t>::max() / 3)
+            {
+                throw std::overflow_error(
+                    "The hdSilk triangle index component count overflows size_t.");
+            }
+
+            _coarseTriangleIndices.clear();
+            _coarseTriangleIndices.reserve(triangleIndices.size() * 3);
+            _requiredPointCount = 0;
+            _coarseTriangleSubprims.clear();
+            _coarseTriangleSubprims.reserve(primitiveParams.size());
+            // Authored winding is HdMeshUtil's job, not this delegate's. USD's
+            // "orientation" makes rightHanded faces counter-clockwise seen from the
+            // front and leftHanded clockwise, and ComputeTriangleIndices already
+            // emits a leftHanded face with its corners reversed, so the triangles
+            // that arrive here are always wound counter-clockwise-front. Every
+            // backend hdSilk targets rasterizes with counter-clockwise front faces,
+            // so the wire needs no orientation flag and no correction here.
+            // Reversing them again would invert facing for exactly the prims USD
+            // already handled, which is measured by the orientation case in
+            // hdsilk_probe. The refined path preserves the same contract by handing
+            // OpenSubdiv the authored orientation instead of a pre-reversed cage.
+            for (size_t triangleIndex = 0;
+                 triangleIndex < triangleIndices.size();
+                 ++triangleIndex)
+            {
+                const GfVec3i& triangle = triangleIndices[triangleIndex];
+                for (int component = 0; component < 3; ++component)
+                {
+                    if (triangle[component] < 0)
+                    {
+                        throw std::runtime_error(
+                            "HdMeshUtil returned a negative triangle vertex index.");
+                    }
+                    _coarseTriangleIndices.push_back(
+                        static_cast<uint32_t>(triangle[component]));
+                    _requiredPointCount =
+                        std::max(
+                            _requiredPointCount,
+                            static_cast<size_t>(triangle[component]) + 1);
+                }
+
+                const int faceIndex =
+                    HdMeshUtil::DecodeFaceIndexFromCoarseFaceParam(
+                        primitiveParams[triangleIndex]);
+                if (faceIndex < 0)
+                {
+                    throw std::runtime_error(
+                        "HdMeshUtil returned a negative authored face index.");
+                }
+                _coarseTriangleSubprims.push_back(static_cast<uint32_t>(faceIndex));
+            }
+
+            // The authored-edge table indexes the coarse triangulation, so it is
+            // rebuilt exactly when that triangulation is. A topology this delegate
+            // cannot walk publishes no table at all, which refuses exact edge
+            // picking with a reason rather than answering it with a diagonal.
+            if (!BuildAuthoredEdgeTable(
+                    _topology,
+                    _coarseTriangleIndices,
+                    &_coarseCornerEdges,
+                    &_coarseAuthoredEdgeCount))
+            {
+                TF_WARN(
+                    "hdSilk could not derive authored edges for mesh '%s'; exact "
+                    "edge picking is unavailable for it",
+                    id.GetText());
+                _coarseCornerEdges.clear();
+                _coarseAuthoredEdgeCount = 0;
+            }
         }
     }
     else if (subdivTagsDirty)
     {
         _topology.SetSubdivTags(sceneDelegate->GetSubdivTags(id));
+    }
+    if (!HasCompleteFaceVertexIndices(_topology))
+    {
+        invalidTopology = true;
     }
 
     // The session's complexity resolves into a display style refine level for
@@ -1942,7 +2031,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
     // is what decides whether this mesh is refined. Complexity Low resolves to
     // level 0, which is the historical coarse HdMeshUtil path unchanged, so an
     // unrefined session keeps publishing exactly the bytes it always did.
-    if (subdivisionRefreshed)
+    if (subdivisionRefreshed && !invalidTopology)
     {
         _RefreshSubdivision(sceneDelegate, id, requestedRefineLevel);
     }
@@ -2067,11 +2156,21 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         }
     }
 
+    if (!_points.empty() &&
+        (_points.size() < _requiredPointCount ||
+         (_subdivision.IsRefined() && _points.size() < _subdivision.GetCoarseVertexCount())))
+    {
+        TF_WARN(
+            "hdSilk skipped mesh '%s': topology references a missing point",
+            id.GetText());
+        _points.clear();
+        _refinedPoints.clear();
+        invalidPoints = true;
+    }
+
     // Refined positions follow the control points, so an animated point array
     // re-runs interpolation against the refiner the previous frame built rather
-    // than rebuilding the refiner itself. A control cage whose point count stops
-    // matching the refiner drops back to the coarse topology instead of
-    // publishing indices that overrun the refined buffer.
+    // than rebuilding the refiner itself.
     if (_subdivision.IsRefined() &&
         (pointsDirty || topologyRefreshed || deformationRefreshed ||
          subdivisionRefreshed ||
@@ -2084,19 +2183,18 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         else if (!_subdivision.RefinePoints(_points, &_refinedPoints))
         {
             TF_WARN(
-                "hdSilk could not refine points for mesh '%s'; publishing the "
-                "control cage instead",
+                "hdSilk skipped mesh '%s': could not refine its points",
                 id.GetText());
-            _subdivision.Clear();
-            _refinedPoints = VtVec3fArray();
+            _refinedPoints.clear();
+            invalidPoints = true;
         }
     }
 
-    // Attribute edits made while points are absent cannot build a vertex layout.
-    // Rebuild it when points return, even on a points-only edit.
-    if (normalsDirty || primvarsDirty || topologyRefreshed ||
-        deformationRefreshed || subdivisionRefreshed ||
-        (emittedPointsWereEmpty && !_EmittedPoints().empty()))
+    // Attribute validity and the vertex layout depend on the emitted point count.
+    if (!invalidTopology && !_EmittedPoints().empty() &&
+        (normalsDirty || primvarsDirty || topologyRefreshed ||
+         deformationRefreshed || subdivisionRefreshed ||
+         previousEmittedPointCount != _EmittedPoints().size()))
     {
         const bool layoutChanged = _RefreshAttributes(sceneDelegate, id);
         HdSilkSceneState& state = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState();
@@ -2120,6 +2218,20 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
             }
             ++_topologyRevision;
         }
+    }
+
+    // Unexpanded points carry one identity entry per emitted vertex, including
+    // unreferenced points. A count change therefore changes the pick topology.
+    if (!_EmittedPoints().empty() && !_attributesRequireExpandedTopology &&
+        previousEmittedPointCount != _EmittedPoints().size() &&
+        _topologyRevision == previousTopologyRevision)
+    {
+        if (_topologyRevision == std::numeric_limits<uint64_t>::max())
+        {
+            throw std::overflow_error(
+                "The hdSilk mesh topology revision is exhausted.");
+        }
+        ++_topologyRevision;
     }
 
     if (topologyRefreshed)

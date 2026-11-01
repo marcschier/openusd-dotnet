@@ -12475,10 +12475,20 @@ bool VerifyDeformationInvalidation(
 
 int main(int argc, char** argv)
 {
+    if (argc == 3 && std::string(argv[1]) == "--mesh-empty-truncated")
+    {
+        const int32_t result =
+            openusd_hdsilk_test_mesh_empty_truncated_topology(std::string(argv[2]) == "1" ? 1 : 0);
+        if (result != 0)
+        {
+            std::cerr << "Mesh empty-points truncated-topology sync failed: result " << result << ".\n";
+        }
+        return result == 0 ? 0 : 1;
+    }
     if (argc == 2 && std::string(argv[1]) == "--mesh-invalid-points")
     {
         bool valid = true;
-        for (int32_t invalidKind = 0; invalidKind < 4; ++invalidKind)
+        for (int32_t invalidKind = 0; invalidKind < 6; ++invalidKind)
         {
             for (int32_t bounded = 0; bounded < 2; ++bounded)
             {

@@ -186,6 +186,7 @@ private:
     // Keeping the control cage does not require another copy of the active
     // triangulation, and switching refinement off needs no topology resync.
     VtArray<uint32_t> _coarseTriangleIndices;
+    size_t _requiredPointCount = 0;
     VtArray<uint32_t> _coarseTriangleSubprims;
     // The ABI v22 authored-edge table of the control cage: one entry per coarse
     // triangle corner, in corner order, naming the authored mesh edge that

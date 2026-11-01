@@ -25,6 +25,10 @@
 #include <memory>
 #include <string>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace
@@ -45,6 +49,12 @@ public:
             return _authoredPoints;
         }
         return HdUnitTestDelegate::Get(id, key);
+    }
+
+    HdMeshTopology GetMeshTopology(const SdfPath& id) override
+    {
+        return _overrideTopology && id == _meshId
+            ? _topology : HdUnitTestDelegate::GetMeshTopology(id);
     }
 
     HdExtComputationPrimvarDescriptorVector GetExtComputationPrimvarDescriptors(
@@ -102,6 +112,18 @@ public:
         _overridePoints = true;
     }
 
+    void SetTopology(const HdMeshTopology& topology)
+    {
+        _topology = topology;
+        _overrideTopology = true;
+    }
+
+    void ResetTopology()
+    {
+        _topology = HdMeshTopology();
+        _overrideTopology = false;
+    }
+
     void SetComputedPoints(const VtValue& points, bool failure = false)
     {
         _computedPoints = points;
@@ -131,7 +153,9 @@ private:
     const TfToken _outputName{"computedPoints"};
     VtValue _authoredPoints;
     VtValue _computedPoints;
+    HdMeshTopology _topology;
     bool _overridePoints = false;
+    bool _overrideTopology = false;
     bool _computedEnabled = false;
     bool _computedFailure = false;
     int _computationInvocations = 0;
@@ -176,7 +200,7 @@ struct SkelScopeGuard
 extern "C" OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_mesh_invalid_points(int32_t invalidKind, int32_t bounded, int32_t topologyOnly)
 {
-    if (invalidKind < 0 || invalidKind > 3 || (bounded != 0 && bounded != 1) ||
+    if (invalidKind < 0 || invalidKind > 5 || (bounded != 0 && bounded != 1) ||
         (topologyOnly != 0 && topologyOnly != 1))
     {
         return 1;
@@ -231,9 +255,17 @@ openusd_hdsilk_test_mesh_invalid_points(int32_t invalidKind, int32_t bounded, in
     {
         scene.SetAuthoredPoints(VtValue(VtVec3fArray()));
     }
-    else
+    else if (invalidKind == 3)
     {
         scene.SetAuthoredPoints(VtValue(VtVec3dArray()));
+    }
+    else if (invalidKind == 4)
+    {
+        scene.SetAuthoredPoints(VtValue(VtVec3fArray{GfVec3f(0.0f), GfVec3f(1.0f)}));
+    }
+    else
+    {
+        scene.SetAuthoredPoints(VtValue(VtVec3dArray{GfVec3d(0.0), GfVec3d(1.0)}));
     }
     dirty = SyncDirty(
         &scene, &renderDelegate, mesh, id,
@@ -245,7 +277,7 @@ openusd_hdsilk_test_mesh_invalid_points(int32_t invalidKind, int32_t bounded, in
     {
         return 6;
     }
-    if (bounded != 0 && invalidKind < 2)
+    if (bounded != 0 && (invalidKind < 2 || invalidKind >= 4))
     {
         if (!budget->Refused() || !state->HasMeshPath(id.GetString()) ||
             budget->Reserved() != originalReservation || invalidCommands != quietCommands)
@@ -259,7 +291,9 @@ openusd_hdsilk_test_mesh_invalid_points(int32_t invalidKind, int32_t bounded, in
         }
         catch (const HdSilkMeshPreparationExceeded& error)
         {
-            if (std::string(error.what()).find("requires resolved float3 or double3 points") ==
+            const char* expected = invalidKind < 2
+                ? "requires resolved float3 or double3 points" : "topology references a missing point";
+            if (std::string(error.what()).find(expected) ==
                 std::string::npos)
             {
                 return 9;
@@ -290,6 +324,88 @@ openusd_hdsilk_test_mesh_invalid_points(int32_t invalidKind, int32_t bounded, in
         return 11;
     }
     return 0;
+}
+
+extern "C" OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_mesh_empty_truncated_topology(int32_t bounded)
+{
+#if defined(_WIN32)
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    const size_t pageSize = info.dwPageSize;
+    const auto releaseMemory = [](void* memory) { VirtualFree(memory, 0, MEM_RELEASE); };
+    std::unique_ptr<void, decltype(releaseMemory)> allocation(
+        VirtualAlloc(nullptr, pageSize * 2, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE),
+        releaseMemory);
+    if (!allocation)
+    {
+        return 1;
+    }
+    DWORD oldProtect;
+    if (!VirtualProtect(static_cast<char*>(allocation.get()) + pageSize, pageSize, PAGE_NOACCESS, &oldProtect))
+    {
+        return 2;
+    }
+    int* data = reinterpret_cast<int*>(static_cast<char*>(allocation.get()) + pageSize) - 2;
+    data[0] = 0;
+    data[1] = 1;
+    Vt_ArrayForeignDataSource source;
+    VtIntArray indices(&source, data, 2);
+
+    HdSilkRenderDelegate renderDelegate;
+    std::unique_ptr<HdRenderIndex> index(HdRenderIndex::New(&renderDelegate, {}));
+    if (!index)
+    {
+        return 3;
+    }
+    const SdfPath id("/Mesh");
+    MeshPointDelegate scene(index.get(), id);
+    AddMesh(&scene, id);
+    HdRprim* mesh = const_cast<HdRprim*>(index->GetRprim(id));
+    if (mesh == nullptr)
+    {
+        return 4;
+    }
+    const auto& state = renderDelegate.GetSceneState();
+    const auto& budget = state->MeshPreparationBudget();
+    if (bounded != 0)
+    {
+        budget->Configure(4096);
+    }
+    HdDirtyBits dirty = mesh->GetInitialDirtyBitsMask();
+    mesh->Sync(&scene, renderDelegate.GetRenderParam(), &dirty, TfToken("hull"));
+    uint32_t commands = 0;
+    state->BuildPage(nullptr, &commands);
+    if (!state->HasMeshPath(id.GetString()))
+    {
+        return 5;
+    }
+    scene.SetAuthoredPoints(VtValue(VtVec3fArray()));
+    scene.SetTopology(HdMeshTopology(
+        PxOsdOpenSubdivTokens->none, PxOsdOpenSubdivTokens->rightHanded, VtIntArray{3}, indices));
+    dirty = SyncDirty(&scene, &renderDelegate, mesh, id,
+        HdChangeTracker::DirtyTopology | HdChangeTracker::DirtyPoints);
+    const std::vector<uint8_t> removed = state->BuildPage(nullptr, &commands);
+    if (dirty != HdChangeTracker::Clean || budget->Refused() ||
+        state->HasMeshPath(id.GetString()) || !HdSilkTest::HasMeshRemoval(removed, id.GetString()))
+    {
+        return 6;
+    }
+    scene.ResetTopology();
+    scene.SetAuthoredPoints(VtValue(OriginalPoints()));
+    dirty = SyncDirty(&scene, &renderDelegate, mesh, id,
+        HdChangeTracker::DirtyTopology | HdChangeTracker::DirtyPoints);
+    const std::vector<uint8_t> restored = state->BuildPage(nullptr, &commands);
+    if (dirty != HdChangeTracker::Clean || budget->Refused() ||
+        !HdSilkTest::HasMeshPoints(restored, id.GetString(), OriginalPoints()))
+    {
+        return 7;
+    }
+    return 0;
+#else
+    (void)bounded;
+    return 8;
+#endif
 }
 
 extern "C" OPENUSD_HDSILK_API int32_t
@@ -392,11 +508,27 @@ openusd_hdsilk_test_mesh_computed_points(void)
     scene.SetComputedPoints(VtValue(recovered));
     dirty = SyncDirty(&scene, &renderDelegate, mesh, id, HdChangeTracker::DirtyPoints);
     page = state->BuildPage(nullptr, &commands);
-    return dirty == HdChangeTracker::Clean &&
-        HdSilkTest::HasMeshPoints(
+    if (dirty != HdChangeTracker::Clean ||
+        !HdSilkTest::HasMeshPoints(
             page, id.GetString(),
             VtVec3fArray{GfVec3f(2.0f, 0.0f, 0.0f), GfVec3f(1.0f, 0.0f, 0.0f),
-                GfVec3f(0.0f, 1.0f, 0.0f)}) ? 0 : 11;
+                GfVec3f(0.0f, 1.0f, 0.0f)}))
+    {
+        return 11;
+    }
+    scene.SetComputedPoints(VtValue(VtVec3fArray{GfVec3f(0.0f), GfVec3f(1.0f)}));
+    dirty = SyncDirty(&scene, &renderDelegate, mesh, id, HdChangeTracker::DirtyPoints);
+    page = state->BuildPage(nullptr, &commands);
+    if (dirty != HdChangeTracker::Clean || state->HasMeshPath(id.GetString()) ||
+        !HdSilkTest::HasMeshRemoval(page, id.GetString()))
+    {
+        return 12;
+    }
+    scene.SetComputedPoints(VtValue(OriginalPoints()));
+    dirty = SyncDirty(&scene, &renderDelegate, mesh, id, HdChangeTracker::DirtyPoints);
+    page = state->BuildPage(nullptr, &commands);
+    return dirty == HdChangeTracker::Clean &&
+        HdSilkTest::HasMeshPoints(page, id.GetString(), OriginalPoints()) ? 0 : 13;
 }
 
 extern "C" OPENUSD_HDSILK_API int32_t
