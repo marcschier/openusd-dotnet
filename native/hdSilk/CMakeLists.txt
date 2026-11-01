@@ -41,6 +41,7 @@ set(OPENUSD_HDSILK_SOURCES
     src/renderPass.cpp
     src/sceneState.h
     src/sceneState.cpp
+    src/volumeBounds.h
     src/subdivision.h
     src/subdivision.cpp)
 

@@ -2189,6 +2189,12 @@ what the checked `mesh.volume.fragment.metal` declares. The `macos-arm64` render
 uniform gates against that path. Release run `33931868184`, attempt 1, recorded both as executed; see
 [Testing](testing.md) for their measured results and the limits of that evidence. The separate depth-integration gate
 remains a D3D12/Vulkan claim, not a consequence of the Metal sampled-density result.
+
+For a sampled field, the proxy maps the active-index range through Hio's bounding-box matrix and the volume prim's
+local-to-world transform. The target field prim's scene transform is not applied. Unreadable, invalid or degenerate
+fields use the unit-cube uniform-density proxy with a native warning; disabling sampling uses it without a warning.
+A non-finite volume transform rejects the sync. The shader integrates a field-local Z column, not a camera ray.
+
 A device that does not implement `ISilkVolumeTextureGraphicsDevice` never selects the sampled-volume path at all: the
 surface constants report the volume as unsampled and the mesh keeps its authored uniform density, rather than binding
 a texture the backend cannot create.

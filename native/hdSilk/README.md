@@ -123,16 +123,26 @@ between their authored times.
 Finite negative density clamps to zero, and non-finite density rejects the sync.
 The defaults are density one and sampling enabled.
 
-An unavailable VDB or unreadable grid uses uniform density with a native warning;
-a later sync retries sampling. A missing usable density field or file path skips
-the volume with a warning.
+For a sampled field, hdSilk maps a unit-cube proxy to Hio's active-index range,
+applies the grid's bounding-box matrix, and then applies the volume prim's
+local-to-world transform. The target field prim's scene transform is not used.
+The shader still integrates a field-local Z column; it does not trace the camera
+ray through the grid.
 
-The animated-selection tests compare decoded values and pixels with the separate
-`sampled_density.vdb` and `sampled_density_shifted.vdb` fixtures. The
-`sampled_density_grid_variants.vdb` fixture combines those two grids with an OpenVDB
-writer and names them `density` and `shifted`; the tests compare its decoded values
-against the original files. The backend gates exercise held samples, missing values,
-recovery and retained earlier pages.
+An unavailable VDB, unreadable grid, invalid or degenerate bound, or a bound
+whose composed transform is not finite uses the unit-cube uniform-density proxy
+with a native warning. A later sync retries sampling. Disabling sampling uses
+the same uniform proxy without a warning. A missing usable density field or file
+path skips the volume with a warning; a non-finite volume transform rejects the
+sync.
+
+The animated-selection tests use unit-bounded copies of the separate density
+and shifted-density grids, plus a two-grid file with the names `density` and
+`shifted`. The original index-space grids remain available for bounds tests.
+`generate_volume_fixtures.cpp` creates the unit, offset-affine and single-voxel
+fixtures from those inputs; OpenVDB assigns a new archive identifier when it
+writes each file. The backend gates exercise held samples, changing bounds,
+missing values, recovery and retained earlier pages.
 
 Each sampled field is decoded into private storage owned by the native page and
 its retained leases. Its texture asset begins with `hdsilk-volume:` and names the

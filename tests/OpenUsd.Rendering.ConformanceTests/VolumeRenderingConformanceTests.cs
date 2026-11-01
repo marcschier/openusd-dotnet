@@ -215,7 +215,7 @@ public sealed partial class VolumeRenderingConformanceTests
             Skip.Test("Direct3D 12 is available only on Windows, so the two backends cannot be compared here.");
         }
 
-        string asset = ResolveOpenVdbAsset("sampled_density.vdb");
+        string asset = ResolveOpenVdbAsset("sampled_density_unit.vdb");
         ParityImage vulkan;
         byte[]? decoded;
         try
@@ -266,8 +266,8 @@ public sealed partial class VolumeRenderingConformanceTests
     [Arguments(false)]
     public async Task DeferredSampledVdbPageRetainsItsGridAcrossSessions(bool sharedDirectory)
     {
-        string firstAssetPath = ResolveOpenVdbAsset("sampled_density.vdb");
-        string secondAssetPath = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
+        string firstAssetPath = ResolveOpenVdbAsset("sampled_density_unit.vdb");
+        string secondAssetPath = ResolveOpenVdbAsset("sampled_density_shifted_unit.vdb");
         string firstStage = WriteVdbStage(
             "volume-vdb-deferred-first",
             firstAssetPath,
@@ -372,8 +372,8 @@ public sealed partial class VolumeRenderingConformanceTests
             Skip.Test("The current platform cannot create the Storm OpenGL context used by this harness.");
         }
 
-        string asset = ResolveOpenVdbAsset("sampled_density.vdb");
-        string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
+        string asset = ResolveOpenVdbAsset("sampled_density_unit.vdb");
+        string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted_unit.vdb");
         ParityImage silkSampled;
         byte[]? decoded;
         try
@@ -474,8 +474,8 @@ public sealed partial class VolumeRenderingConformanceTests
         Func<ISilkGraphicsDevice> createDevice,
         string evidenceFileName)
     {
-        string asset = ResolveOpenVdbAsset("sampled_density.vdb");
-        string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
+        string asset = ResolveOpenVdbAsset("sampled_density_unit.vdb");
+        string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted_unit.vdb");
         ParityImage sampled;
         byte[]? decoded;
         try
@@ -556,11 +556,11 @@ public sealed partial class VolumeRenderingConformanceTests
         Func<ISilkGraphicsDevice> createDevice,
         bool animateGridName)
     {
-        string firstAsset = ResolveOpenVdbAsset("sampled_density.vdb");
-        string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
-        // This fixture contains those two unchanged grids under the names density and shifted.
+        string firstAsset = ResolveOpenVdbAsset("sampled_density_unit.vdb");
+        string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted_unit.vdb");
+        // This fixture contains those two grids under the names density and shifted.
         string multiGridAsset = animateGridName
-            ? ResolveOpenVdbAsset("sampled_density_grid_variants.vdb")
+            ? ResolveOpenVdbAsset("sampled_density_grid_variants_unit.vdb")
             : firstAsset;
         string firstStage = WriteVdbStage($"volume-{name}-first", firstAsset, 0, 1, sampleDensity: true);
         ParityImage firstReference;
@@ -826,7 +826,7 @@ public sealed partial class VolumeRenderingConformanceTests
         Directory.CreateDirectory(directory);
         try
         {
-            string aliasFixture = ResolveOpenVdbAsset("sampled_smoke.vdb");
+            string aliasFixture = ResolveOpenVdbAsset("sampled_smoke_unit.vdb");
             byte[] originalFixture = File.ReadAllBytes(aliasFixture);
             string stagedAsset = Path.Combine(directory, "density.vdb");
             string stagePath = Path.Combine(directory, "external.usda");

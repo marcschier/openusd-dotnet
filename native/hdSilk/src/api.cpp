@@ -8,6 +8,7 @@
 #include "mesh.h"
 #include "material.h"
 #include "commandFile.h"
+#include "volumeBounds.h"
 
 #include "pxr/base/gf/frustum.h"
 #include "pxr/base/gf/matrix4d.h"
@@ -1039,6 +1040,7 @@ float ReadVolumeDensity(const UsdPrim& prim, UsdTimeCode time)
 struct VolumeFieldBuffer
 {
     std::vector<float> values;
+    GfBBox3d bounds;
     int width = 0;
     int height = 0;
     int depth = 0;
@@ -1083,6 +1085,7 @@ bool TryReadVolumeWithHio(
     buffer->width = width;
     buffer->height = height;
     buffer->depth = depth;
+    buffer->bounds = data->GetBoundingBox();
     buffer->values.resize(byteCount / sizeof(float));
     std::memcpy(
         buffer->values.data(),
@@ -1097,8 +1100,10 @@ bool TryCreateVolumeTexture(
     const SdfPath& fieldPath,
     const SdfAssetPath& assetPath,
     const std::string& materialPath,
+    const GfMatrix4d& volumeTransform,
     UsdTimeCode time,
-    HdSilkMaterialTexture* texture)
+    HdSilkMaterialTexture* texture,
+    GfMatrix4d* proxyToWorld)
 {
     const UsdPrim fieldPrim = state->stage->GetPrimAtPath(fieldPath);
     bool sampleDensity = true;
@@ -1154,6 +1159,17 @@ bool TryCreateVolumeTexture(
         return false;
     }
 
+    GfMatrix4d fieldTransform;
+    if (!HdSilkTryComposeVolumeProxyTransform(field.bounds, volumeTransform, &fieldTransform))
+    {
+        TF_WARN(
+            "hdSilk volume '%s' uses uniform density: OpenVDB grid '%s' has invalid, degenerate, "
+            "or unrepresentable transformed bounds.",
+            volumePrim.GetPath().GetText(),
+            fieldName.GetText());
+        return false;
+    }
+
     try
     {
         auto stored = std::make_shared<SilkVolumeAsset>(field.values, state->volumeBudget);
@@ -1190,6 +1206,7 @@ bool TryCreateVolumeTexture(
         std::to_string(width) + "," +
         std::to_string(height) + "," +
         std::to_string(depth);
+    *proxyToWorld = fieldTransform;
     return true;
 }
 
@@ -1203,6 +1220,10 @@ void PublishVolumeProxy(
     float density)
 {
     const std::string path = prim.GetPath().GetString();
+    if (!HdSilkIsFiniteVolumeTransform(transform))
+    {
+        throw std::invalid_argument("hdSilk volume '" + path + "' has a non-finite transform.");
+    }
     const std::string meshPath = path + "/__hdSilkVolumeProxy";
     const std::string materialPath = path + "/__hdSilkVolumeMaterial";
 
@@ -1222,8 +1243,9 @@ void PublishVolumeProxy(
     material.scalars.push_back(color);
     material.scalars.push_back(densityScalar);
     HdSilkMaterialTexture volumeTexture;
+    GfMatrix4d proxyToWorld = transform;
     if (TryCreateVolumeTexture(
-            state, prim, fieldPath, assetPath, materialPath, time, &volumeTexture))
+            state, prim, fieldPath, assetPath, materialPath, transform, time, &volumeTexture, &proxyToWorld))
     {
         material.textures.push_back(std::move(volumeTexture));
     }
@@ -1241,7 +1263,7 @@ void PublishVolumeProxy(
     mesh.displayColor[1] = 0.36f;
     mesh.displayColor[2] = 0.12f;
     mesh.displayColor[3] = 1.0f;
-    HdSilkFlattenMatrix(transform, mesh.transform);
+    HdSilkFlattenMatrix(proxyToWorld, mesh.transform);
     mesh.points = {
         -0.5f, -0.5f, -0.5f,
          0.5f, -0.5f, -0.5f,

@@ -182,7 +182,7 @@ public sealed partial class VolumeRenderingConformanceTests
     {
         (_, byte[] reference) = CreateBudgetFixture("partial-reference");
         ulong bytes = (ulong)reference.Length;
-        string asset = ResolveOpenVdbAsset("sampled_density.vdb").Replace("\\", "/", StringComparison.Ordinal);
+        string asset = ResolveOpenVdbAsset("sampled_density_unit.vdb").Replace("\\", "/", StringComparison.Ordinal);
         string stage = Path.Combine(StageDirectory, "volume-budget-partial.usda");
         File.WriteAllText(stage, $$"""
             #usda 1.0
@@ -325,7 +325,7 @@ public sealed partial class VolumeRenderingConformanceTests
     public async Task VolumeBudgetAppliesToExplicitIngestionAndReleasesExcludedFields()
     {
         (_, byte[] reference) = CreateBudgetFixture("purposes-reference");
-        string asset = ResolveOpenVdbAsset("sampled_density.vdb");
+        string asset = ResolveOpenVdbAsset("sampled_density_unit.vdb");
         string stage = Path.Combine(StageDirectory, "volume-budget-purposes.usda");
         string source = CreateVdbStage(asset, 0, 1, sampleDensity: true).Replace(
             "custom float hdsilk:density",
@@ -408,7 +408,7 @@ public sealed partial class VolumeRenderingConformanceTests
     {
         PrependHdSilkNativeSearchPath();
         string stage = WriteVdbStage(
-            $"volume-budget-{name}", ResolveOpenVdbAsset("sampled_density.vdb"), 0, 1, sampleDensity: true);
+            $"volume-budget-{name}", ResolveOpenVdbAsset("sampled_density_unit.vdb"), 0, 1, sampleDensity: true);
         try
         {
             using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stage);

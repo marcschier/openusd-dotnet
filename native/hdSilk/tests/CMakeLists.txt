@@ -10,6 +10,17 @@ else()
 endif()
 add_test(NAME hdsilk_vertex_layout COMMAND hdsilk_vertex_layout_probe)
 
+add_executable(hdsilk_volume_bounds_probe hdsilk_volume_bounds_probe.cpp)
+target_compile_features(hdsilk_volume_bounds_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_volume_bounds_probe PRIVATE usd_m)
+target_include_directories(hdsilk_volume_bounds_probe SYSTEM PRIVATE "${pxr_DIR}/include")
+if(MSVC)
+    target_compile_options(hdsilk_volume_bounds_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(hdsilk_volume_bounds_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_volume_bounds COMMAND hdsilk_volume_bounds_probe)
+
 add_executable(hdsilk_mesh_preparation_probe hdsilk_mesh_preparation_probe.cpp)
 target_compile_features(hdsilk_mesh_preparation_probe PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
@@ -276,7 +287,7 @@ add_test(NAME hdsilk_source_identity_nested_masked COMMAND hdsilk_probe --decode
 add_test(NAME hdsilk_source_identity_transform_stack COMMAND hdsilk_probe --decode-scene-identities
     ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-source-transform-stack.usda
     /World/A/Mesh /World/B/Mesh)
-set_tests_properties(hdsilk_probe hdsilk_vertex_layout hdsilk_texture_metadata hdsilk_uv_fallback
+set_tests_properties(hdsilk_probe hdsilk_vertex_layout hdsilk_volume_bounds hdsilk_texture_metadata hdsilk_uv_fallback
     hdsilk_displacement_uv hdsilk_preview_unsupported_input hdsilk_linear_curve_topology
     hdsilk_curve_non_geometry_sync hdsilk_geometry_non_geometry_sync hdsilk_surface_uv_fallback
     hdsilk_independent_uv_fallback

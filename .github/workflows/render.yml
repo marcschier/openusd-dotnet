@@ -1538,6 +1538,14 @@ jobs:
             -Project $project `
             -Framework net10.0 `
             -Configuration Release `
+            -MinimumExpectedTests 3 `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeRenderingConformanceTests/(SampledFieldBoundsMatchIndependentProxyOnVulkan|OffsetAffineFieldBoundsMatchIndependentProxyOnVulkan|AnimatedFieldBoundsAndDegenerateFallbackOnVulkan)')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
             -TestArguments @(
               '--treenode-filter',
               '/*/*/VolumePipelineSelectionConformanceTests/*')
@@ -1982,6 +1990,14 @@ jobs:
             -TestArguments @(
               '--treenode-filter',
               '/*/*/VolumeRenderingConformanceTests/(UniformDensityVolumeGatesOnMetal|SampledOpenVdbDensityGatesOnMetal)')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -MinimumExpectedTests 3 `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeRenderingConformanceTests/(SampledFieldBoundsMatchIndependentProxyOnMetal|OffsetAffineFieldBoundsMatchIndependentProxyOnMetal|AnimatedFieldBoundsAndDegenerateFallbackOnMetal)')
       - name: Classify the macOS volume evidence
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

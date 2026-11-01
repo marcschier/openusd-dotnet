@@ -55,7 +55,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "e799b3ff280290fca6fd4f96037e71eabe51ebfc2e5af714d86ecdb3183b6cb6"
+      "sha256": "821c2699490854d03f37193460482253212d9a4a883617f54dcf65f653bce64e"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -395,7 +395,7 @@
     },
     {
       "path": "native/hdSilk/CMakeLists.txt",
-      "sha256": "96d25f54ee17d3a8bcfad135175599266eeb6be63a5432cfbef037f4b46b9a82"
+      "sha256": "472aee3275a104c0e5b85c1bb31fb3a29bfb7861825916428b42612e87d59d65"
     },
     {
       "path": "native/hdSilk/src/materialXBridge.cpp",
