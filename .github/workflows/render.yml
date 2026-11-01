@@ -595,6 +595,39 @@ jobs:
             -Configuration Release `
             -MinimumExpectedTests 2 `
             -TestArguments @('--treenode-filter', '/*/*/SilkCurveDirtyNativeTests/*')
+      - name: Execute native Ptex decoder conformance
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'
+        run: |
+          $runtime = Join-Path $PWD 'artifacts\parity-capture\win-x64\runtime'
+          $env:OPENUSD_PARITY_RUNTIME_ROOT = $runtime
+          $env:OPENUSD_TEST_PLUGIN_PATH = Join-Path $runtime 'plugin\usd'
+          $env:PATH = "$(Join-Path $runtime 'bin');$(Join-Path $runtime 'lib');$env:PATH"
+          $project = 'tests\OpenUsd.Rendering.Tests\OpenUsd.Rendering.Tests.csproj'
+          dotnet build $project -c Release -f net10.0
+          if ($LASTEXITCODE -ne 0) { throw 'Ptex decoder test build failed.' }
+          . .\eng\managed-workflow-reports.ps1
+          $reports = Join-Path $PWD 'artifacts\ptex-decoder-conformance'
+          New-Item -ItemType Directory -Path $reports -ErrorAction Stop | Out-Null
+          $result = Invoke-ManagedWorkflowScenario `
+            -Runner (Join-Path $PWD 'eng\run-managed-tests.ps1') `
+            -Project $project `
+            -AssemblyDirectory (Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\bin\Release\net10.0') `
+            -EvidenceRoot $reports `
+            -Entry @{ Id = 'SilkNativePtexDecoderTests'; Class = 'SilkNativePtexDecoderTests' } `
+            -ReportAssembly OpenUsd.Rendering.Tests `
+            -RequireNoSkips $true
+          if ($result.passed -lt 5) { throw 'Ptex decoder conformance executed fewer than five tests.' }
+      - name: Upload native Ptex decoder conformance evidence
+        if: always() && steps.native-ready.outputs.ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ptex-decoder-conformance-win-x64-${{ github.run_id }}
+          path: artifacts/ptex-decoder-conformance/*
+          if-no-files-found: error
       - name: Execute native point and mesh preparation conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
