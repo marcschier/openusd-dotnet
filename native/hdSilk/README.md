@@ -139,10 +139,15 @@ sync.
 The animated-selection tests use unit-bounded copies of the separate density
 and shifted-density grids, plus a two-grid file with the names `density` and
 `shifted`. The original index-space grids remain available for bounds tests.
-`generate_volume_fixtures.cpp` creates the unit, offset-affine and single-voxel
-fixtures from those inputs; OpenVDB assigns a new archive identifier when it
-writes each file. The backend gates exercise held samples, changing bounds,
-missing values, recovery and retained earlier pages.
+`generate_volume_fixtures.cpp` writes the unit and offset-affine copies from
+those inputs and creates the single-voxel and sparse fixtures. OpenVDB assigns
+a new archive identifier when it writes each file. The sparse fixture combines a
+nonzero background, active voxels and an inactive stored value. Its backend gate
+compares the decoded 9-by-9-by-9 field and rendered pixels with an independently
+authored dense reference, then checks missing-file fallback, recovery and page
+and resource release. This covers one float grid, not all OpenVDB grid types or
+sparsity patterns. The other backend gates exercise held samples, changing
+bounds, missing values, recovery and retained earlier pages.
 
 Each sampled field is decoded into private storage owned by the native page and
 its retained leases. Its texture asset begins with `hdsilk-volume:` and names the

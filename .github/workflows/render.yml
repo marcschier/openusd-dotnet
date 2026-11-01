@@ -663,6 +663,14 @@ jobs:
             -Project $project `
             -Framework net10.0 `
             -Configuration Release `
+            -MinimumExpectedTests 3 `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeRenderingConformanceTests/(SparseFieldMatchesDenseReferenceAndRecoversOnD3D12Warp|SparseFieldMatchesDenseReferenceAndRecoversOnVulkan|NonFiniteVolumeTransformsRefuseSyncAndRecover)')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
             -TestArguments @(
               '--treenode-filter',
               '/*/*/VolumePipelineSelectionConformanceTests/*')
@@ -1538,10 +1546,10 @@ jobs:
             -Project $project `
             -Framework net10.0 `
             -Configuration Release `
-            -MinimumExpectedTests 3 `
+            -MinimumExpectedTests 5 `
             -TestArguments @(
               '--treenode-filter',
-              '/*/*/VolumeRenderingConformanceTests/(SampledFieldBoundsMatchIndependentProxyOnVulkan|OffsetAffineFieldBoundsMatchIndependentProxyOnVulkan|AnimatedFieldBoundsAndDegenerateFallbackOnVulkan)')
+              '/*/*/VolumeRenderingConformanceTests/(SampledFieldBoundsMatchIndependentProxyOnVulkan|OffsetAffineFieldBoundsMatchIndependentProxyOnVulkan|AnimatedFieldBoundsAndDegenerateFallbackOnVulkan|SparseFieldMatchesDenseReferenceAndRecoversOnVulkan|NonFiniteVolumeTransformsRefuseSyncAndRecover)')
           ./eng/run-managed-tests.ps1 `
             -Project $project `
             -Framework net10.0 `
@@ -1994,10 +2002,10 @@ jobs:
             -Project $project `
             -Framework net10.0 `
             -Configuration Release `
-            -MinimumExpectedTests 3 `
+            -MinimumExpectedTests 5 `
             -TestArguments @(
               '--treenode-filter',
-              '/*/*/VolumeRenderingConformanceTests/(SampledFieldBoundsMatchIndependentProxyOnMetal|OffsetAffineFieldBoundsMatchIndependentProxyOnMetal|AnimatedFieldBoundsAndDegenerateFallbackOnMetal)')
+              '/*/*/VolumeRenderingConformanceTests/(SampledFieldBoundsMatchIndependentProxyOnMetal|OffsetAffineFieldBoundsMatchIndependentProxyOnMetal|AnimatedFieldBoundsAndDegenerateFallbackOnMetal|SparseFieldMatchesDenseReferenceAndRecoversOnMetal|NonFiniteVolumeTransformsRefuseSyncAndRecover)')
       - name: Classify the macOS volume evidence
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

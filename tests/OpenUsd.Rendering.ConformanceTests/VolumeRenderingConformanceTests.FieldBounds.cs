@@ -98,8 +98,8 @@ public sealed partial class VolumeRenderingConformanceTests
                 }
             }
             """, new UTF8Encoding(false));
+        using OpenUsdSilkSession session = CreateAvailableFieldSession(stagePath);
         using var budget = new SilkVolumeFieldBudget(3UL * 32 * 32 * 32 * sizeof(float));
-        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stagePath);
         session.ConfigureVolumeFieldBudget(budget);
         using OpenUsdSilkPage firstPage = session.Sync(Width, Height, 1);
         using var firstScene = new SilkSceneState();
@@ -188,7 +188,7 @@ public sealed partial class VolumeRenderingConformanceTests
             """,
             new UTF8Encoding(false));
 
-        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stagePath);
+        using OpenUsdSilkSession session = CreateAvailableFieldSession(stagePath);
         using OpenUsdSilkPage page = session.Sync(
             Width,
             Height,
@@ -278,9 +278,19 @@ public sealed partial class VolumeRenderingConformanceTests
         string offset = ResolveOpenVdbAsset("sampled_density_offset_affine.vdb");
         string degenerate = ResolveOpenVdbAsset("sampled_density_single_voxel.vdb");
         Func<ISilkGraphicsDevice> createDevice = () => SilkDepthCaptureConformance.CreateDevice(backend);
-        ParityImage unitReference = CaptureStage(
-            WriteVdbStage($"animated-bounds-{backend}-unit", unit, 0, 1, sampleDensity: true),
-            createDevice, out byte[]? unitDensity);
+        ParityImage unitReference;
+        byte[]? unitDensity;
+        try
+        {
+            unitReference = CaptureStage(
+                WriteVdbStage($"animated-bounds-{backend}-unit", unit, 0, 1, sampleDensity: true),
+                createDevice, out unitDensity);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            Skip.Test($"The hdSilk native runtime or graphics backend is unavailable: {exception.Message}");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
+        }
         if (unitDensity is null)
         {
             Skip.Test("hioOpenVDB reader is unavailable in the native profile.");
@@ -432,6 +442,19 @@ public sealed partial class VolumeRenderingConformanceTests
         await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0UL);
     }
 
+    private static OpenUsdSilkSession CreateAvailableFieldSession(string stagePath)
+    {
+        try
+        {
+            return OpenUsdSilkRuntime.Create(ResolvePluginPath(), stagePath);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
+        }
+    }
+
     private static void RequireFieldBoundsBackend(SilkGraphicsBackend backend)
     {
         if ((backend == SilkGraphicsBackend.D3D12 && !OperatingSystem.IsWindows()) ||
@@ -439,6 +462,10 @@ public sealed partial class VolumeRenderingConformanceTests
             (backend == SilkGraphicsBackend.Metal && !OperatingSystem.IsMacOS()))
         {
             Skip.Test($"{backend} execution is unavailable on this operating system.");
+        }
+        if (backend == SilkGraphicsBackend.Metal)
+        {
+            RequireMetalHost();
         }
     }
 
@@ -467,7 +494,8 @@ public sealed partial class VolumeRenderingConformanceTests
     private static OpenUsdSilkPage CreateIndependentFieldPage(
         string gridPath,
         double[] transform,
-        SilkFrameState frame)
+        SilkFrameState frame,
+        string extent = "32,32,32")
     {
         const string materialPath = "/Reference/Material";
         float[] points =
@@ -517,7 +545,7 @@ public sealed partial class VolumeRenderingConformanceTests
             1,
             [
                 .. frameCommand,
-                .. VolumeCommandAuthoring.CreateVolumeMaterialCommand(materialPath, 1, gridPath, "32,32,32"),
+                .. VolumeCommandAuthoring.CreateVolumeMaterialCommand(materialPath, 1, gridPath, extent),
                 .. mesh,
             ],
             3);

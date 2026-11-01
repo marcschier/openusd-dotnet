@@ -118,6 +118,33 @@ void WriteSingleVoxelFixture(const Path& destination)
     WriteGrids(destination, {grid});
 }
 
+void WriteSparseFixture(const Path& destination)
+{
+    auto grid = openvdb::FloatGrid::create(0.125f);
+    grid->setName("density");
+    auto values = grid->getAccessor();
+    values.setValueOn(openvdb::Coord(-4, -3, -2), 0.0f);
+    values.setValueOn(openvdb::Coord(4, 5, 6), 1.0f);
+    for (int z = -2; z <= 6; ++z)
+    {
+        for (int y = 0; y <= 1; ++y)
+        {
+            for (int x = -1; x <= 1; ++x)
+            {
+                values.setValueOn(openvdb::Coord(x, y, z), 0.75f);
+            }
+        }
+    }
+    values.setValueOff(openvdb::Coord(3, 3, 4), 0.5f);
+    const openvdb::math::Mat4d matrix(
+        0.125, 0.0, 0.0, 0.0,
+        0.0, 0.125, 0.0, 0.0,
+        0.0, 0.0, 0.125, 0.0,
+        0.0, -0.125, -0.25, 1.0);
+    grid->setTransform(openvdb::math::Transform::createLinearTransform(matrix));
+    WriteGrids(destination, {grid});
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -145,6 +172,7 @@ int main(int argc, char** argv)
         WriteOffsetFixture(
             source / "sampled_density.vdb", destination / "sampled_density_offset_affine.vdb");
         WriteSingleVoxelFixture(destination / "sampled_density_single_voxel.vdb");
+        WriteSparseFixture(destination / "sampled_density_sparse.vdb");
         return 0;
     }
     catch (const std::exception& error)
