@@ -8,6 +8,21 @@ namespace OpenUsd.Rendering.Tests;
 
 public sealed class SilkCommandParserTests
 {
+    private static readonly (uint FaceIndex, float[] Coordinates)[] MappedPtexFixture =
+    [
+        (7u, [0.125f, 0.25f, 0.5f, 0.625f, 0.875f, 1f]),
+    ];
+
+    private static readonly (uint FaceIndex, float[] Coordinates)[] ExcessPtexMappingsFixture =
+    [
+        (7u, [0f, 0f, 1f, 0f, 0f, 1f]),
+        (8u, [0f, 0f, 1f, 0f, 0f, 1f]),
+    ];
+
+    private static readonly int[] ExpectedPtexFaceIndices = [7];
+    private static readonly float[] ExpectedPtexCoordinates =
+        [0.125f, 0.25f, 0.5f, 0.625f, 0.875f, 1f];
+
     [Test]
     public async Task ParsesFrameAndMeshCommands()
     {
@@ -178,6 +193,192 @@ public sealed class SilkCommandParserTests
         }
     }
 
+    [Test]
+    public async Task ParsesAndRetainsMappedPtexFacesAndCoordinates()
+    {
+        byte[] commandBytes = CreateMeshCommand(
+            ptexMappingStatus: SilkPtexMappingStatus.Mapped,
+            ptexMappings: MappedPtexFixture);
+        byte[] pageBytes = BuildPage(commandBytes);
+
+        int faceIndex;
+        float firstCoordinate;
+        float lastCoordinate;
+        SilkPtexMappingStatus status;
+        int mappingCount;
+        SilkMeshData mesh;
+        using (var page = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion,
+            1,
+            pageBytes,
+            (uint)pageBytes.Length))
+        {
+            using SilkCommandEnumerator commands = page.GetEnumerator();
+            if (!commands.MoveNext())
+            {
+                throw new InvalidDataException("Missing mapped mesh command.");
+            }
+            SilkMeshUpsertCommand command = commands.Current.AsMeshUpsert();
+            status = command.PtexMappingStatus;
+            mappingCount = command.PtexMappingCount;
+            faceIndex = command.GetPtexFaceIndex(0);
+            firstCoordinate = command.GetPtexCoordinate(0, 0, 0);
+            lastCoordinate = command.GetPtexCoordinate(0, 2, 1);
+            mesh = SilkMeshData.CopyFrom(command);
+        }
+
+        await Assert.That(status).IsEqualTo(SilkPtexMappingStatus.Mapped);
+        await Assert.That(mappingCount).IsEqualTo(1);
+        await Assert.That(faceIndex).IsEqualTo(7);
+        await Assert.That(firstCoordinate).IsEqualTo(0.125f);
+        await Assert.That(lastCoordinate).IsEqualTo(1f);
+        await Assert.That(mesh.PtexMappingStatus).IsEqualTo(SilkPtexMappingStatus.Mapped);
+        await Assert.That(mesh.PtexFaceIndices).IsEquivalentTo(ExpectedPtexFaceIndices);
+        await Assert.That(mesh.PtexCoordinates).IsEquivalentTo(ExpectedPtexCoordinates);
+    }
+
+    [Test]
+    public async Task ParsesNoRequestPtexMappingStateWithoutEntries()
+    {
+        SilkMeshData mesh = ReadSingleMesh(CreateMeshCommand());
+
+        await Assert.That(mesh.PtexMappingStatus)
+            .IsEqualTo(SilkPtexMappingStatus.NotRequested);
+        await Assert.That(mesh.PtexFaceIndices).IsEmpty();
+        await Assert.That(mesh.PtexCoordinates).IsEmpty();
+    }
+
+    [Test]
+    public async Task ParsesRefusedPtexMappingStateWithoutEntries()
+    {
+        SilkMeshData mesh = ReadSingleMesh(CreateMeshCommand(
+            ptexMappingStatus: SilkPtexMappingStatus.TextureFaceOutOfRange));
+
+        await Assert.That(mesh.PtexMappingStatus)
+            .IsEqualTo(SilkPtexMappingStatus.TextureFaceOutOfRange);
+        await Assert.That(mesh.PtexFaceIndices).IsEmpty();
+        await Assert.That(mesh.PtexCoordinates).IsEmpty();
+    }
+
+    [Test]
+    public async Task RejectsUnknownPtexMappingStatus()
+    {
+        byte[] malformed = CreateMeshCommand();
+        BinaryPrimitives.WriteUInt32LittleEndian(malformed.AsSpan(272), 11);
+
+        await Assert.That(() => ReadSingleMesh(malformed))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task RejectsPtexMappingStatusAndCountMismatches()
+    {
+        byte[] mappedWithoutEntry = CreateMeshCommand(
+            ptexMappingStatus: SilkPtexMappingStatus.Mapped);
+        byte[] refusedWithEntry = CreateMeshCommand(
+            ptexMappingStatus: SilkPtexMappingStatus.NotRequested,
+            ptexMappings: CreatePtexMappings());
+        byte[] mappedWithTooManyEntries = CreateMeshCommand(
+            ptexMappingStatus: SilkPtexMappingStatus.Mapped,
+            ptexMappings: ExcessPtexMappingsFixture);
+
+        await Assert.That(() => ReadSingleMesh(mappedWithoutEntry))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => ReadSingleMesh(refusedWithEntry))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => ReadSingleMesh(mappedWithTooManyEntries))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task RejectsMappedPtexEntriesOnNonTriangleTopology()
+    {
+        byte[] malformed = CreateMeshCommand(
+            topologyKind: SilkTopologyKind.LineList,
+            ptexMappingStatus: SilkPtexMappingStatus.Mapped,
+            ptexMappings: CreatePtexMappings());
+
+        await Assert.That(() => ReadSingleMesh(malformed))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task RejectsOutOfRangePtexFaceIndex()
+    {
+        byte[] malformed = CreateMeshCommand(
+            ptexMappingStatus: SilkPtexMappingStatus.Mapped,
+            ptexMappings: CreatePtexMappings(faceIndex: uint.MaxValue));
+
+        await Assert.That(() => ReadSingleMesh(malformed))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task RejectsNonFiniteAndOutOfUnitPtexCoordinates()
+    {
+        foreach (float invalidCoordinate in new[] { float.NaN, -0.01f, 1.01f })
+        {
+            byte[] malformed = CreateMeshCommand(
+                ptexMappingStatus: SilkPtexMappingStatus.Mapped,
+                ptexMappings: CreatePtexMappings(firstCoordinate: invalidCoordinate));
+            await Assert.That(() => ReadSingleMesh(malformed))
+                .Throws<InvalidDataException>();
+        }
+    }
+
+    [Test]
+    public async Task RejectsTruncatedAndTrailingPtexMappingData()
+    {
+        byte[] valid = CreateMeshCommand(
+            ptexMappingStatus: SilkPtexMappingStatus.Mapped,
+            ptexMappings: CreatePtexMappings());
+
+        byte[] truncated = valid[..^1];
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            truncated.AsSpan(4),
+            (uint)truncated.Length);
+
+        byte[] trailing = [.. valid, 0];
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            trailing.AsSpan(4),
+            (uint)trailing.Length);
+
+        await Assert.That(() => ReadSingleMesh(truncated))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => ReadSingleMesh(trailing))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task RejectsMalformedPtexCountWithoutPoisoningNextValidPage()
+    {
+        var scene = new SilkSceneState();
+        byte[] malformed = CreateMeshCommand(
+            ptexMappingStatus: SilkPtexMappingStatus.Mapped);
+
+        await Assert.That(() => scene.Apply(malformed, 1, revision: 1))
+            .Throws<InvalidDataException>();
+        await Assert.That(scene.Revision).IsEqualTo(0ul);
+        await Assert.That(scene.Meshes).IsEmpty();
+
+        SilkSceneDelta delta = scene.Apply(
+            CreateMeshCommand(
+                ptexMappingStatus: SilkPtexMappingStatus.Mapped,
+                ptexMappings: MappedPtexFixture),
+            1,
+            revision: 1);
+        SilkMeshData recovered = scene.Meshes[42];
+
+        await Assert.That(delta.MeshUpserts).IsEqualTo(1);
+        await Assert.That(scene.Revision).IsEqualTo(1ul);
+        await Assert.That(recovered.PtexMappingStatus)
+            .IsEqualTo(SilkPtexMappingStatus.Mapped);
+        await Assert.That(recovered.PtexFaceIndices)
+            .IsEquivalentTo(ExpectedPtexFaceIndices);
+        await Assert.That(recovered.PtexCoordinates)
+            .IsEquivalentTo(ExpectedPtexCoordinates);
+    }
+
     private static SilkMeshData ReadSingleMesh(byte[] meshCommand)
     {
         byte[] page = BuildPage(meshCommand);
@@ -189,6 +390,13 @@ public sealed class SilkCommandParserTests
     }
 
     private static byte[] BuildPage(byte[] meshCommand) => meshCommand;
+
+    private static (uint FaceIndex, float[] Coordinates)[] CreatePtexMappings(
+        float firstCoordinate = 0f,
+        uint faceIndex = 7) =>
+    [
+        (faceIndex, [firstCoordinate, 0f, 1f, 0f, 0f, 1f]),
+    ];
 
     [Test]
     public async Task RejectsPageAbiV1AndAcceptsCurrent()
@@ -228,7 +436,7 @@ public sealed class SilkCommandParserTests
             2);
 
         byte[] invalidUtf8 = CreateMeshCommand();
-        invalidUtf8[268] = 0xFF;
+        invalidUtf8[276] = 0xFF;
 
         // Page ABI v3 makes instance identity meaningful, so a non-zero
         // instancer id is legitimate. A negative instance ordinal is not.
@@ -545,10 +753,10 @@ public sealed class SilkCommandParserTests
             case 7:
                 page = RemoveAt(
                     page,
-                    random.Next(meshOffset + 268, page.Length));
+                    random.Next(meshOffset + 276, page.Length));
                 break;
             case 8:
-                page[meshOffset + 268 + random.Next("/Cube".Length)] = 0xff;
+                page[meshOffset + 276 + random.Next("/Cube".Length)] = 0xff;
                 break;
             case 9:
                 uint[] commandCounts = [0, 1, 3, uint.MaxValue];
@@ -601,27 +809,39 @@ public sealed class SilkCommandParserTests
         int[]? triangleSubprims = null,
         float[]? authoredNormals = null,
         bool constantNormals = false,
-        string materialPath = "")
+        string materialPath = "",
+        SilkTopologyKind topologyKind = SilkTopologyKind.TriangleList,
+        SilkPtexMappingStatus ptexMappingStatus = SilkPtexMappingStatus.NotRequested,
+        (uint FaceIndex, float[] Coordinates)[]? ptexMappings = null)
     {
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         byte[] material = Encoding.UTF8.GetBytes(materialPath);
         stableHash ??= SilkWireFormat.ComputeStableHash(pathValue);
         const int pointCount = 3;
-        const int indexCount = 3;
         triangleSubprims ??= [17];
         int triangleCount = triangleSubprims.Length;
+        int indicesPerPrimitive = topologyKind switch
+        {
+            SilkTopologyKind.TriangleList => 3,
+            SilkTopologyKind.LineList => 2,
+            SilkTopologyKind.PointList => 1,
+            _ => throw new ArgumentOutOfRangeException(nameof(topologyKind)),
+        };
+        int indexCount = triangleCount * indicesPerPrimitive;
+        ptexMappings ??= [];
         int normalElements = constantNormals ? 1 : pointCount;
         int attributeCount = authoredNormals is null ? 0 : 1;
         int attributeBytes = authoredNormals is null
             ? 0
             : 20 + (normalElements * 3 * sizeof(float));
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (pointCount * 12) +
             (indexCount * 4) +
             (triangleCount * sizeof(uint)) +
             material.Length +
-            attributeBytes;
+            attributeBytes +
+            (ptexMappings.Length * 28);
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0, 4), (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4, 4), (uint)size);
@@ -629,7 +849,7 @@ public sealed class SilkCommandParserTests
         BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16, 4), primId);
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(28, 4),
-            (uint)SilkTopologyKind.TriangleList);
+            (uint)topologyKind);
         BinaryPrimitives.WriteUInt64LittleEndian(
             bytes.AsSpan(32, 8),
             topologyRevision);
@@ -639,7 +859,7 @@ public sealed class SilkCommandParserTests
             (uint)SilkMeshCullStyle.BackUnlessDoubleSided);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(48, 4), (uint)path.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52, 4), pointCount);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56, 4), indexCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56, 4), (uint)indexCount);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60, 4), (uint)triangleCount);
         BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(64, 4), 0.7f);
         BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(68, 4), 0.7f);
@@ -649,8 +869,8 @@ public sealed class SilkCommandParserTests
         {
             BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (i * 8), 8), i % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 268);
-        int pointsOffset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int pointsOffset = 276 + path.Length;
         for (int i = 0; i < pointCount * 3; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(pointsOffset + (i * 4), 4), i);
@@ -672,6 +892,12 @@ public sealed class SilkCommandParserTests
             material.Length == 0 ? 0 : SilkWireFormat.ComputeStableHash(materialPath));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(216, 4), (uint)material.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220, 4), (uint)attributeCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(268, 4),
+            (uint)ptexMappings.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(272, 4),
+            (uint)ptexMappingStatus);
         int materialOffset = subprimsOffset + (triangleCount * sizeof(uint));
         material.CopyTo(bytes, materialOffset);
         if (authoredNormals is not null)
@@ -695,6 +921,28 @@ public sealed class SilkCommandParserTests
                 BinaryPrimitives.WriteSingleLittleEndian(
                     bytes.AsSpan(attributeOffset + 20 + (i * sizeof(float)), 4),
                     authoredNormals[i]);
+            }
+        }
+        int ptexMappingOffset = materialOffset + material.Length + attributeBytes;
+        for (int mapping = 0; mapping < ptexMappings.Length; mapping++)
+        {
+            (uint faceIndex, float[] coordinates) = ptexMappings[mapping];
+            if (coordinates.Length != 6)
+            {
+                throw new ArgumentException(
+                    "A Ptex mapping fixture requires six corner coordinate values.",
+                    nameof(ptexMappings));
+            }
+            int entryOffset = ptexMappingOffset + (mapping * 28);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(entryOffset, sizeof(uint)),
+                faceIndex);
+            for (int coordinate = 0; coordinate < coordinates.Length; coordinate++)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(
+                    bytes.AsSpan(entryOffset + sizeof(uint) + (coordinate * sizeof(float)),
+                        sizeof(float)),
+                    coordinates[coordinate]);
             }
         }
         return bytes;

@@ -1149,6 +1149,18 @@ OpenUsd.Rendering.Silk.SilkMeshCullStyle.DontCare = 0 -> OpenUsd.Rendering.Silk.
 OpenUsd.Rendering.Silk.SilkMeshCullStyle.Front = 3 -> OpenUsd.Rendering.Silk.SilkMeshCullStyle
 OpenUsd.Rendering.Silk.SilkMeshCullStyle.FrontUnlessDoubleSided = 5 -> OpenUsd.Rendering.Silk.SilkMeshCullStyle
 OpenUsd.Rendering.Silk.SilkMeshCullStyle.Nothing = 1 -> OpenUsd.Rendering.Silk.SilkMeshCullStyle
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.ExceedsBounds = 7 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.FaceIndexOverflow = 4 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.InvalidBuffers = 3 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.InvalidFaceOffsets = 9 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.InvalidPoints = 8 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.Mapped = 1 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.NotRequested = 0 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.RefinerUnavailable = 2 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.TextureFaceOutOfRange = 10 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.TriangleMismatch = 6 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
+OpenUsd.Rendering.Silk.SilkPtexMappingStatus.UnsupportedTopology = 5 -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
 OpenUsd.Rendering.Silk.SilkMeshData
 OpenUsd.Rendering.Silk.SilkMeshData.Attributes.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.Silk.SilkVertexAttributeData!>!
 OpenUsd.Rendering.Silk.SilkMeshData.AuthoredEdgeCount.get -> int
@@ -1288,6 +1300,8 @@ OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetPointComponent(int pointIndex, i
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetPointOrigin(int pointIndex) -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetTransformElement(int index) -> double
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetTriangleSubprim(int triangleIndex) -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetPtexCoordinate(int triangleIndex, int corner, int component) -> float
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.GetPtexFaceIndex(int triangleIndex) -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.HasDeformation.get -> bool
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.IndexCount.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.InstanceId.get -> int
@@ -1299,6 +1313,8 @@ OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.MaterialPath.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.Path.get -> string!
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PointCount.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PointOriginCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PtexMappingCount.get -> int
+OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PtexMappingStatus.get -> OpenUsd.Rendering.Silk.SilkPtexMappingStatus
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.PrimId.get -> int
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.SilkMeshUpsertCommand() -> void
 OpenUsd.Rendering.Silk.SilkMeshUpsertCommand.StableHash.get -> ulong
@@ -2276,7 +2292,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 31 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 32 -> uint
 const OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.MaximumSlots = 12 -> int
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BindPoseBinding = 1 -> uint
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendDeltasBinding = 7 -> uint
