@@ -3998,7 +3998,9 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("VOLUME_LEASE_EXPORTS=true");
             await Assert.That(result.Output).Contains("PTEX_FACE_DECODE_EXPORT=true");
             await Assert.That(result.Output).Contains("PTEX_FACE_DESCRIBE_EXPORT=true");
+            await Assert.That(result.Output).Contains("PTEX_MEMORY_SOURCE=true");
             await Assert.That(result.Output).Contains("PTEX_SOURCE_CONTRACT=true");
+            await Assert.That(result.Output).Contains("Ptex sampling is not available");
             await Assert.That(result.Output).Contains("VOLUME_BUDGET_ADMISSION=true");
             await Assert.That(result.Output).Contains("COMMAND_STORAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("MATERIAL_STREAMING=true");
@@ -7438,6 +7440,7 @@ public sealed partial class RuntimePackageTests
                 <IlcTreatWarningsAsErrors>true</IlcTreatWarningsAsErrors>
                 <InvariantGlobalization>true</InvariantGlobalization>
                 <Nullable>enable</Nullable>
+                <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
                 <StripSymbols>true</StripSymbols>
                 <OptimizationPreference>Size</OptimizationPreference>
               </PropertyGroup>
@@ -7451,6 +7454,8 @@ public sealed partial class RuntimePackageTests
                 <None Update="minimal.usda" CopyToOutputDirectory="PreserveNewest"
                       CopyToPublishDirectory="PreserveNewest" />
                 <None Update="ocio-test-config.ocio" CopyToOutputDirectory="PreserveNewest"
+                      CopyToPublishDirectory="PreserveNewest" />
+                <None Update="quad-colors.ptx" CopyToOutputDirectory="PreserveNewest"
                       CopyToPublishDirectory="PreserveNewest" />
               </ItemGroup>
             </Project>
@@ -7474,6 +7479,9 @@ public sealed partial class RuntimePackageTests
         File.Copy(
             Path.Combine(FindRepositoryRoot(), "test-assets", "ocio-test-config.ocio"),
             Path.Combine(consumerRoot, "ocio-test-config.ocio"));
+        File.Copy(
+            Path.Combine(FindRepositoryRoot(), "test-assets", "native-profile", "ptex", "quad-colors.ptx"),
+            Path.Combine(consumerRoot, "quad-colors.ptx"));
         await File.WriteAllTextAsync(
             Path.Combine(consumerRoot, "Program.cs"),
             CreateImagingConsumerProgram(
@@ -7769,6 +7777,17 @@ public sealed partial class RuntimePackageTests
                                 throw new InvalidOperationException(
                                     "The native package omitted openusd_silk_ptex_describe_faces");
                             }
+                            foreach (string export in new[]
+                            {
+                                "openusd_silk_ptex_describe_faces_from_memory",
+                                "openusd_silk_ptex_decode_faces_from_memory"
+                            })
+                            {
+                                if (!NativeLibrary.TryGetExport(volumeLibrary, export, out _))
+                                {
+                                    throw new InvalidOperationException("The native package omitted " + export);
+                                }
+                            }
                         }
                         finally
                         {
@@ -7777,6 +7796,8 @@ public sealed partial class RuntimePackageTests
                         Console.WriteLine("VOLUME_LEASE_EXPORTS=true");
                         Console.WriteLine("PTEX_FACE_DECODE_EXPORT=true");
                         Console.WriteLine("PTEX_FACE_DESCRIBE_EXPORT=true");
+                        VerifyPtexMemorySource();
+                        Console.WriteLine("PTEX_MEMORY_SOURCE=true");
                         using (var volumeBudget = new SilkVolumeFieldBudget(ulong.MaxValue))
                         using (var volumeSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
                         {
@@ -8680,6 +8701,92 @@ public sealed partial class RuntimePackageTests
                 EntryPoint = "openusd_storm_child_get_abi_version",
                 CallingConvention = CallingConvention.Cdecl)]
             private static extern uint GetStormChildAbiVersion();
+
+            private static unsafe void VerifyPtexMemorySource()
+            {
+                byte[] source = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "quad-colors.ptx"));
+                uint faceId = 0;
+                byte* face = stackalloc byte[64];
+                byte* pixels = stackalloc byte[48];
+                fixed (byte* bytes = source)
+                {
+                    NativePtexInfo info = NativePtexInfo.Create();
+                    if (DescribePtexMemory(bytes, (ulong)source.Length, &faceId, 1, 8, 48,
+                        face, 1, &info, null) != 0 ||
+                        info.RequestedFaceCount != 1 || info.RequiredByteCount != 48 ||
+                        ((uint*)face)[0] != 64 || ((uint*)face)[2] != 4 || ((uint*)face)[3] != 4)
+                    {
+                        throw new InvalidOperationException("The packaged Ptex memory description changed.");
+                    }
+
+                    info = NativePtexInfo.Create();
+                    if (DecodePtexMemory(bytes, (ulong)source.Length, &faceId, 1, 8, 48,
+                        null, 0, null, 0, &info, null) != 3 ||
+                        info.RequestedFaceCount != 1 || info.RequiredByteCount != 48)
+                    {
+                        throw new InvalidOperationException("The packaged Ptex memory sizing changed.");
+                    }
+
+                    info = NativePtexInfo.Create();
+                    if (DecodePtexMemory(bytes, (ulong)source.Length, &faceId, 1, 8, 48,
+                        face, 1, pixels, 48, &info, null) != 0)
+                    {
+                        throw new InvalidOperationException("The packaged Ptex memory decode failed.");
+                    }
+                    for (int index = 0; index < 48; index++)
+                    {
+                        if (pixels[index] != 255)
+                        {
+                            throw new InvalidOperationException("The packaged Ptex memory pixels changed.");
+                        }
+                    }
+                }
+            }
+
+            [DllImport(
+                "openusd_hdsilk",
+                EntryPoint = "openusd_silk_ptex_describe_faces_from_memory",
+                CallingConvention = CallingConvention.Cdecl)]
+            private static unsafe extern int DescribePtexMemory(
+                byte* source, ulong sourceSize, uint* faceIds, uint faceCount,
+                uint maximumDimension, ulong maximumBytes, byte* faces, uint faceCapacity,
+                NativePtexInfo* info, NativeErrorBuffer* error);
+
+            [DllImport(
+                "openusd_hdsilk",
+                EntryPoint = "openusd_silk_ptex_decode_faces_from_memory",
+                CallingConvention = CallingConvention.Cdecl)]
+            private static unsafe extern int DecodePtexMemory(
+                byte* source, ulong sourceSize, uint* faceIds, uint faceCount,
+                uint maximumDimension, ulong maximumBytes, byte* faces, uint faceCapacity,
+                byte* pixels, ulong pixelCapacity, NativePtexInfo* info, NativeErrorBuffer* error);
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct NativePtexInfo
+            {
+                public uint StructSize;
+                public uint Version;
+                public uint MeshType;
+                public uint DataType;
+                public uint ChannelCount;
+                public int AlphaChannel;
+                public uint FileFaceCount;
+                public uint RequestedFaceCount;
+                public ulong RequiredByteCount;
+
+                public static NativePtexInfo Create() => new()
+                {
+                    StructSize = 40,
+                    Version = 1,
+                    MeshType = 0,
+                    DataType = 0,
+                    ChannelCount = 0,
+                    AlphaChannel = 0,
+                    FileFaceCount = 0,
+                    RequestedFaceCount = 0,
+                    RequiredByteCount = 0
+                };
+            }
 
             private sealed class PackageFrameSource : IRenderJobFrameSource
             {

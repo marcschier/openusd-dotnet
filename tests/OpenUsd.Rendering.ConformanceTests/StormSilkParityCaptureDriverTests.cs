@@ -183,6 +183,46 @@ def Xform "World"
     };
 
     [Test]
+    public async Task SyntheticMaterialCommandsPreserveTextureEntriesAcrossPageAbi()
+    {
+        MaterialTextureSpec[] textures =
+        [
+            new(
+                "textures/albedo.ptx",
+                SilkMaterialParameter.DiffuseColor,
+                SilkTextureWrap.Repeat,
+                SilkColorSpace.Raw,
+                [1f, 1f, 1f, 1f],
+                [0f, 0f, 0f, 0f],
+                [0.2f, 0.3f, 0.4f, 1f],
+                "st"),
+            new(
+                "textures/roughness.png",
+                SilkMaterialParameter.Roughness,
+                SilkTextureWrap.Clamp,
+                SilkColorSpace.Raw,
+                [1f, 1f, 1f, 1f],
+                [0f, 0f, 0f, 0f],
+                [0.7f, 0f, 0f, 1f],
+                "st2",
+                SilkTextureChannel.R),
+        ];
+
+        using var scene = new SilkSceneState();
+        scene.Apply(CreateTexturedMaterialCommand("/Synthetic", textures, []), 1, 1);
+        SilkMaterialData material = scene.Materials["/Synthetic"];
+        await Assert.That(material.Textures.Count).IsEqualTo(2);
+        await Assert.That(material.Textures[0].SourceKind).IsEqualTo(SilkTextureSourceKind.Standard);
+        await Assert.That(material.Textures[0].Asset).IsEqualTo("textures/albedo.ptx");
+        await Assert.That(material.Textures[0].UvPrimvar).IsEqualTo("st");
+        await Assert.That(material.Textures[0].Parameter).IsEqualTo(SilkMaterialParameter.DiffuseColor);
+        await Assert.That(material.Textures[1].SourceKind).IsEqualTo(SilkTextureSourceKind.Standard);
+        await Assert.That(material.Textures[1].Asset).IsEqualTo("textures/roughness.png");
+        await Assert.That(material.Textures[1].UvPrimvar).IsEqualTo("st2");
+        await Assert.That(material.Textures[1].Parameter).IsEqualTo(SilkMaterialParameter.Roughness);
+    }
+
+    [Test]
     public async Task CuratedSceneParityClaimsAreStructured()
     {
         ParityScene[] scenes = CreateAllScenes();
@@ -5971,7 +6011,7 @@ def Xform "World"
         {
             textureByteCount = checked(
                 textureByteCount +
-                88 +
+                92 +
                 Encoding.UTF8.GetByteCount(texture.Asset) +
                 Encoding.UTF8.GetByteCount(texture.UvPrimvar));
         }
@@ -6016,9 +6056,12 @@ def Xform "World"
             BinaryPrimitives.WriteSingleLittleEndian(
                 bytes.AsSpan(offset + 84),
                 texture.CompositeFactor);
-            assetBytes.CopyTo(bytes.AsSpan(offset + 88));
-            uvBytes.CopyTo(bytes.AsSpan(offset + 88 + assetBytes.Length));
-            offset += 88 + assetBytes.Length + uvBytes.Length;
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(offset + 88),
+                (uint)SilkTextureSourceKind.Standard);
+            assetBytes.CopyTo(bytes.AsSpan(offset + 92));
+            uvBytes.CopyTo(bytes.AsSpan(offset + 92 + assetBytes.Length));
+            offset += 92 + assetBytes.Length + uvBytes.Length;
         }
         int generatedOffset = offset;
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(generatedOffset), 0);

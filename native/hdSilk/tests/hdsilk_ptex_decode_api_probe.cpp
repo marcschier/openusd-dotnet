@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <numeric>
@@ -90,6 +91,160 @@ openusd_status Describe(
         faceCapacity,
         info,
         error);
+}
+
+openusd_status DecodeMemory(
+    const std::vector<uint8_t>& source,
+    const uint32_t* faceIds,
+    uint32_t faceCount,
+    uint32_t maximumDimension,
+    uint64_t maximumBytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t faceCapacity,
+    uint8_t* pixels,
+    uint64_t pixelCapacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error)
+{
+    return openusd_silk_ptex_decode_faces_from_memory(
+        source.data(), source.size(), faceIds, faceCount, maximumDimension,
+        maximumBytes, faces, faceCapacity, pixels, pixelCapacity, info, error);
+}
+
+openusd_status DescribeMemory(
+    const std::vector<uint8_t>& source,
+    const uint32_t* faceIds,
+    uint32_t faceCount,
+    uint32_t maximumDimension,
+    uint64_t maximumBytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t faceCapacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error)
+{
+    return openusd_silk_ptex_describe_faces_from_memory(
+        source.data(), source.size(), faceIds, faceCount, maximumDimension,
+        maximumBytes, faces, faceCapacity, info, error);
+}
+
+void MemorySourceMatchesPathAndPreservesShortBuffers(const std::string& path)
+{
+    std::ifstream input(path, std::ios::binary);
+    Require(input.good(), "could not open Ptex memory-source fixture");
+    const std::vector<uint8_t> source(
+        (std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    Require(source.size() > 16, "Ptex memory-source fixture is unexpectedly short");
+    constexpr std::array<uint32_t, 4> faceIds = {3, 1, 1, 0};
+    std::array<openusd_silk_ptex_face_layout, 4> faces;
+    std::memset(faces.data(), 0xA5, sizeof(faces));
+    const auto unchangedFaces = faces;
+    std::array<uint8_t, 192> pixels;
+    pixels.fill(0xA5);
+    const auto unchangedPixels = pixels;
+    std::array<char, 256> errorText{};
+    openusd_error_buffer error{errorText.data(), errorText.size(), 0};
+    openusd_silk_ptex_decode_info info = MakeInfo();
+    const uint64_t faceReadsBefore = openusd_hdsilk_test_get_ptex_face_read_count();
+
+    Require(
+        DescribeMemory(source, faceIds.data(), 4, 8, 192, nullptr, 0, &info, &error) ==
+            OPENUSD_STATUS_BUFFER_TOO_SMALL,
+        "Ptex memory describe did not report required layout capacity");
+    Require(info.file_face_count == 4 && info.requested_face_count == 4 &&
+        info.required_byte_count == 192,
+        "Ptex memory describe returned incorrect sizing metadata");
+    info = MakeInfo();
+    Require(
+        DescribeMemory(source, faceIds.data(), 4, 8, 192, faces.data(), 3, &info, &error) ==
+            OPENUSD_STATUS_BUFFER_TOO_SMALL,
+        "Ptex memory describe accepted an undersized layout buffer");
+    Require(std::memcmp(faces.data(), unchangedFaces.data(), sizeof(faces)) == 0,
+        "Ptex memory describe modified an undersized layout buffer");
+    info = MakeInfo();
+    Require(
+        DescribeMemory(source, faceIds.data(), 4, 8, 192, faces.data(), 4, &info, nullptr) ==
+            OPENUSD_STATUS_OK,
+        "Ptex memory describe failed with sufficient capacity");
+    Require(openusd_hdsilk_test_get_ptex_face_read_count() == faceReadsBefore,
+        "Ptex memory describe read face pixels");
+
+    std::array<openusd_silk_ptex_face_layout, 4> pathFaces{};
+    std::array<uint8_t, 192> pathPixels{};
+    openusd_silk_ptex_decode_info pathInfo = MakeInfo();
+    Require(
+        Decode(path.c_str(), faceIds.data(), 4, 8, 192, pathFaces.data(), 4,
+            pathPixels.data(), pathPixels.size(), &pathInfo, nullptr) == OPENUSD_STATUS_OK,
+        "Ptex path decode failed while checking memory-source parity");
+    Require(std::memcmp(&info, &pathInfo, sizeof(info)) == 0 &&
+        std::memcmp(faces.data(), pathFaces.data(), sizeof(faces)) == 0,
+        "Ptex memory describe differs from path decode");
+
+    faces = unchangedFaces;
+    info = MakeInfo();
+    Require(
+        DecodeMemory(source, faceIds.data(), 4, 8, 192, nullptr, 0, nullptr, 0, &info, &error) ==
+            OPENUSD_STATUS_BUFFER_TOO_SMALL,
+        "Ptex memory decode sizing did not report required capacity");
+    Require(info.requested_face_count == 4 && info.required_byte_count == 192,
+        "Ptex memory decode sizing returned incorrect counts");
+    info = MakeInfo();
+    Require(
+        DecodeMemory(source, faceIds.data(), 4, 8, 192, faces.data(), 3,
+            pixels.data(), pixels.size(), &info, &error) == OPENUSD_STATUS_BUFFER_TOO_SMALL,
+        "Ptex memory decode accepted an undersized layout buffer");
+    Require(std::memcmp(faces.data(), unchangedFaces.data(), sizeof(faces)) == 0 &&
+        pixels == unchangedPixels, "Ptex memory decode modified buffers after layout refusal");
+    info = MakeInfo();
+    Require(
+        DecodeMemory(source, faceIds.data(), 4, 8, 192, faces.data(), 4,
+            pixels.data(), pixels.size() - 1, &info, &error) == OPENUSD_STATUS_BUFFER_TOO_SMALL,
+        "Ptex memory decode accepted an undersized pixel buffer");
+    Require(std::memcmp(faces.data(), unchangedFaces.data(), sizeof(faces)) == 0 &&
+        pixels == unchangedPixels, "Ptex memory decode modified buffers after pixel refusal");
+    Require(openusd_hdsilk_test_get_ptex_face_read_count() == faceReadsBefore + 4,
+        "Ptex memory decode read pixels before output admission");
+
+    info = MakeInfo();
+    Require(
+        DecodeMemory(source, faceIds.data(), 4, 8, 192, faces.data(), 4,
+            pixels.data(), pixels.size(), &info, nullptr) == OPENUSD_STATUS_OK,
+        "Ptex memory decode failed with sufficient capacity");
+    Require(std::memcmp(&info, &pathInfo, sizeof(info)) == 0 &&
+        std::memcmp(faces.data(), pathFaces.data(), sizeof(faces)) == 0 &&
+        pixels == pathPixels, "Ptex memory decode differs from path decode");
+
+    info = MakeInfo();
+    Require(
+        DescribeMemory(source, nullptr, 0, 8, 0, nullptr, 0, &info, nullptr) == OPENUSD_STATUS_OK &&
+        info.file_face_count == 4 && info.requested_face_count == 0 && info.required_byte_count == 0,
+        "empty Ptex memory describe returned incorrect metadata");
+    info = MakeInfo();
+    Require(
+        DecodeMemory(source, nullptr, 0, 8, 0, nullptr, 0, nullptr, 0, &info, nullptr) ==
+            OPENUSD_STATUS_OK &&
+        info.file_face_count == 4 && info.requested_face_count == 0 && info.required_byte_count == 0,
+        "empty Ptex memory decode returned incorrect metadata");
+
+    info = MakeInfo();
+    Require(
+        openusd_silk_ptex_decode_faces_from_memory(nullptr, source.size(), faceIds.data(), 1, 8, 48,
+            nullptr, 0, nullptr, 0, &info, &error) == OPENUSD_STATUS_INVALID_ARGUMENT,
+        "Ptex memory decode accepted a null source");
+    Require(
+        openusd_silk_ptex_describe_faces_from_memory(source.data(), 0, faceIds.data(), 1, 8, 48,
+            nullptr, 0, &info, &error) == OPENUSD_STATUS_INVALID_ARGUMENT,
+        "Ptex memory describe accepted an empty source");
+    const std::vector<uint8_t> truncated(source.begin(), source.begin() + 16);
+    info = MakeInfo();
+    Require(
+        DescribeMemory(truncated, faceIds.data(), 1, 8, 48, nullptr, 0, &info, &error) ==
+            OPENUSD_STATUS_NATIVE_ERROR && error.required > 0,
+        "Ptex memory describe accepted a truncated source without a diagnostic");
+    info = MakeInfo();
+    Require(
+        DecodeMemory(truncated, faceIds.data(), 1, 8, 48, nullptr, 0, nullptr, 0, &info, &error) ==
+            OPENUSD_STATUS_NATIVE_ERROR && error.required > 0,
+        "Ptex memory decode accepted a truncated source without a diagnostic");
 }
 
 void DescribeMatchesDecodeAndPreservesShortBuffers(const std::string& path)
@@ -486,6 +641,7 @@ int main(int argc, char** argv)
 
     try
     {
+        MemorySourceMatchesPathAndPreservesShortBuffers(argv[1]);
         DescribeMatchesDecodeAndPreservesShortBuffers(argv[1]);
         DescribeReportsInteriorAdjacency(argv[2]);
         DescribeAdmitsTheMaximumBatchAndRejectsLateInvalidFaces(argv[1]);

@@ -41,6 +41,14 @@ HdSilkPtexDecodedFaces HdSilkDescribePtexFaces(
     uint32_t maximumFaceDimension,
     uint64_t maximumDecodedBytes);
 
+HdSilkPtexDecodedFaces HdSilkDescribePtexFacesFromMemory(
+    const uint8_t* source,
+    size_t sourceSize,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes);
+
 HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
     const std::string& path,
     const uint32_t* faceIds,
@@ -50,6 +58,17 @@ HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
 
 HdSilkPtexDecodedFaces HdSilkDecodePtexFacesInto(
     const std::string& path,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes,
+    size_t faceCapacity,
+    uint8_t* pixels,
+    uint64_t pixelCapacity);
+
+HdSilkPtexDecodedFaces HdSilkDecodePtexFacesFromMemoryInto(
+    const uint8_t* source,
+    size_t sourceSize,
     const uint32_t* faceIds,
     size_t faceCount,
     uint32_t maximumFaceDimension,

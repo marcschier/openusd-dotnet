@@ -5,6 +5,7 @@
 #include <Ptexture.h>
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -34,6 +35,146 @@ struct PtexTextureDeleter
     }
 };
 
+struct PtexCacheDeleter
+{
+    void operator()(Ptex::PtexCache* cache) const noexcept
+    {
+        if (cache != nullptr)
+        {
+            cache->release();
+        }
+    }
+};
+
+class PtexMemoryInput final : public Ptex::PtexInputHandler
+{
+public:
+    PtexMemoryInput(const uint8_t* source, size_t size) : _source(source), _size(size) {}
+
+    Handle open(const char*) override
+    {
+        return new Cursor{};
+    }
+
+    void seek(Handle handle, int64_t position) override
+    {
+        Cursor& cursor = *static_cast<Cursor*>(handle);
+        if (position < 0 || static_cast<uint64_t>(position) > _size)
+        {
+            cursor.valid = false;
+            _error = "Ptex source seek exceeds the encoded snapshot.";
+            return;
+        }
+        cursor.position = static_cast<size_t>(position);
+        cursor.valid = true;
+    }
+
+    size_t read(void* buffer, size_t size, Handle handle) override
+    {
+        Cursor& cursor = *static_cast<Cursor*>(handle);
+        if (!cursor.valid)
+        {
+            return 0;
+        }
+        const size_t count = std::min(size, _size - cursor.position);
+        if (count != 0)
+        {
+            std::memcpy(buffer, _source + cursor.position, count);
+            cursor.position += count;
+        }
+        if (count != size)
+        {
+            _error = "Ptex source ended before the requested bytes.";
+        }
+        return count;
+    }
+
+    bool close(Handle handle) override
+    {
+        delete static_cast<Cursor*>(handle);
+        return true;
+    }
+
+    const char* lastError() override
+    {
+        return _error == nullptr ? "" : _error;
+    }
+
+    const char* Error() const noexcept { return _error; }
+
+private:
+    struct Cursor
+    {
+        size_t position = 0;
+        bool valid = true;
+    };
+
+    const uint8_t* _source;
+    size_t _size;
+    const char* _error = nullptr;
+};
+
+class PtexCapturedErrors final : public Ptex::PtexErrorHandler
+{
+public:
+    void reportError(const char* error) override
+    {
+        if (_error.empty())
+        {
+            _error = error == nullptr || error[0] == '\0'
+                ? "Ptex reported an unspecified error."
+                : error;
+        }
+    }
+
+    const std::string& Error() const noexcept { return _error; }
+
+private:
+    std::string _error;
+};
+
+class PtexMemoryTexture
+{
+public:
+    PtexMemoryTexture(const uint8_t* source, size_t sourceSize)
+        : _input(source, sourceSize),
+          _cache(Ptex::PtexCache::create(1, 8 * 1024 * 1024, false, &_input, &_errors))
+    {
+        if (!_cache)
+        {
+            throw std::runtime_error("Could not create a Ptex memory-source cache.");
+        }
+        Ptex::String error;
+        _texture.reset(_cache->get("encoded-snapshot.ptx", error));
+        if (!_texture)
+        {
+            throw std::runtime_error(
+                std::string("Could not open the Ptex encoded snapshot: ") + error.c_str());
+        }
+        ThrowIfFailed();
+    }
+
+    Ptex::PtexTexture& Texture() const noexcept { return *_texture; }
+
+    void ThrowIfFailed() const
+    {
+        if (!_errors.Error().empty())
+        {
+            throw std::runtime_error("Ptex encoded snapshot failed: " + _errors.Error());
+        }
+        if (_input.Error() != nullptr)
+        {
+            throw std::runtime_error(_input.Error());
+        }
+    }
+
+private:
+    PtexMemoryInput _input;
+    PtexCapturedErrors _errors;
+    std::unique_ptr<Ptex::PtexCache, PtexCacheDeleter> _cache;
+    std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> _texture;
+};
+
 uint32_t GetDimension(int8_t log2Dimension, uint32_t maximumFaceDimension)
 {
     if (log2Dimension < 0 || log2Dimension > 30)
@@ -50,15 +191,49 @@ uint32_t GetDimension(int8_t log2Dimension, uint32_t maximumFaceDimension)
 }
 
 void ValidateRequest(
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension)
+{
+    if ((faceCount != 0 && faceIds == nullptr) ||
+        maximumFaceDimension == 0 || faceCount > MaximumRequestedFaces)
+    {
+        throw std::invalid_argument("Ptex decode request is invalid.");
+    }
+}
+
+void ValidatePathRequest(
     const std::string& path,
     const uint32_t* faceIds,
     size_t faceCount,
     uint32_t maximumFaceDimension)
 {
-    if (path.empty() || (faceCount != 0 && faceIds == nullptr) ||
-        maximumFaceDimension == 0 || faceCount > MaximumRequestedFaces)
+    if (path.empty())
     {
-        throw std::invalid_argument("Ptex decode request is invalid.");
+        throw std::invalid_argument("Ptex decode path is invalid.");
+    }
+    ValidateRequest(faceIds, faceCount, maximumFaceDimension);
+}
+
+void ValidateMemoryRequest(
+    const uint8_t* source,
+    size_t sourceSize,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension)
+{
+    if (source == nullptr || sourceSize == 0)
+    {
+        throw std::invalid_argument("Ptex encoded snapshot is invalid.");
+    }
+    ValidateRequest(faceIds, faceCount, maximumFaceDimension);
+}
+
+void ValidatePixelBuffer(const uint8_t* pixels, uint64_t pixelCapacity)
+{
+    if (pixels == nullptr && pixelCapacity != 0)
+    {
+        throw std::invalid_argument("Ptex decode output buffer is invalid.");
     }
 }
 
@@ -166,6 +341,33 @@ void DecodePixels(
     }
 }
 
+HdSilkPtexDecodedFaces DecodePtexFacesInto(
+    Ptex::PtexTexture& texture,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes,
+    size_t faceCapacity,
+    uint8_t* pixels,
+    uint64_t pixelCapacity)
+{
+    HdSilkPtexDecodedFaces result = DescribePtexFaces(
+        texture, faceIds, faceCount, maximumFaceDimension, maximumDecodedBytes);
+    if (faceCapacity < result.faces.size() ||
+        pixelCapacity < result.requiredByteCount ||
+        (result.requiredByteCount != 0 && pixels == nullptr))
+    {
+        return result;
+    }
+
+    if (result.requiredByteCount != 0)
+    {
+        DecodePixels(texture, result, pixels);
+    }
+    result.pixelsDecoded = true;
+    return result;
+}
+
 std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> OpenPtexTexture(
     const std::string& path)
 {
@@ -189,11 +391,27 @@ HdSilkPtexDecodedFaces HdSilkDescribePtexFaces(
     uint32_t maximumFaceDimension,
     uint64_t maximumDecodedBytes)
 {
-    ValidateRequest(path, faceIds, faceCount, maximumFaceDimension);
+    ValidatePathRequest(path, faceIds, faceCount, maximumFaceDimension);
     std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> texture =
         OpenPtexTexture(path);
     return DescribePtexFaces(
         *texture, faceIds, faceCount, maximumFaceDimension, maximumDecodedBytes);
+}
+
+HdSilkPtexDecodedFaces HdSilkDescribePtexFacesFromMemory(
+    const uint8_t* source,
+    size_t sourceSize,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes)
+{
+    ValidateMemoryRequest(source, sourceSize, faceIds, faceCount, maximumFaceDimension);
+    PtexMemoryTexture texture(source, sourceSize);
+    HdSilkPtexDecodedFaces result = DescribePtexFaces(
+        texture.Texture(), faceIds, faceCount, maximumFaceDimension, maximumDecodedBytes);
+    texture.ThrowIfFailed();
+    return result;
 }
 
 HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
@@ -203,7 +421,7 @@ HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
     uint32_t maximumFaceDimension,
     uint64_t maximumDecodedBytes)
 {
-    ValidateRequest(path, faceIds, faceCount, maximumFaceDimension);
+    ValidatePathRequest(path, faceIds, faceCount, maximumFaceDimension);
     std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> texture =
         OpenPtexTexture(path);
     HdSilkPtexDecodedFaces result = DescribePtexFaces(
@@ -235,27 +453,32 @@ HdSilkPtexDecodedFaces HdSilkDecodePtexFacesInto(
     uint8_t* pixels,
     uint64_t pixelCapacity)
 {
-    ValidateRequest(path, faceIds, faceCount, maximumFaceDimension);
-    if (pixels == nullptr && pixelCapacity != 0)
-    {
-        throw std::invalid_argument("Ptex decode output buffer is invalid.");
-    }
-
+    ValidatePathRequest(path, faceIds, faceCount, maximumFaceDimension);
+    ValidatePixelBuffer(pixels, pixelCapacity);
     std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> texture =
         OpenPtexTexture(path);
-    HdSilkPtexDecodedFaces result = DescribePtexFaces(
-        *texture, faceIds, faceCount, maximumFaceDimension, maximumDecodedBytes);
-    if (faceCapacity < result.faces.size() ||
-        pixelCapacity < result.requiredByteCount ||
-        (result.requiredByteCount != 0 && pixels == nullptr))
-    {
-        return result;
-    }
+    return DecodePtexFacesInto(
+        *texture, faceIds, faceCount, maximumFaceDimension, maximumDecodedBytes,
+        faceCapacity, pixels, pixelCapacity);
+}
 
-    if (result.requiredByteCount != 0)
-    {
-        DecodePixels(*texture, result, pixels);
-    }
-    result.pixelsDecoded = true;
+HdSilkPtexDecodedFaces HdSilkDecodePtexFacesFromMemoryInto(
+    const uint8_t* source,
+    size_t sourceSize,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes,
+    size_t faceCapacity,
+    uint8_t* pixels,
+    uint64_t pixelCapacity)
+{
+    ValidateMemoryRequest(source, sourceSize, faceIds, faceCount, maximumFaceDimension);
+    ValidatePixelBuffer(pixels, pixelCapacity);
+    PtexMemoryTexture texture(source, sourceSize);
+    HdSilkPtexDecodedFaces result = DecodePtexFacesInto(
+        texture.Texture(), faceIds, faceCount, maximumFaceDimension, maximumDecodedBytes,
+        faceCapacity, pixels, pixelCapacity);
+    texture.ThrowIfFailed();
     return result;
 }

@@ -1737,11 +1737,47 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_decode_faces(
 /// Layout offsets and required_byte_count describe the packed pixel buffer a
 /// matching decode would require. A short faces buffer returns BUFFER_TOO_SMALL,
 /// sets info to the required counts and leaves faces unchanged. Each call opens
-/// the asset independently; callers must verify the layouts used by a later
-/// decode before consuming them. Requires no session and does not change the
+/// the asset independently. Matching layouts do not establish that its texels
+/// stayed unchanged. Callers requiring one source across calls can use the
+/// memory-source functions below. Requires no session and does not change the
 /// session/page ABI versions.
 OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_describe_faces(
     const char* path,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) OPENUSD_HDSILK_NOEXCEPT;
+
+/// Decodes faces from caller-owned encoded Ptex bytes. The caller must keep
+/// source unchanged and valid until the call returns; the function does not
+/// retain the pointer. To use the same source for discovery and decode, pass
+/// the same immutable bytes to each memory-source call. The input bytes and
+/// Ptex's internal allocations are outside maximum_decoded_bytes. Face,
+/// capacity, info and error behavior otherwise follows ptex_decode_faces.
+OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_decode_faces_from_memory(
+    const uint8_t* source,
+    uint64_t source_size,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    uint8_t* pixels,
+    uint64_t pixel_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) OPENUSD_HDSILK_NOEXCEPT;
+
+/// Describes faces from caller-owned encoded Ptex bytes without decoding
+/// texels. Source ownership and lifetime follow ptex_decode_faces_from_memory;
+/// face and output-capacity behavior follows ptex_describe_faces.
+OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_describe_faces_from_memory(
+    const uint8_t* source,
+    uint64_t source_size,
     const uint32_t* face_ids,
     uint32_t face_count,
     uint32_t maximum_face_dimension,

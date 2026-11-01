@@ -342,19 +342,23 @@ decode would produce. A short layout buffer returns `BUFFER_TOO_SMALL`, reports
 the required counts in the info packet and leaves the layout buffer unchanged.
 An empty selection returns texture metadata without a layout buffer.
 
-Each describe or decode call opens the asset independently. A caller that
-discovers neighbors before decoding must compare the decoded layouts with the
-descriptions it used; the asset can change between calls. Matching layouts do
-not prove that the asset identity or its pixel values stayed unchanged. The
-face limit applies to each request, so the caller must also bound the combined
-sampled and neighbor IDs before its final decode.
+The path-based calls open the asset independently. Matching layouts do not
+prove that its pixel values stayed unchanged between discovery and decode.
+The additive `openusd_silk_ptex_describe_faces_from_memory` and
+`openusd_silk_ptex_decode_faces_from_memory` functions instead read caller-owned
+encoded bytes. The caller keeps those bytes valid and unchanged until each call
+returns and can reuse one snapshot for discovery, sizing and decode. Neither
+function retains the pointer. The face limit applies to each request, so the
+caller must also bound the combined sampled and neighbor IDs before its final
+decode.
 
-The byte limit covers only the returned pixel array. It does not bound Ptex
-file-open or decoder allocations, allocator overhead or later GPU storage. This
-entry point passes its path to Ptex unchanged, so non-ASCII Windows path
-handling has not been qualified. The C ABI has no renderer caller; Ptex
-sampling, boundary filtering and rendered lifecycle, refusal, retry and release
-coverage remain open.
+The decoded-byte limit covers only the returned pixel array. It does not bound
+the encoded source, Ptex cache or decoder allocations, allocator overhead or
+later GPU storage. The cache's eviction setting is not a hard limit on active
+Ptex allocations. The path-based exports pass paths to Ptex unchanged, so
+non-ASCII Windows path handling for those exports remains unqualified. The C
+ABI has no renderer caller; Ptex sampling, boundary filtering and rendered
+lifecycle, refusal, retry and release coverage remain open.
 
 A separate Storm-only reference renders four Ptex faces with authored offsets
 and compares them with reordered topology and indexed offsets. Individual-face

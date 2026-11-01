@@ -441,6 +441,15 @@ without another managed transfer array or duplicate CPU charge. Native decode va
 dimensions still match the admitted destination. Raw volume reads require the declared
 length before allocating and reject an inconsistent stream.
 
+The Ptex face decoder captures encoded bytes once before discovering a sampling
+neighborhood, then uses that snapshot for sizing and pixel decode. A per-source limit
+admits the encoded length before allocation; when a CPU texture budget is supplied,
+the encoded and decoded bytes are charged together while their owners overlap.
+Replacing the path after capture does not change the snapshot. Capture does not promise
+an atomic file version against a simultaneous same-length in-place writer. Ptex's
+internal cache and codec allocations are not covered by these managed limits.
+The renderer still uses the input default rather than sampling Ptex.
+
 Image ownership transfers to the retained cache; cache disposal returns its logical
 charge. Command-copy disposal returns only the CPU copy charge: the native staging
 buffer remains separately charged while its submission owns it. `Usage` is a snapshot

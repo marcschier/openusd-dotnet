@@ -319,6 +319,15 @@ The renderer retains these Ptex entries but does not sample them; the affected i
 default and emits a diagnostic. Older page readers must reject ABI 33 rather than interpret its
 source-kind field as asset data.
 
+The additive `openusd_silk_ptex_describe_faces_from_memory` and
+`openusd_silk_ptex_decode_faces_from_memory` exports accept caller-owned encoded Ptex bytes.
+The caller keeps those bytes valid and unchanged until each call returns; the functions do
+not retain the pointer. Reusing the same snapshot keeps description and decoding on the
+same source even if the asset path changes. The path-based exports continue to open the
+asset independently. These exports do not change the session or page ABI versions. A
+snapshot operation against an older library reports the missing export as
+`NotSupportedException`; unrelated session operations retain their compatibility contract.
+
 The optional version-1 source-identity batch extension is additive to session 6/page 26.
 Its request/result layout and hard count/path/result limits are declared in `openusd_hdsilk.h`.
 It binds lookups to a successful page revision and unchanged source-stage serial; it does not

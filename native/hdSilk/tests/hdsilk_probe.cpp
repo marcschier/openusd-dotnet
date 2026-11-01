@@ -9048,6 +9048,7 @@ bool VerifyPreviewSurfaceUnsupportedInput()
             FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
         const auto& warnings = diagnostics.GetWarnings();
         const bool warned = warnings.size() == 1 &&
+            warnings[0].GetContext().IsHidden() &&
             warnings[0].GetCommentary().find("Ptex sampling is not available") != std::string::npos;
         diagnostics.ClearWarnings();
         if (!warned || resolved == nullptr ||
@@ -9126,6 +9127,7 @@ bool VerifyPreviewSurfaceUnsupportedInput()
             const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
             const auto& warnings = diagnostics.GetWarnings();
             const bool warned = warnings.size() == 1 &&
+                warnings[0].GetContext().IsHidden() &&
                 warnings[0].GetCommentary().find(parameter.first.GetString()) != std::string::npos;
             diagnostics.ClearWarnings();
             if (!warned ||
@@ -9147,6 +9149,7 @@ bool VerifyPreviewSurfaceUnsupportedInput()
             const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
             const auto& warnings = diagnostics.GetWarnings();
             const bool warned = warnings.size() == 1 &&
+                warnings[0].GetContext().IsHidden() &&
                 warnings[0].GetCommentary().find(input) != std::string::npos;
             diagnostics.ClearWarnings();
             if (!warned || !ParameterIsAbsent(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, input))
@@ -9154,6 +9157,60 @@ bool VerifyPreviewSurfaceUnsupportedInput()
                 std::cerr << "A connected Ptex input was not refused: " << input << "\n";
                 return false;
             }
+        }
+    }
+
+    for (const char* identifier : {"HwPtexTexture_1", "UsdUVTexture"})
+    {
+        const bool isPtex = std::string(identifier) == "HwPtexTexture_1";
+        for (const bool missingFile : {false, true})
+        {
+            HdMaterialNetworkMap map = makeNetwork(identifier, true, true, true);
+            HdMaterialNetwork& network = map.map[HdMaterialTerminalTokens->surface];
+            if (missingFile)
+            {
+                network.nodes[1].parameters.erase(TfToken("file"));
+            }
+            else
+            {
+                network.relationships[0].inputName = TfToken("unsupported");
+            }
+            TfDiagnosticTrap diagnostics;
+            const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
+            const auto& warnings = diagnostics.GetWarnings();
+            const bool warned = warnings.size() == 1 &&
+                warnings[0].GetContext().IsHidden() == isPtex &&
+                warnings[0].GetCommentary().find(
+                    missingFile ? "no resolvable file" : "cannot drive") != std::string::npos;
+            diagnostics.ClearWarnings();
+            if (!warned ||
+                (isPtex && !ParameterIsAbsent(
+                    record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, "Ptex image refusal")))
+            {
+                std::cerr << "An image refusal used the wrong diagnostic context: "
+                          << identifier << "\n";
+                return false;
+            }
+        }
+    }
+
+    {
+        HdMaterialNetworkMap map = makeNetwork("HwPtexTexture_1", true, true, true);
+        HdMaterialNetwork displacement = map.map[HdMaterialTerminalTokens->surface];
+        displacement.relationships[0].outputName = TfToken("displacement");
+        map.map[HdMaterialTerminalTokens->surface].relationships.clear();
+        map.map[HdMaterialTerminalTokens->displacement] = std::move(displacement);
+        TfDiagnosticTrap diagnostics;
+        const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
+        const auto& warnings = diagnostics.GetWarnings();
+        const bool warned = warnings.size() == 1 &&
+            warnings[0].GetContext().IsHidden() &&
+            warnings[0].GetCommentary().find("uses Ptex for displacement") != std::string::npos;
+        diagnostics.ClearWarnings();
+        if (!warned || FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DISPLACEMENT) != nullptr)
+        {
+            std::cerr << "A Ptex displacement refusal was not diagnosed without a build path.\n";
+            return false;
         }
     }
 

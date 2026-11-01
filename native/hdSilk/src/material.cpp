@@ -2368,7 +2368,7 @@ bool _TryCreateTextureEntry(
     {
         if (input.parameter == OPENUSD_SILK_MATERIAL_DISPLACEMENT)
         {
-            TF_WARN(
+            TF_DIAGNOSTIC_WARNING(
                 "hdSilk material '%s' uses Ptex for displacement, which cannot "
                 "be evaluated per vertex; the material remains undisplaced.",
                 materialPath.c_str());
@@ -2379,7 +2379,7 @@ bool _TryCreateTextureEntry(
         {
             if (relationship.outputId == texture.path)
             {
-                TF_WARN(
+                TF_DIAGNOSTIC_WARNING(
                     "hdSilk material '%s' input '%s' has a connected Ptex input '%s'; "
                     "the connection cannot be represented, so the input remains at its default.",
                     materialPath.c_str(), input.name.GetText(), relationship.outputName.GetText());
@@ -2422,7 +2422,7 @@ bool _TryCreateTextureEntry(
                     continue;
                 }
             }
-            TF_WARN(
+            TF_DIAGNOSTIC_WARNING(
                 "hdSilk material '%s' input '%s' has unsupported Ptex parameter '%s'; "
                 "the input remains at its default.",
                 materialPath.c_str(), input.name.GetText(), name.c_str());
@@ -2433,7 +2433,9 @@ bool _TryCreateTextureEntry(
     const std::string asset = _ResolveAssetPath(texture.parameters);
     if (asset.empty())
     {
-        TF_WARN(
+        const TfCallContext context = TF_CALL_CONTEXT;
+        Tf_PostWarningHelper(
+            _IsPtexTexture(texture) ? context.Hide() : context,
             "hdSilk material '%s' input '%s' is connected to image '%s', which has "
             "no resolvable file; leaving the input at its default.",
             materialPath.c_str(),
@@ -2445,7 +2447,9 @@ bool _TryCreateTextureEntry(
     uint32_t channel = OPENUSD_SILK_TEXTURE_CHANNEL_RGB;
     if (!_TryResolveOutputChannel(texture, outputName, input.componentCount, &channel))
     {
-        TF_WARN(
+        const TfCallContext context = TF_CALL_CONTEXT;
+        Tf_PostWarningHelper(
+            _IsPtexTexture(texture) ? context.Hide() : context,
             "hdSilk material '%s' input '%s' is connected to texture output '%s', "
             "which cannot drive a %u-component input; leaving the input at its "
             "default.",
@@ -2464,7 +2468,7 @@ bool _TryCreateTextureEntry(
         entry.sourceKind = OPENUSD_SILK_TEXTURE_SOURCE_PTEX;
         entry.sourceColorSpace = _ReadColorSpace(texture.parameters);
         entry.asset = asset;
-        TF_WARN(
+        TF_DIAGNOSTIC_WARNING(
             "hdSilk material '%s' input '%s' uses a Ptex texture; Ptex sampling is "
             "not available, so the input remains at its default.",
             materialPath.c_str(), input.name.GetText());

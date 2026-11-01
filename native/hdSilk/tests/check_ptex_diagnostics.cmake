@@ -1,0 +1,33 @@
+execute_process(
+    COMMAND "${PROBE}" usd "${PLUGIN_DIR}" "${FIXTURE}"
+    RESULT_VARIABLE result
+    OUTPUT_VARIABLE output
+    ERROR_VARIABLE errors)
+if(NOT result STREQUAL "0")
+    message(FATAL_ERROR "Ptex sync failed (${result}):\n${output}\n${errors}")
+endif()
+
+string(REPLACE "\\" "/" source_root "${SOURCE_ROOT}")
+string(TOLOWER "${source_root}" source_root)
+string(REPLACE "\\" "/" diagnostics "${output}\n${errors}")
+string(REPLACE ";" "\\;" diagnostics "${diagnostics}")
+string(REPLACE "\n" ";" lines "${diagnostics}")
+set(found_material FALSE)
+set(found_mapping FALSE)
+foreach(line IN LISTS lines)
+    if(line MATCHES "Ptex sampling is not available")
+        set(found_material TRUE)
+    elseif(line MATCHES "hdSilk refused Ptex mapping")
+        set(found_mapping TRUE)
+    else()
+        continue()
+    endif()
+    string(TOLOWER "${line}" line_lower)
+    string(FIND "${line_lower}" "${source_root}" source_offset)
+    if(NOT source_offset EQUAL -1)
+        message(FATAL_ERROR "Ptex diagnostic leaks the native source path: ${line}")
+    endif()
+endforeach()
+if(NOT found_material OR NOT found_mapping)
+    message(FATAL_ERROR "Ptex sync did not report both material and mapping fallback diagnostics.")
+endif()

@@ -384,6 +384,18 @@ set_tests_properties(
     hdsilk_ptex_sync_legacy
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
 
+add_test(
+    NAME hdsilk_ptex_diagnostics
+    COMMAND ${CMAKE_COMMAND}
+        "-DPROBE=$<TARGET_FILE:hdsilk_ptex_sync_probe>"
+        "-DPLUGIN_DIR=${HDSILK_PROBE_PLUGIN_DIR}"
+        "-DFIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-ptex-sync.usda"
+        "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_ptex_diagnostics.cmake")
+set_tests_properties(
+    hdsilk_ptex_diagnostics
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
+
 add_executable(
     hdsilk_ptex_decode_probe
     hdsilk_ptex_decode_probe.cpp

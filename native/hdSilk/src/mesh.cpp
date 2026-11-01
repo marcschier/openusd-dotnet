@@ -2549,7 +2549,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
             record.ptexMappingStatus = static_cast<uint32_t>(status) + 1u;
             if (status != HdSilkPtexMappingStatus::Mapped)
             {
-                TF_WARN(
+                TF_DIAGNOSTIC_WARNING(
                     "hdSilk refused Ptex mapping for mesh '%s': %s",
                     id.GetText(),
                     HdSilkPtexMappingStatusName(status));
