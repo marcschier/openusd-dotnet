@@ -82,6 +82,8 @@ internal static unsafe class SilkPtexAtlasPacker
                 SilkPackedPtexAtlas.EmptyTiles,
                 null);
         }
+        Dictionary<uint, FaceSource> facesById = faces.ToDictionary(static face => face.Layout.FaceId);
+        ValidateSamplingTopology(faces, facesById, info.MeshType);
 
         List<PendingTile> pendingTiles = PlanTiles(faces, maximumDimension, out uint width, out uint height);
         ulong byteCount = checked((ulong)width * height * BytesPerPixel);
@@ -97,7 +99,7 @@ internal static unsafe class SilkPtexAtlasPacker
             var tiles = new Dictionary<uint, SilkPtexAtlasTile>(pendingTiles.Count);
             foreach (PendingTile pending in pendingTiles)
             {
-                WriteTile(pixels, width, height, info.ChannelCount, pending);
+                WriteTile(pixels, width, height, info.ChannelCount, pending, facesById);
                 uint contentX = checked(pending.X + GutterWidth);
                 uint contentY = checked(pending.Y + GutterWidth);
                 uint contentEndX = checked(contentX + pending.Source.Layout.Width);
@@ -237,6 +239,54 @@ internal static unsafe class SilkPtexAtlasPacker
         }
     }
 
+    private static void ValidateSamplingTopology(
+        IReadOnlyList<FaceSource> faces,
+        IReadOnlyDictionary<uint, FaceSource> facesById,
+        uint meshType)
+    {
+        const uint subfaceFlag = 1u << 3;
+        foreach (FaceSource source in faces)
+        {
+            if ((source.Layout.Flags & subfaceFlag) != 0)
+            {
+                throw new NotSupportedException("Ptex subface sampling is not supported.");
+            }
+
+            for (int edge = 0; edge < 4; edge++)
+            {
+                int adjacentFaceId = source.Layout.GetAdjacentFaceId(edge);
+                if (adjacentFaceId < 0)
+                {
+                    continue;
+                }
+
+                if (meshType != 1)
+                {
+                    throw new NotSupportedException(
+                        "Ptex adjacency sampling requires quad-based face textures.");
+                }
+                if (!facesById.TryGetValue((uint)adjacentFaceId, out FaceSource adjacent))
+                {
+                    throw new InvalidDataException(
+                        $"Ptex face {source.Layout.FaceId} references adjacent face {adjacentFaceId}, " +
+                        "which was not included in the decoded face selection.");
+                }
+                if ((adjacent.Layout.Flags & subfaceFlag) != 0)
+                {
+                    throw new NotSupportedException("Ptex subface sampling is not supported.");
+                }
+
+                int adjacentEdge = checked((int)source.Layout.GetAdjacentEdgeId(edge));
+                if (adjacent.Layout.GetAdjacentFaceId(adjacentEdge) != source.Layout.FaceId ||
+                    adjacent.Layout.GetAdjacentEdgeId(adjacentEdge) != (uint)edge)
+                {
+                    throw new InvalidDataException(
+                        $"Ptex adjacency from face {source.Layout.FaceId}, edge {edge}, is not reciprocal.");
+                }
+            }
+        }
+    }
+
     private static bool EquivalentFace(FaceSource left, FaceSource right)
     {
         SilkPtexFaceLayout a = left.Layout;
@@ -317,7 +367,8 @@ internal static unsafe class SilkPtexAtlasPacker
         uint atlasWidth,
         uint atlasHeight,
         uint channelCount,
-        PendingTile pending)
+        PendingTile pending,
+        IReadOnlyDictionary<uint, FaceSource> facesById)
     {
         SilkPtexFaceLayout face = pending.Source.Layout;
         int channels = checked((int)channelCount);
@@ -333,12 +384,8 @@ internal static unsafe class SilkPtexAtlasPacker
 
         for (int y = -1; y <= height; y++)
         {
-            int sourceY = Math.Clamp(y, 0, height - 1);
             for (int x = -1; x <= width; x++)
             {
-                int sourceX = Math.Clamp(x, 0, width - 1);
-                int sourceOffset = checked(
-                    pending.Source.Offset + sourceY * rowStride + sourceX * channels);
                 int atlasX = checked(gutterX + x + 1);
                 int atlasY = checked(gutterY + y + 1);
                 if ((uint)atlasY >= (uint)checkedAtlasHeight)
@@ -346,14 +393,168 @@ internal static unsafe class SilkPtexAtlasPacker
                     throw new InvalidDataException("A Ptex tile gutter exceeds the planned atlas.");
                 }
                 int destinationOffset = checked(atlasY * atlasStride + atlasX * (int)BytesPerPixel);
-                destination[destinationOffset] = pending.Source.Pixels[sourceOffset];
-                destination[destinationOffset + 1] = pending.Source.Pixels[sourceOffset + 1];
-                destination[destinationOffset + 2] = pending.Source.Pixels[sourceOffset + 2];
-                destination[destinationOffset + 3] = channels == 4
-                    ? pending.Source.Pixels[sourceOffset + 3]
-                    : byte.MaxValue;
+                if ((uint)x < (uint)width && (uint)y < (uint)height)
+                {
+                    int sourceOffset = checked(
+                        pending.Source.Offset + y * rowStride + x * channels);
+                    CopyPixel(destination, destinationOffset, pending.Source, sourceOffset, channels);
+                }
+                else
+                {
+                    SampleGutterPixel(
+                        destination,
+                        destinationOffset,
+                        pending.Source,
+                        x,
+                        y,
+                        channels,
+                        facesById);
+                }
             }
         }
+    }
+
+    private static void SampleGutterPixel(
+        byte[] destination,
+        int destinationOffset,
+        FaceSource source,
+        int x,
+        int y,
+        int channels,
+        IReadOnlyDictionary<uint, FaceSource> facesById)
+    {
+        SilkPtexFaceLayout layout = source.Layout;
+        double u = (x + 0.5) / layout.Width;
+        double v = (y + 0.5) / layout.Height;
+        FaceSource sampleSource = source;
+        int crossings = 0;
+        while (true)
+        {
+            int edge = u < 0 ? 3 : u > 1 ? 1 : v < 0 ? 0 : v > 1 ? 2 : -1;
+            if (edge < 0)
+            {
+                break;
+            }
+
+            SilkPtexFaceLayout sampleLayout = sampleSource.Layout;
+            int adjacentFaceId = sampleLayout.GetAdjacentFaceId(edge);
+            if (adjacentFaceId < 0)
+            {
+                switch (edge)
+                {
+                    case 0:
+                        v = 0;
+                        break;
+                    case 1:
+                        u = 1;
+                        break;
+                    case 2:
+                        v = 1;
+                        break;
+                    case 3:
+                        u = 0;
+                        break;
+                }
+                continue;
+            }
+
+            if (++crossings > 2 ||
+                !facesById.TryGetValue((uint)adjacentFaceId, out FaceSource adjacent))
+            {
+                throw new InvalidDataException("Ptex adjacency traversal exceeded the supported face neighborhood.");
+            }
+
+            int adjacentEdge = checked((int)sampleLayout.GetAdjacentEdgeId(edge));
+            CrossAdjacentEdge(ref u, ref v, edge, adjacentEdge);
+            sampleSource = adjacent;
+        }
+
+        SampleBilinear(destination, destinationOffset, sampleSource, u, v, channels);
+    }
+
+    private static void CrossAdjacentEdge(ref double u, ref double v, int edge, int adjacentEdge)
+    {
+        switch (edge)
+        {
+            case 0:
+                v += 1;
+                break;
+            case 1:
+                u -= 1;
+                break;
+            case 2:
+                v -= 1;
+                break;
+            case 3:
+                u += 1;
+                break;
+        }
+
+        switch ((edge - adjacentEdge + 2) & 3)
+        {
+            case 1:
+                (u, v) = (v, 1 - u);
+                break;
+            case 2:
+                (u, v) = (1 - u, 1 - v);
+                break;
+            case 3:
+                (u, v) = (1 - v, u);
+                break;
+        }
+    }
+
+    private static void SampleBilinear(
+        byte[] destination,
+        int destinationOffset,
+        FaceSource source,
+        double u,
+        double v,
+        int channels)
+    {
+        SilkPtexFaceLayout layout = source.Layout;
+        int width = checked((int)layout.Width);
+        int height = checked((int)layout.Height);
+        double pixelX = Math.Clamp(u * width - 0.5, 0, width - 1);
+        double pixelY = Math.Clamp(v * height - 0.5, 0, height - 1);
+        int x0 = (int)Math.Floor(pixelX);
+        int y0 = (int)Math.Floor(pixelY);
+        int x1 = Math.Min(x0 + 1, width - 1);
+        int y1 = Math.Min(y0 + 1, height - 1);
+        double tx = pixelX - x0;
+        double ty = pixelY - y0;
+        int rowStride = checked((int)layout.RowStrideBytes);
+
+        for (int channel = 0; channel < channels; channel++)
+        {
+            double top = source.Pixels[source.Offset + y0 * rowStride + x0 * channels + channel] * (1 - tx) +
+                source.Pixels[source.Offset + y0 * rowStride + x1 * channels + channel] * tx;
+            double bottom = source.Pixels[source.Offset + y1 * rowStride + x0 * channels + channel] * (1 - tx) +
+                source.Pixels[source.Offset + y1 * rowStride + x1 * channels + channel] * tx;
+            destination[destinationOffset + channel] = (byte)Math.Clamp(
+                (int)Math.Floor(top * (1 - ty) + bottom * ty + 0.5),
+                0,
+                byte.MaxValue);
+        }
+        if (channels == 3)
+        {
+            destination[destinationOffset + 3] = byte.MaxValue;
+        }
+    }
+
+    private static void CopyPixel(
+        byte[] destination,
+        int destinationOffset,
+        FaceSource source,
+        int sourceOffset,
+        int channels)
+    {
+        destination[destinationOffset] = source.Pixels[sourceOffset];
+        destination[destinationOffset + 1] = source.Pixels[sourceOffset + 1];
+        destination[destinationOffset + 2] = source.Pixels[sourceOffset + 2];
+        destination[destinationOffset + 3] = channels == 4
+            ? source.Pixels[sourceOffset + 3]
+            : byte.MaxValue;
     }
 
     private readonly record struct FaceSource(SilkPtexFaceLayout Layout, int Offset, byte[] Pixels);
