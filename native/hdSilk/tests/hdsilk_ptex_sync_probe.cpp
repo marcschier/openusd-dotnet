@@ -33,6 +33,7 @@ void Print(const openusd_hdsilk_test_ptex_observation& observation)
               << "," << observation.values[2] << "," << observation.values[3]
               << " indices=" << observation.index_count << ":"
               << observation.indices[0] << "," << observation.indices[1]
+              << " usdDefaultOne=" << observation.usd_default_one_proven
               << " strict=" << observation.strict_status
               << " default=" << observation.default_one_status
               << " mapped=" << observation.mapped_faces[0] << ","
@@ -65,6 +66,7 @@ bool CheckFrame(
                 observation.value_count == 4 && observation.index_count == 0 &&
                 observation.values[0] == 2 && observation.values[1] == 70 &&
                 observation.values[2] == 3 && observation.values[3] == 80 &&
+                !observation.usd_default_one_proven &&
                 observation.strict_status == Invalid &&
                 observation.default_one_status == Invalid;
             continue;
@@ -77,12 +79,14 @@ bool CheckFrame(
                 observation.values[0] == 2 && observation.values[1] == 7 &&
                 observation.values[2] == 3 && observation.values[3] == 8 &&
                 observation.indices[0] == 0 && observation.indices[1] == 1 &&
+                !observation.usd_default_one_proven &&
                 observation.strict_status == Invalid && observation.default_one_status == Invalid;
             continue;
         }
         if (std::strcmp(observation.path, "/World/NoOffset") == 0)
         {
             missing = !observation.has_primvar &&
+                !observation.usd_default_one_proven &&
                 observation.strict_status == Invalid && observation.default_one_status == Invalid;
             continue;
         }
@@ -95,20 +99,22 @@ bool CheckFrame(
                 observation.values[1] == (updated ? 4 : 2) &&
                 observation.indices[0] == (updated ? 0 : 1) &&
                 observation.indices[1] == (updated ? 1 : 0) &&
+                observation.usd_default_one_proven &&
                 observation.strict_status == Invalid &&
                 observation.default_one_status == Invalid &&
                 observation.mapped_faces[0] == 0 && observation.mapped_faces[1] == 0;
             continue;
         }
         const bool common = observation.has_primvar && !observation.has_element_size &&
-            observation.delegate_matches && observation.value_count == 2 &&
-            observation.index_count == 0 && observation.strict_status == Invalid &&
-            observation.default_one_status == Mapped;
+            observation.delegate_matches &&
+            observation.value_count == 2 &&
+            observation.index_count == 0 && observation.strict_status == Invalid;
         if (std::strcmp(observation.path, "/World/Ordinary") == 0)
         {
             const int32_t first = updated ? 4 : 2;
             const int32_t second = updated ? 1 : 3;
-            ordinary = common && !observation.instanced &&
+            ordinary = common && observation.usd_default_one_proven &&
+                observation.default_one_status == Mapped && !observation.instanced &&
                 observation.values[0] == first && observation.values[1] == second &&
                 observation.mapped_faces[0] == static_cast<uint32_t>(first) &&
                 observation.mapped_faces[1] == static_cast<uint32_t>(second + 1);
@@ -116,18 +122,18 @@ bool CheckFrame(
         else if (observation.values[0] == (updated ? 6 : 5) &&
                  observation.values[1] == (updated ? 2 : 3))
         {
-            nativeInstance = common && observation.instanced &&
+            nativeInstance = common && !observation.usd_default_one_proven &&
+                observation.default_one_status == Invalid && observation.instanced &&
                 std::strstr(observation.path, "/UsdNiPropagatedPrototypes/") == observation.path &&
-                observation.mapped_faces[0] == static_cast<uint32_t>(updated ? 6 : 5) &&
-                observation.mapped_faces[1] == static_cast<uint32_t>(updated ? 3 : 4);
+                observation.mapped_faces[0] == 0 && observation.mapped_faces[1] == 0;
         }
         else if (observation.values[0] == (updated ? 9 : 8) &&
                  observation.values[1] == (updated ? 3 : 4))
         {
-            pointInstance = common && observation.instanced &&
+            pointInstance = common && !observation.usd_default_one_proven &&
+                observation.default_one_status == Invalid && observation.instanced &&
                 std::strstr(observation.path, "/World/PointInstances/Prototype/") == observation.path &&
-                observation.mapped_faces[0] == static_cast<uint32_t>(updated ? 9 : 8) &&
-                observation.mapped_faces[1] == static_cast<uint32_t>(updated ? 4 : 5);
+                observation.mapped_faces[0] == 0 && observation.mapped_faces[1] == 0;
         }
         else
         {
@@ -233,6 +239,7 @@ int main(int argc, char** argv)
                 result.values[2] == 3 &&
                 result.values[3] == (filteredUnindexed ? 80 : 8) &&
                 result.index_count == (filteredUnindexed ? 0 : 2) &&
+                !result.usd_default_one_proven &&
                 (filteredUnindexed ||
                  (result.indices[0] == 0 && result.indices[1] == 1)) &&
                 result.strict_status == Invalid && result.default_one_status == Invalid &&

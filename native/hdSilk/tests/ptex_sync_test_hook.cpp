@@ -146,7 +146,10 @@ private:
 }
 
 void
-HdSilkTestObservePtexSync(HdSceneDelegate* sceneDelegate, const SdfPath& id)
+HdSilkTestObservePtexSync(
+    HdSceneDelegate* sceneDelegate,
+    const SdfPath& id,
+    bool usdDefaultOneProven)
 {
     if (!recording.load(std::memory_order_relaxed))
     {
@@ -216,8 +219,12 @@ HdSilkTestObservePtexSync(HdSceneDelegate* sceneDelegate, const SdfPath& id)
             2, primvar, policy, 0.0f, 16, output.data(), output.size());
     };
     result.strict_status = static_cast<int32_t>(write(HdSilkPtexMissingElementSize::Reject));
+    result.usd_default_one_proven = usdDefaultOneProven;
     result.default_one_status =
-        static_cast<int32_t>(write(HdSilkPtexMissingElementSize::KnownDefaultOne));
+        static_cast<int32_t>(write(
+            usdDefaultOneProven
+                ? HdSilkPtexMissingElementSize::KnownDefaultOne
+                : HdSilkPtexMissingElementSize::Reject));
     result.mapped_faces[0] = output[0].faceIndex;
     result.mapped_faces[1] = output[1].faceIndex;
 

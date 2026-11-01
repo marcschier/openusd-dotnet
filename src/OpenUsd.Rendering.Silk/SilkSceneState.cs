@@ -2286,6 +2286,8 @@ public sealed class SilkMeshData
     private readonly SilkVertexAttributeData[] _attributes = [];
     private readonly int[] _pointOrigins = [];
     private readonly int[] _cornerEdges = [];
+    private int[] _ptexFaceIndices = [];
+    private float[] _ptexCoordinates = [];
     private readonly SilkInstancerContextEntry[]? _instancerContext;
     private readonly SilkSubprimTableCache _subprimTables = new();
 
@@ -2631,6 +2633,20 @@ public sealed class SilkMeshData
     /// <summary>Gets the bound material path, empty when the mesh has none.</summary>
     public string MaterialPath { get; } = string.Empty;
 
+    internal SilkPtexMappingStatus PtexMappingStatus { get; private init; }
+
+    internal int[] PtexFaceIndices
+    {
+        get => _ptexFaceIndices;
+        private init => _ptexFaceIndices = value;
+    }
+
+    internal float[] PtexCoordinates
+    {
+        get => _ptexCoordinates;
+        private init => _ptexCoordinates = value;
+    }
+
     /// <summary>
     /// Initializes non-instanced triangle data for callers that do not retain wire identity.
     /// </summary>
@@ -2888,6 +2904,20 @@ public sealed class SilkMeshData
         }
         cornerEdges = arrays?.Integers.Share(cornerEdges) ?? cornerEdges;
 
+        var ptexFaceIndices = new int[command.PtexMappingCount];
+        var ptexCoordinates = new float[checked(command.PtexMappingCount * 6)];
+        for (int triangle = 0; triangle < command.PtexMappingCount; triangle++)
+        {
+            ptexFaceIndices[triangle] = command.GetPtexFaceIndex(triangle);
+            for (int coordinate = 0; coordinate < 6; coordinate++)
+            {
+                ptexCoordinates[(triangle * 6) + coordinate] =
+                    command.GetPtexCoordinate(triangle, coordinate / 2, coordinate % 2);
+            }
+        }
+        ptexFaceIndices = arrays?.Integers.Share(ptexFaceIndices) ?? ptexFaceIndices;
+        ptexCoordinates = arrays?.Floats.Share(ptexCoordinates) ?? ptexCoordinates;
+
         float[] authoredNormals = [];
         SilkVertexAttributeData[] attributes = command.AttributeCount == 0
             ? []
@@ -2964,6 +2994,9 @@ public sealed class SilkMeshData
             SubprimUnsupported = command.SubprimUnsupported,
             PointOriginArray = pointOrigins,
             CornerEdgeArray = cornerEdges,
+            PtexMappingStatus = command.PtexMappingStatus,
+            PtexFaceIndices = ptexFaceIndices,
+            PtexCoordinates = ptexCoordinates,
             AuthoredEdgeCount = command.AuthoredEdgeCount,
             AuthoredPointCount = command.AuthoredPointCount,
             InstancerPath = command.InstancerPath,
@@ -3044,6 +3077,9 @@ public sealed class SilkMeshData
             SubprimUnsupported = prototype.SubprimUnsupported,
             PointOriginArray = prototype._pointOrigins,
             CornerEdgeArray = prototype._cornerEdges,
+            PtexMappingStatus = prototype.PtexMappingStatus,
+            PtexFaceIndices = prototype._ptexFaceIndices,
+            PtexCoordinates = prototype._ptexCoordinates,
             AuthoredEdgeCount = prototype.AuthoredEdgeCount,
             AuthoredPointCount = prototype.AuthoredPointCount,
             // The derived edge and point draw tables follow the shared identity

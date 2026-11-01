@@ -55,6 +55,7 @@ typedef struct openusd_hdsilk_test_ptex_observation
     int32_t values[4];
     int32_t index_count;
     int32_t indices[2];
+    int32_t usd_default_one_proven;
     int32_t strict_status;
     int32_t default_one_status;
     uint32_t mapped_faces[2];

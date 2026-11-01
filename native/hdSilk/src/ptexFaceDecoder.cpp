@@ -40,31 +40,27 @@ uint32_t GetDimension(int8_t log2Dimension, uint32_t maximumFaceDimension)
     return dimension;
 }
 
-} // namespace
-
-HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
+void ValidateRequest(
     const std::string& path,
     const uint32_t* faceIds,
     size_t faceCount,
-    uint32_t maximumFaceDimension,
-    uint64_t maximumDecodedBytes)
+    uint32_t maximumFaceDimension)
 {
     if (path.empty() || (faceCount != 0 && faceIds == nullptr) ||
         maximumFaceDimension == 0 || faceCount > MaximumRequestedFaces)
     {
         throw std::invalid_argument("Ptex decode request is invalid.");
     }
+}
 
-    Ptex::String error;
-    std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> texture(
-        Ptex::PtexTexture::open(path.c_str(), error, false));
-    if (!texture)
-    {
-        throw std::runtime_error(
-            "Could not open Ptex texture '" + path + "': " + error.c_str());
-    }
-
-    const Ptex::PtexTexture::Info info = texture->getInfo();
+HdSilkPtexDecodedFaces DescribePtexFaces(
+    Ptex::PtexTexture& texture,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes)
+{
+    const Ptex::PtexTexture::Info info = texture.getInfo();
     if ((info.meshType != Ptex::mt_triangle && info.meshType != Ptex::mt_quad) ||
         info.dataType < Ptex::dt_uint8 || info.dataType > Ptex::dt_float ||
         info.numChannels <= 0 || info.numFaces < 0 || info.alphaChannel < -1 ||
@@ -73,14 +69,12 @@ HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
         throw std::runtime_error("Ptex texture header contains unsupported metadata.");
     }
 
-    HdSilkPtexDecodedFaces result{
-        static_cast<uint32_t>(info.meshType),
-        static_cast<uint32_t>(info.dataType),
-        static_cast<uint32_t>(info.numChannels),
-        info.alphaChannel,
-        static_cast<uint32_t>(info.numFaces),
-        {},
-        {}};
+    HdSilkPtexDecodedFaces result{};
+    result.meshType = static_cast<uint32_t>(info.meshType);
+    result.dataType = static_cast<uint32_t>(info.dataType);
+    result.channelCount = static_cast<uint32_t>(info.numChannels);
+    result.alphaChannel = info.alphaChannel;
+    result.fileFaceCount = static_cast<uint32_t>(info.numFaces);
     result.faces.reserve(faceCount);
 
     const uint64_t channelBytes = static_cast<uint64_t>(Ptex::DataSize(info.dataType));
@@ -94,7 +88,7 @@ HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
         }
 
         const int faceId = static_cast<int>(faceIds[index]);
-        const Ptex::FaceInfo& faceInfo = texture->getFaceInfo(faceId);
+        const Ptex::FaceInfo& faceInfo = texture.getFaceInfo(faceId);
         const uint32_t width = GetDimension(faceInfo.res.ulog2, maximumFaceDimension);
         const uint32_t height = GetDimension(faceInfo.res.vlog2, maximumFaceDimension);
         const uint64_t rowBytes = static_cast<uint64_t>(width) * pixelBytes;
@@ -142,13 +136,92 @@ HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
     {
         throw std::runtime_error("Ptex decode output exceeds the addressable size.");
     }
-    result.pixels.resize(static_cast<size_t>(totalBytes));
-    for (const HdSilkPtexFaceData& face : result.faces)
+    result.requiredByteCount = totalBytes;
+    return result;
+}
+
+void DecodePixels(
+    Ptex::PtexTexture& texture,
+    const HdSilkPtexDecodedFaces& decoded,
+    uint8_t* pixels)
+{
+    for (const HdSilkPtexFaceData& face : decoded.faces)
     {
-        texture->getData(
+        texture.getData(
             static_cast<int>(face.faceId),
-            result.pixels.data() + static_cast<size_t>(face.dataOffsetBytes),
+            pixels + static_cast<size_t>(face.dataOffsetBytes),
             static_cast<int>(face.rowStrideBytes));
     }
+}
+
+std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> OpenPtexTexture(
+    const std::string& path)
+{
+    Ptex::String error;
+    std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> texture(
+        Ptex::PtexTexture::open(path.c_str(), error, false));
+    if (!texture)
+    {
+        throw std::runtime_error(
+            "Could not open Ptex texture '" + path + "': " + error.c_str());
+    }
+    return texture;
+}
+
+} // namespace
+
+HdSilkPtexDecodedFaces HdSilkDecodePtexFaces(
+    const std::string& path,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes)
+{
+    ValidateRequest(path, faceIds, faceCount, maximumFaceDimension);
+    std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> texture =
+        OpenPtexTexture(path);
+    HdSilkPtexDecodedFaces result = DescribePtexFaces(
+        *texture, faceIds, faceCount, maximumFaceDimension, maximumDecodedBytes);
+    result.pixels.resize(static_cast<size_t>(result.requiredByteCount));
+    if (!result.pixels.empty())
+    {
+        DecodePixels(*texture, result, result.pixels.data());
+    }
+    result.pixelsDecoded = true;
+    return result;
+}
+
+HdSilkPtexDecodedFaces HdSilkDecodePtexFacesInto(
+    const std::string& path,
+    const uint32_t* faceIds,
+    size_t faceCount,
+    uint32_t maximumFaceDimension,
+    uint64_t maximumDecodedBytes,
+    size_t faceCapacity,
+    uint8_t* pixels,
+    uint64_t pixelCapacity)
+{
+    ValidateRequest(path, faceIds, faceCount, maximumFaceDimension);
+    if (pixels == nullptr && pixelCapacity != 0)
+    {
+        throw std::invalid_argument("Ptex decode output buffer is invalid.");
+    }
+
+    std::unique_ptr<Ptex::PtexTexture, PtexTextureDeleter> texture =
+        OpenPtexTexture(path);
+    HdSilkPtexDecodedFaces result = DescribePtexFaces(
+        *texture, faceIds, faceCount, maximumFaceDimension, maximumDecodedBytes);
+    if (faceCapacity < result.faces.size() ||
+        pixelCapacity < result.requiredByteCount ||
+        (result.requiredByteCount != 0 && pixels == nullptr))
+    {
+        return result;
+    }
+
+    if (result.requiredByteCount != 0)
+    {
+        DecodePixels(*texture, result, pixels);
+    }
+    result.pixelsDecoded = true;
     return result;
 }

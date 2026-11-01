@@ -21,11 +21,15 @@
 #include "pxr/imaging/hd/changeTracker.h"
 #include "pxr/imaging/hd/extComputationUtils.h"
 #include "pxr/imaging/hd/meshUtil.h"
+#include "pxr/imaging/hd/primvarSchema.h"
+#include "pxr/imaging/hd/primvarsSchema.h"
 #include "pxr/imaging/hd/renderIndex.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
+#include "pxr/imaging/hd/sceneIndex.h"
 #include "pxr/imaging/hd/types.h"
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/usd/usdGeom/mesh.h"
+#include "pxr/usd/usdGeom/primvarsAPI.h"
 #include "pxr/usd/usdGeom/tokens.h"
 #include "pxr/usd/usdSkel/bindingAPI.h"
 #include "pxr/usd/usdSkel/animMapper.h"
@@ -120,6 +124,150 @@ bool ExtractPoints(const VtValue& value, VtVec3fArray* out)
         return true;
     }
     return false;
+}
+
+HdPrimvarSchema GetTerminalPtexFaceOffsetPrimvar(
+    HdSceneDelegate* sceneDelegate,
+    const SdfPath& id)
+{
+    const HdSceneIndexBaseRefPtr terminal =
+        sceneDelegate->GetRenderIndex().GetTerminalSceneIndex();
+    if (!terminal)
+    {
+        return HdPrimvarSchema(nullptr);
+    }
+
+    const HdSceneIndexPrim prim = terminal->GetPrim(id);
+    if (prim.primType != HdPrimTypeTokens->mesh)
+    {
+        return HdPrimvarSchema(nullptr);
+    }
+    return HdPrimvarsSchema::GetFromParent(prim.dataSource)
+        .GetPrimvar(TfToken("ptexFaceOffset"));
+}
+
+bool HasMatchingUsdPtexDefaultOne(
+    const SkelEvaluationScope& scope,
+    const SdfPath& id,
+    const HdPrimvarSchema& scenePrimvar)
+{
+    if (!scope.stage || !scenePrimvar || scenePrimvar.GetElementSize())
+    {
+        return false;
+    }
+
+    const UsdPrim prim = scope.stage->GetPrimAtPath(id);
+    const UsdGeomPrimvar usdPrimvar =
+        UsdGeomPrimvarsAPI(prim).GetPrimvar(TfToken("ptexFaceOffset"));
+    if (!usdPrimvar || usdPrimvar.GetElementSize() != 1 ||
+        usdPrimvar.IsIndexed() != scenePrimvar.IsIndexed())
+    {
+        return false;
+    }
+
+    const float sceneTime = scope.time.IsDefault()
+        ? 0.0F
+        : static_cast<float>(scope.time.GetValue());
+    const HdTokenDataSourceHandle sceneInterpolation =
+        scenePrimvar.GetInterpolation();
+    const HdSampledDataSourceHandle sceneValue =
+        scenePrimvar.IsIndexed()
+            ? scenePrimvar.GetIndexedPrimvarValue()
+            : scenePrimvar.GetPrimvarValue();
+    VtValue usdValueAtTime;
+    if (!sceneInterpolation || !sceneValue ||
+        sceneInterpolation->GetTypedValue(sceneTime) !=
+            usdPrimvar.GetInterpolation() ||
+        !usdPrimvar.Get(&usdValueAtTime, scope.time) ||
+        sceneValue->GetValue(sceneTime) != usdValueAtTime)
+    {
+        return false;
+    }
+
+    if (!scenePrimvar.IsIndexed())
+    {
+        return true;
+    }
+
+    const HdIntArrayDataSourceHandle sceneIndices = scenePrimvar.GetIndices();
+    VtIntArray usdIndices;
+    return sceneIndices &&
+        usdPrimvar.GetIndices(&usdIndices, scope.time) &&
+        sceneIndices->GetTypedValue(sceneTime) == usdIndices;
+}
+
+HdSilkPtexMappingStatus BuildPtexTriangleMappings(
+    const HdMeshTopology& topology,
+    const HdSilkMeshSubdivision& subdivision,
+    const VtArray<uint32_t>& triangleIndices,
+    const VtArray<uint32_t>& triangleSubprims,
+    const HdPrimvarSchema& faceOffset,
+    HdSilkPtexMissingElementSize missingElementSize,
+    std::vector<HdSilkPtexMeshTriangle>* mappings)
+{
+    if (mappings == nullptr)
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+    if (triangleSubprims.empty())
+    {
+        mappings->clear();
+        return HdSilkPtexMappingStatus::Mapped;
+    }
+
+    std::vector<HdSilkPtexTriangle> defaults(triangleSubprims.size());
+    std::vector<uint32_t> scratch(subdivision.IsRefined()
+        ? subdivision.GetPtexScratchCount()
+        : HdSilkCoarsePtexScratchCount(topology));
+    HdSilkPtexMappingStatus status = subdivision.IsRefined()
+        ? subdivision.WriteDefaultPtexTriangles(
+            defaults.data(), defaults.size(), scratch.data(), scratch.size())
+        : HdSilkWriteDefaultCoarsePtexTriangles(
+            topology,
+            triangleIndices,
+            triangleSubprims,
+            defaults.data(),
+            defaults.size(),
+            scratch.data(),
+            scratch.size());
+    if (status != HdSilkPtexMappingStatus::Mapped)
+    {
+        mappings->clear();
+        return status;
+    }
+
+    std::vector<HdSilkPtexTriangle> authored(defaults.size());
+    status = HdSilkWritePtexFaceOffsetDataSource(
+        defaults.data(),
+        defaults.size(),
+        triangleSubprims.data(),
+        triangleSubprims.size(),
+        topology.GetFaceVertexCounts().size(),
+        faceOffset,
+        missingElementSize,
+        0.0F,
+        static_cast<size_t>(std::numeric_limits<int>::max()),
+        authored.data(),
+        authored.size());
+    if (status != HdSilkPtexMappingStatus::Mapped)
+    {
+        mappings->clear();
+        return status;
+    }
+
+    mappings->clear();
+    mappings->reserve(authored.size());
+    for (const HdSilkPtexTriangle& source : authored)
+    {
+        HdSilkPtexMeshTriangle mapping;
+        mapping.faceIndex = source.faceIndex;
+        std::copy(
+            source.cornerCoordinates.begin(),
+            source.cornerCoordinates.end(),
+            mapping.cornerCoordinates);
+        mappings->push_back(mapping);
+    }
+    return HdSilkPtexMappingStatus::Mapped;
 }
 
 bool HasCompleteFaceVertexIndices(const HdMeshTopology& topology)
@@ -1694,12 +1842,15 @@ HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) 
     }
     const HdMeshTopology topology = sceneDelegate->GetMeshTopology(id);
     uint64_t triangles = 0;
+    uint64_t faceVertices = 0;
     for (int count : topology.GetFaceVertexCounts())
     {
         if (count < 0)
         {
             throw std::invalid_argument("The bounded hdSilk mesh has a negative face count.");
         }
+        faceVertices = HdSilkMeshPreparationPlan::Add(
+            faceVertices, static_cast<uint64_t>(count));
         if (count >= 3)
         {
             triangles = HdSilkMeshPreparationPlan::Add(
@@ -1759,6 +1910,31 @@ HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) 
         }
     }
     HdSilkMeshPreparationPlan plan(points, triangles);
+    if (GetTerminalPtexFaceOffsetPrimvar(sceneDelegate, id))
+    {
+        uint64_t mappingTriangles = triangles;
+        const int refineLevel = std::min(
+            std::max(GetDisplayStyle(sceneDelegate).refineLevel, 0),
+            HdSilkMaxMeshRefineLevel);
+        for (int level = 0; level < refineLevel; ++level)
+        {
+            mappingTriangles = HdSilkMeshPreparationPlan::Multiply(
+                mappingTriangles, 4);
+        }
+
+        uint64_t scratchEntries = HdSilkMeshPreparationPlan::Multiply(
+            topology.GetFaceVertexCounts().size(), 3);
+        if (refineLevel > 0)
+        {
+            const uint64_t firstLevelFaces = std::max(
+                faceVertices,
+                HdSilkMeshPreparationPlan::Multiply(
+                    topology.GetFaceVertexCounts().size(), 4));
+            scratchEntries = HdSilkMeshPreparationPlan::Add(
+                topology.GetFaceVertexCounts().size(), firstLevelFaces);
+        }
+        plan.PtexMapping(mappingTriangles, scratchEntries);
+    }
     for (HdInterpolation interpolation : {HdInterpolationConstant, HdInterpolationVertex,
              HdInterpolationVarying, HdInterpolationFaceVarying, HdInterpolationUniform})
     {
@@ -1834,9 +2010,6 @@ void
 HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, HdDirtyBits* dirtyBits)
 {
     SdfPath const& id = GetId();
-#ifdef OPENUSD_HDSILK_ENABLE_TEST_HOOKS
-    HdSilkTestObservePtexSync(sceneDelegate, id);
-#endif
     const auto& preparationBudget = static_cast<HdSilkRenderParam*>(renderParam)
         ->GetSceneState().MeshPreparationBudget();
     const bool visibilityDirty =
@@ -2347,6 +2520,47 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
 
         record.triangleSubprims = _EmittedTriangleSubprims();
         record.attributes = _attributes;
+        const HdPrimvarSchema ptexFaceOffset =
+            GetTerminalPtexFaceOffsetPrimvar(sceneDelegate, id);
+        HdSilkPtexMissingElementSize missingPtexElementSize =
+            HdSilkPtexMissingElementSize::Reject;
+        if (ptexFaceOffset && !ptexFaceOffset.GetElementSize())
+        {
+            SkelEvaluationScope scope;
+            if (TryGetSkelEvaluationScope(
+                    &sceneStateRenderParam->GetSceneState(), &scope) &&
+                HasMatchingUsdPtexDefaultOne(scope, id, ptexFaceOffset))
+            {
+                missingPtexElementSize =
+                    HdSilkPtexMissingElementSize::KnownDefaultOne;
+            }
+        }
+        if (ptexFaceOffset)
+        {
+            const HdSilkPtexMappingStatus status =
+                BuildPtexTriangleMappings(
+                    _topology,
+                    _subdivision,
+                    _EmittedTriangleIndices(),
+                    record.triangleSubprims,
+                    ptexFaceOffset,
+                    missingPtexElementSize,
+                    &record.ptexMappings);
+            record.ptexMappingStatus = static_cast<uint32_t>(status) + 1u;
+            if (status != HdSilkPtexMappingStatus::Mapped)
+            {
+                TF_WARN(
+                    "hdSilk refused Ptex mapping for mesh '%s': %s",
+                    id.GetText(),
+                    HdSilkPtexMappingStatusName(status));
+            }
+        }
+#ifdef OPENUSD_HDSILK_ENABLE_TEST_HOOKS
+        HdSilkTestObservePtexSync(
+            sceneDelegate,
+            id,
+            missingPtexElementSize == HdSilkPtexMissingElementSize::KnownDefaultOne);
+#endif
 
         // ABI v22 subprim identity. Authored face identity always travels with
         // `triangle_subprims`, including through refinement, because the

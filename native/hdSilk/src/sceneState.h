@@ -198,6 +198,12 @@ struct HdSilkInstancerContextEntry
 /// authored scene and still bounds the block to a few kilobytes.
 #define OPENUSD_SILK_MAX_INSTANCER_CONTEXT_ENTRIES 64u
 
+struct HdSilkPtexMeshTriangle
+{
+    uint32_t faceIndex = 0;
+    float cornerCoordinates[6] = {};
+};
+
 struct HdSilkMeshRecord
 {
     std::shared_ptr<HdSilkMeshPreparationLease> preparationLease;
@@ -221,6 +227,8 @@ struct HdSilkMeshRecord
     VtArray<uint32_t> indices;     // 3 indices per triangle or 2 per line.
     // Authored USD face per triangle, or curve segment per line.
     VtArray<uint32_t> triangleSubprims;
+    std::vector<HdSilkPtexMeshTriangle> ptexMappings;
+    uint32_t ptexMappingStatus = OPENUSD_SILK_PTEX_MAPPING_STATUS_NOT_REQUESTED;
     // ABI v22 subprim identity. `pointOrigins` is the authored point index of
     // every emitted vertex, and `cornerEdges` is the authored mesh edge index
     // of every emitted primitive corner, both using OPENUSD_SILK_SUBPRIM_NONE

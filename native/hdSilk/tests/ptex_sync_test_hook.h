@@ -10,7 +10,10 @@ PXR_NAMESPACE_OPEN_SCOPE
 class HdSceneDelegate;
 class SdfPath;
 
-void HdSilkTestObservePtexSync(HdSceneDelegate* sceneDelegate, const SdfPath& id);
+void HdSilkTestObservePtexSync(
+    HdSceneDelegate* sceneDelegate,
+    const SdfPath& id,
+    bool usdDefaultOneProven);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

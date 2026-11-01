@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 31u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 32u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 7u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 #define OPENUSD_SILK_PTEX_DECODE_VERSION 1u
@@ -55,6 +55,21 @@ typedef enum openusd_silk_ptex_face_flags
     OPENUSD_SILK_PTEX_FACE_NEIGHBORHOOD_CONSTANT = 4,
     OPENUSD_SILK_PTEX_FACE_SUBFACE = 8
 } openusd_silk_ptex_face_flags;
+
+typedef enum openusd_silk_ptex_mapping_status
+{
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_NOT_REQUESTED = 0,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED = 1,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_REFINER_UNAVAILABLE = 2,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_INVALID_BUFFERS = 3,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_FACE_INDEX_OVERFLOW = 4,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_UNSUPPORTED_TOPOLOGY = 5,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_TRIANGLE_MISMATCH = 6,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_EXCEEDS_BOUNDS = 7,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_INVALID_POINTS = 8,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_INVALID_FACE_OFFSETS = 9,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_TEXTURE_FACE_OUT_OF_RANGE = 10
+} openusd_silk_ptex_mapping_status;
 
 /// Command types written into openusd_silk_page_view::data. Every command
 /// starts with a little-endian uint32 "type" followed by a little-endian
@@ -105,7 +120,9 @@ typedef enum openusd_silk_ptex_face_flags
 ///      256    4 uint32   authored_point_count
 ///      260    4 uint32   instancer_path_byte_count
 ///      264    4 uint32   instancer_context_count
-///      268    * uint8    path[path_byte_count] (UTF-8, no NUL)
+///      268    4 uint32   ptex_mapping_count (0 or triangle_count)
+///      272    4 uint32   ptex_mapping_status
+///      276    * uint8    path[path_byte_count] (UTF-8, no NUL)
 ///        *    * float    points[point_count * 3]
 ///        *    * uint32   indices[index_count] (triangle list)
 ///        *    * uint32   triangle_subprims[triangle_count]
@@ -116,6 +133,16 @@ typedef enum openusd_silk_ptex_face_flags
 ///        *    * uint32   corner_edges[corner_edge_count]
 ///        *    * uint8    instancer_path[instancer_path_byte_count]
 ///        *    *          instancer_context[instancer_context_count]
+///        *    *          ptex_mappings[ptex_mapping_count]
+///
+/// Each Ptex mapping is 28 bytes: uint32 face_index followed by float
+/// corner_coordinates[6] in triangle-corner order. Status is NOT_REQUESTED
+/// when no ptexFaceOffset primvar is present, MAPPED when one entry exists for
+/// each emitted triangle, or a specific refusal status when mapping could not
+/// be established. A refused mapping has a zero count.
+///
+/// ABI v32 appends the Ptex count and status after the v23 instancer-context
+/// count. The variable mapping block follows the instancer-context entries.
 ///
 /// ABI v23 adds the ordered instancer context. Every fixed offset up to and
 /// including instancer_path_byte_count is unchanged from v22; the only fixed
@@ -1674,9 +1701,12 @@ OPENUSD_HDSILK_API uint32_t openusd_silk_get_page_abi_version(void)
 /// caller-owned pixel buffer. path is passed to Ptex unchanged. face IDs are
 /// preserved in request order, including duplicates. A short faces or pixels
 /// buffer returns BUFFER_TOO_SMALL, sets info to the exact required face and
-/// byte counts, and leaves both data buffers unchanged. info must be initialized
-/// with sizeof(openusd_silk_ptex_decode_info) and version 1. Requires no session
-/// and does not change session/page ABI versions.
+/// byte counts, and leaves both data buffers unchanged. A sizing call with both
+/// output buffers null inspects face metadata but does not decode texels. The
+/// caller can reserve the reported byte count before calling again with output
+/// buffers. info must be initialized with sizeof(openusd_silk_ptex_decode_info)
+/// and version 1. Requires no session and does not change session/page ABI
+/// versions.
 OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_decode_faces(
     const char* path,
     const uint32_t* face_ids,

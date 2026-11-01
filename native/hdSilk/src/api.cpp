@@ -1930,12 +1930,15 @@ openusd_silk_ptex_decode_faces(
 
     try
     {
-        const HdSilkPtexDecodedFaces decoded = HdSilkDecodePtexFaces(
+        const HdSilkPtexDecodedFaces decoded = HdSilkDecodePtexFacesInto(
             path,
             face_ids,
             face_count,
             maximum_face_dimension,
-            maximum_decoded_bytes);
+            maximum_decoded_bytes,
+            face_capacity,
+            pixels,
+            pixel_capacity);
 
         openusd_silk_ptex_decode_info result{
             static_cast<uint32_t>(sizeof(openusd_silk_ptex_decode_info)),
@@ -1946,13 +1949,10 @@ openusd_silk_ptex_decode_faces(
             decoded.alphaChannel,
             decoded.fileFaceCount,
             static_cast<uint32_t>(decoded.faces.size()),
-            static_cast<uint64_t>(decoded.pixels.size())};
+            decoded.requiredByteCount};
         *info = result;
 
-        if (static_cast<size_t>(face_capacity) < decoded.faces.size() ||
-            pixel_capacity < decoded.pixels.size() ||
-            (!decoded.faces.empty() && faces == nullptr) ||
-            (!decoded.pixels.empty() && pixels == nullptr))
+        if (!decoded.pixelsDecoded)
         {
             WriteError(error, "The Ptex decode output buffers are too small.");
             return OPENUSD_STATUS_BUFFER_TOO_SMALL;
@@ -1978,10 +1978,6 @@ openusd_silk_ptex_decode_faces(
                 source.adjacentEdgeIds.begin(),
                 source.adjacentEdgeIds.end(),
                 destination.adjacent_edge_ids);
-        }
-        if (!decoded.pixels.empty())
-        {
-            std::memcpy(pixels, decoded.pixels.data(), decoded.pixels.size());
         }
         return OPENUSD_STATUS_OK;
     }

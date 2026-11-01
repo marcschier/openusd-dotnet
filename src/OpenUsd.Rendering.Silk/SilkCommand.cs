@@ -562,11 +562,12 @@ public readonly record struct SilkInstancerContextEntry
 /// </summary>
 public readonly ref struct SilkMeshUpsertCommand
 {
-    private const int FixedSize = 268;
+    private const int FixedSize = 276;
     private const int AttributeFixedSize = 20;
     private const int DeformationFixedSize = 96;
     private const int DeformationBlendRangeSize = 16;
     private const int DeformationBlendDeltaSize = 28;
+    private const int PtexMappingSize = 28;
 
     /// <summary>
     /// The exact ABI v22 byte ceiling of one record's two subprim-identity
@@ -603,6 +604,9 @@ public readonly ref struct SilkMeshUpsertCommand
     private readonly int _instancerPathLength;
     private readonly string _instancerPath;
     private readonly SilkInstancerContextEntry[] _instancerContext;
+    private readonly int _ptexMappingCount;
+    private readonly int _ptexMappingOffset;
+    private readonly SilkPtexMappingStatus _ptexMappingStatus;
 
     /// <summary>
     /// The exact ABI v23 ceiling on the number of instancing levels one record
@@ -633,6 +637,14 @@ public readonly ref struct SilkMeshUpsertCommand
         _cornerEdgeCount = ReadCount(bytes, 248, "corner edge");
         _instancerPathLength = ReadCount(bytes, 260, "instancer path byte");
         int instancerContextCount = ReadCount(bytes, 264, "instancer context");
+        _ptexMappingCount = ReadCount(bytes, 268, "Ptex mapping");
+        uint ptexMappingStatus =
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes[272..276]);
+        if (ptexMappingStatus > (uint)SilkPtexMappingStatus.TextureFaceOutOfRange)
+        {
+            throw new InvalidDataException("The mesh Ptex mapping status is unsupported.");
+        }
+        _ptexMappingStatus = (SilkPtexMappingStatus)ptexMappingStatus;
         if (instancerContextCount > MaximumInstancerContextEntries)
         {
             throw new InvalidDataException(
@@ -821,6 +833,50 @@ public readonly ref struct SilkMeshUpsertCommand
                 entryIndex);
             contextOffset += 8 + entryPathLength;
         }
+        if (_ptexMappingStatus == SilkPtexMappingStatus.Mapped)
+        {
+            if (topologyKind != SilkTopologyKind.TriangleList ||
+                _ptexMappingCount != _triangleCount)
+            {
+                throw new InvalidDataException(
+                    "A mapped Ptex mesh requires one mapping per emitted triangle.");
+            }
+        }
+        else if (_ptexMappingCount != 0)
+        {
+            throw new InvalidDataException(
+                "A refused Ptex mapping must not publish triangle coordinates.");
+        }
+        _ptexMappingOffset = checked((int)contextOffset);
+        long mappingEnd = checked(contextOffset +
+            ((long)_ptexMappingCount * PtexMappingSize));
+        if (mappingEnd > bytes.Length)
+        {
+            throw new InvalidDataException(
+                "The mesh command size does not match its declared Ptex mapping count.");
+        }
+        for (int mapping = 0; mapping < _ptexMappingCount; mapping++)
+        {
+            int offset = checked(_ptexMappingOffset + (mapping * PtexMappingSize));
+            uint faceIndex = BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes.Slice(offset, sizeof(uint)));
+            if (faceIndex > int.MaxValue)
+            {
+                throw new InvalidDataException(
+                    "A Ptex face index exceeds the supported face range.");
+            }
+            for (int coordinate = 0; coordinate < 6; coordinate++)
+            {
+                float value = BinaryPrimitives.ReadSingleLittleEndian(
+                    bytes.Slice(offset + sizeof(uint) + (coordinate * sizeof(float)), sizeof(float)));
+                if (!float.IsFinite(value) || value is < 0 or > 1)
+                {
+                    throw new InvalidDataException(
+                        "A Ptex triangle coordinate is outside the unit face.");
+                }
+            }
+        }
+        contextOffset = mappingEnd;
         if (contextOffset != bytes.Length)
         {
             throw new InvalidDataException(
@@ -995,6 +1051,44 @@ public readonly ref struct SilkMeshUpsertCommand
     /// </remarks>
     public ReadOnlySpan<SilkInstancerContextEntry> InstancerContext =>
         _instancerContext;
+
+    /// <summary>Gets the Ptex mapping outcome for this mesh.</summary>
+    public SilkPtexMappingStatus PtexMappingStatus => _ptexMappingStatus;
+
+    /// <summary>Gets the number of emitted triangles with Ptex mappings.</summary>
+    public int PtexMappingCount => _ptexMappingCount;
+
+    /// <summary>Gets the Ptex texture face for one emitted triangle.</summary>
+    public int GetPtexFaceIndex(int triangleIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(triangleIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
+            triangleIndex,
+            _ptexMappingCount);
+        return checked((int)BinaryPrimitives.ReadUInt32LittleEndian(
+            _bytes.Slice(
+                _ptexMappingOffset + (triangleIndex * PtexMappingSize),
+                sizeof(uint))));
+    }
+
+    /// <summary>Gets one Ptex coordinate component for a triangle corner.</summary>
+    public float GetPtexCoordinate(int triangleIndex, int corner, int component)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(triangleIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(
+            triangleIndex,
+            _ptexMappingCount);
+        ArgumentOutOfRangeException.ThrowIfNegative(corner);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(corner, 3);
+        ArgumentOutOfRangeException.ThrowIfNegative(component);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(component, 2);
+        int coordinate = (corner * 2) + component;
+        int offset = _ptexMappingOffset +
+            (triangleIndex * PtexMappingSize) +
+            sizeof(uint) +
+            (coordinate * sizeof(float));
+        return BinaryPrimitives.ReadSingleLittleEndian(_bytes.Slice(offset, sizeof(float)));
+    }
 
     /// <summary>
     /// Gets the authored point one emitted vertex came from, or -1 when the
@@ -1559,6 +1653,43 @@ public enum SilkMeshCullStyle
 
     /// <summary>Cull front-facing triangles only when the mesh is single-sided.</summary>
     FrontUnlessDoubleSided = 5
+}
+
+/// <summary>Outcome of resolving a mesh's Ptex face mappings.</summary>
+public enum SilkPtexMappingStatus : uint
+{
+    /// <summary>No <c>ptexFaceOffset</c> primvar was present.</summary>
+    NotRequested = 0,
+
+    /// <summary>One valid Ptex mapping was published for every emitted triangle.</summary>
+    Mapped = 1,
+
+    /// <summary>The required subdivision refiner was unavailable.</summary>
+    RefinerUnavailable = 2,
+
+    /// <summary>The mapping buffers did not satisfy the required bounds.</summary>
+    InvalidBuffers = 3,
+
+    /// <summary>The Ptex face count exceeded the supported range.</summary>
+    FaceIndexOverflow = 4,
+
+    /// <summary>The mesh topology cannot be represented by the Ptex mapper.</summary>
+    UnsupportedTopology = 5,
+
+    /// <summary>The emitted triangle topology did not match the source faces.</summary>
+    TriangleMismatch = 6,
+
+    /// <summary>The mapping exceeded the mapper's supported bounds.</summary>
+    ExceedsBounds = 7,
+
+    /// <summary>A mesh point required by the mapping was invalid.</summary>
+    InvalidPoints = 8,
+
+    /// <summary>The authored face-offset primvar was invalid or incomplete.</summary>
+    InvalidFaceOffsets = 9,
+
+    /// <summary>A mapped Ptex face was outside the decoded texture face range.</summary>
+    TextureFaceOutOfRange = 10
 }
 
 /// <summary>

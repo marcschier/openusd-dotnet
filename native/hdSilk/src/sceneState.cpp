@@ -27,12 +27,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 namespace
 {
-// The fixed MESH_UPSERT payload, excluding the 8-byte command header: through
-// transform (200) plus the ABI v4 material binding hash, material path byte
-// count and attribute count, plus the ABI v20 deformation flags, unsupported
-// reasons and block byte count, plus the ABI v22 subprim identity flags,
-// unsupported reasons, the four table counts and the instancer path length.
-constexpr size_t MeshFixedPayloadSize = 260;
+// The fixed MESH_UPSERT payload, excluding the 8-byte command header.
+constexpr size_t MeshFixedPayloadSize = 268;
 
 // semantic, component_count, interpolation, name_byte_count, element_count.
 constexpr size_t MeshAttributeFixedSize = 20;
@@ -603,6 +599,12 @@ HdSilkMeshRecord ApplyDrawMode(const HdSilkMeshRecord& record, uint32_t drawMode
     const size_t pointCount = result.points.size() / 3;
     result.materialPath.clear();
     result.attributes.clear();
+    if (result.ptexMappingStatus == OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED)
+    {
+        result.ptexMappings.clear();
+        result.ptexMappingStatus =
+            OPENUSD_SILK_PTEX_MAPPING_STATUS_UNSUPPORTED_TOPOLOGY;
+    }
     // A draw mode that replaces the emitted primitives replaces what the
     // deformation block would be evaluated into, so the rig is dropped with its
     // reason rather than published against a topology it no longer describes.
@@ -991,8 +993,12 @@ struct MeshWireCounts
     uint32_t cornerEdgeCount;
     uint32_t instancerPathByteCount;
     uint32_t instancerContextCount;
+    uint32_t ptexMappingCount;
+    uint32_t ptexMappingStatus;
     size_t payloadSize;
 };
+
+static_assert(sizeof(HdSilkPtexMeshTriangle) == 28);
 
 /// The number of corner edges one emitted primitive of a topology owns. A
 /// triangle owns three, a line owns the single edge it is, and a point owns
@@ -1064,6 +1070,44 @@ void ValidateSubprimIdentity(
         throw std::invalid_argument(
             "An hdSilk mesh claims authored face identity without one authored "
             "face per emitted primitive.");
+    }
+    if (record.ptexMappingStatus >
+        OPENUSD_SILK_PTEX_MAPPING_STATUS_TEXTURE_FACE_OUT_OF_RANGE)
+    {
+        throw std::invalid_argument(
+            "An hdSilk mesh declares an unknown Ptex mapping status.");
+    }
+    if (record.ptexMappingStatus == OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED)
+    {
+        if (record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ||
+            record.ptexMappings.size() != primitiveCount)
+        {
+            throw std::invalid_argument(
+                "A mapped Ptex mesh requires one mapping per emitted triangle.");
+        }
+        for (const HdSilkPtexMeshTriangle& mapping : record.ptexMappings)
+        {
+            if (mapping.faceIndex >
+                static_cast<uint32_t>(std::numeric_limits<int>::max()))
+            {
+                throw std::invalid_argument(
+                    "A Ptex face index exceeds the supported face range.");
+            }
+            for (float coordinate : mapping.cornerCoordinates)
+            {
+                if (!std::isfinite(coordinate) ||
+                    coordinate < 0.0F || coordinate > 1.0F)
+                {
+                    throw std::invalid_argument(
+                        "A Ptex triangle coordinate is outside the unit face.");
+                }
+            }
+        }
+    }
+    else if (!record.ptexMappings.empty())
+    {
+        throw std::invalid_argument(
+            "A refused Ptex mapping must not publish triangle coordinates.");
     }
 
     const bool claimsPoints =
@@ -1397,6 +1441,13 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         payloadSize = CheckedAdd(payloadSize, 8, "mesh payload");
         payloadSize = CheckedAdd(payloadSize, entry.path.size(), "mesh payload");
     }
+    payloadSize = CheckedAdd(
+        payloadSize,
+        CheckedByteCount(
+            record.ptexMappings.size(),
+            sizeof(HdSilkPtexMeshTriangle),
+            "Ptex mapping"),
+        "mesh payload");
     if (payloadSize >
         static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 8)
     {
@@ -1415,6 +1466,8 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         CheckedCount(record.instancerPath.size(), "instancer path byte count"),
         CheckedCount(
             record.instancerContext.size(), "instancer context count"),
+        CheckedCount(record.ptexMappings.size(), "Ptex mapping count"),
+        record.ptexMappingStatus,
         payloadSize};
 }
 
@@ -1994,6 +2047,8 @@ void AppendMeshUpsert(
     AppendU32(payload, complexRecord.authoredPointCount);
     AppendU32(payload, counts.instancerPathByteCount);
     AppendU32(payload, counts.instancerContextCount);
+    AppendU32(payload, counts.ptexMappingCount);
+    AppendU32(payload, counts.ptexMappingStatus);
     AppendBytes(payload, complexRecord.path.data(), complexRecord.path.size());
     for (float value : complexRecord.points)
     {
@@ -2069,6 +2124,14 @@ void AppendMeshUpsert(
             CheckedCount(entry.path.size(), "instancer context path byte count"));
         AppendI32(payload, entry.index);
         AppendBytes(payload, entry.path.data(), entry.path.size());
+    }
+    for (const HdSilkPtexMeshTriangle& mapping : complexRecord.ptexMappings)
+    {
+        AppendU32(payload, mapping.faceIndex);
+        for (float coordinate : mapping.cornerCoordinates)
+        {
+            AppendF32(payload, coordinate);
+        }
     }
 
     payload.Complete();
