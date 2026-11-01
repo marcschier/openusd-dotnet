@@ -12475,6 +12475,54 @@ bool VerifyDeformationInvalidation(
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string(argv[1]) == "--mesh-invalid-points")
+    {
+        bool valid = true;
+        for (int32_t invalidKind = 0; invalidKind < 4; ++invalidKind)
+        {
+            for (int32_t bounded = 0; bounded < 2; ++bounded)
+            {
+                for (int32_t topologyOnly = 0; topologyOnly < 2; ++topologyOnly)
+                {
+                    const int32_t result =
+                        openusd_hdsilk_test_mesh_invalid_points(invalidKind, bounded, topologyOnly);
+                    if (result != 0)
+                    {
+                        std::cerr << "Mesh invalid-points sync failed: invalid kind "
+                                  << invalidKind << ", bounded " << bounded
+                                  << ", topology only " << topologyOnly
+                                  << ", result " << result << ".\n";
+                        valid = false;
+                    }
+                }
+            }
+        }
+        return valid ? 0 : 1;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--mesh-computed-points")
+    {
+        const int32_t result = openusd_hdsilk_test_mesh_computed_points();
+        if (result != 0)
+        {
+            std::cerr << "Mesh computed-points sync failed: result " << result << ".\n";
+        }
+        return result == 0 ? 0 : 1;
+    }
+    if (argc == 3 && std::string(argv[1]) == "--mesh-skel-normals-recovery")
+    {
+        bool valid = true;
+        for (int32_t fallbackKind = 0; fallbackKind < 3; ++fallbackKind)
+        {
+            const int32_t result = openusd_hdsilk_test_mesh_skel_normals_recovery(argv[2], fallbackKind);
+            if (result != 0)
+            {
+                std::cerr << "Mesh Skel normals recovery failed: fallback kind "
+                          << fallbackKind << ", result " << result << ".\n";
+                valid = false;
+            }
+        }
+        return valid ? 0 : 1;
+    }
     if (argc == 2 && std::string(argv[1]) == "--points-invalid-points")
     {
         bool valid = true;

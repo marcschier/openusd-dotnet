@@ -160,6 +160,11 @@ Version 1 admits Low-complexity, SmoothShaded meshes, point Rprims and linear ba
 with segmented, nonperiodic, periodic or pinned wraps. It refuses Skel/external computations,
 cubic or unsupported curves and volumes. Point Rprims reserve 48 logical bytes per source
 point; this does not change their one-pixel rendering or add authored-width support.
+Mesh points resolve from UsdSkel deformation, computed primvars, then authored points.
+If all sources are unresolved or wrongly typed, an unbounded sync warns and removes
+the mesh and its instances. Bounded preparation refuses the sync and retains the previous
+record. A typed empty array removes the mesh in either mode; a later valid edit restores
+the mesh, including refinement and supported attribute edits made while points were absent.
 For point Rprims, an unresolved or wrongly typed points value removes published geometry
 and emits a native warning in an unbounded session. Bounded preparation refuses the sync
 and retains the previous record. A typed empty array removes the points in either mode;
@@ -4899,7 +4904,8 @@ For a skinned `UsdGeomMesh`, hdSilk finds the containing `UsdSkelRoot`, resolves
 `UsdSkelAnimation` supplies weights, computes skinning transforms at the capture time, and publishes the resulting
 points and normals before asking Hydra for computed primvars. The ExtComputation `points` pull remains only a fallback
 for unsupported or non-UsdSkel computed points, and topology refreshes still force a point refresh so deformed positions
-can never be indexed against a stale point array.
+can never be indexed against a stale point array. If a previously resolved deformation becomes unavailable, even a
+normals-only sync refreshes the computed or authored fallback rather than retaining the old deformed points.
 
 The evaluation scope is keyed by the render delegate's scene state, not by thread. Hydra syncs Rprims on a worker pool
 that the thread calling `Render()` does not own, so the thread-local scope this path started with reached only the prims

@@ -1818,6 +1818,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         topologyRefreshed || pointsDirty || transformDirty || visibilityDirty ||
         displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
         materialDirty || cullDirty || subdivisionRefreshed;
+    const bool emittedPointsWereEmpty = _EmittedPoints().empty();
 
     std::shared_ptr<HdSilkMeshPreparationLease> preparation;
     if (preparationBudget->Enabled() && (recordDirty || !_preparationLease))
@@ -1991,6 +1992,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
             deformationRefreshed = true;
         }
     }
+    const bool refreshPoints = pointsDirty || topologyRefreshed || deformationRefreshed;
     HdExtComputationPrimvarDescriptorVector dirtyComputedPrimvars;
     if (!pointsResolved)
     {
@@ -2004,7 +2006,8 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
                     static_cast<HdInterpolation>(interpolation));
             for (HdExtComputationPrimvarDescriptor const& primvar : computedPrimvars)
             {
-                if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, primvar.name))
+                if ((primvar.name == HdTokens->points && refreshPoints) ||
+                    HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, primvar.name))
                 {
                     dirtyComputedPrimvars.emplace_back(primvar);
                 }
@@ -2033,13 +2036,19 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         }
     }
 
-    // Topology and points must stay consistent. When topology is refreshed
-    // without a matching points dirty bit the cached array can still describe
-    // the previous topology, so re-pull it rather than publish indices that
-    // overrun the point buffer.
-    if (!pointsResolved && (pointsDirty || topologyRefreshed))
+    // A topology change or a lost deformation also needs a fresh points
+    // source, even if Hydra did not mark the authored primvar dirty.
+    bool invalidPoints = false;
+    if (!pointsResolved && refreshPoints)
     {
-        ExtractPoints(sceneDelegate->Get(id, HdTokens->points), &_points);
+        invalidPoints = !ExtractPoints(sceneDelegate->Get(id, HdTokens->points), &_points);
+        if (invalidPoints)
+        {
+            _points.clear();
+            TF_WARN(
+                "hdSilk skipped mesh '%s': points must resolve to a float3 or double3 array",
+                id.GetText());
+        }
     }
     if (displayColorDirty)
     {
@@ -2068,7 +2077,11 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
          subdivisionRefreshed ||
          _refinedPoints.size() != _subdivision.GetRefinedVertexCount()))
     {
-        if (!_subdivision.RefinePoints(_points, &_refinedPoints))
+        if (_points.empty())
+        {
+            _refinedPoints.clear();
+        }
+        else if (!_subdivision.RefinePoints(_points, &_refinedPoints))
         {
             TF_WARN(
                 "hdSilk could not refine points for mesh '%s'; publishing the "
@@ -2079,8 +2092,11 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         }
     }
 
+    // Attribute edits made while points are absent cannot build a vertex layout.
+    // Rebuild it when points return, even on a points-only edit.
     if (normalsDirty || primvarsDirty || topologyRefreshed ||
-        deformationRefreshed || subdivisionRefreshed)
+        deformationRefreshed || subdivisionRefreshed ||
+        (emittedPointsWereEmpty && !_EmittedPoints().empty()))
     {
         const bool layoutChanged = _RefreshAttributes(sceneDelegate, id);
         HdSilkSceneState& state = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState();
@@ -2143,9 +2159,12 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         // Points and basisCurves already refuse to publish empty geometry.
         if (emittedPoints.empty() || triangleIndices.empty())
         {
-            TF_WARN(
-                "hdSilk skipped mesh '%s': empty points or triangle indices",
-                id.GetText());
+            if (!invalidPoints)
+            {
+                TF_WARN(
+                    "hdSilk skipped mesh '%s': empty points or triangle indices",
+                    id.GetText());
+            }
             static_cast<HdSilkRenderParam*>(renderParam)
                 ->GetSceneState()
                 .RemoveMesh(id.GetString());

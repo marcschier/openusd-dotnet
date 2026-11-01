@@ -356,7 +356,7 @@ session-6/page-24 calls retain their unbounded behavior. The three-argument mana
 
 The profile admits coarse, smooth-shaded mesh Rprims with resolved numeric points
 and the existing supported numeric attributes. It also admits point Rprims and linear
-basis curves with segmented, nonperiodic, periodic or pinned wraps. Points and curves
+basis curves with segmented, nonperiodic, periodic or pinned wraps. Meshes, points and curves
 require resolved float3 or double3 points. The profile refuses refinement, other draw
 modes, Skel/computed geometry, cubic or unsupported curve topologies and volumes,
 rather than silently ignoring their cost. Point-instancer references share the
@@ -389,6 +389,17 @@ An unresolved or wrongly typed points value removes all published instances of t
 point Rprim in an unbounded session and emits a native warning. A bounded session
 refuses the sync and retains the previous record; a typed empty array removes the
 points in either mode. A later valid edit republishes the points.
+
+For mesh Rprims, hdSilk selects points from a valid UsdSkel deformation, then a
+computed primvar, then authored points. Topology changes and loss of a previous
+deformation refresh the fallback; a normals-only edit without a deformation
+transition retains the current points. If every source is unresolved or wrongly
+typed, an unbounded session warns and removes the mesh and its instances. A
+bounded session refuses the sync before replacing the previous record, and does
+not admit Skel or computed primvars. A typed empty result removes the mesh in
+either mode. Refinement retains its topology across this removal, so a valid
+edit restores the refined mesh. Supported attribute edits made while points
+are absent are applied when the geometry returns.
 
 A producer and its retained record share one reservation lease. A replacement reserves
 new work while the old lease remains live; failed partial preparation retains both until

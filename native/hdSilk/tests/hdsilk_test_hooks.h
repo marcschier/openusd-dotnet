@@ -27,6 +27,15 @@ openusd_hdsilk_test_points_invalid_points(int32_t invalidKind, int32_t bounded);
 OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_mesh_non_geometry_dirty(int32_t dirtyKind, int32_t exactLimit);
 
+OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_mesh_invalid_points(int32_t invalidKind, int32_t bounded, int32_t topologyOnly);
+
+OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_mesh_computed_points(void);
+
+OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_mesh_skel_normals_recovery(const char* stagePath, int32_t fallbackKind);
+
 typedef struct openusd_hdsilk_test_ptex_observation
 {
     char path[512];
