@@ -1265,6 +1265,38 @@ public sealed class SilkMeshPreparationNativeTests
     }
 
     [Test]
+    public async Task LinearCurveBlockedPointsRefuseAndRecoverWithoutReplacingRetainedGeometry()
+    {
+        using Fixture fixture = Create(LinearCurve);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using OpenUsdSilkPage initial = session.Sync(16, 16, Options(4096));
+        string expected = CurveValues(initial);
+        ulong cost = initial.MeshPreparationUsage!.ReservedBytes;
+        await Assert.That(expected.Length).IsGreaterThan(0);
+        await Assert.That(cost).IsGreaterThan(0ul);
+        using var scene = new SilkSceneState();
+        scene.Apply(initial);
+        UsdVec3f[] original = [new(0, 0, 0), new(1, 0, 0), new(1, 1, 0), new(0, 1, 0)];
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").GetAttribute("points").BlockValue());
+        await Assert.That(() => session.Sync(16, 16, Options(4096)))
+            .Throws<OpenUsdSilkException>()
+            .WithMessageContaining("requires resolved float3 or double3 points");
+        await Assert.That(CurveValues(initial)).IsEqualTo(expected);
+        await Assert.That(scene.Meshes.Values.Single().Points.Length).IsGreaterThan(0);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetVec3fArray("points", original));
+        using OpenUsdSilkPage retry = session.Sync(16, 16, Options(4096));
+        await Assert.That(retry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        await Assert.That(CurveValues(retry)).IsEqualTo(expected);
+        scene.Apply(retry);
+        await Assert.That(scene.Meshes.Values.Single().Points.Length).IsGreaterThan(0);
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + LinearCurve);
+    }
+
+    [Test]
     public async Task LinearCurveReservationsAggregateAndInstancesShareThePrototype()
     {
         using Fixture single = Create(LinearCurve);

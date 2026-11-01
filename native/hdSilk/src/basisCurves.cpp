@@ -317,13 +317,21 @@ HdSilkBasisCurves::_Sync(
     {
         _transform = sceneDelegate->GetTransform(id);
     }
+    bool invalidPoints = false;
     if (pointsDirty || topologyRefreshed)
     {
-        ExtractPoints(sceneDelegate->Get(id, HdTokens->points), &_points);
+        invalidPoints = !ExtractPoints(sceneDelegate->Get(id, HdTokens->points), &_points);
+        if (invalidPoints)
+        {
+            _points.clear();
+            TF_WARN(
+                "hdSilk skipped basisCurves '%s': points must resolve to a float3 or double3 array",
+                id.GetText());
+        }
     }
     // Vertex widths are validated and indexed against the resolved point array,
     // so a points change alone still invalidates the resolution.
-    if (widthsDirty || pointsDirty || topologyRefreshed)
+    if (!invalidPoints && (widthsDirty || pointsDirty || topologyRefreshed))
     {
         HdSilkCurveWidthInterpolation declared =
             HdSilkCurveWidthInterpolation::Constant;
@@ -359,7 +367,7 @@ HdSilkBasisCurves::_Sync(
 
     HdSilkRenderParam* silkRenderParam =
         static_cast<HdSilkRenderParam*>(renderParam);
-    if (!IsVisible() || !_topologySupported)
+    if (!IsVisible() || !_topologySupported || invalidPoints)
     {
         silkRenderParam->GetSceneState().RemoveMesh(id.GetString());
         if (preparation) { preparation->Complete(); }

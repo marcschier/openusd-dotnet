@@ -16,6 +16,9 @@ OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_curve_non_geometry_dirty(int32_t dirtyKind, int32_t exactLimit);
 
 OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_curve_invalid_points(int32_t invalidKind, int32_t bounded);
+
+OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_point_non_geometry_dirty(int32_t dirtyKind, int32_t exactLimit);
 
 OPENUSD_HDSILK_API int32_t

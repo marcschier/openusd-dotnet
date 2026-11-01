@@ -231,6 +231,11 @@ curve and emits a native warning; a later valid edit republishes it. Cubic
 curves remain unsupported. The optional bounded preparation profile admits
 the four supported linear wraps.
 
+An unresolved or wrongly typed points value removes the retained curve in an
+unbounded session and emits a native warning. A bounded session refuses the
+sync instead, leaving the previous record intact until a valid edit can be
+retried. A typed empty array removes the curve in either mode.
+
 Constant widths remain one attribute value; uniform, varying and vertex
 widths are expanded onto the emitted line vertices. The renderer does not
 widen the one-pixel lines from those values.

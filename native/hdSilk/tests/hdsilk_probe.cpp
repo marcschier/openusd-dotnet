@@ -12475,6 +12475,26 @@ bool VerifyDeformationInvalidation(
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string(argv[1]) == "--curve-invalid-points")
+    {
+        bool valid = true;
+        for (int32_t invalidKind = 0; invalidKind < 3; ++invalidKind)
+        {
+            for (int32_t bounded = 0; bounded < 2; ++bounded)
+            {
+                const int32_t result =
+                    openusd_hdsilk_test_curve_invalid_points(invalidKind, bounded);
+                if (result != 0)
+                {
+                    std::cerr << "Curve invalid-points sync failed: invalid kind "
+                              << invalidKind << ", bounded " << bounded
+                              << ", result " << result << ".\n";
+                    valid = false;
+                }
+            }
+        }
+        return valid ? 0 : 1;
+    }
     if (argc == 2 && std::string(argv[1]) == "--geometry-non-geometry-sync")
     {
         bool valid = true;

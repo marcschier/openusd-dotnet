@@ -127,6 +127,41 @@ public sealed class SilkLinearCurveNativeTests
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
     }
 
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task BlockedPointsRetireCurveAndRecover(SilkGraphicsBackend backend)
+    {
+        using var fixture = new CurveFixture("nonperiodic");
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.ActualPath);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+
+        byte[] initial = Capture(session, device, renderer, 0);
+        await Assert.That(renderer.Scene.Meshes.Values.Single().Indices.Length).IsEqualTo(6);
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").GetAttribute("points").BlockValue());
+        byte[] blocked = Capture(session, device, renderer, 0);
+        await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(0);
+        await Assert.That(renderer.GpuResources.MeshValues.Count).IsEqualTo(0);
+        await Assert.That(blocked.SequenceEqual(initial)).IsFalse();
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetVec3fArray(
+            "points",
+            [new(-0.7f, -0.6f, 0), new(0.7f, -0.6f, 0), new(0.7f, 0.6f, 0), new(-0.7f, 0.6f, 0)],
+            0));
+        byte[] recovered = Capture(session, device, renderer, 0);
+        await Assert.That(renderer.Scene.Meshes.Values.Single().Indices.Length).IsEqualTo(6);
+        await Assert.That(recovered.SequenceEqual(initial)).IsTrue();
+        await Assert.That(await File.ReadAllTextAsync(fixture.ActualPath)).IsEqualTo(fixture.ActualText);
+
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
     private static byte[] Capture(
         OpenUsdSilkSession session,
         ISilkGraphicsDevice device,
