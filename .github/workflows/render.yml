@@ -698,6 +698,14 @@ jobs:
             -Project $project `
             -Framework net10.0 `
             -Configuration Release `
+            -MinimumExpectedTests 3 `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/NativeTemporaryDirectoryScopeTests/*')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
             -TestArguments @(
               '--treenode-filter',
               '/*/*/VolumeRenderingConformanceTests/*')
@@ -1581,6 +1589,14 @@ jobs:
             -Project $project `
             -Framework net10.0 `
             -Configuration Release `
+            -MinimumExpectedTests 3 `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/NativeTemporaryDirectoryScopeTests/*')
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
             -TestArguments @(
               '--treenode-filter',
               '/*/*/VolumeRenderingConformanceTests/(UniformDensityVolumeGatesOnVulkan|SampledOpenVdbDensityGatesOnVulkan)')
@@ -2033,6 +2049,14 @@ jobs:
             -c Release `
             -f net10.0 `
             -p:OpenUsdRequireMetalShaderLibrary=true
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -MinimumExpectedTests 3 `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/NativeTemporaryDirectoryScopeTests/*')
           ./eng/run-managed-tests.ps1 `
             -Project $project `
             -Framework net10.0 `
