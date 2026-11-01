@@ -1071,19 +1071,117 @@ public sealed class SilkDisplayTransformNativeTests
                 Path.Combine(root, "outer.ctf"),
                 WrapProcessList(
                     "outer",
-                    "<Reference path=\"inner.ctf\" inBitDepth=\"32f\"/>"));
+                    "<Reference path=\"inner.ctf\" inBitDepth=\"32f\" outBitDepth=\"32f\"/>"));
             File.WriteAllText(Path.Combine(root, "inner.ctf"), CreateScaleCtf(0.5f));
 
             var provider = new SilkOpenColorIoConfigIdentityProvider(TimeSpan.Zero);
             SilkDisplayTransformConfigIdentity first = provider.GetIdentity(configPath);
             await Assert.That(first.IsExhaustive).IsTrue();
+            await Assert.That(first.Value).IsNotEmpty();
+            float firstColor = ApplyNestedCtf(configPath, 1f);
 
             File.WriteAllText(Path.Combine(root, "inner.ctf"), CreateScaleCtf(0.25f));
             SilkDisplayTransformConfigIdentity second = provider.GetIdentity(configPath);
+            float secondColor = ApplyNestedCtf(configPath, 1f);
+            await Assert.That(second.IsExhaustive).IsTrue();
             await Assert.That(second.Value).IsNotEqualTo(first.Value);
+            await Assert.That(secondColor).IsLessThan(firstColor - 0.05f);
         }
         finally
         {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ConfigIdentity_ResolvesNonAsciiReferencesThroughSearchPaths(bool nonAsciiConfigDirectory)
+    {
+        RequireNativeOcio();
+        string prefix = nonAsciiConfigDirectory ? "ocio-\u8272-" : "ocio-ascii-";
+        string root = Path.Combine(Path.GetFullPath(AppContext.BaseDirectory), $"{prefix}{Guid.NewGuid():N}");
+        string firstName = "first-\u8272";
+        string secondName = "second-\u00e4";
+        string outerName = "outer-\u00e4.ctf";
+        string innerName = "inner-\u8272.ctf";
+        string first = Path.Combine(root, firstName);
+        string second = Path.Combine(root, secondName);
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+        try
+        {
+            string configPath = Path.Combine(root, "config.ocio");
+            string config = NestedCtfConfig.Replace(
+                "search_path: \"\"",
+                $"search_path:\n  - {firstName}\n  - {secondName}",
+                StringComparison.Ordinal).Replace("outer.ctf", outerName, StringComparison.Ordinal);
+            File.WriteAllText(configPath, config);
+            File.WriteAllText(
+                Path.Combine(second, outerName),
+                WrapProcessList(
+                    "outer",
+                    $"<Reference path=\"{innerName}\" inBitDepth=\"32f\" outBitDepth=\"32f\"/>"));
+            string selected = Path.Combine(first, innerName);
+            string decoy = Path.Combine(second, innerName);
+            File.WriteAllText(selected, CreateScaleCtf(0.5f));
+            File.WriteAllText(decoy, CreateScaleCtf(0.95f));
+
+            var provider = new SilkOpenColorIoConfigIdentityProvider(TimeSpan.Zero);
+            SilkDisplayTransformConfigIdentity original = provider.GetIdentity(configPath);
+            await Assert.That(original.IsExhaustive).IsTrue();
+            await Assert.That(original.Value).IsNotEmpty();
+            float originalColor = ApplyNestedCtf(configPath, 1f);
+            await Assert.That(originalColor).IsEqualTo(0.5f).Within(Tolerance);
+
+            File.WriteAllText(decoy, CreateScaleCtf(0.05f));
+            SilkDisplayTransformConfigIdentity unchanged = provider.GetIdentity(configPath);
+            await Assert.That(unchanged.Value).IsEqualTo(original.Value);
+            await Assert.That(ApplyNestedCtf(configPath, 1f)).IsEqualTo(originalColor).Within(Tolerance);
+
+            File.WriteAllText(selected, CreateScaleCtf(0.25f));
+            SilkDisplayTransformConfigIdentity changed = provider.GetIdentity(configPath);
+            await Assert.That(changed.IsExhaustive).IsTrue();
+            await Assert.That(changed.Value).IsNotEqualTo(original.Value);
+            await Assert.That(ApplyNestedCtf(configPath, 1f)).IsEqualTo(0.25f).Within(Tolerance);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task ConfigIdentity_ResolvesRelativeConfigInNonAsciiWorkingDirectory()
+    {
+        RequireNativeOcio();
+        string root = Path.Combine(
+            Path.GetFullPath(AppContext.BaseDirectory),
+            $"ocio-working-\u8272-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        string previousDirectory = Directory.GetCurrentDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "config.ocio"), NestedCtfConfig);
+            File.WriteAllText(Path.Combine(root, "outer.ctf"), OuterReferenceCtf);
+            File.WriteAllText(Path.Combine(root, "inner.ctf"), CreateScaleCtf(0.5f));
+            Directory.SetCurrentDirectory(root);
+
+            var provider = new SilkOpenColorIoConfigIdentityProvider(TimeSpan.Zero);
+            SilkDisplayTransformConfigIdentity identity = provider.GetIdentity("config.ocio");
+            await Assert.That(identity.IsExhaustive).IsTrue();
+            await Assert.That(identity.Value).IsNotEmpty();
+            await Assert.That(ApplyNestedCtf("config.ocio", 1f)).IsEqualTo(0.5f).Within(Tolerance);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(previousDirectory);
             if (Directory.Exists(root))
             {
                 Directory.Delete(root, recursive: true);

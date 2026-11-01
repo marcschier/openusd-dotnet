@@ -1402,6 +1402,11 @@ SilkFrameCaptureResult result = SilkFrameCapture.Capture(
     session, device, 1920, 1080, renderSettings, processor);
 ```
 
+On Windows, text `.ocio` configs and referenced LUTs can use non-ASCII paths. Relative processor
+paths are resolved against the current working directory. Archives whose effective `.ocioz` path
+contains non-ASCII characters are not supported by the pinned Windows runtime; the processor
+reports an error. Place those archives under an ASCII path.
+
 `RenderSettings.Exposure` is applied to linear RGB channels **before** the OCIO display/view
 transform. `RenderSettings.OutputTransform` must be `Identity` when an OCIO processor is
 supplied; supplying `Reinhard` or any other built-in transform alongside OCIO is rejected to
@@ -1528,8 +1533,8 @@ resolved to a canonical form and recorded in a visited set, so a cycle terminate
 through several spellings -- `scale.spi1d`, `./scale.spi1d`, a link -- is hashed once. Deduplication
 happens *before* the 256-file and 64 MiB bounds are applied, so a config that names one LUT from
 three hundred colour spaces stays exhaustive rather than being downgraded by its own repetition.
-Windows paths are converted through the wide-character APIs throughout, so a config or LUT under a
-non-ASCII directory is read rather than silently missed.
+For Windows text configurations, the config loader and dependency walk use UTF-16 paths, so a config
+or LUT under a non-ASCII directory is read rather than silently missed.
 
 One revalidation costs exactly one walk. The identity is a fixed-format digest, so the managed
 side sizes its buffer statically and calls the entry point once, retrying only on a genuine

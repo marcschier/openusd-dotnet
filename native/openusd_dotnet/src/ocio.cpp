@@ -246,6 +246,62 @@ std::string FromPath(const std::filesystem::path& path)
 #endif
 }
 
+OCIO::ConstConfigRcPtr LoadConfig(const char* configPath)
+{
+#ifdef _WIN32
+    const std::string supplied(configPath);
+    if (supplied.find("ocio://") == std::string::npos)
+    {
+        const std::filesystem::path absolute = std::filesystem::absolute(ToPath(supplied));
+        const std::string utf8Path = FromPath(absolute);
+        const bool nonAscii = std::any_of(
+            utf8Path.begin(), utf8Path.end(), [](unsigned char value) { return value >= 0x80; });
+        if (nonAscii)
+        {
+            // OpenColorIO's Windows file-existence preflight interprets UTF-8 as the active code page.
+            std::ifstream stream = OpenBinary(utf8Path);
+            if (!stream)
+            {
+                const std::string message = "Could not open OpenColorIO configuration '" + supplied + "'.";
+                throw OCIO::Exception(message.c_str());
+            }
+
+            char signature[2]{};
+            stream.read(signature, sizeof(signature));
+            if (stream.gcount() == static_cast<std::streamsize>(sizeof(signature)) &&
+                signature[0] == 'P' && signature[1] == 'K')
+            {
+                throw OCIO::Exception(
+                    "OpenColorIO archives at non-ASCII Windows paths are not supported by the pinned runtime.");
+            }
+            stream.clear();
+            stream.seekg(0);
+            if (!stream)
+            {
+                const std::string message = "Could not read OpenColorIO configuration '" + supplied + "'.";
+                throw OCIO::Exception(message.c_str());
+            }
+
+            try
+            {
+                OCIO::ConfigRcPtr config = OCIO::Config::CreateFromStream(stream)->createEditableCopy();
+                // Stream loading does not set the working directory used to resolve relative LUTs.
+                const std::string workingDirectory = FromPath(absolute.parent_path());
+                config->setWorkingDir(workingDirectory.c_str());
+                return config;
+            }
+            catch (const OCIO::Exception& error)
+            {
+                const std::string message =
+                    "Could not load OpenColorIO configuration '" + supplied + "': " + error.what();
+                throw OCIO::Exception(message.c_str());
+            }
+        }
+    }
+#endif
+    return OCIO::Config::CreateFromFile(configPath);
+}
+
 // Resolves a path to a stable identity for the visited set.
 //
 // canonical() resolves symbolic links, junctions, and "." / ".." so two names for one
@@ -1092,7 +1148,7 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_create(
 
     try
     {
-        OCIO::ConstConfigRcPtr config = OCIO::Config::CreateFromFile(config_path);
+        OCIO::ConstConfigRcPtr config = LoadConfig(config_path);
 
         const char* effectiveDisplay = (display != nullptr && display[0] != '\0')
             ? display
@@ -1492,7 +1548,7 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_config_cache_id(
         // The parsed config is discarded immediately: what is wanted is a fresh
         // observation of the config and of the files it references, so an identity
         // that outlived an edit would defeat the purpose of asking.
-        OCIO::ConstConfigRcPtr config = OCIO::Config::CreateFromFile(config_path);
+        OCIO::ConstConfigRcPtr config = LoadConfig(config_path);
         const char* cacheId = config->getCacheID(config->getCurrentContext());
         if (cacheId == nullptr)
         {

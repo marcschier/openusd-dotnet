@@ -274,7 +274,9 @@ public sealed class VulkanDisplayTransformTests
     }
 
     [Test]
-    public async Task SwiftShaderReuploadsTheLatticeWhenTheConfigChangesBetweenRenders()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task SwiftShaderReuploadsTheLatticeWhenTheConfigChangesBetweenRenders(bool nonAsciiPath)
     {
         if (!IsSupportedPlatform())
         {
@@ -284,9 +286,10 @@ public sealed class VulkanDisplayTransformTests
 
         string sourceConfig = RequireTransformableConfigPath();
         var clearColor = new SilkColor(0.25f, 0.5f, 0.75f, 1);
+        string prefix = nonAsciiPath ? "swiftshader-config-\u8272-" : "swiftshader-config-edit-";
         string root = Path.Combine(
             Path.GetFullPath(AppContext.BaseDirectory),
-            $"swiftshader-config-edit-{Guid.NewGuid():N}");
+            $"{prefix}{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         string configPath = Path.Combine(root, "config.ocio");
         try

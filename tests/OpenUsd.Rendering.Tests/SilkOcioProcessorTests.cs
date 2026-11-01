@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.IO.Compression;
 using OpenUsd.Interop;
 using OpenUsd.Rendering.Silk;
 
@@ -54,6 +55,16 @@ public sealed class SilkOcioProcessorTests
     }
 
     [Test]
+    public async Task CreateProcessor_WithBuiltinConfig_Succeeds()
+    {
+        RequireNativeRuntime();
+        var transform = new SilkOpenColorIoDisplayTransform("ocio://default", "ACEScg");
+        using SilkOpenColorIoProcessor processor = transform.CreateProcessor();
+
+        await Assert.That(processor.Transform).IsEqualTo(transform);
+    }
+
+    [Test]
     public async Task CreateProcessor_WithNonAsciiConfigPath_Succeeds()
     {
         RequireNativeRuntime();
@@ -68,6 +79,73 @@ public sealed class SilkOcioProcessorTests
             var transform = new SilkOpenColorIoDisplayTransform(configPath, "linear");
             using var processor = transform.CreateProcessor();
             await Assert.That(processor.Transform.ConfigPath).IsEqualTo(configPath);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CreateProcessor_WithArchiveConfigReportsUnsupportedWindowsPath(bool nonAsciiDirectory)
+    {
+        RequireNativeRuntime();
+        string prefix = nonAsciiDirectory ? "openusd-ocio-\u8272-" : "openusd-ocio-ascii-";
+        string directory = Path.Combine(Path.GetTempPath(), $"{prefix}{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string archivePath = Path.Combine(directory, "config.ocioz");
+        try
+        {
+            using (ZipArchive archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+            {
+                ZipArchiveEntry entry = archive.CreateEntry("config.ocio", CompressionLevel.Optimal);
+                using Stream destination = entry.Open();
+                using Stream source = File.OpenRead(TestConfigPath);
+                source.CopyTo(destination);
+            }
+
+            var transform = new SilkOpenColorIoDisplayTransform(archivePath, "linear");
+            if (OperatingSystem.IsWindows() && nonAsciiDirectory)
+            {
+                OpenUsdNativeException? exception = await Assert.That(() =>
+                {
+                    using SilkOpenColorIoProcessor processor = transform.CreateProcessor();
+                })
+                    .Throws<OpenUsdNativeException>();
+                await Assert.That(exception!.Message)
+                    .Contains("OpenColorIO archives at non-ASCII Windows paths are not supported");
+            }
+            else
+            {
+                using SilkOpenColorIoProcessor processor = transform.CreateProcessor();
+                await Assert.That(processor.Transform.ConfigPath).IsEqualTo(archivePath);
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task CreateProcessor_WithInvalidNonAsciiConfig_ReportsItsPath()
+    {
+        RequireNativeRuntime();
+        string directory = Path.Combine(Path.GetTempPath(), $"openusd-ocio-invalid-\u8272-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string configPath = Path.Combine(directory, "config.ocio");
+        File.WriteAllText(configPath, "invalid config");
+        try
+        {
+            var transform = new SilkOpenColorIoDisplayTransform(configPath, "linear");
+            OpenUsdNativeException? exception = await Assert.That(() =>
+            {
+                using SilkOpenColorIoProcessor processor = transform.CreateProcessor();
+            })
+                .Throws<OpenUsdNativeException>();
+            await Assert.That(exception!.Message).Contains(configPath);
         }
         finally
         {

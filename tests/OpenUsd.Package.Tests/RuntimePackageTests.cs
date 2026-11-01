@@ -4024,6 +4024,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("WAIT_IDLE=true");
             await Assert.That(result.Output).Contains("PLUGIN_LAYOUT=true");
             await Assert.That(result.Output).Contains("OCIO_DISPLAY_TRANSFORM=true");
+            await Assert.That(result.Output).Contains("OCIO_UNICODE_CONFIG=true");
             await Assert.That(result.Output).Contains("PNG_ROW_ORDER=true");
             await Assert.That(result.Output).Contains("RENDER_DISK_JOB=true");
             await Assert.That(result.Output).Contains("DEPTH_CAPTURE=true");
@@ -8004,6 +8005,31 @@ public sealed partial class RuntimePackageTests
                     {
                         return 12;
                     }
+
+                    string unicodeDirectory = Path.Combine(
+                        AppContext.BaseDirectory, $"ocio-\u8272-{Guid.NewGuid():N}");
+                    Directory.CreateDirectory(unicodeDirectory);
+                    try
+                    {
+                        string unicodeConfigPath = Path.Combine(unicodeDirectory, "config.ocio");
+                        File.Copy(ocioConfigPath, unicodeConfigPath);
+                        var identityProvider = new SilkOpenColorIoConfigIdentityProvider(TimeSpan.Zero);
+                        SilkDisplayTransformConfigIdentity identity = identityProvider.GetIdentity(unicodeConfigPath);
+                        using var unicodeProcessor = new SilkOpenColorIoDisplayTransform(
+                            unicodeConfigPath, "linear", "TestDisplay", "TestView").CreateProcessor();
+                        byte[] unicodePixel = new byte[4];
+                        unicodeProcessor.Apply(linearPixel, unicodePixel, 1, 1, 0);
+                        if (!identity.IsExhaustive || string.IsNullOrEmpty(identity.Value) ||
+                            !unicodePixel.AsSpan().SequenceEqual(displayPixel))
+                        {
+                            throw new InvalidOperationException("The packaged Unicode OCIO config changed output.");
+                        }
+                    }
+                    finally
+                    {
+                        Directory.Delete(unicodeDirectory, recursive: true);
+                    }
+                    Console.WriteLine("OCIO_UNICODE_CONFIG=true");
 
                     using (var png = new MemoryStream())
                     {

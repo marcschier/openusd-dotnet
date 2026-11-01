@@ -554,14 +554,17 @@ public sealed class D3D12DisplayTransformTests
     }
 
     [Test]
-    public async Task WarpReuploadsTheLatticeWhenTheConfigChangesBetweenRenders()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task WarpReuploadsTheLatticeWhenTheConfigChangesBetweenRenders(bool nonAsciiPath)
     {
         RequireWindows();
         string sourceConfig = RequireTransformableConfigPath();
         var clearColor = new SilkColor(0.25f, 0.5f, 0.75f, 1);
+        string prefix = nonAsciiPath ? "warp-config-\u8272-" : "warp-config-edit-";
         string root = Path.Combine(
             Path.GetFullPath(AppContext.BaseDirectory),
-            $"warp-config-edit-{Guid.NewGuid():N}");
+            $"{prefix}{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         string configPath = Path.Combine(root, "config.ocio");
         try
