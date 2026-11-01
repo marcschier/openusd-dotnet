@@ -1552,7 +1552,7 @@ public sealed class SilkTextureResidencyTests
             SilkTopologyKind.LineList => ([0u, 1u], [0u]),
             _ => ([0u, 1u, 2u], [0u, 1u, 2u]),
         };
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (topology.Indices.Length * sizeof(uint)) +
@@ -1584,8 +1584,8 @@ public sealed class SilkTextureResidencyTests
                 bytes.AsSpan(80 + (i * 8)),
                 i % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 268);
-        int pointsOffset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int pointsOffset = 276 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -1621,7 +1621,7 @@ public sealed class SilkTextureResidencyTests
         byte[] material = Encoding.UTF8.GetBytes(materialPath);
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -1658,8 +1658,8 @@ public sealed class SilkTextureResidencyTests
             bytes.AsSpan(208),
             SilkWireFormat.ComputeStableHash(materialPath));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(216), (uint)material.Length);
-        path.CopyTo(bytes, 268);
-        int pointsOffset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int pointsOffset = 276 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

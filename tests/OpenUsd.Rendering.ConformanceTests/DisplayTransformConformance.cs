@@ -36,7 +36,7 @@ internal static class DisplayTransformConformance
         using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Width, Height));
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad(1, "/Mesh", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f)], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
@@ -58,7 +58,7 @@ internal static class DisplayTransformConformance
         ulong retained = textures.Usage.ReservedBytes;
         const ulong newTargets = Width * 2 * Height * 2 * 8;
         ulong pressure = 1_000_000 - retained - newTargets;
-        using var page = new OpenUsdSilkPage(31, 2, [], 0);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [], 0);
         using (textures.Reserve(SilkTextureDescriptor.ColorTarget(checked((uint)(pressure / 4)), 1), 1))
         {
             if (oneByteShort)
@@ -117,7 +117,7 @@ internal static class DisplayTransformConformance
             "linear", latticeSize: 8);
         var options = SilkMeshRenderOptions.Default with { DisplayTransform = transform };
         byte[] mesh = CreateQuad(1, "/Mesh", -0.7f, 0.5f, -0.1f, -0.5f, 0.5f);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         _ = renderer.ApplyAndRender(first, color, depth, options);
@@ -125,7 +125,7 @@ internal static class DisplayTransformConformance
         color.ReadbackForTesting(before);
         ulong reserved = budget.Usage.ReservedBytes;
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.7);
-        using var changed = new OpenUsdSilkPage(31, 2, mesh, 1);
+        using var changed = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, mesh, 1);
         using var cancellation = new CancellationTokenSource();
         var capture = SilkDepthCaptureRequest.ForHdrColor(
             checked((int)Width), checked((int)Height), null, cancellation.Token);
@@ -137,7 +137,7 @@ internal static class DisplayTransformConformance
         byte[] retained = new byte[before.Length];
         color.ReadbackForTesting(retained);
         await Assert.That(retained.SequenceEqual(before)).IsTrue();
-        using var following = new OpenUsdSilkPage(31, 3, [], 0);
+        using var following = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, [], 0);
         renderer.ApplyPage(following);
         await Assert.That(cancellation.IsCancellationRequested).IsTrue();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(3ul);
@@ -155,14 +155,14 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Width, Height));
         byte[] mesh = CreateQuad(1, "/Mesh", -0.7f, 0.5f, -0.1f, -0.5f, 0.5f);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
         byte[] before = new byte[Width * Height * 4];
         color.ReadbackForTesting(before);
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.7);
-        using var changed = new OpenUsdSilkPage(31, 2, mesh, 1);
+        using var changed = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, mesh, 1);
         device.FailSubmissionCleanupAfter = 1;
         await Assert.That(() => renderer.ApplyAndRender(changed, color, depth)).Throws<InvalidOperationException>();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(2ul);
@@ -170,7 +170,7 @@ internal static class DisplayTransformConformance
         byte[] published = new byte[before.Length];
         color.ReadbackForTesting(published);
         await Assert.That(published.SequenceEqual(before)).IsFalse();
-        using var following = new OpenUsdSilkPage(31, 3, [], 0);
+        using var following = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, [], 0);
         renderer.ApplyPage(following);
         _ = renderer.Render(color, depth);
         byte[] after = new byte[before.Length];
@@ -188,7 +188,7 @@ internal static class DisplayTransformConformance
         using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Width, Height));
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad(1, "/Cloth", -0.7f, 0.5f, -0.1f, -0.5f, 0.5f)], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
@@ -215,13 +215,13 @@ internal static class DisplayTransformConformance
         {
             byte[] incoming = CreateQuad(1, "/Cloth", -0.7f, 0.5f, -0.1f, -0.5f, 0.5f);
             System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(incoming.AsSpan(176), 0.2);
-            using var pending = new OpenUsdSilkPage(31, 2, incoming, 1);
+            using var pending = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, incoming, 1);
             device.RefuseSubmission = true;
             await Assert.That(() => renderer.ApplyAndRender(pending, color, depth))
                 .Throws<SilkGpuStagingBudgetExceededException>();
             device.RefuseSubmission = false;
         }
-        using var changed = new OpenUsdSilkPage(31, 2, [], 0);
+        using var changed = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [], 0);
         Action render = retainedFrame ? () => renderer.Render(color, depth) :
             () => renderer.ApplyAndRender(changed, color, depth);
         device.RefuseSubmissionAfter = 1;
@@ -246,7 +246,7 @@ internal static class DisplayTransformConformance
         await Assert.That(retained.SequenceEqual(before)).IsFalse();
         if (retainedFrame)
         {
-            using var following = new OpenUsdSilkPage(31, 3, [], 0);
+            using var following = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, [], 0);
             renderer.ApplyPage(following);
             await Assert.That(renderer.Scene.Revision).IsEqualTo(3ul);
             await Assert.That(renderer.Scene.Meshes.Values.Single().Transform.Span[12]).IsEqualTo(0.2);
@@ -265,7 +265,7 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Width, Height));
         byte[] mesh = CreateQuad(1, "/Mesh", -0.7f, 0.5f, -0.1f, -0.5f, 0.5f);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
@@ -278,7 +278,7 @@ internal static class DisplayTransformConformance
         ulong gpuRevision = renderer.GpuResources.Revision;
         ulong reserved = budget.Usage.ReservedBytes;
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.7);
-        using var moved = new OpenUsdSilkPage(31, 2, mesh, 1);
+        using var moved = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, mesh, 1);
         device.RefuseSubmission = !publish;
         device.RefuseSubmissionAfter = publish ? 1 : null;
         Action apply = capture
@@ -295,7 +295,7 @@ internal static class DisplayTransformConformance
         float[] untouchedDepth = new float[beforeDepth.Length];
         depth.ReadbackForTesting(untouchedDepth);
         await Assert.That(untouchedDepth.SequenceEqual(beforeDepth)).IsTrue();
-        using var following = new OpenUsdSilkPage(31, 3, [], 0);
+        using var following = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, [], 0);
         await Assert.That(() => renderer.ApplyPage(following)).Throws<SilkGpuStagingBudgetExceededException>();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
         device.RefuseSubmission = false;
@@ -328,7 +328,7 @@ internal static class DisplayTransformConformance
         var transform = new RenderDisplayTransform(Path.Combine(Path.GetTempPath(), "synthetic-frame.ocio"),
             "linear", latticeSize: 8);
         var options = SilkMeshRenderOptions.Default with { DisplayTransform = transform };
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad(1, "/Mesh", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f)], 2);
         _ = renderer.ApplyAndRender(first, color, depth, options);
@@ -362,7 +362,7 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(Width, Height));
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad(1, "/Selected", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f)], 2);
         var original = new SelectionState(["/Selected"]);
@@ -401,7 +401,7 @@ internal static class DisplayTransformConformance
         using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Width, Height));
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. SilkNestedInstanceLinkConformance.Quad(1, "/Prototype", -0.5),
                 .. SilkNestedInstanceLinkConformance.InstanceReference("/Prototype", 1, 0.5)], 3);
@@ -416,7 +416,7 @@ internal static class DisplayTransformConformance
         ulong reserved = budget.Usage.ReservedBytes;
         double[] view = SilkMeshRendererConformance.Identity();
         view[12] = 0.25;
-        using var camera = new OpenUsdSilkPage(31, 2,
+        using var camera = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2,
             SilkMeshRendererConformance.CreateFrameCommand(Width, Height, view), 1);
         renderer.ApplyPage(camera);
         for (int attempt = 0; attempt < 2; attempt++)
@@ -454,7 +454,7 @@ internal static class DisplayTransformConformance
         using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Width, Height));
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad(1, "/Mesh", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f)], 2);
         if (lazyCapacity)
@@ -474,7 +474,7 @@ internal static class DisplayTransformConformance
         color.ReadbackForTesting(before);
         double[] view = SilkMeshRendererConformance.Identity();
         view[12] = 0.25;
-        using var camera = new OpenUsdSilkPage(31, 2,
+        using var camera = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2,
             SilkMeshRendererConformance.CreateFrameCommand(Width, Height, view), 1);
         renderer.ApplyPage(camera);
         var options = SilkMeshRenderOptions.Default with { Exposure = 1 };
@@ -523,7 +523,7 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture resizedDepth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(Width * 2, Height * 2));
         byte[] mesh = CreateQuad(1, "/Selected", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         var selection = new SelectionState(["/Selected"]);
@@ -536,7 +536,7 @@ internal static class DisplayTransformConformance
         renderer.UpdateSelection(selection,
             new SilkSelectionOutlineSettings(true, new SilkColor(0, 1, 0, 1), 4, true));
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.2);
-        using var moved = new OpenUsdSilkPage(31, 2, mesh, 1);
+        using var moved = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, mesh, 1);
         device.RefuseGraphicsPipeline = true;
         device.LoseGenerationOnPipelineRefusal = deviceLoss;
         await Assert.That(() => renderer.ApplyAndRender(moved, hdr, resizedDepth)).Throws<InvalidOperationException>();
@@ -583,7 +583,7 @@ internal static class DisplayTransformConformance
         byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
             1, "/Selected", [-0.6f, 0.6f, 0.5f, 0.6f, 0.6f, 0.5f, 0.6f, -0.6f, 0.5f, -0.6f, -0.6f, 0.5f],
             [0, 1, 2, 0, 2, 3], 0, 0, null, 1, [0, 1], [0, 1, 2, 3], [0, 1, -1, -1, 2, 3]);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         var original = new SelectionState(["/Selected"]);
@@ -598,7 +598,7 @@ internal static class DisplayTransformConformance
             kind is SelectionElementKind.Edge or SelectionElementKind.Point);
         renderer.UpdateSelection(candidate, settings);
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.2);
-        using var moved = new OpenUsdSilkPage(31, 2, mesh, 1);
+        using var moved = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, mesh, 1);
         device.RefuseSelectionMaskPipeline = true;
         await Assert.That(() => renderer.ApplyAndRender(moved, color, depth)).Throws<InvalidOperationException>();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
@@ -629,20 +629,20 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(Width, Height));
         byte[] mesh = CreateQuad(1, "/Selected", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
         renderer.UpdateSelection(new SelectionState(["/Selected"]));
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.2);
-        using var moved = new OpenUsdSilkPage(31, 2, mesh, 1);
+        using var moved = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, mesh, 1);
         device.RefuseGraphicsPipeline = true;
         await Assert.That(() => renderer.ApplyAndRenderForDisplayCapture(
             moved, hdr, depth, SilkMeshRenderOptions.Default)).Throws<InvalidOperationException>();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
         device.RefuseGraphicsPipeline = false;
         device.RefuseSelectionBinding = true;
-        using var following = new OpenUsdSilkPage(31, 3, [], 0);
+        using var following = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, [], 0);
         await Assert.That(() => renderer.ApplyAndRender(following, color, depth)).Throws<InvalidOperationException>();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(2ul);
         await Assert.That(device.LastSelectionBinding).IsNull();
@@ -665,7 +665,7 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(Width, Height));
         byte[] mesh = CreateQuad(1, "/Selected", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         var selection = new SelectionState(["/Selected"]);
@@ -678,11 +678,11 @@ internal static class DisplayTransformConformance
         renderer.UpdateSelection(selection,
             new SilkSelectionOutlineSettings(true, new SilkColor(0, 1, 0, 1), 3, true));
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.2);
-        using var moved = new OpenUsdSilkPage(31, 2, mesh, 1);
+        using var moved = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, mesh, 1);
         device.RefuseSelectionBinding = true;
         await Assert.That(() => renderer.ApplyAndRender(moved, color, depth)).Throws<InvalidOperationException>();
         device.RefuseSelectionBinding = false;
-        using var following = new OpenUsdSilkPage(31, 3, [], 0);
+        using var following = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, [], 0);
         const ulong replayBytes = Width * Height * (sizeof(float) + 4);
         ulong pressureBytes = 1_000_000 - retainedTextures - replayBytes;
         using (textures.Reserve(SilkTextureDescriptor.ColorTarget(checked((uint)(pressureBytes / 4)), 1), 1))
@@ -736,7 +736,7 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(Width, Height));
         byte[] mesh = CreateQuad(1, "/Selected", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
@@ -750,11 +750,11 @@ internal static class DisplayTransformConformance
         renderer.UpdateSelection(selection,
             new SilkSelectionOutlineSettings(true, new SilkColor(0, 1, 0, 1), 4, true));
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.2);
-        using var moved = new OpenUsdSilkPage(31, 2, mesh, 1);
+        using var moved = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, mesh, 1);
         device.RefuseSelectionBinding = true;
         await Assert.That(() => renderer.ApplyAndRender(moved, color, depth)).Throws<InvalidOperationException>();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
-        using var following = new OpenUsdSilkPage(31, 3, [], 0);
+        using var following = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, [], 0);
         await Assert.That(() => renderer.ApplyPage(following)).Throws<InvalidOperationException>();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
@@ -792,7 +792,7 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(Width, Height));
         byte[] mesh = CreateQuad(1, "/Selected", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. mesh], 2);
         _ = renderer.ApplyAndRender(first, color, depth);
@@ -803,7 +803,7 @@ internal static class DisplayTransformConformance
         color.ReadbackForTesting(before);
         ulong reserved = budget.Usage.ReservedBytes;
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(mesh.AsSpan(176), 0.2);
-        using var moved = new OpenUsdSilkPage(31, 2, mesh, 1);
+        using var moved = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, mesh, 1);
         using (IDisposable? pressure = latePipeline ? null : budget.Reserve(budget.MaximumBytes - reserved - 11))
         {
             device.RefuseGraphicsPipeline = latePipeline;
@@ -842,7 +842,7 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(Width, Height));
-        using var page = new OpenUsdSilkPage(31, 1,
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad(1, "/Selected", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f)], 2);
         _ = renderer.ApplyAndRender(page, color, depth);
@@ -890,7 +890,7 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture hdr = device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.SampledDepthTarget(Width, Height));
-        using var page = new OpenUsdSilkPage(31, 1,
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad(1, "/Selected", -0.6f, 0.6f, 0.6f, -0.6f, 0.5f)], 2);
         _ = renderer.ApplyAndRender(page, color, depth);
@@ -951,13 +951,13 @@ internal static class DisplayTransformConformance
         using ISilkGraphicsTexture candidate = device.CreateTexture2D(
             SilkTextureDescriptor.HdrColorTarget(Width, Height));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Width, Height));
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. SilkMeshRendererConformance.CreateFrameCommand(Width, Height, SilkMeshRendererConformance.Identity()),
                 .. CreateQuad(1, "/Original", -0.8f, 0.8f, 0.8f, -0.8f, 0.5f)], 2);
         _ = renderer.ApplyAndRender(first, display, depth);
         SilkMeshGpuResource original = renderer.GpuResources.MeshValues.Single();
         ulong reserved = budget.Usage.ReservedBytes;
-        using var next = new OpenUsdSilkPage(31, 2,
+        using var next = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2,
             CreateQuad(2, "/Added", -0.5f, 0.5f, 0.5f, -0.5f, 0.3f), 1);
         device.RefuseGraphicsPipeline = true;
         await Assert.That(() => renderer.ApplyAndRender(next, candidate, depth)).Throws<InvalidOperationException>();
@@ -988,7 +988,7 @@ internal static class DisplayTransformConformance
         var options = new SilkMeshRenderOptions(new SilkColor(0.5f, 0.5f, 0.5f, 1), 1) { DisplayTransform = transform };
         byte[] frame = SilkMeshRendererConformance.CreateFrameCommand(
             Width, Height, SilkMeshRendererConformance.Identity());
-        using var initial = new OpenUsdSilkPage(31, 1, frame, 1);
+        using var initial = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, frame, 1);
         _ = renderer.ApplyAndRender(initial, display, depth, options);
         byte[] before = new byte[Width * Height * 4];
         display.ReadbackForTesting(before);
@@ -997,13 +997,13 @@ internal static class DisplayTransformConformance
         provider.Blue = true;
         device.RefuseDisplayBinding = !lateMesh;
         device.RefuseBufferAfterSubmission = lateMesh;
-        using var changed = new OpenUsdSilkPage(31, 2,
+        using var changed = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2,
             CreateQuad(1, "/Candidate", -0.8f, 0.8f, 0.8f, -0.8f, 0.5f), 1);
         Action apply = capture
             ? () => renderer.ApplyAndRenderForDisplayCapture(changed, display, depth, options)
             : () => renderer.ApplyAndRender(changed, display, depth, options);
         await Assert.That(apply).Throws<InvalidOperationException>();
-        using var next = new OpenUsdSilkPage(31, 3, [], 0);
+        using var next = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, [], 0);
         if (!lateMesh)
         {
             await Assert.That(() => renderer.ApplyPage(next)).Throws<InvalidOperationException>();

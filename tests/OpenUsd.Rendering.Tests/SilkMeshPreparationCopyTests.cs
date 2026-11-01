@@ -192,8 +192,8 @@ public sealed class SilkMeshPreparationCopyTests
     [Test]
     public async Task PreparationDiagnosticsStayStableAcrossFrameUsageChanges()
     {
-        using var first = new OpenUsdSilkPage(31, 1, [1, 2], 0, new(16, 8, 12), 64);
-        using var next = new OpenUsdSilkPage(31, 2, [1, 2, 3, 4], 0, new(16, 16, 16), 64);
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, [1, 2], 0, new(16, 8, 12), 64);
+        using var next = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [1, 2, 3, 4], 0, new(16, 16, 16), 64);
         await Assert.That(first.WithPreparationDiagnostics(RenderDiagnosticsState.Empty)
             .Equals(next.WithPreparationDiagnostics(RenderDiagnosticsState.Empty))).IsTrue();
         await Assert.That(first.MeshPreparationUsage!.ReservedBytes).IsEqualTo(8ul);
@@ -205,7 +205,7 @@ public sealed class SilkMeshPreparationCopyTests
     [Test]
     public async Task AdmissionDiagnosticsDoNotOverflowTheBoundedJobDiagnosticCount()
     {
-        using var page = new OpenUsdSilkPage(31, 1, [], 0, new(100, 40, 60), 200);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, [], 0, new(100, 40, 60), 200);
         RenderDiagnostic[] existing = Enumerable.Range(0, 128).Select(index =>
             new RenderDiagnostic(RenderDiagnosticSeverity.Warning, "material-" + index, "diagnostic")).ToArray();
         RenderDiagnosticsState result = page.WithPreparationDiagnostics(new(existing));

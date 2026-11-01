@@ -559,7 +559,7 @@ public sealed class SilkSelectionOutlineTests
         uint[] subprims = [0, 1];
         uint[] pointOrigins = [0, 1, 2, 3];
         uint[] cornerEdges = [0, 1, 0xFFFFFFFFu, 0xFFFFFFFFu, 2, 3];
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -606,8 +606,8 @@ public sealed class SilkSelectionOutlineTests
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(248), 6);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(252), 4);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(256), 4);
-        path.CopyTo(bytes, 268);
-        int cursor = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int cursor = 276 + path.Length;
         foreach (float value in points)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(cursor), value);
@@ -702,7 +702,7 @@ public sealed class SilkSelectionOutlineTests
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -746,8 +746,8 @@ public sealed class SilkSelectionOutlineTests
                 bytes.AsSpan(80 + (index * sizeof(double))),
                 index % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 268);
-        int pointOffset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int pointOffset = 276 + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

@@ -515,7 +515,7 @@ public sealed class SilkPickInstanceIdentityCostTests
         }
         int pointOriginCount = identity.HasFlag(SilkSubprimIdentity.Point) ? pointCount : 0;
         int cornerEdgeCount = identity.HasFlag(SilkSubprimIdentity.Edge) ? indices.Length : 0;
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -566,7 +566,7 @@ public sealed class SilkPickInstanceIdentityCostTests
             (uint)instancerPathBytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(264), nested ? 2u : 1u);
 
-        int cursor = 268;
+        int cursor = 276;
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in points)

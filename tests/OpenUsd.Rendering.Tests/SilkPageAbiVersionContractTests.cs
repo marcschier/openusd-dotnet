@@ -93,6 +93,53 @@ public sealed class SilkPageAbiVersionContractTests
     }
 
     [Test]
+    public async Task FixturePagesUseTheCurrentAbiUnlessTestingRejection()
+    {
+        string root = FindRepositoryRoot();
+        string[] testProjects = ["OpenUsd.Rendering.Tests", "OpenUsd.Rendering.ConformanceTests"];
+        HashSet<string> stale = [];
+        int constructorCount = 0;
+        foreach (string project in testProjects)
+        {
+            string directory = Path.Combine(root, "tests", project);
+            foreach (string file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+            {
+                if (file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}") ||
+                    file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+                {
+                    continue;
+                }
+
+                string text = await File.ReadAllTextAsync(file);
+                constructorCount += Regex.Count(
+                    text, @"new\s+OpenUsdSilkPage\s*\(", RegexOptions.None, TimeSpan.FromSeconds(5));
+                foreach (Match match in Regex.Matches(
+                    text,
+                    @"new\s+OpenUsdSilkPage\s*\(\s*(?<version>\d+)u?\s*,",
+                    RegexOptions.None,
+                    TimeSpan.FromSeconds(5)))
+                {
+                    uint version = uint.Parse(match.Groups["version"].Value, CultureInfo.InvariantCulture);
+                    int lineStart = text.LastIndexOf('\n', match.Index) + 1;
+                    bool explicitRejection =
+                        Path.GetFileName(file) == "SilkCommandParserTests.cs" &&
+                        version == 1 &&
+                        text[lineStart..match.Index].Contains("Assert.That(() => ", StringComparison.Ordinal);
+                    if (version != SilkCommandParser.PageAbiVersion && !explicitRejection)
+                    {
+                        stale.Add($"{Path.GetRelativePath(root, file)}: {version}");
+                    }
+                }
+            }
+        }
+
+        await Assert.That(constructorCount).IsGreaterThan(100);
+        await Assert.That(stale)
+            .IsEmpty()
+            .Because("Fixture pages must use the current ABI: " + string.Join("; ", stale.Order()));
+    }
+
+    [Test]
     public async Task NativeHeaderMatchesTheLockedRenderCommandAbi()
     {
         string root = FindRepositoryRoot();

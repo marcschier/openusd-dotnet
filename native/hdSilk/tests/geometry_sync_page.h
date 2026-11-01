@@ -33,7 +33,7 @@ inline bool FindMeshCommand(
     size_t* commandOffset,
     uint32_t* commandSize)
 {
-    const size_t pathOffset = expectedType == OPENUSD_SILK_COMMAND_MESH_UPSERT ? 268 : 24;
+    const size_t pathOffset = expectedType == OPENUSD_SILK_COMMAND_MESH_UPSERT ? 276 : 24;
     const size_t pathLengthOffset = expectedType == OPENUSD_SILK_COMMAND_MESH_UPSERT ? 48 : 20;
     for (size_t offset = 0; offset < page.size();)
     {
@@ -92,7 +92,7 @@ inline bool HasMeshPoints(
     {
         return false;
     }
-    const size_t pointOffset = 268 + static_cast<size_t>(pathLength);
+    const size_t pointOffset = 276 + static_cast<size_t>(pathLength);
     if (pointOffset > size || pointCount > (size - pointOffset) / (3 * sizeof(float)))
     {
         return false;

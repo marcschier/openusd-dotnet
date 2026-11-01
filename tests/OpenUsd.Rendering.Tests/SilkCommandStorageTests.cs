@@ -158,7 +158,7 @@ public sealed class SilkCommandStorageTests
     {
         const ulong start = 1ul << 32;
         var storage = new OffsetStorage(start);
-        using var page = new OpenUsdSilkPage(31, 1, storage, 1, null, 12);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, storage, 1, null, 12);
         using (var reader = new SilkCommandStorageReader(storage, preserveViews: false))
         {
             ulong offset = start;
@@ -198,7 +198,7 @@ public sealed class SilkCommandStorageTests
         storage = new MemoryStorage(bytes, transfer);
         try
         {
-            return new OpenUsdSilkPage(31, 7, storage, commands, null, Math.Max(8, bytes.Length));
+            return new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 7, storage, commands, null, Math.Max(8, bytes.Length));
         }
         finally
         {

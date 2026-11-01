@@ -441,7 +441,7 @@ public sealed class SilkSubprimIdentityTests
         float[] points = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0];
         uint[] indices = [0, 1, 2, 3];
         int pointCount = points.Length / 3;
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -502,8 +502,8 @@ public sealed class SilkSubprimIdentityTests
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(256),
             (uint)pointCount);
-        path.CopyTo(bytes, 268);
-        int pointsOffset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int pointsOffset = 276 + path.Length;
         for (int component = 0; component < points.Length; component++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

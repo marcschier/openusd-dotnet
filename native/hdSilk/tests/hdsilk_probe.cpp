@@ -866,7 +866,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             uint32_t authoredPointCount = 0;
             uint32_t instancerPathByteCount = 0;
             uint32_t instancerContextCount = 0;
-            constexpr size_t pathOffset = 268;
+            constexpr size_t pathOffset = 276;
             if (ReadValue(data, size, offset + 8, &stableHash) &&
                 ReadValue(data, size, offset + 16, &primId) &&
                 ReadValue(data, size, offset + 20, &instanceId) &&

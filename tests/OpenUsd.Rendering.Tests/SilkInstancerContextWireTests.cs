@@ -316,7 +316,7 @@ public sealed class SilkInstancerContextWireTests
         {
             chainBytes += 8 + entry.Length;
         }
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -365,7 +365,7 @@ public sealed class SilkInstancerContextWireTests
             bytes.AsSpan(264),
             (uint)context.Length);
 
-        int cursor = 268;
+        int cursor = 276;
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in points)

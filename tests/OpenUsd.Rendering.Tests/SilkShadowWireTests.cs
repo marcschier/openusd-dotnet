@@ -532,7 +532,7 @@ public sealed class SilkShadowWireTests
         byte[] materialBytes = Encoding.UTF8.GetBytes(materialPath);
         float[] points = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -574,8 +574,8 @@ public sealed class SilkShadowWireTests
             bytes.AsSpan(216),
             (uint)materialBytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220), 0);
-        pathBytes.CopyTo(bytes, 268);
-        int offset = 268 + pathBytes.Length;
+        pathBytes.CopyTo(bytes, 276);
+        int offset = 276 + pathBytes.Length;
         foreach (float value in points)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset), value);

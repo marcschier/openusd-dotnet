@@ -134,7 +134,7 @@ public sealed class SilkPhysicsOverrideTests
         PhysicsRenderOverrideView view = CreateView(id, 1, 2, 3);
         ulong speculativeRevision;
         int speculativeCount;
-        using (var page = new OpenUsdSilkPage(31, 2, CreateMeshCommand(path: "/Outside", primId: 8), 1))
+        using (var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, CreateMeshCommand(path: "/Outside", primId: 8), 1))
         using (SilkSceneState.PreparedPage transaction = scene.PreparePage(page))
         {
             speculativeRevision = scene.GeometryRevision;
@@ -707,7 +707,7 @@ public sealed class SilkPhysicsOverrideTests
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
         transform ??= AuthoredTransform;
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -743,8 +743,8 @@ public sealed class SilkPhysicsOverrideTests
         {
             BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (i * 8)), transform[i]);
         }
-        pathBytes.CopyTo(bytes, 268);
-        int pointsOffset = 268 + pathBytes.Length;
+        pathBytes.CopyTo(bytes, 276);
+        int pointsOffset = 276 + pathBytes.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

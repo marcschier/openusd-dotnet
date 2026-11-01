@@ -578,7 +578,7 @@ public sealed class SilkDeformationRetentionTests
         int attributeBytes = attributeCount == 0
             ? 0
             : (5 * sizeof(uint)) + normalName.Length + (normals.Length * sizeof(float));
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -616,7 +616,7 @@ public sealed class SilkDeformationRetentionTests
                 index % 5 == 0 ? 1 : 0);
         }
 
-        int cursor = 268;
+        int cursor = 276;
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220), (uint)attributeCount);
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;

@@ -144,14 +144,14 @@ Frame ReadNativeFrame(const OwnedPage& page)
     const openusd_silk_page_view& view = page.view;
     Require(page.handle != nullptr, "Successful sync returned no owned page");
     Require(
-        openusd_silk_get_session_abi_version() == 7u &&
-            openusd_silk_get_page_abi_version() == 31u,
-        "Loaded native session/page ABI is not 7/31");
+        openusd_silk_get_session_abi_version() == OPENUSD_SILK_SESSION_ABI_VERSION &&
+            openusd_silk_get_page_abi_version() == OPENUSD_SILK_PAGE_ABI_VERSION,
+        "Loaded native session/page ABI does not match the headers");
     Require(
-        view.struct_size == sizeof(view) && view.abi_version == 31u &&
+        view.struct_size == sizeof(view) && view.abi_version == OPENUSD_SILK_PAGE_ABI_VERSION &&
             view.revision != 0 && view.data != nullptr &&
             view.data_size >= FrameBytes,
-        "Successful sync returned an invalid page31 view");
+        "Successful sync returned an invalid page view");
     Frame frame = ReadFrame(view.data, view.data_size, view.command_count);
     Require(
         frame.width == 96 && frame.height == 96 && frame.clipPlaneCount == 0u,
@@ -273,7 +273,7 @@ void ApplyMeshDeltas(
         }
         else if (type == OPENUSD_SILK_COMMAND_MESH_UPSERT)
         {
-            Require(command.size >= 268, "Truncated MESH_UPSERT header");
+            Require(command.size >= 276, "Truncated MESH_UPSERT header");
             Require(
                 ReadI32Le(command, 16) >= 0 &&
                     ReadI32Le(command, 20) == 0 && ReadI32Le(command, 24) == 0 &&
@@ -286,7 +286,7 @@ void ApplyMeshDeltas(
             const uint32_t pointCount = ReadU32Le(command, 52);
             const uint32_t indexCount = ReadU32Le(command, 56);
             const uint32_t triangleCount = ReadU32Le(command, 60);
-            const std::string path = ReadPath(command, 268, pathCount);
+            const std::string path = ReadPath(command, 276, pathCount);
             Require(
                 pointCount >= 3u && indexCount >= 3u && indexCount % 3u == 0u &&
                     triangleCount == indexCount / 3u,
@@ -297,7 +297,7 @@ void ApplyMeshDeltas(
             {
                 mesh.transform[element] = ReadF64Le(command, 80 + 8 * element);
             }
-            size_t cursor = size_t{268} + pathCount;
+            size_t cursor = size_t{276} + pathCount;
             RequireArray(command, cursor, pointCount, 12);
             mesh.points.reserve(pointCount);
             for (size_t point = 0; point < pointCount; ++point)

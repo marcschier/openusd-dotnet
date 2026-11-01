@@ -1191,8 +1191,8 @@ MeshView ReadMesh(CommandView command)
     }
     const uint32_t instancerBytes = ReadU32Le(command, 260);
     const uint32_t contextCount = ReadU32Le(command, 264);
-    mesh.path = ReadText(command, 268, pathBytes);
-    size_t cursor = 268 + static_cast<size_t>(pathBytes);
+    mesh.path = ReadText(command, 276, pathBytes);
+    size_t cursor = 276 + static_cast<size_t>(pathBytes);
     for (size_t component = 0; component < 3 * static_cast<size_t>(points); ++component, cursor += 4)
     {
         mesh.points.push_back(ReadF32Le(command, cursor));

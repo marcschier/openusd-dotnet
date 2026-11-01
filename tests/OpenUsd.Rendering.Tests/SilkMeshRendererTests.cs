@@ -252,7 +252,7 @@ public sealed class SilkMeshRendererTests
         await Assert.That(storage.Disposals).IsEqualTo(0);
         storage.FailPass = 0;
         device.BufferFailureCountdown = null;
-        using var next = new OpenUsdSilkPage(31, 8, CreateFrameCommand(), 1);
+        using var next = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 8, CreateFrameCommand(), 1);
         renderer.ApplyPage(next);
         await Assert.That(renderer.Scene.Revision).IsEqualTo(8ul);
         await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(1);
@@ -281,7 +281,7 @@ public sealed class SilkMeshRendererTests
         const string materialPath = "/World/Materials/Volume";
         using var device = new TestGraphicsDevice();
         using var renderer = new SilkMeshRenderer(device);
-        using var volume = new OpenUsdSilkPage(31, 1,
+        using var volume = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             SilkMaterialCommandTests.CreateVolumeMaterial(materialPath, "hdsilk-volume:/density.vdb"), 1);
         var assets = new SilkMaterialCommandTests.TrackedVolumeAssets(materialPath, [1, 2, 3, 4]);
         volume.SetVolumeAssets(assets);
@@ -312,7 +312,7 @@ public sealed class SilkMeshRendererTests
         using var renderer = new SilkMeshRenderer(device);
         using var color = new ValidationTexture(4, 4, SilkTextureFormat.Rgba8Unorm);
         using var depth = new ValidationTexture(invalidOptions ? 4u : 2u, 4, SilkTextureFormat.D32Float);
-        using var page = new OpenUsdSilkPage(31, 1,
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
         SilkMeshRenderOptions options = invalidOptions
             ? SilkMeshRenderOptions.Default with { ClearDepth = float.NaN }
@@ -383,7 +383,7 @@ public sealed class SilkMeshRendererTests
         byte[] removal = CreateRemoval("/Removed");
         byte[] movedFrame = CreateFrameCommand();
         BinaryPrimitives.WriteDoubleLittleEndian(movedFrame.AsSpan(16 + 12 * sizeof(double)), 2);
-        using var page = new OpenUsdSilkPage(31, 2, [.. movedFrame, .. replacement, .. tint, .. added, .. removal], 5);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [.. movedFrame, .. replacement, .. tint, .. added, .. removal], 5);
         SilkSceneDelta delta = coordinated ? default : scene.Apply(page);
         device.BufferFailureCountdown = failWrite ? null : failure;
         device.WriteFailureCountdown = failWrite ? failure : null;
@@ -425,9 +425,9 @@ public sealed class SilkMeshRendererTests
     {
         using var device = new TestGraphicsDevice();
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(31, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
         renderer.ApplyPage(first);
-        using var quiet = new OpenUsdSilkPage(31, 2, CreateFrameCommand(), 1);
+        using var quiet = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, CreateFrameCommand(), 1);
         SilkMeshGpuResource original = renderer.GpuResources.Meshes[7];
         int created = device.Buffers.Count;
         for (int index = 0; index < 1000; index++)
@@ -757,7 +757,7 @@ public sealed class SilkMeshRendererTests
             : Encoding.UTF8.GetBytes("/Instancer");
         float[] points = [-0.5f, -0.5f, pointZ, 0, 0.5f, pointZ, 0.5f, -0.5f, pointZ];
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -793,8 +793,8 @@ public sealed class SilkMeshRendererTests
                 bytes.AsSpan(80 + (i * 8)),
                 transform is null ? i % 5 == 0 ? 1 : 0 : transform[i]);
         }
-        path.CopyTo(bytes, 268);
-        int pointsOffset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int pointsOffset = 276 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(pointsOffset + (i * 4)), points[i]);

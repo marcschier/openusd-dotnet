@@ -250,7 +250,7 @@ internal sealed class SilkDisplacementTests
     private static void ApplyBudgetedPage(
         SilkSceneState scene, SilkSceneGpuResources resources, ulong revision, params byte[][] commands)
     {
-        using var page = new OpenUsdSilkPage(31, revision, commands.SelectMany(command => command).ToArray(),
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, revision, commands.SelectMany(command => command).ToArray(),
             checked((uint)commands.Length));
         using SilkSceneState.PreparedPage cpu = scene.PreparePage(page);
         using SilkSceneGpuResources.PreparedMeshUpdate? gpu = resources.Prepare(
@@ -1929,7 +1929,7 @@ internal sealed class SilkDisplacementTests
         int liveBuffers = device.LiveBufferCount;
         ulong geometryRevision = scene.GeometryRevision;
         byte[] changed = CreateMaterialUpsert(textureAsset: "replacement-height.png");
-        using var page = new OpenUsdSilkPage(31, 2, changed, 1);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, changed, 1);
         device.FailAllocationAfter = 3;
         await Assert.That(() => renderer.ApplyPage(page)).Throws<InvalidOperationException>();
         await Assert.That(scene.Materials[MaterialPath]).IsSameReferenceAs(originalMaterial);
@@ -2431,7 +2431,7 @@ internal sealed class SilkDisplacementTests
                 secondaryTexCoords);
         }
 
-        byte[] bytes = new byte[268 + variable.Count];
+        byte[] bytes = new byte[276 + variable.Count];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt64LittleEndian(
@@ -2463,7 +2463,7 @@ internal sealed class SilkDisplacementTests
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(220),
             secondaryTexCoords is null ? 2u : 3u);
-        variable.CopyTo(bytes, 268);
+        variable.CopyTo(bytes, 276);
         return bytes;
     }
 

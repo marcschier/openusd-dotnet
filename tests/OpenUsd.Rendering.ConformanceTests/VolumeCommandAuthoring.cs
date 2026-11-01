@@ -176,7 +176,7 @@ internal static class VolumeCommandAuthoring
         ArgumentNullException.ThrowIfNull(mesh);
         byte[] pathBytes = Encoding.UTF8.GetBytes(materialPath);
         byte[] bound = new byte[mesh.Length + pathBytes.Length];
-        int materialOffset = checked(268 +
+        int materialOffset = checked(276 +
             (int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(48)) +
             ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(52)) * 12) +
             ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(56)) * 4) +

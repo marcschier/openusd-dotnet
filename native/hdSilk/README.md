@@ -90,7 +90,7 @@ rejected, token values are never reused, and the registry keeps no tombstones.
 
 Authored `UsdRender` execution needs explicit scene-ingestion choices that do
 not silently collapse to viewport defaults. The current public header describes
-session ABI 7 and page ABI 31. Managed creation requires the matching session/page
+session ABI 7 and page ABI 32. Managed creation requires the matching session/page
 version exports; older libraries cannot be mixed with these bindings.
 
 The version-1 request is append-only and request-scoped: one struct carries the

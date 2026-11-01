@@ -113,7 +113,7 @@ bool ParseMeshUpsert(
     uint32_t deformationByteCount = 0;
     uint32_t pointOriginCount = 0;
     uint32_t cornerEdgeCount = 0;
-    constexpr size_t pathOffset = 268;
+    constexpr size_t pathOffset = 276;
     if (!ReadValue(data, size, offset + 28, &topologyKind) ||
         !ReadValue(data, size, offset + 32, &topologyRevision) ||
         !ReadValue(data, size, offset + 48, &pathSize) ||

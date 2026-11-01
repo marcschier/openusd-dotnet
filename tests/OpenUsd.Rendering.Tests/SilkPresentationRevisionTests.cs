@@ -277,7 +277,7 @@ public sealed class SilkPresentationRevisionTests
         SilkSubprimUnsupportedReason unsupported)
     {
         byte[] path = Encoding.UTF8.GetBytes(MeshPath);
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -324,8 +324,8 @@ public sealed class SilkPresentationRevisionTests
             (uint)pointOrigins.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(256), authoredPointCount);
 
-        path.CopyTo(bytes, 268);
-        int offset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int offset = 276 + path.Length;
         for (int component = 0; component < points.Length; component++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

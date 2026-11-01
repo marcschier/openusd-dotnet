@@ -600,7 +600,7 @@ public sealed class SilkTransactionalApplyTests
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         float[] points = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -635,8 +635,8 @@ public sealed class SilkTransactionalApplyTests
                 element % 5 == 0 ? 1 : 0);
         }
         BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (12 * 8)), x);
-        pathBytes.CopyTo(bytes, 268);
-        int offset = 268 + pathBytes.Length;
+        pathBytes.CopyTo(bytes, 276);
+        int offset = 276 + pathBytes.Length;
         foreach (float value in points)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset), value);

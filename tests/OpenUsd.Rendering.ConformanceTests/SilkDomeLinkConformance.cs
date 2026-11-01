@@ -672,7 +672,7 @@ internal static class SilkDomeLinkConformance
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         byte[] instancerPathBytes = Encoding.UTF8.GetBytes("/Instancer");
-        int size = 268 + pathBytes.Length + instancerPathBytes.Length +
+        int size = 276 + pathBytes.Length + instancerPathBytes.Length +
             8 + instancerPathBytes.Length;
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
@@ -709,9 +709,9 @@ internal static class SilkDomeLinkConformance
             bytes.AsSpan(260),
             (uint)instancerPathBytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(264), 1);
-        pathBytes.CopyTo(bytes, 268);
-        instancerPathBytes.CopyTo(bytes, 268 + pathBytes.Length);
-        int contextOffset = 268 + pathBytes.Length + instancerPathBytes.Length;
+        pathBytes.CopyTo(bytes, 276);
+        instancerPathBytes.CopyTo(bytes, 276 + pathBytes.Length);
+        int contextOffset = 276 + pathBytes.Length + instancerPathBytes.Length;
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(contextOffset),
             (uint)instancerPathBytes.Length);

@@ -364,21 +364,24 @@ PageStats ReadPage(const openusd_silk_page_view& view)
         Require(size >= 8 && size <= remaining, "The page command size is invalid.");
         if (type == OPENUSD_SILK_COMMAND_MESH_UPSERT)
         {
-            Require(size >= 268, "A mesh record is shorter than its fixed header.");
+            Require(size >= 276, "A mesh record is shorter than its fixed header.");
             ++result.meshUpserts;
             const uint32_t pathBytes = ReadU32(data + 48);
-            Require(pathBytes <= size - 268, "A mesh path exceeds its record.");
-            const std::string path(reinterpret_cast<const char*>(data + 268), pathBytes);
+            Require(pathBytes <= size - 276, "A mesh path exceeds its record.");
+            const std::string path(reinterpret_cast<const char*>(data + 276), pathBytes);
             ++result.meshUpsertsByPath[path];
             const uint32_t pointCount = ReadU32(data + 52);
+            const size_t pointOffset = 276u + static_cast<size_t>(pathBytes);
             if (pointCount != 0)
             {
-                result.firstPointXByPath[path] = ReadF32(data + 268u + pathBytes);
+                Require(pointOffset <= size && sizeof(float) <= size - pointOffset,
+                    "A mesh point exceeds its record.");
+                result.firstPointXByPath[path] = ReadF32(data + pointOffset);
             }
             const uint32_t indexCount = ReadU32(data + 56);
             const uint32_t triangleCount = ReadU32(data + 60);
             const uint32_t materialBytes = ReadU32(data + 216);
-            size_t offset = 268u + pathBytes;
+            size_t offset = pointOffset;
             offset += static_cast<size_t>(pointCount) * 3u * sizeof(float);
             offset += static_cast<size_t>(indexCount) * sizeof(uint32_t);
             offset += static_cast<size_t>(triangleCount) * sizeof(uint32_t);
@@ -1191,11 +1194,11 @@ bool VerifyVolumeBudgetExtension(const char* pluginPath)
 bool VerifyRetainedInvalidation(const char* pluginPath)
 {
     Require(
-        openusd_silk_get_session_abi_version() == 7u,
-        "The built hdSilk binary does not export session ABI 7.");
+        openusd_silk_get_session_abi_version() == OPENUSD_SILK_SESSION_ABI_VERSION,
+        "The built hdSilk session ABI does not match the headers.");
     Require(
-        openusd_silk_get_page_abi_version() == 31u,
-        "The built hdSilk binary does not export page ABI 31.");
+        openusd_silk_get_page_abi_version() == OPENUSD_SILK_PAGE_ABI_VERSION,
+        "The built hdSilk page ABI does not match the headers.");
 
     const std::filesystem::path scene = WriteStage();
     char errorBytes[4096] = {};

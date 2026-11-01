@@ -36,7 +36,7 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public static class SilkDeformationRenderConformance
 {
     private const int Size = 64;
-    private const int MeshFixedSize = 268;
+    private const int MeshFixedSize = 276;
     private const float QuadDepth = 0.5f;
     private const float ReceiverDepth = 0.2f;
     private const float CasterDepth = 0.8f;
@@ -60,7 +60,7 @@ public static class SilkDeformationRenderConformance
         ulong revision = renderer.GpuResources.Revision;
         ulong reserved = budget.Usage.ReservedBytes;
         byte[] changed = CreateQuad("/Quad", BindPoints(), BindNormals(), TranslationRig(1.1f));
-        using var page = new OpenUsdSilkPage(31, 2, changed, 1);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, changed, 1);
         Exception? refusal = null;
         bool candidateVisible;
         using (SilkSceneState.PreparedPage cpu = renderer.Scene.PreparePage(page))
@@ -777,7 +777,7 @@ public static class SilkDeformationRenderConformance
             command.CopyTo(page, offset);
             offset += command.Length;
         }
-        using var owned = new OpenUsdSilkPage(31, revision, page, checked((uint)all.Length));
+        using var owned = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, revision, page, checked((uint)all.Length));
         renderer.ApplyPage(owned);
     }
 

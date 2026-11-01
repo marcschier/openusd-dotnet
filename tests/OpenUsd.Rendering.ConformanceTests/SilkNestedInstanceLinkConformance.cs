@@ -74,7 +74,7 @@ internal static class SilkNestedInstanceLinkConformance
             SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
         using var renderer = new SilkMeshRenderer(device);
-        using var first = new OpenUsdSilkPage(31, 1,
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. Frame(), .. Quad(1, NestedPrototype, Positions[0]),
                 .. InstanceReference(NestedPrototype, 1, Positions[1])], 3);
         renderer.ApplyPage(first);
@@ -83,7 +83,7 @@ internal static class SilkNestedInstanceLinkConformance
         await Assert.That(CoveredColumns(before)[Centres[0]]).IsTrue();
         await Assert.That(CoveredColumns(before)[Centres[2]]).IsFalse();
         ulong reserved = budget.Usage.ReservedBytes;
-        using var grown = new OpenUsdSilkPage(31, 2,
+        using var grown = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2,
             [.. InstanceReference(NestedPrototype, 2, Positions[2]),
                 .. InstanceReference(NestedPrototype, 3, Positions[3])], 2);
         const ulong growthBytes = 12ul * SilkSceneUniformWriter.ByteSize;
@@ -501,7 +501,7 @@ internal static class SilkNestedInstanceLinkConformance
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         byte[] instancerPathBytes = Encoding.UTF8.GetBytes("/Instancer");
-        int size = 268 + pathBytes.Length + instancerPathBytes.Length +
+        int size = 276 + pathBytes.Length + instancerPathBytes.Length +
             8 + instancerPathBytes.Length;
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
@@ -538,9 +538,9 @@ internal static class SilkNestedInstanceLinkConformance
             bytes.AsSpan(260),
             (uint)instancerPathBytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(264), 1);
-        pathBytes.CopyTo(bytes, 268);
-        instancerPathBytes.CopyTo(bytes, 268 + pathBytes.Length);
-        int contextOffset = 268 + pathBytes.Length + instancerPathBytes.Length;
+        pathBytes.CopyTo(bytes, 276);
+        instancerPathBytes.CopyTo(bytes, 276 + pathBytes.Length);
+        int contextOffset = 276 + pathBytes.Length + instancerPathBytes.Length;
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(contextOffset),
             (uint)instancerPathBytes.Length);

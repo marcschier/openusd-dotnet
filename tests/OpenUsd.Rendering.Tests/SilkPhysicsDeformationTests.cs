@@ -46,7 +46,7 @@ public sealed class SilkPhysicsDeformationTests
         SilkMeshData original = scene.Meshes.Values.Single();
         ulong revision = deformations.Revision;
         ulong geometryRevision = scene.GeometryRevision;
-        using var page = new OpenUsdSilkPage(31, 2, [], 0);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [], 0);
         ulong[] changed;
         float[] candidate;
         using (SilkSceneState.PreparedPage cpu = scene.PreparePage(page))
@@ -246,7 +246,7 @@ public sealed class SilkPhysicsDeformationTests
         byte[] pathBytes = Encoding.UTF8.GetBytes(MeshPath);
         float[] points = AuthoredPoints;
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -283,7 +283,7 @@ public sealed class SilkPhysicsDeformationTests
                 i % 5 == 0 ? 1 : 0);
         }
 
-        int cursor = 268;
+        int cursor = 276;
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in points)
