@@ -471,6 +471,49 @@ public sealed class SilkMeshRendererTests
     }
 
     [Test]
+    [Arguments(1f)]
+    [Arguments(10f)]
+    public async Task ComputedNormalsWeightAdjacentTrianglesByArea(float scale)
+    {
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(
+            [0, 0, 0, scale, 0, 0, 0, 4 * scale, 0, 0, 0, scale],
+            [0, 1, 2, 0, 3, 1]));
+
+        float inverseLength = 1 / MathF.Sqrt(17);
+        float[] expected =
+        [
+            0, inverseLength, 4 * inverseLength,
+            0, inverseLength, 4 * inverseLength,
+            0, 0, 1,
+            0, 1, 0,
+        ];
+        for (int vertex = 0; vertex < 4; vertex++)
+        {
+            for (int component = 0; component < 3; component++)
+            {
+                await Assert.That(geometry.Vertices[(vertex * 6) + 3 + component])
+                    .IsEqualTo(expected[(vertex * 3) + component]).Within(1e-6f);
+            }
+        }
+    }
+
+    [Test]
+    public async Task ComputedNormalsHandleFiniteCoordinatesWhoseDifferenceExceedsFloatRange()
+    {
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(
+            [-float.MaxValue, 0, 0, float.MaxValue, 0, 0, -float.MaxValue, 0, 1],
+            [0, 1, 2]));
+
+        for (int vertex = 0; vertex < 3; vertex++)
+        {
+            int offset = (vertex * 6) + 3;
+            await Assert.That(geometry.Vertices[offset]).IsEqualTo(0f);
+            await Assert.That(geometry.Vertices[offset + 1]).IsEqualTo(-1f);
+            await Assert.That(geometry.Vertices[offset + 2]).IsEqualTo(0f);
+        }
+    }
+
+    [Test]
     public async Task DegenerateTrianglesUseDeterministicFallbackNormals()
     {
         SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(

@@ -4815,12 +4815,15 @@ Constant, vertex, varying, uniform, and face-varying mesh primvars are therefore
 native resolver. Varying primvars must have one value per point after Hydra resolution. Remaining
 gaps are not hidden behind guessed indexing: unsupported or length-mismatched values are omitted.
 
-Authored normals are the first attribute to use it, and they close a real gap. Before v4 the renderer
-recomputed area-weighted vertex normals from topology because the page could not carry them, so authored
-normals were silently discarded. hdSilk now publishes them when it can resolve them directly onto emitted
-vertices; when it cannot, it publishes none and the renderer computes them exactly as before, rather than
-this delegate guessing at a re-indexing it cannot verify. Both paths still normalise and reject a degenerate
-normal, so an authored zero or non-finite value never reaches the GPU.
+hdSilk publishes authored normals through this attribute table when it can resolve them onto the emitted
+vertices. Otherwise, the geometry builder computes a normal per emitted vertex from incident triangles
+whose squared cross-product length exceeds `1e-30`. Their unnormalised cross products weight the result
+by triangle area. The builder does not join vertices duplicated for face-varying attributes, so those
+seams can remain faceted. Both paths normalise the result and use `(0, 0, 1)` when its squared length
+is at most `1e-30` or non-finite. At coarse complexity, Storm uses flat geometric normals for polygon and
+bilinear meshes without resolved authored normals; the shared-vertex fallback here is smooth and does
+not match those cases. Storm can also use limit normals on refined subdivision surfaces, which this
+triangle-based fallback does not reproduce.
 
 Points use the same command stream with additive `POINT_LIST` topology. The measured Storm rule is:
 without authored widths, `UsdGeomPoints` uses a world-space default width that can cover most of a

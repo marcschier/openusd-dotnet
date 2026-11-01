@@ -85,12 +85,12 @@ internal static class SilkMeshGeometryBuilder
                 int pa = a * 3;
                 int pb = b * 3;
                 int pc = c * 3;
-                double abx = points[pb] - points[pa];
-                double aby = points[pb + 1] - points[pa + 1];
-                double abz = points[pb + 2] - points[pa + 2];
-                double acx = points[pc] - points[pa];
-                double acy = points[pc + 1] - points[pa + 1];
-                double acz = points[pc + 2] - points[pa + 2];
+                double abx = (double)points[pb] - points[pa];
+                double aby = (double)points[pb + 1] - points[pa + 1];
+                double abz = (double)points[pb + 2] - points[pa + 2];
+                double acx = (double)points[pc] - points[pa];
+                double acy = (double)points[pc + 1] - points[pa + 1];
+                double acz = (double)points[pc + 2] - points[pa + 2];
                 double nx = (aby * acz) - (abz * acy);
                 double ny = (abz * acx) - (abx * acz);
                 double nz = (abx * acy) - (aby * acx);
@@ -100,10 +100,6 @@ internal static class SilkMeshGeometryBuilder
                     continue;
                 }
 
-                double inverseLength = 1.0 / Math.Sqrt(lengthSquared);
-                nx *= inverseLength;
-                ny *= inverseLength;
-                nz *= inverseLength;
                 Accumulate(normals, pa, nx, ny, nz);
                 Accumulate(normals, pb, nx, ny, nz);
                 Accumulate(normals, pc, nx, ny, nz);
@@ -142,7 +138,7 @@ internal static class SilkMeshGeometryBuilder
         }
 
         // Authored normals win when the delegate resolved them onto emitted
-        // vertices; otherwise they are area-weighted from topology as before.
+        // vertices; otherwise they are area-weighted from topology.
         // Both paths still normalise and reject a degenerate normal, so an
         // authored zero or non-finite value cannot reach the GPU.
         int strideFloats = (hasTangents ? 12 : hasUv ? 8 : 6) + (hasSecondary ? 2 : 0);
