@@ -6,7 +6,7 @@ using OpenUsd.Rendering.Silk;
 namespace OpenUsd.Benchmarks;
 
 [MemoryDiagnoser]
-public class SilkCommandBenchmarks
+public class SilkCommandBenchmarks : IDisposable
 {
     private byte[] _page = [];
     private SilkSceneState _scene = new();
@@ -23,8 +23,24 @@ public class SilkCommandBenchmarks
                 "/World/BenchmarkMesh",
                 primId: 42,
                 TriangleCount));
+        _scene.Dispose();
         _scene = new SilkSceneState();
         _ = _scene.Apply(_page, commandCount: 2, revision: 1);
+    }
+
+    [GlobalCleanup]
+    public void Dispose()
+    {
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _scene.Dispose();
+        }
     }
 
     [Benchmark]
