@@ -95,9 +95,9 @@ bool CheckFrame(
                 observation.values[1] == (updated ? 4 : 2) &&
                 observation.indices[0] == (updated ? 0 : 1) &&
                 observation.indices[1] == (updated ? 1 : 0) &&
-                observation.strict_status == Invalid && observation.default_one_status == Mapped &&
-                observation.mapped_faces[0] == static_cast<uint32_t>(updated ? 9 : 2) &&
-                observation.mapped_faces[1] == static_cast<uint32_t>(updated ? 5 : 8);
+                observation.strict_status == Invalid &&
+                observation.default_one_status == Invalid &&
+                observation.mapped_faces[0] == 0 && observation.mapped_faces[1] == 0;
             continue;
         }
         const bool common = observation.has_primvar && !observation.has_element_size &&
@@ -183,6 +183,7 @@ int main(int argc, char** argv)
 {
     if (argc != 4 ||
         (std::strcmp(argv[1], "usd") != 0 && std::strcmp(argv[1], "filtered") != 0 &&
+         std::strcmp(argv[1], "filtered-unindexed") != 0 &&
          std::strcmp(argv[1], "legacy") != 0))
     {
         std::cerr << "Expected a mode, the plugin directory and Ptex sync stage.\n";
@@ -210,7 +211,9 @@ int main(int argc, char** argv)
     {
         openusd_hdsilk_test_begin_ptex_observation();
         const bool legacy = std::strcmp(argv[1], "legacy") == 0;
-        const int32_t status = openusd_hdsilk_test_ptex_synthetic_sync(argv[3], legacy ? 1 : 0);
+        const bool filteredUnindexed = std::strcmp(argv[1], "filtered-unindexed") == 0;
+        const int32_t mode = legacy ? 1 : filteredUnindexed ? 2 : 0;
+        const int32_t status = openusd_hdsilk_test_ptex_synthetic_sync(argv[3], mode);
         std::array<openusd_hdsilk_test_ptex_observation, 8> buffer{};
         const size_t count = openusd_hdsilk_test_end_ptex_observation(buffer.data(), buffer.size());
         valid = status == 0 && count == 1;
@@ -220,13 +223,20 @@ int main(int argc, char** argv)
             Print(result);
             valid = valid && !result.path_truncated && result.registered && result.terminal_mesh &&
                 result.same_scene_delegate == (legacy ? 0 : 1) &&
+                std::strcmp(result.path, legacy
+                    ? "/LegacyMesh"
+                    : (filteredUnindexed ? "/World/Grouped" : "/World/GroupedIndexed")) == 0 &&
                 result.has_primvar && !result.has_element_size && result.delegate_matches &&
-                result.value_count == 4 && result.index_count == 2 &&
-                result.values[0] == 2 && result.values[1] == 7 &&
-                result.values[2] == 3 && result.values[3] == 8 &&
-                result.indices[0] == 0 && result.indices[1] == 1 &&
-                result.strict_status == Invalid && result.default_one_status == Mapped &&
-                result.mapped_faces[0] == 2 && result.mapped_faces[1] == 8;
+                result.value_count == 4 &&
+                result.values[0] == 2 &&
+                result.values[1] == (filteredUnindexed ? 70 : 7) &&
+                result.values[2] == 3 &&
+                result.values[3] == (filteredUnindexed ? 80 : 8) &&
+                result.index_count == (filteredUnindexed ? 0 : 2) &&
+                (filteredUnindexed ||
+                 (result.indices[0] == 0 && result.indices[1] == 1)) &&
+                result.strict_status == Invalid && result.default_one_status == Invalid &&
+                result.mapped_faces[0] == 0 && result.mapped_faces[1] == 0;
         }
         if (!valid)
         {

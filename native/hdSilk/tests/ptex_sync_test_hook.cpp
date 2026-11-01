@@ -86,18 +86,27 @@ public:
     HdSceneIndexPrim GetPrim(const SdfPath& path) const override
     {
         HdSceneIndexPrim prim = _GetInputSceneIndex()->GetPrim(path);
-        if (path != SdfPath("/World/GroupedIndexed") || !prim.dataSource)
+        if ((path != SdfPath("/World/Grouped") &&
+             path != SdfPath("/World/GroupedIndexed")) ||
+            !prim.dataSource)
         {
             return prim;
         }
         const TfToken name("ptexFaceOffset");
         const HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(prim.dataSource);
         const HdPrimvarSchema offset = primvars.GetPrimvar(name);
-        const HdContainerDataSourceHandle replacement = HdPrimvarSchema::Builder()
-            .SetIndexedPrimvarValue(offset.GetIndexedPrimvarValue())
-            .SetIndices(offset.GetIndices())
-            .SetInterpolation(offset.GetInterpolation())
-            .Build();
+        HdPrimvarSchema::Builder builder;
+        if (offset.IsIndexed())
+        {
+            builder.SetIndexedPrimvarValue(offset.GetIndexedPrimvarValue())
+                .SetIndices(offset.GetIndices());
+        }
+        else
+        {
+            builder.SetPrimvarValue(offset.GetPrimvarValue());
+        }
+        const HdContainerDataSourceHandle replacement =
+            builder.SetInterpolation(offset.GetInterpolation()).Build();
         const auto overriddenPrimvars = ReplaceChildDataSource::New(
             primvars.GetContainer(), name, replacement);
         prim.dataSource = ReplaceChildDataSource::New(
@@ -241,13 +250,15 @@ openusd_hdsilk_test_end_ptex_observation(
 }
 
 extern "C" OPENUSD_HDSILK_API int32_t
-openusd_hdsilk_test_ptex_synthetic_sync(const char* stagePath, int32_t legacy)
+openusd_hdsilk_test_ptex_synthetic_sync(const char* stagePath, int32_t mode)
 {
     using namespace PXR_NS;
-    if (stagePath == nullptr || (legacy != 0 && legacy != 1))
+    if (stagePath == nullptr || mode < 0 || mode > 2)
     {
         return 1;
     }
+    const bool legacy = mode == 1;
+    const bool filteredUnindexed = mode == 2;
     const UsdStageRefPtr stage = UsdStage::Open(stagePath);
     if (!stage)
     {
@@ -273,7 +284,9 @@ openusd_hdsilk_test_ptex_synthetic_sync(const char* stagePath, int32_t legacy)
         return 4;
     }
 
-    const SdfPath id(legacy ? "/LegacyMesh" : "/World/GroupedIndexed");
+    const SdfPath id(legacy
+        ? "/LegacyMesh"
+        : (filteredUnindexed ? "/World/Grouped" : "/World/GroupedIndexed"));
     HdUnitTestDelegate legacyDelegate(index.get(), SdfPath::AbsoluteRootPath());
     if (legacy)
     {

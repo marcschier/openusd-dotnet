@@ -287,9 +287,13 @@ element size from `HdPrimvarSchema` at the requested shutter offset. It accepts
 missing element-size metadata only when the caller identifies a producer that
 guarantees the default of one. The tested `UsdImagingStageSceneIndex` omits
 this metadata for its default; arbitrary scene-index producers cannot be assumed
-to do the same. Invalid metadata or incomplete indexed inputs are refused before
-the output is changed. The native probe covers time samples, scene edits and
-retry as well as malformed retained data sources.
+to do the same. The unindexed path requires exactly one scalar per logical
+element, so it refuses grouped values whose metadata was removed. Indexed
+primvars require explicit element-size metadata because a filter can leave
+grouped values and indices intact after removing a non-default size. Invalid
+metadata or incomplete indexed inputs are refused before the output is changed.
+The native probe covers time samples, scene edits and retry as well as malformed
+retained data sources.
 
 A test-only observation during USD imaging sync compares each Rprim with its
 terminal scene-index mesh and the delegate's raw offset values and indices.
@@ -299,11 +303,13 @@ agrees as its values and indices change. Instance Rprim IDs are generated Hydra
 paths; these observations do not establish the provenance of every producer.
 
 A filtering scene index can remove an authored element size of two while leaving
-the Rprim, delegate, values and indices matching. Forcing the missing size to one
-then maps the grouped values instead of refusing them. A separate legacy-delegate
-control also lacks this metadata. Both controls invoke Rprim sync directly rather
-than running Hydra's full sync loop. A renderer caller must establish the
-producer's guarantee independently and reject ambiguous metadata.
+the Rprim, delegate, values and indices matching. Four unindexed values for two
+faces fail the scalar-cardinality check, and indexed offsets without explicit
+element-size metadata are refused. Neither input can be treated as scalar
+offsets. A separate legacy-delegate control also lacks this metadata. Both
+controls invoke Rprim sync directly rather than running Hydra's full sync loop;
+a renderer caller must establish the producer's guarantee independently for
+unindexed default-size values.
 
 A separate Storm-only reference renders four Ptex faces with authored offsets
 and compares them with reordered topology and indexed offsets. Individual-face

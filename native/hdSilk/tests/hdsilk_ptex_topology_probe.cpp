@@ -574,19 +574,19 @@ bool TestPtexFaceOffsetSceneIndex()
     const std::array<uint32_t, 4> rotated{{1, 2, 3, 0}};
     const std::array<uint32_t, 4> identity{{0, 1, 2, 3}};
     if (!expectMapped(uniformSchema, 0.0F, rotated) ||
-        !expectMapped(indexedSchema, 0.0F, rotated) ||
+        !expectRefused(indexedSchema, 0.0F) ||
         !expectMapped(uniformSchema, 1.0F, identity) ||
-        !expectMapped(indexedSchema, 1.0F, identity) ||
+        !expectRefused(indexedSchema, 1.0F) ||
         !expectRefused(groupedSchema, 0.0F) ||
         !expectRefused(HdPrimvarSchema(nullptr), 0.0F) ||
         !expectRefused(uniformSchema, std::numeric_limits<float>::quiet_NaN()) ||
-        !expectMapped(indexedSchema, 0.0F, rotated))
+        !expectRefused(indexedSchema, 0.0F))
     {
         return Fail("Ptex scene index", "mapping, metadata refusal or retry differs");
     }
     scene->SetTime(second);
     if (!expectMapped(getPrimvar(TfToken("uniformOffset")), 0.0F, identity) ||
-        !expectMapped(getPrimvar(TfToken("indexedOffset")), 0.0F, identity))
+        !expectRefused(getPrimvar(TfToken("indexedOffset")), 0.0F))
     {
         return Fail("Ptex scene index", "scene-time update was not sampled");
     }
@@ -597,9 +597,9 @@ bool TestPtexFaceOffsetSceneIndex()
         return Fail("Ptex scene index", "could not repair grouped primvar");
     }
     scene->ApplyPendingUpdates();
-    if (!expectMapped(getPrimvar(TfToken("groupedOffset")), 0.0F, rotated))
+    if (!expectRefused(getPrimvar(TfToken("groupedOffset")), 0.0F))
     {
-        return Fail("Ptex scene index", "metadata edit did not recover mapping");
+        return Fail("Ptex scene index", "indexed default without explicit size was accepted");
     }
 
     using IntArraySource = HdRetainedTypedSampledDataSource<VtIntArray>;

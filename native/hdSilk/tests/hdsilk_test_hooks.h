@@ -68,7 +68,7 @@ openusd_hdsilk_test_end_ptex_observation(
     openusd_hdsilk_test_ptex_observation* observations, size_t capacity);
 
 OPENUSD_HDSILK_API int32_t
-openusd_hdsilk_test_ptex_synthetic_sync(const char* stagePath, int32_t legacy);
+openusd_hdsilk_test_ptex_synthetic_sync(const char* stagePath, int32_t mode);
 
 OPENUSD_HDSILK_API size_t
 openusd_hdsilk_test_get_session_in_flight(openusd_silk_session* session);

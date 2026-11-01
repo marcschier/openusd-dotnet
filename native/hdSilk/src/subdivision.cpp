@@ -915,6 +915,13 @@ HdSilkWritePtexFaceOffsetDataSource(
     {
         return HdSilkPtexMappingStatus::InvalidFaceOffsets;
     }
+    // Indexed tuple width is unknowable when element-size metadata is absent.
+    if (!elementSizeSource &&
+        missingElementSize == HdSilkPtexMissingElementSize::KnownDefaultOne &&
+        indexedValueSource)
+    {
+        return HdSilkPtexMappingStatus::InvalidFaceOffsets;
+    }
     const HdDataSourceBaseHandle rawValueSource = indexedValueSource
         ? indexedValueSource
         : container->Get(HdPrimvarSchemaTokens->primvarValue);

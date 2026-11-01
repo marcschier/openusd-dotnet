@@ -369,13 +369,17 @@ else()
         hdsilk_ptex_sync_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_dependencies(hdsilk_ptex_sync_probe hdsilk_probe_runtime)
-foreach(mode IN ITEMS usd filtered legacy)
+foreach(mode IN ITEMS usd filtered filtered-unindexed legacy)
     add_test(
         NAME hdsilk_ptex_sync_${mode}
         COMMAND hdsilk_ptex_sync_probe ${mode} ${HDSILK_PROBE_PLUGIN_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-ptex-sync.usda)
 endforeach()
-set_tests_properties(hdsilk_ptex_sync_usd hdsilk_ptex_sync_filtered hdsilk_ptex_sync_legacy
+set_tests_properties(
+    hdsilk_ptex_sync_usd
+    hdsilk_ptex_sync_filtered
+    hdsilk_ptex_sync_filtered-unindexed
+    hdsilk_ptex_sync_legacy
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
 
 add_executable(hdsilk_scene_ingestion_probe hdsilk_scene_ingestion_probe.cpp)
