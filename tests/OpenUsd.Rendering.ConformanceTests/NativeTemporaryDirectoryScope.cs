@@ -57,7 +57,8 @@ internal sealed partial class NativeTemporaryDirectoryScope : IDisposable
     {
         if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
         {
-            throw new PlatformNotSupportedException("Native temporary-directory overrides require Windows, Linux, or macOS.");
+            throw new PlatformNotSupportedException(
+                "Native temporary-directory overrides require Windows, Linux, or macOS.");
         }
     }
 
