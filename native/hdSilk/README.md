@@ -311,6 +311,18 @@ controls invoke Rprim sync directly rather than running Hydra's full sync loop;
 a renderer caller must establish the producer's guarantee independently for
 unindexed default-size values.
 
+`src/ptexFaceDecoder.cpp` reads selected full-resolution faces into one
+contiguous pixel array. It validates face IDs, records each face's dimensions
+and adjacency, and checks the requested dimension and total output-byte limits
+before allocating the pixel output or decoding. Requests are limited to 65,536
+face IDs; duplicate IDs retain separate output spans in request order. Invalid
+metadata, an unreadable file or a limit violation rejects the whole result.
+
+The byte limit covers only the returned pixel array. It does not bound Ptex
+file-open or decoder allocations, allocator overhead or later GPU storage. This
+helper has no renderer caller; Ptex sampling, boundary filtering and rendered
+lifecycle coverage remain open.
+
 A separate Storm-only reference renders four Ptex faces with authored offsets
 and compares them with reordered topology and indexed offsets. Individual-face
 and missing-texture controls demonstrate that the reference responds to those

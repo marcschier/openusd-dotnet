@@ -382,6 +382,30 @@ set_tests_properties(
     hdsilk_ptex_sync_legacy
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
 
+add_executable(
+    hdsilk_ptex_decode_probe
+    hdsilk_ptex_decode_probe.cpp
+    ../src/ptexFaceDecoder.cpp)
+target_compile_features(hdsilk_ptex_decode_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_ptex_decode_probe PRIVATE Ptex::Ptex_dynamic)
+target_include_directories(hdsilk_ptex_decode_probe PRIVATE ../src)
+if(MSVC)
+    target_compile_options(hdsilk_ptex_decode_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_ptex_decode_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+get_filename_component(
+    HDSILK_PTEX_DECODE_FIXTURE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/native-profile/ptex/quad-colors.ptx"
+    ABSOLUTE)
+add_test(
+    NAME hdsilk_ptex_decode
+    COMMAND hdsilk_ptex_decode_probe "${HDSILK_PTEX_DECODE_FIXTURE}")
+set_tests_properties(
+    hdsilk_ptex_decode
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
+
 add_executable(hdsilk_scene_ingestion_probe hdsilk_scene_ingestion_probe.cpp)
 target_compile_features(hdsilk_scene_ingestion_probe PRIVATE cxx_std_17)
 target_link_libraries(
