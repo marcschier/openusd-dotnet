@@ -49,7 +49,8 @@ public sealed class SilkPtexAtlasPackerTests
         await Assert.That(ReadPixel(atlas, contentX, contentY).AsSpan().SequenceEqual(rgba.AsSpan(0, 4))).IsTrue();
         await Assert.That(ReadPixel(atlas, contentX + 1, contentY).AsSpan().SequenceEqual(rgba.AsSpan(4, 4))).IsTrue();
         await Assert.That(ReadPixel(atlas, contentX, contentY + 1).AsSpan().SequenceEqual(rgba.AsSpan(8, 4))).IsTrue();
-        await Assert.That(ReadPixel(atlas, contentX + 1, contentY + 1).AsSpan().SequenceEqual(rgba.AsSpan(12, 4))).IsTrue();
+        byte[] lowerRightPixel = ReadPixel(atlas, contentX + 1, contentY + 1);
+        await Assert.That(lowerRightPixel.AsSpan().SequenceEqual(rgba.AsSpan(12, 4))).IsTrue();
         await Assert.That(Convert.ToSingle(tile.U0)).IsEqualTo((float)contentX / atlasWidth);
         await Assert.That(Convert.ToSingle(tile.V0)).IsEqualTo((float)contentY / atlasHeight);
         await Assert.That(Convert.ToSingle(tile.U1)).IsEqualTo((float)(contentX + 2) / atlasWidth);

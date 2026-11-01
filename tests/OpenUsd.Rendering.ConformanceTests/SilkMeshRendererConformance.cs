@@ -399,7 +399,7 @@ internal static class SilkMeshRendererConformance
                 attributeNames[entry].Length +
                 (attributes[entry].Data.Length * sizeof(float));
         }
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -468,8 +468,8 @@ internal static class SilkMeshRendererConformance
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(256),
             pointOrigins is null ? 0u : checked((uint)(pointOrigins.Max() + 1)));
-        path.CopyTo(bytes, 268);
-        int pointsOffset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int pointsOffset = 276 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -576,7 +576,7 @@ internal static class SilkMeshRendererConformance
         int pointCount = points.Length / 3;
         int pointOriginCount = publishesPointIdentity ? pointCount : 0;
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -630,8 +630,8 @@ internal static class SilkMeshRendererConformance
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(256),
             checked((uint)pointOriginCount));
-        path.CopyTo(bytes, 268);
-        int pointsOffset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int pointsOffset = 276 + path.Length;
         for (int i = 0; i < points.Length; i++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

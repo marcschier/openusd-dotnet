@@ -194,7 +194,8 @@ internal static unsafe class SilkPtexAtlasPacker
                     $"The Ptex decoder returned an invalid layout for face {layout.FaceId}: " +
                     $"size={layout.StructSize}/{expectedLayoutSize}, fileFaces={info.FileFaceCount}, " +
                     $"dimensions={layout.Width}x{layout.Height}, stride={layout.RowStrideBytes}/{expectedStride}, " +
-                    $"offset={layout.DataOffsetBytes}/{expectedOffset}, bytes={faceByteCount}, pixels={pixels.Length}.");
+                    $"offset={layout.DataOffsetBytes}/{expectedOffset}, " +
+                    $"bytes={faceByteCount}, pixels={pixels.Length}.");
             }
 
             ValidateAdjacency(layout, info.FileFaceCount);

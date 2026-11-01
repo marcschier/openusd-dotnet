@@ -15,6 +15,8 @@ namespace OpenUsd.RhiProbe;
 
 internal static class Program
 {
+    private const int MeshCommandFixedSize = 276;
+
     private const string VulkanPresentationIterationsVariable =
         "OPENUSD_VULKAN_PRESENTATION_ITERATIONS";
 
@@ -582,7 +584,7 @@ internal static class Program
              0.75f, -0.75f, 0.25f
         ];
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = MeshCommandFixedSize +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -624,8 +626,8 @@ internal static class Program
                 bytes.AsSpan(80 + (index * sizeof(double))),
                 index % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 268);
-        int pointOffset = 268 + path.Length;
+        path.CopyTo(bytes, MeshCommandFixedSize);
+        int pointOffset = MeshCommandFixedSize + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(

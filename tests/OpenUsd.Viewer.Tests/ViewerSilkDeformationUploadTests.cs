@@ -32,6 +32,7 @@ namespace OpenUsd.Viewer.Tests;
 /// </remarks>
 public sealed partial class ViewerSilkDeformationUploadTests
 {
+    private const int MeshCommandFixedSize = 276;
     private const string MeshPath = "/World/Cloth";
     private const string SecondMeshPath = "/World/Cloth2";
     private const int StrideFloats = 6;
@@ -541,7 +542,7 @@ public sealed partial class ViewerSilkDeformationUploadTests
         byte[] pathBytes = Encoding.UTF8.GetBytes(meshPath);
         uint[] indices = [0, 1, 2];
         int attributeBytes = normals is null ? 0 : 20 + (normals.Length * sizeof(float));
-        int size = 268 +
+        int size = MeshCommandFixedSize +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -578,7 +579,7 @@ public sealed partial class ViewerSilkDeformationUploadTests
         }
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(220), normals is null ? 0u : 1u);
 
-        int cursor = 268;
+        int cursor = MeshCommandFixedSize;
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in points)

@@ -77,6 +77,14 @@ struct HdSilkMeshPreparationPlan
         // buffers may overlap. Source Vt storage and allocator overhead are not this metric.
         bytes = Add(bytes, Multiply(Add(source, Multiply(emitted, 3)), sizeof(float)));
     }
+
+    void PtexMapping(uint64_t triangles, uint64_t scratchEntries)
+    {
+        const uint64_t mappingBytes = Add(
+            sizeof(uint32_t), Multiply(6, sizeof(float)));
+        bytes = Add(bytes, Multiply(Multiply(triangles, 3), mappingBytes));
+        bytes = Add(bytes, Multiply(scratchEntries, sizeof(uint32_t)));
+    }
 };
 
 struct HdSilkCurvePreparationPlan
