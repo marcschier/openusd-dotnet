@@ -32,6 +32,29 @@ extern "C" {
 #define OPENUSD_SILK_PAGE_ABI_VERSION 31u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 7u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
+#define OPENUSD_SILK_PTEX_DECODE_VERSION 1u
+
+typedef enum openusd_silk_ptex_mesh_type
+{
+    OPENUSD_SILK_PTEX_MESH_TRIANGLE = 0,
+    OPENUSD_SILK_PTEX_MESH_QUAD = 1
+} openusd_silk_ptex_mesh_type;
+
+typedef enum openusd_silk_ptex_data_type
+{
+    OPENUSD_SILK_PTEX_DATA_UINT8 = 0,
+    OPENUSD_SILK_PTEX_DATA_UINT16 = 1,
+    OPENUSD_SILK_PTEX_DATA_HALF = 2,
+    OPENUSD_SILK_PTEX_DATA_FLOAT = 3
+} openusd_silk_ptex_data_type;
+
+typedef enum openusd_silk_ptex_face_flags
+{
+    OPENUSD_SILK_PTEX_FACE_CONSTANT = 1,
+    OPENUSD_SILK_PTEX_FACE_OBSOLETE = 2,
+    OPENUSD_SILK_PTEX_FACE_NEIGHBORHOOD_CONSTANT = 4,
+    OPENUSD_SILK_PTEX_FACE_SUBFACE = 8
+} openusd_silk_ptex_face_flags;
 
 /// Command types written into openusd_silk_page_view::data. Every command
 /// starts with a little-endian uint32 "type" followed by a little-endian
@@ -1509,6 +1532,42 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_session_resolve_source_identities
     size_t* required,
     openusd_error_buffer* error);
 
+/// One selected Ptex face in a packed full-resolution decode result.
+/// data_offset_bytes addresses the first byte in the caller-owned pixel buffer.
+/// Flags use OPENUSD_SILK_PTEX_FACE_* bits. Adjacency entries use Ptex edge
+/// order: bottom, right, top, left; -1 means no adjacent face. Size is 64 bytes
+/// on shipped 64-bit RIDs.
+typedef struct openusd_silk_ptex_face_layout
+{
+    uint32_t struct_size;
+    uint32_t face_id;
+    uint32_t width;
+    uint32_t height;
+    uint32_t row_stride_bytes;
+    uint32_t flags;
+    uint64_t data_offset_bytes;
+    int32_t adjacent_face_ids[4];
+    uint32_t adjacent_edge_ids[4];
+} openusd_silk_ptex_face_layout;
+
+/// Format and extent for one Ptex face decode request. mesh_type and data_type
+/// use OPENUSD_SILK_PTEX_MESH_* and OPENUSD_SILK_PTEX_DATA_* values.
+/// alpha_channel is -1 when the texture has no alpha channel.
+/// required_byte_count is the packed pixel extent. The packet is 40 bytes on
+/// shipped 64-bit RIDs.
+typedef struct openusd_silk_ptex_decode_info
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t mesh_type;
+    uint32_t data_type;
+    uint32_t channel_count;
+    int32_t alpha_channel;
+    uint32_t file_face_count;
+    uint32_t requested_face_count;
+    uint64_t required_byte_count;
+} openusd_silk_ptex_decode_info;
+
 /// Opt-in immutable limits for file-backed updates. All live files from this
 /// session share maximum_live_bytes, including acknowledged/replay owners.
 /// The pool outlives the session while any file remains owned. Quotas count
@@ -1608,6 +1667,28 @@ OPENUSD_HDSILK_API uint32_t openusd_silk_get_session_abi_version(void)
 /// Returns the page ABI version this binary writes into page views.
 OPENUSD_HDSILK_API uint32_t openusd_silk_get_page_abi_version(void)
     OPENUSD_HDSILK_NOEXCEPT;
+
+/// Decodes the selected faces at full resolution into one packed caller-owned
+/// buffer. maximum_face_dimension and maximum_decoded_bytes are hard output
+/// limits; the latter does not include Ptex's internal allocations or the
+/// caller-owned pixel buffer. path is passed to Ptex unchanged. face IDs are
+/// preserved in request order, including duplicates. A short faces or pixels
+/// buffer returns BUFFER_TOO_SMALL, sets info to the exact required face and
+/// byte counts, and leaves both data buffers unchanged. info must be initialized
+/// with sizeof(openusd_silk_ptex_decode_info) and version 1. Requires no session
+/// and does not change session/page ABI versions.
+OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_decode_faces(
+    const char* path,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    uint8_t* pixels,
+    uint64_t pixel_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) OPENUSD_HDSILK_NOEXCEPT;
 
 /// Compatibility path API. Registers hdSilk, opens a temporary data-stage
 /// handle, and delegates to openusd_silk_session_create_from_stage.

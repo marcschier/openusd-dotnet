@@ -318,10 +318,22 @@ before allocating the pixel output or decoding. Requests are limited to 65,536
 face IDs; duplicate IDs retain separate output spans in request order. Invalid
 metadata, an unreadable file or a limit violation rejects the whole result.
 
+`openusd_silk_ptex_decode_faces` exposes the decoder through a session-free,
+versioned C ABI. The caller initializes the version-1 info packet, supplies face
+IDs and output limits, then receives one face-layout record per requested ID
+and one packed pixel buffer. Each layout record carries dimensions, row stride,
+flags, adjacency and its offset into that buffer. A sizing request with empty
+output buffers reports the required face count and pixel byte extent in the
+info packet. If either output buffer is undersized, the call returns
+`BUFFER_TOO_SMALL` and leaves both data buffers unchanged. Successful calls
+preserve request order and duplicates.
+
 The byte limit covers only the returned pixel array. It does not bound Ptex
 file-open or decoder allocations, allocator overhead or later GPU storage. This
-helper has no renderer caller; Ptex sampling, boundary filtering and rendered
-lifecycle coverage remain open.
+entry point passes its path to Ptex unchanged, so non-ASCII Windows path
+handling has not been qualified. The C ABI has no renderer caller; Ptex
+sampling, boundary filtering and rendered lifecycle, refusal, retry and release
+coverage remain open.
 
 A separate Storm-only reference renders four Ptex faces with authored offsets
 and compares them with reordered topology and indexed offsets. Individual-face

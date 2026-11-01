@@ -722,6 +722,7 @@ public sealed partial class RuntimePackageTests
                     "runtimes/win-x64/native/zstd.dll",
                     "runtimes/win-x64/native/MaterialXCore.dll",
                     "runtimes/win-x64/native/OpenColorIO_2_6.dll",
+                    "runtimes/win-x64/native/Ptex.dll",
                     "runtimes/win-x64/native/openusd_dotnet.dll",
                     "runtimes/win-x64/native/usd_ms.dll",
                     "runtimes/win-x64/native/vulkan-1.dll",
@@ -3916,6 +3917,15 @@ public sealed partial class RuntimePackageTests
                     $"Unsupported execution RID '{platform.Rid}'."),
             };
             await AssertPackageEntriesAsync(coreRuntimePackage.Path, ocioDependencies);
+            string ptexDependency = platform.Rid switch
+            {
+                "win-x64" => "runtimes/win-x64/native/Ptex.dll",
+                "linux-x64" => "runtimes/linux-x64/native/libPtex.so",
+                "osx-arm64" => "runtimes/osx-arm64/native/libPtex.dylib",
+                _ => throw new InvalidOperationException(
+                    $"Unsupported execution RID '{platform.Rid}'."),
+            };
+            await AssertPackageEntriesAsync(coreRuntimePackage.Path, [ptexDependency]);
 
             string packageVersion = managedPackages[0].Version;
             foreach (PackedPackage package in managedPackages)
@@ -3986,6 +3996,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("SESSION_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("PAGE_COPY_ACKNOWLEDGEMENT=true");
             await Assert.That(result.Output).Contains("VOLUME_LEASE_EXPORTS=true");
+            await Assert.That(result.Output).Contains("PTEX_FACE_DECODE_EXPORT=true");
             await Assert.That(result.Output).Contains("VOLUME_BUDGET_ADMISSION=true");
             await Assert.That(result.Output).Contains("COMMAND_STORAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("MATERIAL_STREAMING=true");
@@ -7744,12 +7755,19 @@ public sealed partial class RuntimePackageTests
                                     throw new InvalidOperationException("The native package omitted " + export);
                                 }
                             }
+                            if (!NativeLibrary.TryGetExport(
+                                volumeLibrary, "openusd_silk_ptex_decode_faces", out _))
+                            {
+                                throw new InvalidOperationException(
+                                    "The native package omitted openusd_silk_ptex_decode_faces");
+                            }
                         }
                         finally
                         {
                             NativeLibrary.Free(volumeLibrary);
                         }
                         Console.WriteLine("VOLUME_LEASE_EXPORTS=true");
+                        Console.WriteLine("PTEX_FACE_DECODE_EXPORT=true");
                         using (var volumeBudget = new SilkVolumeFieldBudget(ulong.MaxValue))
                         using (var volumeSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
                         {
@@ -9552,6 +9570,7 @@ public sealed partial class RuntimePackageTests
         WriteTestFile(Path.Combine(installRoot, "bin", "deflate.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "zstd.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "OpenColorIO_2_6.dll"));
+        WriteTestFile(Path.Combine(installRoot, "lib", "Ptex.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "z.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd_ms.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "plugInfo.json"), "{}");
