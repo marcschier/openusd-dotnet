@@ -1591,7 +1591,7 @@ case verifies replay does not hold the native-session lock. Vulkan uses SwiftSha
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 32 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 33 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 `hdsilk_publication_allocation` compiles the retained publisher into a dedicated executable

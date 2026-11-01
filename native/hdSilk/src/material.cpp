@@ -56,6 +56,7 @@ TF_DEFINE_PRIVATE_TOKENS(
     _tokens,
     ((UsdPreviewSurface, "UsdPreviewSurface"))
     ((UsdUVTexture, "UsdUVTexture"))
+    ((HwPtexTexture, "HwPtexTexture_1"))
     ((MtlxStandardSurface, "ND_standard_surface_surfaceshader"))
     ((MtlxOpenPbrSurface, "ND_open_pbr_surface_surfaceshader"))
     ((MtlxSurfaceUnlit, "ND_surface_unlit"))
@@ -669,6 +670,11 @@ const HdMaterialRelationship* _FindInputConnection(
 bool _IsMaterialXImage(const HdMaterialNode& node)
 {
     return node.identifier.GetString().rfind("ND_image_", 0) == 0;
+}
+
+bool _IsPtexTexture(const HdMaterialNode& node)
+{
+    return node.identifier == _tokens->HwPtexTexture;
 }
 
 /// Resolves the connected output port of a texture node into the bounded wire
@@ -2353,9 +2359,76 @@ bool _TryCreateTextureEntry(
         }
         return false;
     };
-    if (!_IsMaterialXImage(texture) && texture.identifier != _tokens->UsdUVTexture)
+    if (!_IsMaterialXImage(texture) &&
+        texture.identifier != _tokens->UsdUVTexture && !_IsPtexTexture(texture))
     {
         return fail(_TextureEntryFailure::NotAnImage);
+    }
+    if (_IsPtexTexture(texture))
+    {
+        if (input.parameter == OPENUSD_SILK_MATERIAL_DISPLACEMENT)
+        {
+            TF_WARN(
+                "hdSilk material '%s' uses Ptex for displacement, which cannot "
+                "be evaluated per vertex; the material remains undisplaced.",
+                materialPath.c_str());
+            *diagnosed = true;
+            return fail(_TextureEntryFailure::UnsupportedGraph);
+        }
+        for (const HdMaterialRelationship& relationship : network.relationships)
+        {
+            if (relationship.outputId == texture.path)
+            {
+                TF_WARN(
+                    "hdSilk material '%s' input '%s' has a connected Ptex input '%s'; "
+                    "the connection cannot be represented, so the input remains at its default.",
+                    materialPath.c_str(), input.name.GetText(), relationship.outputName.GetText());
+                *diagnosed = true;
+                return fail(_TextureEntryFailure::UnsupportedGraph);
+            }
+        }
+        for (const auto& parameter : texture.parameters)
+        {
+            const std::string& name = parameter.first.GetString();
+            if (name == "file" || name.rfind("typeName:", 0) == 0)
+            {
+                continue;
+            }
+            if (name == "faceIndexPrimvar" || name == "faceOffsetPrimvar")
+            {
+                std::string value;
+                const char* expected = name == "faceIndexPrimvar"
+                    ? "ptexFaceIndex" : "ptexFaceOffset";
+                if (_TryReadStringParameter(texture.parameters, parameter.first, &value) &&
+                    value == expected)
+                {
+                    continue;
+                }
+            }
+            else if (name == "frame" || name == "textureMemory")
+            {
+                float value[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                if (_ReadFloats(parameter.second, value) == 1 && value[0] == 0.0f)
+                {
+                    continue;
+                }
+            }
+            else if (name == "colorSpace:file")
+            {
+                std::string value;
+                if (_TryReadStringParameter(texture.parameters, parameter.first, &value) &&
+                    (value.empty() || value == "auto" || value == "raw" || value == "sRGB"))
+                {
+                    continue;
+                }
+            }
+            TF_WARN(
+                "hdSilk material '%s' input '%s' has unsupported Ptex parameter '%s'; "
+                "the input remains at its default.",
+                materialPath.c_str(), input.name.GetText(), name.c_str());
+            *diagnosed = true;
+            return fail(_TextureEntryFailure::UnsupportedGraph);
+        }
     }
     const std::string asset = _ResolveAssetPath(texture.parameters);
     if (asset.empty())
@@ -2386,6 +2459,17 @@ bool _TryCreateTextureEntry(
     entry.parameter = input.parameter;
     entry.componentCount = input.componentCount;
     entry.outputChannel = channel;
+    if (_IsPtexTexture(texture))
+    {
+        entry.sourceKind = OPENUSD_SILK_TEXTURE_SOURCE_PTEX;
+        entry.sourceColorSpace = _ReadColorSpace(texture.parameters);
+        entry.asset = asset;
+        TF_WARN(
+            "hdSilk material '%s' input '%s' uses a Ptex texture; Ptex sampling is "
+            "not available, so the input remains at its default.",
+            materialPath.c_str(), input.name.GetText());
+        return true;
+    }
     if (_IsMaterialXImage(texture))
     {
         // MaterialX states addressing on uaddressmode/vaddressmode, defaulting to
@@ -2554,7 +2638,8 @@ bool _TryPublishCompositeEntries(
 /// and fallback are reconciled separately with the surface bindings.
 bool _BelongsToSurfaceUvStream(const HdSilkMaterialTexture& texture)
 {
-    return texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT;
+    return texture.sourceKind != OPENUSD_SILK_TEXTURE_SOURCE_PTEX &&
+        texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT;
 }
 
 /// Settles the texture-coordinate streams this material publishes.
@@ -3085,7 +3170,8 @@ void _ReconcileDisplacementTransform(HdSilkMaterialRecord& record)
         {
             haveSurfaceTexture = true;
         }
-        else if (texture.compositeOp == OPENUSD_SILK_COMPOSITE_NONE)
+        else if (texture.parameter == OPENUSD_SILK_MATERIAL_DISPLACEMENT &&
+                 texture.compositeOp == OPENUSD_SILK_COMPOSITE_NONE)
         {
             displacement = &texture;
         }
@@ -3552,7 +3638,8 @@ HdSilkMaterial::Resolve(
                 _FindNode(network, relationship.inputId);
             danglingConnection = upstream == nullptr;
             if (upstream != nullptr &&
-                upstream->identifier == _tokens->UsdUVTexture)
+                (upstream->identifier == _tokens->UsdUVTexture ||
+                 _IsPtexTexture(*upstream)))
             {
                 texture = upstream;
                 // The output port the surface input is wired to is the only
@@ -3601,7 +3688,8 @@ HdSilkMaterial::Resolve(
             if (_TryCreateTextureEntry(
                     network, record.path, *texture, outputName, input, entry, &diagnosed))
             {
-                if (input.parameter == OPENUSD_SILK_MATERIAL_NORMAL)
+                if (input.parameter == OPENUSD_SILK_MATERIAL_NORMAL &&
+                    entry.sourceKind != OPENUSD_SILK_TEXTURE_SOURCE_PTEX)
                 {
                     _EncodeDecodedNormalAffine(entry);
                 }

@@ -12,7 +12,8 @@ public sealed partial class SilkSceneGpuResources
         if (!StreamsMaterialTextures || material is not { UsesRuntimeMaterialShader: false } ||
             material.SurfaceKind is not (SilkSurfaceKind.PreviewSurface or SilkSurfaceKind.MdlDistilled) ||
             parameter is not (SilkMaterialParameter.Normal or SilkMaterialParameter.DetailNormal) ||
-            material.GetTexture(parameter) is not { ComponentCount: 3, Channel: SilkTextureChannel.Rgb } texture ||
+            material.GetRenderableTexture(parameter) is not
+            { ComponentCount: 3, Channel: SilkTextureChannel.Rgb } texture ||
             texture.Asset.Contains("<UDIM>", StringComparison.Ordinal) || !RequiresFloatTextureAffine(texture))
         {
             return false;

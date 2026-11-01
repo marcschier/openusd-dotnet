@@ -22,7 +22,7 @@
 namespace
 {
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 7u);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 32u);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 33u);
 static_assert(sizeof(openusd_silk_scene_ingestion_request) == 32u);
 static_assert(offsetof(openusd_silk_scene_ingestion_request, material_binding_purpose) == 24u);
 

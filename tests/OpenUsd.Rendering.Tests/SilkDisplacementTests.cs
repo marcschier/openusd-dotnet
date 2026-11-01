@@ -2349,6 +2349,7 @@ internal sealed class SilkDisplacementTests
         payload.AddRange(BitConverter.GetBytes((uint)SilkTextureChannel.R));
         payload.AddRange(BitConverter.GetBytes((uint)compositeOperator));
         payload.AddRange(BitConverter.GetBytes(0f));
+        payload.AddRange(BitConverter.GetBytes((uint)SilkTextureSourceKind.Standard));
         payload.AddRange(assetBytes);
         payload.AddRange(uvBytes);
     }

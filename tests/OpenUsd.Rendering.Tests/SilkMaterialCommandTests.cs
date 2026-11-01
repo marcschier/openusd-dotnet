@@ -603,7 +603,8 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(() => CopyMaterial(page)).Throws<InvalidDataException>();
         await Assert.That(() => SilkCommandParser.ValidatePageAbi(24)).Throws<InvalidDataException>();
         await Assert.That(() => SilkCommandParser.ValidatePageAbi(29)).Throws<InvalidDataException>();
-        SilkCommandParser.ValidatePageAbi(32);
+        await Assert.That(() => SilkCommandParser.ValidatePageAbi(32)).Throws<InvalidDataException>();
+        SilkCommandParser.ValidatePageAbi(SilkCommandParser.PageAbiVersion);
     }
 
     [Test]
@@ -970,6 +971,115 @@ public sealed class SilkMaterialCommandTests
         // The stale-combination failure is explicit rather than a mis-parse.
         await Assert.That(() => SilkCommandParser.Enumerate([], 0, 4))
             .Throws<InvalidDataException>();
+        await Assert.That(() => SilkCommandParser.Enumerate([], 0, SilkCommandParser.PageAbiVersion - 1))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task PtexSourceIsRetainedButNeverDecodedAsAnOrdinaryImage()
+    {
+        TextureSpec ptex = new(
+            SilkMaterialParameter.DiffuseColor, SilkTextureWrap.Repeat, SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw, 3, [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 1],
+            "same.ptx", "", SourceKind: SilkTextureSourceKind.Ptex);
+        TextureSpec ordinary = ptex with
+        {
+            Parameter = SilkMaterialParameter.EmissiveColor,
+            UvPrimvar = "st1",
+            SourceKind = SilkTextureSourceKind.Standard
+        };
+        byte[] command = CreateMaterialUpsert("/Material", SilkSurfaceKind.PreviewSurface,
+            [(SilkMaterialParameter.Roughness, [0.4f])], [ptex, ordinary]);
+        SilkMaterialData material = CopyMaterial(command);
+
+        await Assert.That(material.GetTexture(SilkMaterialParameter.DiffuseColor)!.SourceKind)
+            .IsEqualTo(SilkTextureSourceKind.Ptex);
+        await Assert.That(material.GetTexture(SilkMaterialParameter.EmissiveColor)!.SourceKind)
+            .IsEqualTo(SilkTextureSourceKind.Standard);
+        await Assert.That(material.GetPrimaryUvPrimvar()).IsEqualTo("st1");
+        await Assert.That(material.GetTextureFeatures())
+            .IsEqualTo(SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv);
+        byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
+        SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
+        await Assert.That(ReadSingle(constants, 0)).IsEqualTo(0.18f);
+        await Assert.That((uint)ReadSingle(constants, 128))
+            .IsEqualTo((uint)(SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv));
+
+        using var device = new TextureGraphicsDevice();
+        var gpuBudget = new SilkGpuTextureBudget(64);
+        gpuBudget.ConfigureDevice(device);
+        int decodes = 0;
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.Dxil, (_, _) =>
+        {
+            decodes++;
+            return new SilkDecodedImage(1, 1, [255, 0, 0, 255]);
+        });
+        using var page = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 1, [.. command, .. CreateMeshUpsert("/Mesh", "/Material")], 2);
+        renderer.ApplyPage(page);
+        await Assert.That(decodes).IsEqualTo(1);
+        _ = renderer.GpuResources.RequireSurfaceBuffer(
+            renderer.Scene, renderer.Scene.Meshes.Values.Single(), RenderHeadlight.Deterministic);
+        RenderDiagnostic diagnostic = renderer.GpuResources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported);
+        await Assert.That(diagnostic.Message).Contains("/Material").And.Contains("DiffuseColor");
+        using var commands = new TextureCommandList();
+        await Assert.That(() => renderer.GpuResources.BindMaterialTexture(
+            commands, renderer.Scene.Materials["/Material"], SilkMaterialParameter.DiffuseColor))
+            .Throws<InvalidDataException>();
+        await Assert.That(decodes).IsEqualTo(1);
+
+        byte[] replacement = CreateMaterialUpsert("/Material", SilkSurfaceKind.PreviewSurface, [],
+            [ptex with { SourceKind = SilkTextureSourceKind.Standard, UvPrimvar = "st1" }, ordinary]);
+        using var replaced = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, replacement, 1);
+        renderer.ApplyPage(replaced);
+        await Assert.That(renderer.Scene.Materials["/Material"].GetTextureFeatures())
+            .IsEqualTo(SilkShaderFeatures.BaseColorMap | SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv);
+        await Assert.That(renderer.GpuResources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsFalse();
+
+        using var restored = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, command, 1);
+        renderer.ApplyPage(restored);
+        _ = renderer.GpuResources.RequireSurfaceBuffer(
+            renderer.Scene, renderer.Scene.Meshes.Values.Single(), RenderHeadlight.Deterministic);
+        await Assert.That(renderer.Scene.Materials["/Material"].GetTextureFeatures())
+            .IsEqualTo(SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv);
+        await Assert.That(renderer.GpuResources.Diagnostics.Entries.Count(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task PtexSourceRefusesMalformedOrAmbiguousWireEntries()
+    {
+        TextureSpec ptex = new(
+            SilkMaterialParameter.DiffuseColor, SilkTextureWrap.Repeat, SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw, 3, [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 1],
+            "face.png", "", SourceKind: SilkTextureSourceKind.Ptex);
+        TextureSpec composite = ptex with
+        {
+            SourceKind = SilkTextureSourceKind.Standard,
+            UvPrimvar = "st",
+            CompositeOperator = SilkCompositeOperator.Multiply
+        };
+        byte[][] malformed =
+        [
+            CreateMaterialUpsert("/Material", SilkSurfaceKind.PreviewSurface, [],
+                [ptex with { SourceKind = (SilkTextureSourceKind)2 }]),
+            CreateMaterialUpsert("/Material", SilkSurfaceKind.MaterialXProjected, [], [ptex]),
+            CreateMaterialUpsert("/Material", SilkSurfaceKind.PreviewSurface, [], [ptex with { UvPrimvar = "st" }]),
+            CreateMaterialUpsert("/Material", SilkSurfaceKind.PreviewSurface, [],
+                [ptex with { CompositeOperator = SilkCompositeOperator.Multiply }]),
+            CreateMaterialUpsert("/Material", SilkSurfaceKind.PreviewSurface, [],
+                [ptex with { Parameter = SilkMaterialParameter.Displacement }]),
+            CreateMaterialUpsert("/Material", SilkSurfaceKind.PreviewSurface,
+                [(SilkMaterialParameter.DiffuseColor, [0.2f, 0.3f, 0.4f])], [ptex]),
+            CreateMaterialUpsert("/Material", SilkSurfaceKind.PreviewSurface, [], [ptex, composite]),
+            CreateMaterialUpsert("/Material", SilkSurfaceKind.PreviewSurface, [], [composite, ptex]),
+        ];
+        foreach (byte[] bytes in malformed)
+        {
+            await Assert.That(() => CopyMaterial(bytes)).Throws<InvalidDataException>();
+        }
     }
 
     [Test]
@@ -4214,7 +4324,8 @@ public sealed class SilkMaterialCommandTests
         string UvPrimvar,
         SilkTextureChannel? Channel = null,
         SilkCompositeOperator CompositeOperator = SilkCompositeOperator.None,
-        float CompositeFactor = 0f)
+        float CompositeFactor = 0f,
+        SilkTextureSourceKind SourceKind = SilkTextureSourceKind.Standard)
     {
         /// <summary>
         /// The channel a page must carry for this entry. Defaulted from the consumed
@@ -4283,6 +4394,7 @@ public sealed class SilkMaterialCommandTests
             payload.AddRange(BitConverter.GetBytes((uint)texture.ResolvedChannel));
             payload.AddRange(BitConverter.GetBytes((uint)texture.CompositeOperator));
             payload.AddRange(BitConverter.GetBytes(texture.CompositeFactor));
+            payload.AddRange(BitConverter.GetBytes((uint)texture.SourceKind));
             payload.AddRange(assetBytes);
             payload.AddRange(uvBytes);
         }

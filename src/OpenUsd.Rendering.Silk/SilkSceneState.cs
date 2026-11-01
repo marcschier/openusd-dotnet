@@ -6119,6 +6119,19 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             return createdDefault;
         }
 
+        foreach (SilkMaterialTexture texture in material.Textures)
+        {
+            if (texture.SourceKind == SilkTextureSourceKind.Ptex)
+            {
+                AddDiagnostic(
+                    SilkRenderDiagnosticCodes.TexturePtexUnsupported,
+                    string.Concat(material.Path, "\0", texture.Parameter),
+                    RenderDiagnosticSeverity.Warning,
+                    $"Material '{material.Path}' uses Ptex for {texture.Parameter}; " +
+                    "Ptex sampling is unavailable, so this input uses its default.");
+            }
+        }
+
         var key = new SurfaceBufferKey(material.Path, masks);
         if (masks != SilkLightLinkMasks.All &&
             material.SurfaceKind == SilkSurfaceKind.MaterialXGenerated)
@@ -6260,7 +6273,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ArgumentNullException.ThrowIfNull(commands);
         ArgumentNullException.ThrowIfNull(material);
         SilkMaterialTexture texture = material.GetCompositeTexture() ??
-            material.GetTexture(standInParameter) ??
+            material.GetRenderableTexture(standInParameter) ??
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no texture for {standInParameter}.");
         BindTextureEntry(
@@ -6295,7 +6308,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(commands);
         ArgumentNullException.ThrowIfNull(material);
-        SilkMaterialTexture texture = material.GetTexture(parameter) ??
+        SilkMaterialTexture texture = material.GetRenderableTexture(parameter) ??
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no texture for {parameter}.");
         (uint samplerBinding, uint textureBinding) =
@@ -6397,7 +6410,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(commands);
         ArgumentNullException.ThrowIfNull(material);
-        SilkMaterialTexture texture = material.GetTexture(parameter) ??
+        SilkMaterialTexture texture = material.GetRenderableTexture(parameter) ??
             throw new InvalidDataException(
                 $"Material '{material.Path}' has no texture for {parameter}.");
         UploadTextureEntry(commands, RequireTexture(material, texture));
@@ -6464,6 +6477,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkMaterialData material,
         SilkMaterialTexture texture)
     {
+        if (texture.SourceKind != SilkTextureSourceKind.Standard)
+        {
+            throw new NotSupportedException(
+                $"Material '{material.Path}' has a Ptex texture that cannot be sampled as a standard image.");
+        }
         string materialPath = material.Path;
         _materialCaptureRequest?.ThrowIfCancellationRequested();
         SilkColorSpace effectiveColorSpace = GetEffectiveColorSpace(texture);
@@ -8082,6 +8100,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             code is SilkRenderDiagnosticCodes.MaterialUnresolved or
                 SilkRenderDiagnosticCodes.MaterialUnsupported or
                 SilkRenderDiagnosticCodes.MaterialMdlUnavailable or
+                SilkRenderDiagnosticCodes.TexturePtexUnsupported or
                 SilkRenderDiagnosticCodes.CapacityExceeded);
     }
 
@@ -8090,7 +8109,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         RemoveDiagnostics(static code =>
             code is SilkRenderDiagnosticCodes.MaterialUnresolved or
                 SilkRenderDiagnosticCodes.MaterialUnsupported or
-                SilkRenderDiagnosticCodes.MaterialMdlUnavailable);
+                SilkRenderDiagnosticCodes.MaterialMdlUnavailable or
+                SilkRenderDiagnosticCodes.TexturePtexUnsupported);
     }
 
     private void RemoveTextureDiagnostics(string materialPath)
@@ -8269,8 +8289,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkMaterialData? material = ResolveMaterial(scene, mesh);
         SilkMaterialData? displacementMaterial = ResolveDisplacementMaterial(scene, mesh);
         string uvPrimvar = material?.GetPrimaryUvPrimvar() ?? string.Empty;
-        bool normalMap = material?.GetTexture(SilkMaterialParameter.Normal) is not null ||
-            material?.GetTexture(SilkMaterialParameter.DetailNormal) is not null;
+        bool normalMap = material?.GetRenderableTexture(SilkMaterialParameter.Normal) is not null ||
+            material?.GetRenderableTexture(SilkMaterialParameter.DetailNormal) is not null;
         SilkVertexAttributeData? uvAttribute = string.IsNullOrEmpty(uvPrimvar)
             ? null
             : mesh.FindTexCoord(uvPrimvar);
@@ -8475,7 +8495,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             return SilkDisplacementPlan.NotAuthored;
         }
-        SilkMaterialTexture? texture = material.GetTexture(SilkMaterialParameter.Displacement);
+        SilkMaterialTexture? texture = material.GetRenderableTexture(SilkMaterialParameter.Displacement);
         ReadOnlySpan<float> scalar = material.GetScalar(SilkMaterialParameter.Displacement);
 
         // A two-image composite operand is resolved in the fragment stage from

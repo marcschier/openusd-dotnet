@@ -257,6 +257,7 @@ internal static class VolumeCommandAuthoring
             bytes.AsSpan(offset + 80),
             (uint)SilkCompositeOperator.None);
         BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 84), 0f);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 88), (uint)SilkTextureSourceKind.Standard);
         assetBytes.CopyTo(bytes.AsSpan(offset + TextureHeaderByteCount));
         uvBytes.CopyTo(bytes.AsSpan(offset + TextureHeaderByteCount + assetBytes.Length));
         offset += TextureHeaderByteCount + assetBytes.Length + uvBytes.Length;
@@ -267,10 +268,10 @@ internal static class VolumeCommandAuthoring
     /// </summary>
     /// <remarks>
     /// Mirrors <c>SilkMaterialTextureEntry</c>: the channel ends at 80 and the composite
-    /// operator and factor occupy 80..88. Kept as one named constant because every offset
-    /// in <see cref="WriteTexture"/> and the buffer sizing above must move together.
+    /// operator and factor occupy 80..88; the source kind occupies 88..92. The
+    /// offsets in <see cref="WriteTexture"/> and the buffer sizing above move together.
     /// </remarks>
-    private const int TextureHeaderByteCount = 88;
+    private const int TextureHeaderByteCount = 92;
 
     internal readonly record struct TextureSpec(
         string Asset,

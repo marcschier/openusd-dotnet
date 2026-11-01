@@ -46,6 +46,17 @@ def Xform "World"
         int[] primvars:ptexFaceOffset.timeSamples = { 0: [7, 2], 1: [9, 4] }
         int[] primvars:ptexFaceOffset:indices.timeSamples = { 0: [1, 0], 1: [0, 1] }
     }
+    def Mesh "MaterialOnly" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/PtexMaterial>
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        int[] primvars:ptexFaceOffset = [2, 3] (interpolation = "uniform")
+    }
     def Mesh "Grouped"
     {
         uniform token subdivisionScheme = "none"

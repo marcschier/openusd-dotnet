@@ -312,7 +312,7 @@ internal static class SilkSurfaceUniformWriter
             // The primary entry only. A composite operand carries its own UDIM bit
             // in compositeControls.w, because the two operands of one input are
             // independent assets and either may be a UDIM set on its own.
-            if (material?.GetTexture(parameter) is { } texture && IsUdim(texture))
+            if (material?.GetRenderableTexture(parameter) is { } texture && IsUdim(texture))
             {
                 mask |= (int)feature;
             }
@@ -331,6 +331,7 @@ internal static class SilkSurfaceUniformWriter
     /// the ring exists.
     /// </remarks>
     internal static (bool S, bool T) GetConstantBorderAxes(SilkMaterialTexture texture) =>
+        texture.SourceKind != SilkTextureSourceKind.Standard ||
         texture.Parameter is SilkMaterialParameter.VolumeDensity or SilkMaterialParameter.Displacement ||
         IsUdim(texture)
             ? (false, false)
@@ -352,20 +353,25 @@ internal static class SilkSurfaceUniformWriter
             return 0;
         }
         int mask = 0;
-        addBorderBit(material.GetTexture(SilkMaterialParameter.DiffuseColor), SilkShaderFeatures.BaseColorMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.Normal), SilkShaderFeatures.NormalMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.DetailNormal), SilkShaderFeatures.DetailNormalMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.Roughness), SilkShaderFeatures.RoughnessMetallicMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.EmissiveColor), SilkShaderFeatures.EmissiveMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.Metallic), SilkShaderFeatures.MetallicMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.Opacity), SilkShaderFeatures.OpacityMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.Occlusion), SilkShaderFeatures.OcclusionMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.SpecularColor), SilkShaderFeatures.SpecularColorMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.Clearcoat), SilkShaderFeatures.ClearcoatMap);
         addBorderBit(
-            material.GetTexture(SilkMaterialParameter.ClearcoatRoughness),
+            material.GetRenderableTexture(SilkMaterialParameter.DiffuseColor), SilkShaderFeatures.BaseColorMap);
+        addBorderBit(material.GetRenderableTexture(SilkMaterialParameter.Normal), SilkShaderFeatures.NormalMap);
+        addBorderBit(
+            material.GetRenderableTexture(SilkMaterialParameter.DetailNormal), SilkShaderFeatures.DetailNormalMap);
+        addBorderBit(
+            material.GetRenderableTexture(SilkMaterialParameter.Roughness), SilkShaderFeatures.RoughnessMetallicMap);
+        addBorderBit(
+            material.GetRenderableTexture(SilkMaterialParameter.EmissiveColor), SilkShaderFeatures.EmissiveMap);
+        addBorderBit(material.GetRenderableTexture(SilkMaterialParameter.Metallic), SilkShaderFeatures.MetallicMap);
+        addBorderBit(material.GetRenderableTexture(SilkMaterialParameter.Opacity), SilkShaderFeatures.OpacityMap);
+        addBorderBit(material.GetRenderableTexture(SilkMaterialParameter.Occlusion), SilkShaderFeatures.OcclusionMap);
+        addBorderBit(
+            material.GetRenderableTexture(SilkMaterialParameter.SpecularColor), SilkShaderFeatures.SpecularColorMap);
+        addBorderBit(material.GetRenderableTexture(SilkMaterialParameter.Clearcoat), SilkShaderFeatures.ClearcoatMap);
+        addBorderBit(
+            material.GetRenderableTexture(SilkMaterialParameter.ClearcoatRoughness),
             SilkShaderFeatures.ClearcoatRoughnessMap);
-        addBorderBit(material.GetTexture(SilkMaterialParameter.Ior), SilkShaderFeatures.IorMap);
+        addBorderBit(material.GetRenderableTexture(SilkMaterialParameter.Ior), SilkShaderFeatures.IorMap);
         addBorderBit(material.GetCompositeTexture(), SilkShaderFeatures.Uv);
         return mask;
 

@@ -46,7 +46,7 @@ public sealed partial class RuntimePackageTests
     private const int RequiredStormAbiVersion = 9;
     private static readonly int RequiredSilkSessionAbiVersion =
         checked((int)ReadLockNumber("silkSession"));
-    private const int RequiredSilkPageAbiVersion = 32;
+    private const int RequiredSilkPageAbiVersion = 33;
     private const int RequiredStormChildAbiVersion = 9;
     private const int RequiredStormChildNavigationInputVersion = 2;
 
@@ -3998,6 +3998,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("VOLUME_LEASE_EXPORTS=true");
             await Assert.That(result.Output).Contains("PTEX_FACE_DECODE_EXPORT=true");
             await Assert.That(result.Output).Contains("PTEX_FACE_DESCRIBE_EXPORT=true");
+            await Assert.That(result.Output).Contains("PTEX_SOURCE_CONTRACT=true");
             await Assert.That(result.Output).Contains("VOLUME_BUDGET_ADMISSION=true");
             await Assert.That(result.Output).Contains("COMMAND_STORAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("MATERIAL_STREAMING=true");
@@ -7858,6 +7859,77 @@ public sealed partial class RuntimePackageTests
                         }
                     }
                     Console.WriteLine("PRIMVAR_READER_FALLBACK=true");
+                    string ptexScene = Path.Combine(AppContext.BaseDirectory, "ptex-source.usda");
+                    string ptexFirst = Path.Combine(AppContext.BaseDirectory, "ptex-source-first.ptx");
+                    string ptexSecond = Path.Combine(AppContext.BaseDirectory, "ptex-source-second.ptx");
+                    File.WriteAllBytes(ptexFirst, []);
+                    File.WriteAllBytes(ptexSecond, []);
+                    File.WriteAllText(ptexScene,
+                        "#usda 1.0\n" +
+                        "def Material \"Ptex\" {\n" +
+                        "token outputs:surface.connect = </Ptex/S.outputs:surface>\n" +
+                        "def Shader \"S\" { uniform token info:id = \"UsdPreviewSurface\"\n" +
+                        "color3f inputs:emissiveColor.connect = </Ptex/T.outputs:rgb>\n" +
+                        "token outputs:surface\n }\n" +
+                        "def Shader \"T\" { uniform token info:id = \"HwPtexTexture_1\"\n" +
+                        "asset inputs:file.timeSamples = { 0: @ptex-source-first.ptx@, " +
+                        "1: @ptex-source-second.ptx@ }\n float3 outputs:rgb\n }\n}\n" +
+                        "def Material \"Image\" {\n" +
+                        "token outputs:surface.connect = </Image/S.outputs:surface>\n" +
+                        "def Shader \"S\" { uniform token info:id = \"UsdPreviewSurface\"\n" +
+                        "color3f inputs:emissiveColor.connect = </Image/T.outputs:rgb>\n" +
+                        "token outputs:surface\n }\n" +
+                        "def Shader \"T\" { uniform token info:id = \"UsdUVTexture\"\n" +
+                        "asset inputs:file = @ptex-source-first.ptx@\n float3 outputs:rgb\n }\n}\n" +
+                        "def Mesh \"PtexMesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\n" +
+                        "uniform token subdivisionScheme = \"none\"\n" +
+                        "point3f[] points = [(0,0,0),(1,0,0),(0,1,0)]\n" +
+                        "int[] faceVertexCounts = [3]\n int[] faceVertexIndices = [0,1,2]\n" +
+                        "rel material:binding = </Ptex>\n}\n" +
+                        "def Mesh \"ImageMesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\n" +
+                        "uniform token subdivisionScheme = \"none\"\n" +
+                        "point3f[] points = [(2,0,0),(3,0,0),(2,1,0)]\n" +
+                        "int[] faceVertexCounts = [3]\n int[] faceVertexIndices = [0,1,2]\n" +
+                        "rel material:binding = </Image>\n}\n");
+                    using (OpenUsdSilkSession ptexSession = OpenUsdSilkRuntime.Create(pluginPath, ptexScene))
+                    using (var ptexState = new SilkSceneState())
+                    {
+                        foreach ((double time, string expected) in new[]
+                            { (0d, ptexFirst), (1d, ptexSecond), (0d, ptexFirst) })
+                        {
+                            using OpenUsdSilkPage ptexPage = ptexSession.Sync(16, 16, time);
+                            ptexState.Apply(ptexPage);
+                            SilkMaterialTexture? ptex = ptexState.Materials["/Ptex"]
+                                .GetTexture(SilkMaterialParameter.EmissiveColor);
+                            SilkMaterialTexture? image = ptexState.Materials["/Image"]
+                                .GetTexture(SilkMaterialParameter.EmissiveColor);
+                            StringComparison pathComparison = OperatingSystem.IsWindows()
+                                ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                            if (ptex is null || ptex.SourceKind != SilkTextureSourceKind.Ptex ||
+                                ptex.Channel != SilkTextureChannel.Rgb || ptex.UvPrimvar.Length != 0 ||
+                                !string.Equals(Path.GetFullPath(ptex.Asset), expected, pathComparison) ||
+                                image is null || image.SourceKind != SilkTextureSourceKind.Standard ||
+                                !string.Equals(Path.GetFullPath(image.Asset), ptexFirst, pathComparison))
+                            {
+                                throw new InvalidOperationException("The packaged Ptex source contract changed.");
+                            }
+                        }
+                    }
+                    bool oldPtexPageRejected = false;
+                    try
+                    {
+                        using SilkCommandEnumerator rejected = SilkCommandParser.Enumerate(
+                            ReadOnlySpan<byte>.Empty, 0, 32);
+                    }
+                    catch (InvalidDataException)
+                    {
+                        oldPtexPageRejected = true;
+                    }
+                    if (!oldPtexPageRejected)
+                    {
+                        throw new InvalidOperationException("The package accepted the previous page ABI.");
+                    }
+                    Console.WriteLine("PTEX_SOURCE_CONTRACT=true");
                     byte[] specularCommand = new byte[106];
                     System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand,
                         (uint)SilkCommandType.MaterialUpsert);
@@ -7939,6 +8011,7 @@ public sealed partial class RuntimePackageTests
                             writer.Write((uint)SilkTextureChannel.Rgb);
                             writer.Write((uint)SilkCompositeOperator.None);
                             writer.Write(0f);
+                            writer.Write((uint)SilkTextureSourceKind.Standard);
                             writer.Write("detail.png"u8);
                             writer.Write("st"u8);
                             writer.Write(0u);

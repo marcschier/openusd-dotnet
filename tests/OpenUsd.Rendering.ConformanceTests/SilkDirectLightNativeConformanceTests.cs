@@ -2016,7 +2016,7 @@ public sealed class SilkDirectLightNativeConformanceTests
         string message = failure?.Message ?? string.Empty;
         await Assert.That(message.Contains(RequiredVariable, StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains(backend.ToString(), StringComparison.Ordinal)).IsTrue();
-        await Assert.That(message.Contains("page ABI 32/session ABI 7", StringComparison.Ordinal)).IsTrue();
+        await Assert.That(message.Contains("page ABI 33/session ABI 7", StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains(PluginVariable, StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains("staged", StringComparison.Ordinal)).IsTrue();
         await Assert.That(failure?.GetType().Name == "SkipTestException").IsFalse();

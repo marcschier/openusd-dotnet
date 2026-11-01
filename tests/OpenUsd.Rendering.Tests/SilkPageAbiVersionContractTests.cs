@@ -96,7 +96,8 @@ public sealed class SilkPageAbiVersionContractTests
     public async Task FixturePagesUseTheCurrentAbiUnlessTestingRejection()
     {
         string root = FindRepositoryRoot();
-        string[] testProjects = ["OpenUsd.Rendering.Tests", "OpenUsd.Rendering.ConformanceTests"];
+        string[] testProjects =
+            ["OpenUsd.Rendering.Tests", "OpenUsd.Rendering.ConformanceTests", "OpenUsd.Package.Tests"];
         HashSet<string> stale = [];
         int constructorCount = 0;
         int literalEnumeratorAbiCount = 0;
@@ -151,6 +152,16 @@ public sealed class SilkPageAbiVersionContractTests
                     {
                         stale.Add($"{Path.GetRelativePath(root, file)}: parser enumerator ABI {version}");
                     }
+                }
+                foreach (Match match in Regex.Matches(
+                    text,
+                    @"(?m)^\s*SilkCommandParser\.ValidatePageAbi\s*\(\s*(?<version>\d+)u?\s*\)",
+                    RegexOptions.None,
+                    TimeSpan.FromSeconds(5)))
+                {
+                    stale.Add(
+                        $"{Path.GetRelativePath(root, file)}: positive ABI check uses literal " +
+                        $"{match.Groups["version"].Value}");
                 }
             }
         }
@@ -365,12 +376,12 @@ public sealed class SilkPageAbiVersionContractTests
     }
 
     [Test]
-    public async Task DeclaredPageAndSessionAbiContractsAre32And7()
+    public async Task DeclaredPageAndSessionAbiContractsAre33And7()
     {
         uint page = SilkCommandParser.PageAbiVersion;
         uint session = RenderNativeAbiVersions.SilkSessionAbi;
         uint loader = OpenUsdSilkRuntime.RequiredSilkSessionAbiVersion;
-        await Assert.That(page).IsEqualTo(32u);
+        await Assert.That(page).IsEqualTo(33u);
         await Assert.That(session).IsEqualTo(7u);
         await Assert.That(loader).IsEqualTo(7u);
     }
@@ -386,6 +397,7 @@ public sealed class SilkPageAbiVersionContractTests
     [Arguments(29u)]
     [Arguments(30u)]
     [Arguments(31u)]
+    [Arguments(32u)]
     public async Task ParserRejectsAdjacentAndStalePageAbiVersions(uint rejectedVersion)
     {
         byte[] page = new byte[272];
@@ -403,12 +415,14 @@ public sealed class SilkPageAbiVersionContractTests
         }
 
         (int width, int height, double viewDiagonal, bool finished) =
-            ReadVersionedFrame(page, 32u);
+            ReadVersionedFrame(page, SilkCommandParser.PageAbiVersion);
         await Assert.That(width).IsEqualTo(123);
         await Assert.That(height).IsEqualTo(47);
         await Assert.That(viewDiagonal).IsEqualTo(1d);
         await Assert.That(finished).IsTrue();
         await Assert.That(() => ReadVersionedFrame(page, rejectedVersion))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => ReadVersionedFrame(page, SilkCommandParser.PageAbiVersion + 1))
             .Throws<InvalidDataException>();
     }
 

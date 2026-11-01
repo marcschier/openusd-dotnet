@@ -11,7 +11,7 @@ public sealed partial class SilkSceneGpuResources
         parameter is SilkMaterialParameter.DiffuseColor or SilkMaterialParameter.EmissiveColor &&
         material.SurfaceKind is SilkSurfaceKind.PreviewSurface or SilkSurfaceKind.MdlDistilled &&
         material.GetCompositeTexture() is null &&
-        material.GetTexture(parameter) is { ComponentCount: 3, Channel: SilkTextureChannel.Rgb } texture &&
+        material.GetRenderableTexture(parameter) is { ComponentCount: 3, Channel: SilkTextureChannel.Rgb } texture &&
         !texture.Asset.Contains("<UDIM>", StringComparison.Ordinal) && RequiresFloatTextureAffine(texture) &&
         SupportsMaterialRowUploads();
 

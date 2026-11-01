@@ -1496,6 +1496,7 @@ internal static class SilkDisplacementRenderConformance
             payload.AddRange(BitConverter.GetBytes((uint)SilkTextureChannel.R));
             payload.AddRange(BitConverter.GetBytes((uint)SilkCompositeOperator.None));
             payload.AddRange(BitConverter.GetBytes(0f));
+            payload.AddRange(BitConverter.GetBytes((uint)SilkTextureSourceKind.Standard));
             payload.AddRange(asset);
             payload.AddRange(uv);
         }

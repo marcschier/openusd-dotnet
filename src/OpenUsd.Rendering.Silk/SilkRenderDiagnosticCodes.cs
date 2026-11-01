@@ -29,6 +29,9 @@ public static class SilkRenderDiagnosticCodes
     /// <summary>A referenced texture asset could not be decoded.</summary>
     public const string TextureDecodeFailed = "OPENUSD_SILK_TEXTURE_DECODE_FAILED";
 
+    /// <summary>A Ptex texture is retained but its surface input is not yet sampled.</summary>
+    public const string TexturePtexUnsupported = "OPENUSD_SILK_TEXTURE_PTEX_UNSUPPORTED";
+
     /// <summary>A material texture value or address fallback was used.</summary>
     public const string TextureFallbackUsed = "OPENUSD_SILK_TEXTURE_FALLBACK_USED";
 

@@ -1414,6 +1414,7 @@ public sealed class SilkTextureResidencyTests
             payload.AddRange(BitConverter.GetBytes((uint)texture.Channel));
             payload.AddRange(BitConverter.GetBytes((uint)texture.CompositeOperator));
             payload.AddRange(BitConverter.GetBytes(texture.CompositeFactor));
+            payload.AddRange(BitConverter.GetBytes((uint)SilkTextureSourceKind.Standard));
             payload.AddRange(assetBytes);
             payload.AddRange(uvBytes);
         }

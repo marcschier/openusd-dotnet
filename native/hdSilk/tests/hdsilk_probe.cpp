@@ -92,7 +92,7 @@ struct ParsedAttribute
     std::vector<float> values;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 7);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 32);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 33);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128);
 
 using ParsedLightMask = std::array<uint32_t, 4>;
@@ -219,6 +219,7 @@ struct ParsedMaterialRecord
     uint32_t surface_kind = 0;
     std::vector<std::tuple<uint32_t, float>> scalars;
     std::vector<std::tuple<uint32_t, uint32_t, std::string, std::string>> textures;
+    std::vector<uint32_t> texture_source_kinds;
 };
 
 struct ParsedPage
@@ -1543,6 +1544,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             std::string textureUv;
             uint32_t textureParameter = 0;
             std::vector<std::tuple<uint32_t, uint32_t, std::string, std::string>> textures;
+            std::vector<uint32_t> textureSourceKinds;
             for (uint32_t texture = 0; valid && texture < textureCount; ++texture)
             {
                 uint32_t parameter = 0;
@@ -1551,6 +1553,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 uint32_t componentCount = 0;
                 uint32_t outputChannel = 0;
                 uint32_t compositeOp = 0;
+                uint32_t sourceKind = 0;
                 const size_t entry = offset + cursor;
                 valid = ReadValue(data, size, entry, &parameter) &&
                     ReadValue(data, size, entry + 16, &assetSize) &&
@@ -1558,7 +1561,9 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     ReadValue(data, size, entry + 24, &componentCount) &&
                     ReadValue(data, size, entry + 76, &outputChannel) &&
                     ReadValue(data, size, entry + 80, &compositeOp) &&
+                    ReadValue(data, size, entry + 88, &sourceKind) &&
                     compositeOp <= OPENUSD_SILK_COMPOSITE_MIX &&
+                    sourceKind <= OPENUSD_SILK_TEXTURE_SOURCE_PTEX &&
                     assetSize != 0 &&
                     outputChannel <= OPENUSD_SILK_TEXTURE_CHANNEL_RGB &&
                     (outputChannel == OPENUSD_SILK_TEXTURE_CHANNEL_RGB
@@ -1567,7 +1572,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 if (valid)
                 {
                     std::string asset(
-                        reinterpret_cast<const char*>(data + entry + 88),
+                        reinterpret_cast<const char*>(data + entry + 92),
                         assetSize);
                     if (texture == 0)
                     {
@@ -1575,17 +1580,18 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                         textureAsset = asset;
                         textureUv.assign(
                             reinterpret_cast<const char*>(
-                                data + entry + 88 + assetSize),
+                                data + entry + 92 + assetSize),
                             uvSize);
                     }
                     std::string entryUv(
-                        reinterpret_cast<const char*>(data + entry + 88 + assetSize),
+                        reinterpret_cast<const char*>(data + entry + 92 + assetSize),
                         uvSize);
                     textures.emplace_back(
                         parameter, outputChannel, std::move(asset), std::move(entryUv));
+                    textureSourceKinds.push_back(sourceKind);
                 }
                 valid = valid &&
-                    AddSize(&cursor, 88) &&
+                    AddSize(&cursor, 92) &&
                     AddSize(&cursor, assetSize) &&
                     AddSize(&cursor, uvSize);
             }
@@ -1643,7 +1649,7 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 result.material_texture_count = textureCount;
                 result.material_roughness = roughness;
                 result.materials.push_back(
-                    ParsedMaterialRecord{path, surfaceKind, scalarEntries, textures});
+                    ParsedMaterialRecord{path, surfaceKind, scalarEntries, textures, textureSourceKinds});
                 result.material_scalars = std::move(scalarEntries);
                 result.material_texture_asset = std::move(textureAsset);
                 result.material_texture_uv = std::move(textureUv);
@@ -8455,7 +8461,7 @@ bool ReadPageCompositeOperators(
             std::memcpy(&assetSize, page.data() + cursor + 16, sizeof(assetSize));
             std::memcpy(&uvSize, page.data() + cursor + 20, sizeof(uvSize));
             std::memcpy(&(*out)[texture], page.data() + cursor + 80, sizeof(uint32_t));
-            cursor += 88 + assetSize + uvSize;
+            cursor += 92 + assetSize + uvSize;
         }
         return true;
     }
@@ -9001,7 +9007,7 @@ bool VerifyPreviewSurfaceUnsupportedInput()
         return map;
     };
 
-    for (const char* identifier : {"HwPtexTexture_1", "UsdPrimvarReader_float3"})
+    for (const char* identifier : {"UsdPrimvarReader_float3"})
     {
         for (const bool authored : {false, true})
         {
@@ -9023,6 +9029,129 @@ bool VerifyPreviewSurfaceUnsupportedInput()
                 std::cerr << "An unsupported Preview Surface connection was not "
                              "rejected and diagnosed: "
                           << identifier << ", authored=" << authored << "\n";
+                return false;
+            }
+        }
+    }
+
+    {
+        HdMaterialNetworkMap map = makeNetwork("HwPtexTexture_1", true, true, true);
+        HdMaterialNode& texture = map.map[HdMaterialTerminalTokens->surface].nodes[1];
+        texture.parameters[TfToken("file")] = VtValue(SdfAssetPath("textures/same.ptx"));
+        texture.parameters[TfToken("faceIndexPrimvar")] = VtValue(TfToken("ptexFaceIndex"));
+        texture.parameters[TfToken("faceOffsetPrimvar")] = VtValue(TfToken("ptexFaceOffset"));
+        texture.parameters[TfToken("frame")] = VtValue(0.0F);
+        texture.parameters[TfToken("textureMemory")] = VtValue(0.0F);
+        TfDiagnosticTrap diagnostics;
+        const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
+        const HdSilkMaterialTexture* resolved =
+            FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+        const auto& warnings = diagnostics.GetWarnings();
+        const bool warned = warnings.size() == 1 &&
+            warnings[0].GetCommentary().find("Ptex sampling is not available") != std::string::npos;
+        diagnostics.ClearWarnings();
+        if (!warned || resolved == nullptr ||
+            resolved->sourceKind != OPENUSD_SILK_TEXTURE_SOURCE_PTEX ||
+            resolved->asset != "textures/same.ptx" || !resolved->uvPrimvar.empty() ||
+            resolved->outputChannel != OPENUSD_SILK_TEXTURE_CHANNEL_RGB ||
+            FindMaterialScalar(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR) != nullptr ||
+            !ScalarIs(record, OPENUSD_SILK_MATERIAL_ROUGHNESS, 0.25F, "Roughness"))
+        {
+            std::cerr << "A direct Ptex connection did not retain its source kind and fallback warning.\n";
+            return false;
+        }
+        HdSilkSceneState state;
+        state.ReplaceMaterial(record);
+        uint64_t revision = 0;
+        uint32_t count = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        if (!page.material_valid || page.materials.size() != 1 ||
+            page.materials[0].texture_source_kinds !=
+                std::vector<uint32_t>{OPENUSD_SILK_TEXTURE_SOURCE_PTEX})
+        {
+            std::cerr << "The Ptex source kind did not reach the serialized material page.\n";
+            return false;
+        }
+
+        HdSilkMaterialRecord conflicting = record;
+        conflicting.scalars.push_back(
+            {OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, 3, {0.2F, 0.3F, 0.4F}});
+        HdSilkSceneState rejected;
+        rejected.ReplaceMaterial(std::move(conflicting));
+        TfDiagnosticTrap rejectedDiagnostics;
+        const std::vector<uint8_t> rejectedBytes = rejected.BuildPage(&revision, &count);
+        const ParsedPage rejectedPage = ParseCommands(rejectedBytes.data(), rejectedBytes.size());
+        const auto& rejectedWarnings = rejectedDiagnostics.GetWarnings();
+        const bool rejectedConflict = rejectedPage.materials.empty() &&
+            rejectedWarnings.size() == 1 &&
+            rejectedWarnings[0].GetCommentary().find("cannot share its surface input with a scalar") !=
+                std::string::npos;
+        rejectedDiagnostics.ClearWarnings();
+        if (!rejectedConflict)
+        {
+            std::cerr << "A Ptex input sharing a scalar was not rejected and diagnosed.\n";
+            return false;
+        }
+
+        HdMaterialNetworkMap ordinary = makeNetwork("UsdUVTexture", true, true, false);
+        ordinary.map[HdMaterialTerminalTokens->surface].nodes[1].parameters[TfToken("file")] =
+            VtValue(SdfAssetPath("textures/same.ptx"));
+        const HdSilkMaterialRecord image = HdSilkMaterial::Resolve(materialPath, ordinary);
+        const HdSilkMaterialTexture* ordinaryTexture =
+            FindMaterialTexture(image, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
+        if (ordinaryTexture == nullptr ||
+            ordinaryTexture->sourceKind != OPENUSD_SILK_TEXTURE_SOURCE_STANDARD ||
+            ordinaryTexture->asset != "textures/same.ptx")
+        {
+            std::cerr << "An ordinary image was classified as Ptex by its file name.\n";
+            return false;
+        }
+    }
+
+    {
+        const std::vector<std::pair<TfToken, VtValue>> unsupported = {
+            {TfToken("faceIndexPrimvar"), VtValue(TfToken("customFaces"))},
+            {TfToken("faceOffsetPrimvar"), VtValue(TfToken("customOffsets"))},
+            {TfToken("faceIndex"), VtValue(0)},
+            {TfToken("faceOffset"), VtValue(0)},
+            {TfToken("frame"), VtValue(1.0F)},
+            {TfToken("textureMemory"), VtValue(1.0F)},
+            {TfToken("unknownInput"), VtValue(1.0F)}};
+        for (const auto& parameter : unsupported)
+        {
+            HdMaterialNetworkMap map = makeNetwork("HwPtexTexture_1", true, true, true);
+            map.map[HdMaterialTerminalTokens->surface].nodes[1].parameters[parameter.first] = parameter.second;
+            TfDiagnosticTrap diagnostics;
+            const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
+            const auto& warnings = diagnostics.GetWarnings();
+            const bool warned = warnings.size() == 1 &&
+                warnings[0].GetCommentary().find(parameter.first.GetString()) != std::string::npos;
+            diagnostics.ClearWarnings();
+            if (!warned ||
+                !ParameterIsAbsent(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, parameter.first.GetText()))
+            {
+                std::cerr << "An unsupported Ptex parameter was not refused: "
+                          << parameter.first.GetText() << "\n";
+                return false;
+            }
+        }
+        for (const char* input : {"file", "faceIndex", "faceOffsetPrimvar"})
+        {
+            HdMaterialNetworkMap map = makeNetwork("HwPtexTexture_1", true, true, true);
+            HdMaterialNetwork& network = map.map[HdMaterialTerminalTokens->surface];
+            network.relationships.push_back(
+                {SdfPath("/World/PreviewUnsupported/Other"), TfToken("out"),
+                 network.nodes[1].path, TfToken(input)});
+            TfDiagnosticTrap diagnostics;
+            const HdSilkMaterialRecord record = HdSilkMaterial::Resolve(materialPath, map);
+            const auto& warnings = diagnostics.GetWarnings();
+            const bool warned = warnings.size() == 1 &&
+                warnings[0].GetCommentary().find(input) != std::string::npos;
+            diagnostics.ClearWarnings();
+            if (!warned || !ParameterIsAbsent(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR, input))
+            {
+                std::cerr << "A connected Ptex input was not refused: " << input << "\n";
                 return false;
             }
         }

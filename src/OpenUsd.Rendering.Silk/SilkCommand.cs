@@ -1984,6 +1984,16 @@ public enum SilkCompositeOperator : uint
     Mix = 4
 }
 
+/// <summary>Identifies how a material texture obtains its sample coordinates.</summary>
+public enum SilkTextureSourceKind : uint
+{
+    /// <summary>An ordinary image or sampled volume.</summary>
+    Standard = 0,
+
+    /// <summary>A Ptex texture addressed by per-face mesh coordinates.</summary>
+    Ptex = 1
+}
+
 /// <summary>Texture wrap mode.</summary>
 public enum SilkTextureWrap : uint
 {
@@ -2118,11 +2128,11 @@ public readonly ref struct SilkMaterialScalarEntry
 }
 
 /// <summary>
-/// One UsdPreviewSurface input driven by a connected UsdUVTexture.
+/// One material input driven by a connected texture.
 /// </summary>
 public readonly ref struct SilkMaterialTextureEntry
 {
-    internal const int FixedSize = 88;
+    internal const int FixedSize = 92;
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly string _asset;
     private readonly string _uvPrimvar;
@@ -2182,6 +2192,10 @@ public readonly ref struct SilkMaterialTextureEntry
     /// </summary>
     public float CompositeFactor =>
         BinaryPrimitives.ReadSingleLittleEndian(_bytes[84..88]);
+
+    /// <summary>Gets the texture source kind, independently of its asset name.</summary>
+    public SilkTextureSourceKind SourceKind =>
+        (SilkTextureSourceKind)BinaryPrimitives.ReadUInt32LittleEndian(_bytes[88..92]);
 
     /// <summary>Gets one component of the multiply applied after sampling.</summary>
     public float GetScale(int component) => ReadVector(28, component);
@@ -2267,13 +2281,40 @@ public readonly ref struct SilkMaterialUpsertCommand
         // inconsistent table fails once here rather than at an arbitrary later
         // accessor, which is the same guarantee the mesh commands give.
         int offset = FixedSize + _pathLength;
+        uint scalarParameters = 0;
         for (int index = 0; index < ScalarCount; index++)
         {
+            int entryOffset = offset;
             offset = AdvanceScalar(bytes, offset);
+            uint parameter = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(entryOffset, 4));
+            if (parameter < 32)
+            {
+                scalarParameters |= 1u << (int)parameter;
+            }
         }
+        uint seenTextureParameters = 0;
+        uint ptexParameters = 0;
         for (int index = 0; index < TextureCount; index++)
         {
-            offset = AdvanceTexture(bytes, offset);
+            int entryOffset = offset;
+            offset = AdvanceTexture(bytes, offset, SurfaceKind);
+            uint parameter = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(entryOffset, 4));
+            uint sourceKind = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(entryOffset + 88, 4));
+            if (parameter < 32)
+            {
+                uint bit = 1u << (int)parameter;
+                if ((ptexParameters & bit) != 0 ||
+                    (sourceKind == (uint)SilkTextureSourceKind.Ptex &&
+                        ((seenTextureParameters | scalarParameters) & bit) != 0))
+                {
+                    throw new InvalidDataException("A Ptex texture cannot share its surface input.");
+                }
+                seenTextureParameters |= bit;
+                if (sourceKind == (uint)SilkTextureSourceKind.Ptex)
+                {
+                    ptexParameters |= bit;
+                }
+            }
         }
         if (offset + sizeof(uint) > bytes.Length)
         {
@@ -2445,7 +2486,7 @@ public readonly ref struct SilkMaterialUpsertCommand
         }
         for (int current = 0; current < index; current++)
         {
-            offset = AdvanceTexture(_bytes, offset);
+            offset = AdvanceTexture(_bytes, offset, SurfaceKind);
         }
         return new SilkMaterialTextureEntry(_bytes[offset..]);
     }
@@ -2526,7 +2567,7 @@ public readonly ref struct SilkMaterialUpsertCommand
         return offset + size;
     }
 
-    private static int AdvanceTexture(ReadOnlySpan<byte> bytes, int offset)
+    private static int AdvanceTexture(ReadOnlySpan<byte> bytes, int offset, SilkSurfaceKind surfaceKind)
     {
         if (offset + SilkMaterialTextureEntry.FixedSize > bytes.Length)
         {
@@ -2540,6 +2581,24 @@ public readonly ref struct SilkMaterialUpsertCommand
             BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 24, 4));
         uint channel =
             BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 76, 4));
+        uint sourceKind =
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 88, 4));
+        if (sourceKind > (uint)SilkTextureSourceKind.Ptex)
+        {
+            throw new InvalidDataException("A material texture entry has an unknown source kind.");
+        }
+        if (sourceKind == (uint)SilkTextureSourceKind.Ptex &&
+            (surfaceKind != SilkSurfaceKind.PreviewSurface ||
+             BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) is 0 or
+                 > (uint)SilkMaterialParameter.UseSpecularWorkflow ||
+             BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset, 4)) is
+                 (uint)SilkMaterialParameter.Displacement or (uint)SilkMaterialParameter.VolumeDensity ||
+             BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 80, 4)) !=
+                 (uint)SilkCompositeOperator.None || uvLength != 0 ||
+             channel > (uint)SilkTextureChannel.Rgb))
+        {
+            throw new InvalidDataException("A Ptex texture requires a direct Preview Surface input without UVs.");
+        }
         if (assetLength == 0)
         {
             throw new InvalidDataException(

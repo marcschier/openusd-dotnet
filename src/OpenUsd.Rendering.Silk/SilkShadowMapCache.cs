@@ -1153,7 +1153,7 @@ internal sealed class SilkShadowMapCache : IDisposable
         {
             float constantOpacity = SilkSurfaceUniformWriter.GetOpacity(material);
             float constantThreshold = SilkSurfaceUniformWriter.GetOpacityThreshold(material);
-            if (material.GetTexture(SilkMaterialParameter.Opacity) is not null)
+            if (material.GetRenderableTexture(SilkMaterialParameter.Opacity) is not null)
             {
                 return constantThreshold > 0
                     ? SilkShadowOpacityCoverage.Masked
@@ -1168,7 +1168,7 @@ internal sealed class SilkShadowMapCache : IDisposable
             return constantOpacity < 1 ? SilkShadowOpacityCoverage.Unsupported : SilkShadowOpacityCoverage.Solid;
         }
 
-        if (material.GetTexture(SilkMaterialParameter.Opacity) is not null)
+        if (material.GetRenderableTexture(SilkMaterialParameter.Opacity) is not null)
         {
             return SilkShadowOpacityCoverage.Unsupported;
         }

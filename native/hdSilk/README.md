@@ -90,7 +90,7 @@ rejected, token values are never reused, and the registry keeps no tombstones.
 
 Authored `UsdRender` execution needs explicit scene-ingestion choices that do
 not silently collapse to viewport defaults. The current public header describes
-session ABI 7 and page ABI 32. Managed creation requires the matching session/page
+session ABI 7 and page ABI 33. Managed creation requires the matching session/page
 version exports; older libraries cannot be mixed with these bindings.
 
 The version-1 request is append-only and request-scoped: one struct carries the
@@ -248,8 +248,15 @@ segmented geometry on D3D12 WARP and Vulkan SwiftShader.
 A Preview Surface input connected to a known unsupported node stays at the
 renderer default and emits a native warning naming the material, input and
 node. An authored constant behind that connection is not treated as an
-unconnected value. This includes `HwPtexTexture_1`: Ptex sampling remains
-unsupported, and the warning is not a managed material diagnostic.
+unconnected value.
+
+Page ABI 33 retains direct `HwPtexTexture_1` connections as Ptex sources,
+with their asset path and output channel. The renderer does not sample
+Ptex yet: it uses the input default and reports
+`OPENUSD_SILK_TEXTURE_PTEX_UNSUPPORTED` when the material is rendered.
+Native translation also warns. Connections to the Ptex node's own inputs
+and unsupported parameter overrides are refused with a warning. A
+`UsdUVTexture` pointing to the same file remains an ordinary image source.
 
 The subdivision module can derive default Ptex face IDs and local triangle
 coordinates for refined Catmull-Clark, bilinear and Loop meshes, and for

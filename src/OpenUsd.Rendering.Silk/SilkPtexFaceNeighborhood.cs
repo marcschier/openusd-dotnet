@@ -53,7 +53,7 @@ internal sealed class SilkPtexFaceNeighborhood
         bool haveFileInfo = false;
         ulong decodedBytes = 0;
 
-        void DescribeBatch(uint[] ids)
+        void describeBatch(uint[] ids)
         {
             SilkPtexFaceDescription description = describe(ids);
             SilkNativePtexDecoder.ValidateInfo(description.Info, ids.Length, maximumDecodedBytes);
@@ -85,7 +85,7 @@ internal sealed class SilkPtexFaceNeighborhood
             }
         }
 
-        DescribeBatch(sampled);
+        describeBatch(sampled);
         var pending = new HashSet<uint>();
         foreach (uint faceId in sampled)
         {
@@ -105,7 +105,7 @@ internal sealed class SilkPtexFaceNeighborhood
 
         if (pending.Count != 0)
         {
-            DescribeBatch(Sort(pending));
+            describeBatch(Sort(pending));
             pending.Clear();
         }
 
@@ -120,7 +120,7 @@ internal sealed class SilkPtexFaceNeighborhood
         }
         if (pending.Count != 0)
         {
-            DescribeBatch(Sort(pending));
+            describeBatch(Sort(pending));
             pending.Clear();
         }
         foreach (uint faceId in sampled)

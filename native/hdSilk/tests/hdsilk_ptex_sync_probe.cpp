@@ -3,6 +3,7 @@
 #include "hdsilk_test_hooks.h"
 #include "subdivision.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -10,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -19,6 +21,144 @@ namespace
 constexpr int32_t Mapped = static_cast<int32_t>(HdSilkPtexMappingStatus::Mapped);
 constexpr int32_t Invalid =
     static_cast<int32_t>(HdSilkPtexMappingStatus::InvalidFaceOffsets);
+
+struct MaterialWire
+{
+    std::string path;
+    std::string asset;
+    std::string uv;
+    uint32_t parameter = 0;
+    uint32_t channel = 0;
+    uint32_t sourceKind = 0;
+};
+
+struct PageWire
+{
+    std::vector<MaterialWire> materials;
+    std::vector<std::string> meshes;
+};
+
+bool ReadPage(const openusd_silk_page_view& view, PageWire* result)
+{
+    if (view.abi_version != OPENUSD_SILK_PAGE_ABI_VERSION ||
+        (view.data_size != 0 && view.data == nullptr))
+    {
+        return false;
+    }
+    const auto readU32 = [&](size_t offset, size_t end, uint32_t* value)
+    {
+        if (offset > end || end - offset < sizeof(uint32_t))
+        {
+            return false;
+        }
+        std::memcpy(value, view.data + offset, sizeof(uint32_t));
+        return true;
+    };
+    size_t offset = 0;
+    while (offset < view.data_size)
+    {
+        uint32_t type = 0;
+        uint32_t size = 0;
+        if (!readU32(offset, view.data_size, &type) ||
+            !readU32(offset + 4, view.data_size, &size) ||
+            size < 8 || size > view.data_size - offset)
+        {
+            return false;
+        }
+        const size_t end = offset + size;
+        if (type == OPENUSD_SILK_COMMAND_MESH_UPSERT)
+        {
+            uint32_t pathSize = 0;
+            constexpr size_t fixedSize = 276;
+            if (!readU32(offset + 48, end, &pathSize) ||
+                end - offset < fixedSize || pathSize > end - offset - fixedSize)
+            {
+                return false;
+            }
+            result->meshes.emplace_back(
+                reinterpret_cast<const char*>(view.data + offset + fixedSize), pathSize);
+        }
+        if (type == OPENUSD_SILK_COMMAND_MATERIAL_UPSERT)
+        {
+            uint32_t pathSize = 0;
+            uint32_t scalarCount = 0;
+            uint32_t textureCount = 0;
+            constexpr size_t fixedSize = 32;
+            if (!readU32(offset + 16, end, &pathSize) ||
+                !readU32(offset + 24, end, &scalarCount) ||
+                !readU32(offset + 28, end, &textureCount) ||
+                end - offset < fixedSize || pathSize > end - offset - fixedSize)
+            {
+                return false;
+            }
+            const std::string path(
+                reinterpret_cast<const char*>(view.data + offset + fixedSize), pathSize);
+            size_t cursor = offset + fixedSize + pathSize;
+            for (uint32_t scalar = 0; scalar < scalarCount; ++scalar)
+            {
+                uint32_t components = 0;
+                if (!readU32(cursor + 4, end, &components) ||
+                    components == 0 || components > 4 ||
+                    cursor > end || end - cursor < 8 + components * sizeof(float))
+                {
+                    return false;
+                }
+                cursor += 8 + components * sizeof(float);
+            }
+            for (uint32_t texture = 0; texture < textureCount; ++texture)
+            {
+                MaterialWire entry;
+                entry.path = path;
+                uint32_t assetSize = 0;
+                uint32_t uvSize = 0;
+                constexpr size_t textureSize = 92;
+                if (!readU32(cursor, end, &entry.parameter) ||
+                    !readU32(cursor + 16, end, &assetSize) ||
+                    !readU32(cursor + 20, end, &uvSize) ||
+                    !readU32(cursor + 76, end, &entry.channel) ||
+                    !readU32(cursor + 88, end, &entry.sourceKind) ||
+                    cursor > end || end - cursor < textureSize ||
+                    assetSize > end - cursor - textureSize ||
+                    uvSize > end - cursor - textureSize - assetSize)
+                {
+                    return false;
+                }
+                entry.asset.assign(
+                    reinterpret_cast<const char*>(view.data + cursor + textureSize), assetSize);
+                entry.uv.assign(
+                    reinterpret_cast<const char*>(view.data + cursor + textureSize + assetSize), uvSize);
+                result->materials.push_back(std::move(entry));
+                cursor += textureSize + assetSize + uvSize;
+            }
+        }
+        offset = end;
+    }
+    return offset == view.data_size;
+}
+
+bool CheckMaterialWire(
+    const PageWire& page, const std::filesystem::path& fixtureDirectory,
+    const char* materialPath, const char* file, uint32_t sourceKind)
+{
+    for (const MaterialWire& entry : page.materials)
+    {
+        if (entry.path != materialPath ||
+            entry.parameter != OPENUSD_SILK_MATERIAL_EMISSIVE_COLOR)
+        {
+            continue;
+        }
+        std::error_code error;
+        const std::filesystem::path asset(entry.asset);
+        const bool sameFile = std::filesystem::equivalent(
+            asset, fixtureDirectory / "native-profile" / "ptex" / file, error);
+        return entry.sourceKind == sourceKind &&
+            entry.channel == OPENUSD_SILK_TEXTURE_CHANNEL_RGB &&
+            (sourceKind != OPENUSD_SILK_TEXTURE_SOURCE_PTEX || entry.uv.empty()) &&
+            asset.is_absolute() && !error && sameFile;
+    }
+    std::cerr << "Material source entry missing from page: " << materialPath << "\n";
+    return false;
+}
 
 void Print(const openusd_hdsilk_test_ptex_observation& observation)
 {
@@ -76,6 +216,7 @@ bool CheckFrame(
     bool grouped = updated;
     bool groupedIndexed = updated;
     bool missing = updated;
+    bool materialOnly = updated;
     bool valid = true;
     for (const auto& observation : observations)
     {
@@ -133,6 +274,14 @@ bool CheckFrame(
                 observation.mapped_faces[0] == 0 && observation.mapped_faces[1] == 0;
             continue;
         }
+        if (std::strcmp(observation.path, "/World/MaterialOnly") == 0)
+        {
+            materialOnly = !observation.instanced && observation.has_primvar &&
+                observation.delegate_matches && observation.value_count == 2 &&
+                observation.values[0] == 2 && observation.values[1] == 3 &&
+                CheckPtexMaterial(observation, fixtureDirectory, updated);
+            continue;
+        }
         const bool common = observation.has_primvar && !observation.has_element_size &&
             observation.delegate_matches &&
             observation.value_count == 2 &&
@@ -170,13 +319,13 @@ bool CheckFrame(
         }
     }
     if (!ordinary || !indexedDefault || !nativeInstance || !pointInstance ||
-        !grouped || !groupedIndexed || !missing)
+        !grouped || !groupedIndexed || !missing || !materialOnly)
     {
         std::cerr << "Missing or invalid Ptex observations: ordinary=" << ordinary
                   << " indexedDefault=" << indexedDefault
                   << " nativeInstance=" << nativeInstance << " pointInstance=" << pointInstance
                   << " grouped=" << grouped << " groupedIndexed=" << groupedIndexed
-                  << " missing=" << missing << "\n";
+                  << " missing=" << missing << " materialOnly=" << materialOnly << "\n";
         valid = false;
     }
     return valid;
@@ -202,6 +351,7 @@ bool Sync(
     openusd_silk_session* session,
     double time,
     std::vector<openusd_hdsilk_test_ptex_observation>* observations,
+    PageWire* wire,
     openusd_error_buffer* error)
 {
     openusd_render_camera camera{};
@@ -215,11 +365,12 @@ bool Sync(
         session, 64, 64, time, &camera, &page, &view, error);
     std::array<openusd_hdsilk_test_ptex_observation, 64> buffer{};
     const size_t count = openusd_hdsilk_test_end_ptex_observation(buffer.data(), buffer.size());
+    const bool pageValid = status == OPENUSD_STATUS_OK && ReadPage(view, wire);
     if (page != nullptr)
     {
         openusd_silk_page_release(page);
     }
-    if (status != OPENUSD_STATUS_OK || count > buffer.size())
+    if (!pageValid || count > buffer.size())
     {
         std::cerr << "Ptex sync failed: status=" << status << ", observations=" << count
                   << ", error=" << error->data << "\n";
@@ -256,12 +407,25 @@ int main(int argc, char** argv)
     if (std::strcmp(argv[1], "usd") == 0)
     {
         const std::filesystem::path fixtureDirectory = std::filesystem::path(argv[3]).parent_path();
-        valid = Sync(session, 0.0, &observations, &error) &&
-            CheckFrame(observations, fixtureDirectory, false);
-        valid = Sync(session, 1.0, &observations, &error) &&
-            CheckFrame(observations, fixtureDirectory, true) && valid;
-        valid = Sync(session, 0.0, &observations, &error) &&
-            CheckRestoredMaterial(observations, fixtureDirectory) && valid;
+        PageWire initial;
+        valid = Sync(session, 0.0, &observations, &initial, &error) &&
+            CheckFrame(observations, fixtureDirectory, false) &&
+            CheckMaterialWire(initial, fixtureDirectory, "/World/PtexMaterial",
+                "tetrahedron.ptx", OPENUSD_SILK_TEXTURE_SOURCE_PTEX) &&
+            CheckMaterialWire(initial, fixtureDirectory, "/World/UvMaterial",
+                "tetrahedron.ptx", OPENUSD_SILK_TEXTURE_SOURCE_STANDARD);
+        PageWire updated;
+        valid = Sync(session, 1.0, &observations, &updated, &error) &&
+            CheckFrame(observations, fixtureDirectory, true) &&
+            CheckMaterialWire(updated, fixtureDirectory, "/World/PtexMaterial",
+                "quad-colors.ptx", OPENUSD_SILK_TEXTURE_SOURCE_PTEX) &&
+            std::find(updated.meshes.begin(), updated.meshes.end(), "/World/MaterialOnly") ==
+                updated.meshes.end() && valid;
+        PageWire restored;
+        valid = Sync(session, 0.0, &observations, &restored, &error) &&
+            CheckRestoredMaterial(observations, fixtureDirectory) &&
+            CheckMaterialWire(restored, fixtureDirectory, "/World/PtexMaterial",
+                "tetrahedron.ptx", OPENUSD_SILK_TEXTURE_SOURCE_PTEX) && valid;
     }
     else
     {

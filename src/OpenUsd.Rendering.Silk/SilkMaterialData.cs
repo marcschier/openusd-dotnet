@@ -23,8 +23,7 @@ public sealed class SilkMaterialScalar
 }
 
 /// <summary>
-/// One UsdPreviewSurface input driven by a connected UsdUVTexture, copied out of
-/// a material command.
+/// One texture-driven material input copied out of a material command.
 /// </summary>
 public sealed class SilkMaterialTexture
 {
@@ -45,7 +44,8 @@ public sealed class SilkMaterialTexture
         string uvPrimvar,
         SilkCompositeOperator compositeOperator,
         float compositeFactor,
-        Vector4 luminanceMix = default)
+        Vector4 luminanceMix = default,
+        SilkTextureSourceKind sourceKind = SilkTextureSourceKind.Standard)
     {
         Parameter = parameter;
         WrapS = wrapS;
@@ -61,12 +61,17 @@ public sealed class SilkMaterialTexture
         CompositeOperator = compositeOperator;
         CompositeFactor = compositeFactor;
         LuminanceMix = luminanceMix;
+        SourceKind = sourceKind;
     }
 
     internal Vector4 LuminanceMix { get; }
 
     /// <summary>Gets the parameter this texture drives.</summary>
     public SilkMaterialParameter Parameter { get; }
+
+    /// <summary>Gets the texture source kind, independently of its asset name.</summary>
+    /// <remarks>Ptex sources are retained for inspection but are not yet sampled by the renderer.</remarks>
+    public SilkTextureSourceKind SourceKind { get; }
 
     /// <summary>
     /// Gets how this entry combines with the primary entry of the same parameter.
@@ -383,7 +388,8 @@ public sealed class SilkMaterialData
                 entry.UvPrimvar,
                 entry.CompositeOperator,
                 entry.CompositeFactor,
-                entry.Parameter == SilkMaterialParameter.DiffuseColor ? luminanceMix : default);
+                entry.Parameter == SilkMaterialParameter.DiffuseColor ? luminanceMix : default,
+                entry.SourceKind);
         }
 
         byte[] generatedFragmentSpirV = command.GeneratedFragmentSpirV.ToArray();
@@ -402,7 +408,7 @@ public sealed class SilkMaterialData
         uint maskableParameters = 0;
         foreach (SilkMaterialTexture texture in textures)
         {
-            if (IsAlternateUvCandidate(texture.Parameter))
+            if (texture.SourceKind == SilkTextureSourceKind.Standard && IsAlternateUvCandidate(texture.Parameter))
             {
                 maskableParameters |= 1u << (int)texture.Parameter;
             }
@@ -473,6 +479,9 @@ public sealed class SilkMaterialData
         return null;
     }
 
+    internal SilkMaterialTexture? GetRenderableTexture(SilkMaterialParameter parameter) =>
+        GetTexture(parameter) is { SourceKind: SilkTextureSourceKind.Standard } texture ? texture : null;
+
     /// <summary>
     /// Gets the material's single composite operand, or null when no surface
     /// input of this material is driven by two images.
@@ -498,16 +507,16 @@ public sealed class SilkMaterialData
     internal SilkShaderFeatures GetTextureFeatures()
     {
         SilkShaderFeatures features = SilkShaderFeatures.None;
-        if (GetTexture(SilkMaterialParameter.DiffuseColor) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.DiffuseColor) is not null)
         {
             features |= SilkShaderFeatures.BaseColorMap;
         }
 
-        if (GetTexture(SilkMaterialParameter.Normal) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.Normal) is not null)
         {
             features |= SilkShaderFeatures.NormalMap;
         }
-        if (GetTexture(SilkMaterialParameter.DetailNormal) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.DetailNormal) is not null)
         {
             features |= SilkShaderFeatures.DetailNormalMap;
         }
@@ -517,41 +526,41 @@ public sealed class SilkMaterialData
         // occlusion/roughness/metallic file reaches here as two entries naming one
         // asset and two different output channels, and still resolves correctly
         // because each entry carries the channel it was authored with.
-        if (GetTexture(SilkMaterialParameter.Roughness) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.Roughness) is not null)
         {
             features |= SilkShaderFeatures.RoughnessMetallicMap;
         }
 
-        if (GetTexture(SilkMaterialParameter.Metallic) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.Metallic) is not null)
         {
             features |= SilkShaderFeatures.MetallicMap;
         }
 
-        if (GetTexture(SilkMaterialParameter.EmissiveColor) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.EmissiveColor) is not null)
         {
             features |= SilkShaderFeatures.EmissiveMap;
         }
-        if (GetTexture(SilkMaterialParameter.Opacity) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.Opacity) is not null)
         {
             features |= SilkShaderFeatures.OpacityMap;
         }
-        if (GetTexture(SilkMaterialParameter.Occlusion) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.Occlusion) is not null)
         {
             features |= SilkShaderFeatures.OcclusionMap;
         }
-        if (GetTexture(SilkMaterialParameter.SpecularColor) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.SpecularColor) is not null)
         {
             features |= SilkShaderFeatures.SpecularColorMap;
         }
-        if (GetTexture(SilkMaterialParameter.Clearcoat) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.Clearcoat) is not null)
         {
             features |= SilkShaderFeatures.ClearcoatMap;
         }
-        if (GetTexture(SilkMaterialParameter.ClearcoatRoughness) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.ClearcoatRoughness) is not null)
         {
             features |= SilkShaderFeatures.ClearcoatRoughnessMap;
         }
-        if (GetTexture(SilkMaterialParameter.Ior) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.Ior) is not null)
         {
             features |= SilkShaderFeatures.IorMap;
         }
@@ -564,7 +573,7 @@ public sealed class SilkMaterialData
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
-        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v7");
+        writer.Write("OpenUsd.Rendering.Silk.MaterialXRuntime.v8");
         writer.Write(Path);
         writer.Write((uint)SurfaceKind);
         writer.Write(Scalars.Count);
@@ -581,6 +590,7 @@ public sealed class SilkMaterialData
         foreach (SilkMaterialTexture texture in Textures.OrderBy(t => t.Parameter))
         {
             writer.Write((uint)texture.Parameter);
+            writer.Write((uint)texture.SourceKind);
             writer.Write(texture.Asset);
             writer.Write(texture.UvPrimvar);
             writer.Write((uint)texture.WrapS);
@@ -630,7 +640,7 @@ public sealed class SilkMaterialData
         string displacementPrimvar = string.Empty;
         foreach (SilkMaterialTexture texture in Textures)
         {
-            if (string.IsNullOrEmpty(texture.UvPrimvar))
+            if (texture.SourceKind != SilkTextureSourceKind.Standard || string.IsNullOrEmpty(texture.UvPrimvar))
             {
                 continue;
             }
@@ -703,7 +713,7 @@ public sealed class SilkMaterialData
     internal bool TangentsFromSecondaryUv()
     {
         SilkShaderFeatures mask = GetSecondaryUvTextureMask();
-        if (GetTexture(SilkMaterialParameter.Normal) is not null)
+        if (GetRenderableTexture(SilkMaterialParameter.Normal) is not null)
         {
             return (mask & SilkShaderFeatures.NormalMap) != 0;
         }
@@ -719,7 +729,7 @@ public sealed class SilkMaterialData
         SilkShaderFeatures mask = SilkShaderFeatures.None;
         foreach (SilkMaterialTexture texture in Textures)
         {
-            if (UsesAlternateUvTransform(texture.Parameter))
+            if (texture.SourceKind == SilkTextureSourceKind.Standard && UsesAlternateUvTransform(texture.Parameter))
             {
                 mask |= GetSurfaceTextureBit(texture.Parameter);
             }
@@ -745,6 +755,7 @@ public sealed class SilkMaterialData
             not SilkMaterialParameter.DetailNormal;
 
     private static bool IsSurfaceUvTexture(SilkMaterialTexture texture) =>
+        texture.SourceKind == SilkTextureSourceKind.Standard &&
         texture.Parameter is not SilkMaterialParameter.Displacement and
             not SilkMaterialParameter.VolumeDensity;
 

@@ -19,7 +19,7 @@ public sealed partial class SilkSceneGpuResources
     internal void PrepareShadowOpacityTextures(
         SilkMaterialData material, HashSet<TextureDependency> dependencies)
     {
-        SilkMaterialTexture primary = material.GetTexture(SilkMaterialParameter.Opacity) ??
+        SilkMaterialTexture primary = material.GetRenderableTexture(SilkMaterialParameter.Opacity) ??
             throw new InvalidDataException($"Material '{material.Path}' has no opacity texture.");
         TextureCacheEntry first = RequireTexture(material, primary);
         SilkMaterialTexture? composite = material.GetCompositeTexture();
@@ -78,7 +78,7 @@ public sealed partial class SilkSceneGpuResources
 
     internal void BindShadowOpacityTextures(ISilkGraphicsCommandList commands, SilkMaterialData material)
     {
-        SilkMaterialTexture primary = material.GetTexture(SilkMaterialParameter.Opacity) ??
+        SilkMaterialTexture primary = material.GetRenderableTexture(SilkMaterialParameter.Opacity) ??
             throw new InvalidDataException($"Material '{material.Path}' has no opacity texture.");
         SilkMaterialTexture? composite = material.GetCompositeTexture();
         bind(primary, SilkBindingLayoutDescriptor.OpacitySamplerBinding,
@@ -378,7 +378,8 @@ public sealed partial class SilkSceneGpuResources
         {
             foreach (SilkMaterialTexture outgoing in previous.Textures)
             {
-                if (outgoing.Parameter is SilkMaterialParameter.Displacement or SilkMaterialParameter.VolumeDensity ||
+                if (outgoing.SourceKind != SilkTextureSourceKind.Standard ||
+                    outgoing.Parameter is SilkMaterialParameter.Displacement or SilkMaterialParameter.VolumeDensity ||
                     outgoing.Asset.Contains("<UDIM>", StringComparison.Ordinal))
                 {
                     continue;
@@ -550,7 +551,8 @@ public sealed partial class SilkSceneGpuResources
         int count = 0;
         foreach (SilkMaterialTexture candidate in material.Textures)
         {
-            if (candidate.Parameter is not (SilkMaterialParameter.Displacement or
+            if (candidate.SourceKind == SilkTextureSourceKind.Standard &&
+                candidate.Parameter is not (SilkMaterialParameter.Displacement or
                 SilkMaterialParameter.VolumeDensity) &&
                 candidate.Asset == texture.Asset &&
                 GetEffectiveColorSpace(candidate) == GetEffectiveColorSpace(texture) &&
@@ -564,7 +566,7 @@ public sealed partial class SilkSceneGpuResources
 
     private static bool EquivalentStreamedTexture(SilkMaterialTexture left, SilkMaterialTexture right)
     {
-        if (left.Asset != right.Asset || left.Parameter != right.Parameter ||
+        if (left.SourceKind != right.SourceKind || left.Asset != right.Asset || left.Parameter != right.Parameter ||
             left.SourceColorSpace != right.SourceColorSpace || left.ComponentCount != right.ComponentCount ||
             left.Channel != right.Channel || left.CompositeOperator != right.CompositeOperator ||
             left.CompositeFactor != right.CompositeFactor || left.LuminanceMix != right.LuminanceMix ||
@@ -686,7 +688,8 @@ public sealed partial class SilkSceneGpuResources
                 }
                 foreach (SilkMaterialTexture texture in material.Textures)
                 {
-                    if (texture.Parameter == SilkMaterialParameter.Displacement)
+                    if (texture.SourceKind != SilkTextureSourceKind.Standard ||
+                        texture.Parameter == SilkMaterialParameter.Displacement)
                     {
                         continue;
                     }

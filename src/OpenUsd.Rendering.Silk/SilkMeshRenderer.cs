@@ -1687,7 +1687,7 @@ public sealed partial class SilkMeshRenderer :
         {
             return false;
         }
-        if (material.GetTexture(SilkMaterialParameter.Opacity) is not null)
+        if (material.GetRenderableTexture(SilkMaterialParameter.Opacity) is not null)
         {
             return true;
         }
@@ -1885,9 +1885,10 @@ public sealed partial class SilkMeshRenderer :
         bindTexture(SilkMaterialParameter.DiffuseColor, SilkShaderFeatures.BaseColorMap);
         if ((features & (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0)
         {
-            SilkMaterialParameter baseNormal = material!.GetTexture(SilkMaterialParameter.Normal) is not null
+            SilkMaterialParameter baseNormal = material!.GetRenderableTexture(SilkMaterialParameter.Normal) is not null
                 ? SilkMaterialParameter.Normal : SilkMaterialParameter.DetailNormal;
-            SilkMaterialParameter detailNormal = material.GetTexture(SilkMaterialParameter.DetailNormal) is not null
+            SilkMaterialParameter detailNormal =
+                material.GetRenderableTexture(SilkMaterialParameter.DetailNormal) is not null
                 ? SilkMaterialParameter.DetailNormal : baseNormal;
             GpuResources.BindMaterialTexture(
                 commands,
@@ -1949,6 +1950,10 @@ public sealed partial class SilkMeshRenderer :
         }
         foreach (SilkMaterialTexture texture in material.Textures)
         {
+            if (texture.SourceKind != SilkTextureSourceKind.Standard)
+            {
+                continue;
+            }
             if (texture.Parameter is SilkMaterialParameter.DiffuseColor or
                 SilkMaterialParameter.Normal or
                 SilkMaterialParameter.Roughness or

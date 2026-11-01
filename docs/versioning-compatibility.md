@@ -94,7 +94,7 @@ constants, package validation, and tests must be updated together.
 | Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 9 | Managed child runtime requires the exact locked version. |
 | hdSilk session API | ABI 7 | Session/page exports are required and checked before creation. |
-| hdSilk command page | ABI 32 | Every managed page is validated before parsing. |
+| hdSilk command page | ABI 33 | Every managed page is validated before parsing. |
 | Optional `openusd_mdl` / `openusd_mdl_sdk` | ABI 7 | hdSilk checks the exact adapter version and result size. |
 | Retained physics `openusd_physx` | ABI 8 | Exact; checks every record size and the CPU mesh preparation exports. |
 | Physics extraction page | ABI 2 | Validated geometry windows, source fingerprints and detached prepared hull ranges. |
@@ -148,7 +148,7 @@ fragment permutations read them. Deploy the native library, managed parser and c
 a page-28 library is refused.
 
 hdSilk session ABI 7 and page ABI 31 added retention of decoded OpenVDB fields outside the command
-bytes; page ABI 32 preserves that contract. A sampled-field texture asset starts with
+bytes; page ABIs 32 and 33 preserve that contract. A sampled-field texture asset starts with
 `hdsilk-volume:` and identifies its resolved source VDB,
 not a decoded cache file. Consumers retain the page's volume assets and copy each field through
 the bulk C ABI before releasing the lease. A page-30 consumer would interpret the identifier as a
@@ -310,9 +310,14 @@ session creation rejects missing exports or mismatched versions before consuming
 The version-1 explicit scene-ingestion request and page ABI 24 are independent extensions of that
 session interface. Page ABI 24 expands direct lighting to 128 entries and four-word direct/shadow
 masks without changing session ABI 6.
-The current bindings require session ABI 7 and page ABI 32. Page ABI 32 appends a Ptex mapping
+The current bindings require session ABI 7 and page ABI 33. Page ABI 32 appends a Ptex mapping
 count and status to each mesh command and carries mapped face IDs and triangle coordinates after
-the instancer context.
+the instancer context. Page ABI 33 adds a source-kind field at byte 88 of each material texture
+entry and moves its asset bytes to byte 92. A direct `HwPtexTexture_1` connection retains its
+asset path and output channel without being mistaken for a `UsdUVTexture` using the same file.
+The renderer retains these Ptex entries but does not sample them; the affected input uses its
+default and emits a diagnostic. Older page readers must reject ABI 33 rather than interpret its
+source-kind field as asset data.
 
 The optional version-1 source-identity batch extension is additive to session 6/page 26.
 Its request/result layout and hard count/path/result limits are declared in `openusd_hdsilk.h`.

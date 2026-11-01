@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 32u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 33u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 7u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 #define OPENUSD_SILK_PTEX_DECODE_VERSION 1u
@@ -669,8 +669,13 @@ typedef enum openusd_silk_ptex_mapping_status
 ///       76    4 uint32   output_channel (OPENUSD_SILK_TEXTURE_CHANNEL_*)
 ///       80    4 uint32   composite_op (OPENUSD_SILK_COMPOSITE_*)
 ///       84    4 float    composite_factor
-///       88    * uint8    asset[asset_byte_count] (UTF-8, resolved, no NUL)
+///       88    4 uint32   source_kind (OPENUSD_SILK_TEXTURE_SOURCE_*)
+///       92    * uint8    asset[asset_byte_count] (UTF-8, resolved when available, no NUL)
 ///        *    * uint8    uv_primvar[uv_primvar_byte_count] (UTF-8, no NUL)
+///
+/// ABI v33 identifies Ptex sources independently of their asset names.
+/// A Ptex entry has no UV primvar or composite operand. Its per-corner face
+/// mappings come from the bound mesh, not from an ordinary image coordinate.
 ///
 /// For OPENUSD_SILK_MATERIAL_VOLUME_DENSITY, uv_primvar contains the
 /// comma-separated width, height and depth of the R32 field. A native sampled
@@ -1380,7 +1385,13 @@ typedef enum openusd_silk_ptex_mapping_status
 #define OPENUSD_SILK_COLOR_SPACE_RAW 1u
 #define OPENUSD_SILK_COLOR_SPACE_SRGB 2u
 
-/// Connected UsdUVTexture output ports, carried by the ABI v13 texture table.
+/// Texture source kinds, carried by the ABI v33 texture table.
+/// STANDARD covers ordinary image and volume sources; PTEX identifies a
+/// direct HwPtexTexture_1 source independently of the resolved file name.
+#define OPENUSD_SILK_TEXTURE_SOURCE_STANDARD 0u
+#define OPENUSD_SILK_TEXTURE_SOURCE_PTEX 1u
+
+/// Connected texture output ports, carried by the ABI v13 texture table.
 /// Values 0-4 are the outputs UsdUVTexture declares: four single-channel
 /// outputs and one three-channel output. Values 5-7 are explicit scalar opacity
 /// reductions. A MaterialX image node's single "out"

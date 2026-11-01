@@ -2261,6 +2261,31 @@ void AppendMaterialUpsert(
             throw std::invalid_argument(
                 "An hdSilk material texture has an unknown wrap or color space.");
         }
+        if (texture.sourceKind > OPENUSD_SILK_TEXTURE_SOURCE_PTEX)
+        {
+            throw std::invalid_argument("An hdSilk material texture has an unknown source kind.");
+        }
+        if (texture.sourceKind == OPENUSD_SILK_TEXTURE_SOURCE_PTEX &&
+            (record.surfaceKind != OPENUSD_SILK_SURFACE_PREVIEW_SURFACE ||
+             texture.parameter > OPENUSD_SILK_MATERIAL_USE_SPECULAR_WORKFLOW ||
+             texture.parameter == OPENUSD_SILK_MATERIAL_DISPLACEMENT ||
+             texture.parameter == OPENUSD_SILK_MATERIAL_VOLUME_DENSITY ||
+             texture.compositeOp != OPENUSD_SILK_COMPOSITE_NONE ||
+             texture.outputChannel > OPENUSD_SILK_TEXTURE_CHANNEL_RGB ||
+             !texture.uvPrimvar.empty()))
+        {
+            throw std::invalid_argument("A Ptex texture requires a direct Preview Surface input without UVs.");
+        }
+        if (texture.sourceKind == OPENUSD_SILK_TEXTURE_SOURCE_PTEX &&
+            std::any_of(
+                record.scalars.begin(), record.scalars.end(),
+                [&texture](const HdSilkMaterialScalar& scalar)
+                {
+                    return scalar.parameter == texture.parameter;
+                }))
+        {
+            throw std::invalid_argument("A Ptex texture cannot share its surface input with a scalar.");
+        }
         if (texture.asset.empty())
         {
             throw std::invalid_argument(
@@ -2326,6 +2351,10 @@ void AppendMaterialUpsert(
                 "An hdSilk material parameter must carry exactly one primary "
                 "texture and at most one composite operand.");
         }
+        if (texture.sourceKind == OPENUSD_SILK_TEXTURE_SOURCE_PTEX && composites != 0)
+        {
+            throw std::invalid_argument("A Ptex texture cannot be part of a composite input.");
+        }
         if (texture.compositeOp != OPENUSD_SILK_COMPOSITE_NONE)
         {
             ++compositeCount;
@@ -2355,7 +2384,8 @@ void AppendMaterialUpsert(
     uint32_t publishedSurfaceTextures = 0;
     for (const HdSilkMaterialTexture& texture : record.textures)
     {
-        if (texture.parameter < 32 && texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT &&
+        if (texture.sourceKind != OPENUSD_SILK_TEXTURE_SOURCE_PTEX &&
+            texture.parameter < 32 && texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT &&
             texture.parameter != OPENUSD_SILK_MATERIAL_DETAIL_NORMAL)
         {
             publishedSurfaceTextures |= 1u << texture.parameter;
@@ -2413,6 +2443,7 @@ void AppendMaterialUpsert(
         AppendU32(payload, texture.outputChannel);
         AppendU32(payload, texture.compositeOp);
         AppendF32(payload, texture.compositeFactor);
+        AppendU32(payload, texture.sourceKind);
         AppendBytes(payload, texture.asset.data(), texture.asset.size());
         AppendBytes(payload, texture.uvPrimvar.data(), texture.uvPrimvar.size());
     }

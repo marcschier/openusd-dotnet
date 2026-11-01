@@ -12,6 +12,53 @@ public sealed class SilkMaterialStreamingTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task PtexSourceUsesDefaultPixelsUntilImageReplacementAndRestoration(
+        SilkGraphicsBackend backend)
+    {
+        using var actual = new Fixture(backend, true, mixedColors: true);
+        using var expected = new Fixture(backend, false, mixedColors: true);
+        using OpenUsdSilkPage geometry = Page(2, 1);
+        _ = actual.Render(geometry);
+        _ = expected.Render(geometry);
+        byte[] imagePixels = actual.ColorBytes();
+        actual.Decoded.Clear();
+
+        using var ptex = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
+            Material('A', false, uvPrimvar: "", sourceKind: SilkTextureSourceKind.Ptex), 1);
+        using var defaults = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
+            Material('A', false, omitMaps: true), 1);
+        _ = actual.Render(ptex);
+        _ = expected.Render(defaults);
+        byte[] defaultPixels = actual.ColorBytes();
+        await Assert.That(defaultPixels.SequenceEqual(expected.ColorBytes())).IsTrue();
+        await Assert.That(actual.DepthValues().SequenceEqual(expected.DepthValues())).IsTrue();
+        await Assert.That(defaultPixels.SequenceEqual(imagePixels)).IsFalse();
+        await Assert.That(actual.Decoded.Count).IsEqualTo(0);
+        await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries.Count(static entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsEqualTo(1);
+
+        using var image = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 4,
+            Material('A', false), 1);
+        _ = actual.Render(image);
+        _ = expected.Render(image);
+        await Assert.That(actual.ColorBytes().SequenceEqual(imagePixels)).IsTrue();
+        await Assert.That(actual.ColorBytes().SequenceEqual(expected.ColorBytes())).IsTrue();
+        await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries.Any(static entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsFalse();
+
+        using var restored = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 5,
+            Material('A', false, uvPrimvar: "", sourceKind: SilkTextureSourceKind.Ptex), 1);
+        _ = actual.Render(restored);
+        await Assert.That(actual.ColorBytes().SequenceEqual(defaultPixels)).IsTrue();
+        await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries.Count(static entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsEqualTo(1);
+        actual.ReleaseResources();
+        await actual.AssertReleased();
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task RgbaEmissionRetainsItsOriginalRepresentationAndAlpha(SilkGraphicsBackend backend)
     {
         using var actual = new Fixture(backend, true, imageSize: 64, mixedColors: true);
@@ -2316,7 +2363,8 @@ public sealed class SilkMaterialStreamingTests
         string uvPrimvar = "st", string secondaryUvPrimvar = "",
         uint alternateUvMask = 0, float alternateUvTranslate = 0, float[]? fallback = null,
         float? opacityThreshold = null, bool diffuseAndOpacity = false,
-        SilkTextureChannel opacityChannel = SilkTextureChannel.R, float? opacityScale = null, float? opacityBias = null)
+        SilkTextureChannel opacityChannel = SilkTextureChannel.R, float? opacityScale = null, float? opacityBias = null,
+        bool omitMaps = false, SilkTextureSourceKind sourceKind = SilkTextureSourceKind.Standard)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
@@ -2327,7 +2375,7 @@ public sealed class SilkMaterialStreamingTests
         writer.Write((uint)path.Length);
         writer.Write((uint)(promotedNormals ? SilkSurfaceKind.MdlDistilled : SilkSurfaceKind.PreviewSurface));
         writer.Write((promotedNormals ? 3u : 1u) + (opacityThreshold.HasValue ? 1u : 0u));
-        writer.Write(normalScalarMaps ? 5u : diffuseAndOpacity ? 2u :
+        writer.Write(omitMaps ? 0u : normalScalarMaps ? 5u : diffuseAndOpacity ? 2u :
             multipleMaps || vectorNormals ? 3u : composite != SilkCompositeOperator.None ? 2u : 1u);
         writer.Write(Encoding.UTF8.GetBytes(path));
         writer.Write((uint)SilkMaterialParameter.Opacity);
@@ -2354,7 +2402,7 @@ public sealed class SilkMaterialStreamingTests
                 writer.Write(value);
             }
         }
-        SilkMaterialParameter[] parameters = normalScalarMaps
+        SilkMaterialParameter[] parameters = omitMaps ? [] : normalScalarMaps
             ? [SilkMaterialParameter.DiffuseColor, SilkMaterialParameter.Normal, SilkMaterialParameter.DetailNormal,
                 SilkMaterialParameter.Roughness, SilkMaterialParameter.Metallic]
             : diffuseAndOpacity ? [SilkMaterialParameter.DiffuseColor, SilkMaterialParameter.Opacity]
@@ -2405,6 +2453,7 @@ public sealed class SilkMaterialStreamingTests
                 scalar ? SilkTextureChannel.R : SilkTextureChannel.Rgb));
             writer.Write((uint)(map == 1 ? composite : SilkCompositeOperator.None));
             writer.Write(map == 1 && composite == SilkCompositeOperator.Mix ? 0.375f : 0f);
+            writer.Write((uint)sourceKind);
             writer.Write(asset);
             writer.Write(uvPrimvarBytes);
         }

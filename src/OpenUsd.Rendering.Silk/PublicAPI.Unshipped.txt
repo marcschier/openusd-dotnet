@@ -1102,6 +1102,7 @@ OpenUsd.Rendering.Silk.SilkMaterialTexture.Fallback.get -> System.Collections.Ge
 OpenUsd.Rendering.Silk.SilkMaterialTexture.Parameter.get -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialTexture.Scale.get -> System.Collections.Generic.IReadOnlyList<float>!
 OpenUsd.Rendering.Silk.SilkMaterialTexture.SourceColorSpace.get -> OpenUsd.Rendering.Silk.SilkColorSpace
+OpenUsd.Rendering.Silk.SilkMaterialTexture.SourceKind.get -> OpenUsd.Rendering.Silk.SilkTextureSourceKind
 OpenUsd.Rendering.Silk.SilkMaterialTexture.UvPrimvar.get -> string!
 OpenUsd.Rendering.Silk.SilkMaterialTexture.WrapS.get -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkMaterialTexture.WrapT.get -> OpenUsd.Rendering.Silk.SilkTextureWrap
@@ -1117,6 +1118,8 @@ OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.GetScale(int component) -> float
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.Parameter.get -> OpenUsd.Rendering.Silk.SilkMaterialParameter
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.SilkMaterialTextureEntry() -> void
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.SourceColorSpace.get -> OpenUsd.Rendering.Silk.SilkColorSpace
+OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.SourceKind.get -> OpenUsd.Rendering.Silk.SilkTextureSourceKind
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.TexturePtexUnsupported = "OPENUSD_SILK_TEXTURE_PTEX_UNSUPPORTED" -> string!
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.UvPrimvar.get -> string!
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.WrapS.get -> OpenUsd.Rendering.Silk.SilkTextureWrap
 OpenUsd.Rendering.Silk.SilkMaterialTextureEntry.WrapT.get -> OpenUsd.Rendering.Silk.SilkTextureWrap
@@ -2165,6 +2168,9 @@ OpenUsd.Rendering.Silk.SilkTextureChannel.Rgb = 4 -> OpenUsd.Rendering.Silk.Silk
 OpenUsd.Rendering.Silk.SilkTextureChannel.AverageRgb = 5 -> OpenUsd.Rendering.Silk.SilkTextureChannel
 OpenUsd.Rendering.Silk.SilkTextureChannel.LuminanceRgb = 6 -> OpenUsd.Rendering.Silk.SilkTextureChannel
 OpenUsd.Rendering.Silk.SilkTextureChannel.MaximumRgb = 7 -> OpenUsd.Rendering.Silk.SilkTextureChannel
+OpenUsd.Rendering.Silk.SilkTextureSourceKind
+OpenUsd.Rendering.Silk.SilkTextureSourceKind.Ptex = 1 -> OpenUsd.Rendering.Silk.SilkTextureSourceKind
+OpenUsd.Rendering.Silk.SilkTextureSourceKind.Standard = 0 -> OpenUsd.Rendering.Silk.SilkTextureSourceKind
 OpenUsd.Rendering.Silk.SilkTextureDescriptor
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Deconstruct(out uint Width, out uint Height, out OpenUsd.Rendering.Silk.SilkTextureFormat Format, out OpenUsd.Rendering.Silk.SilkTextureUsage Usage, out uint MipLevelCount) -> void
 OpenUsd.Rendering.Silk.SilkTextureDescriptor.Equals(OpenUsd.Rendering.Silk.SilkTextureDescriptor other) -> bool
@@ -2292,7 +2298,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 32 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 33 -> uint
 const OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.MaximumSlots = 12 -> int
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BindPoseBinding = 1 -> uint
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendDeltasBinding = 7 -> uint

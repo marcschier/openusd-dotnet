@@ -352,6 +352,7 @@ struct HdSilkMaterialScalar
 struct HdSilkMaterialTexture
 {
     uint32_t parameter = 0;
+    uint32_t sourceKind = 0;
     uint32_t wrapS = 2;
     uint32_t wrapT = 2;
     uint32_t sourceColorSpace = 0;
