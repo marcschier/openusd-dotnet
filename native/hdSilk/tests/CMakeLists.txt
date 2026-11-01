@@ -256,6 +256,7 @@ endif()
 
 add_test(NAME hdsilk_probe
     COMMAND hdsilk_probe ${HDSILK_PROBE_PLUGIN_DIR} ${HDSILK_PROBE_STAGE})
+add_test(NAME hdsilk_ptex_mapping_parser COMMAND hdsilk_probe --ptex-mapping-parser)
 add_test(NAME hdsilk_texture_metadata COMMAND hdsilk_probe --texture-metadata)
 add_test(NAME hdsilk_uv_fallback COMMAND hdsilk_probe --uv-fallback)
 add_test(NAME hdsilk_displacement_uv COMMAND hdsilk_probe --displacement-uv)
@@ -294,7 +295,8 @@ add_test(NAME hdsilk_source_identity_nested_masked COMMAND hdsilk_probe --decode
 add_test(NAME hdsilk_source_identity_transform_stack COMMAND hdsilk_probe --decode-scene-identities
     ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-source-transform-stack.usda
     /World/A/Mesh /World/B/Mesh)
-set_tests_properties(hdsilk_probe hdsilk_vertex_layout hdsilk_volume_bounds hdsilk_texture_metadata hdsilk_uv_fallback
+set_tests_properties(hdsilk_probe hdsilk_ptex_mapping_parser hdsilk_vertex_layout hdsilk_volume_bounds
+    hdsilk_texture_metadata hdsilk_uv_fallback
     hdsilk_displacement_uv hdsilk_preview_unsupported_input hdsilk_linear_curve_topology hdsilk_curve_invalid_points
     hdsilk_points_invalid_points hdsilk_mesh_invalid_points hdsilk_mesh_computed_points
     hdsilk_mesh_skel_normals_recovery

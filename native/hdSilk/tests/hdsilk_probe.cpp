@@ -866,6 +866,8 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
             uint32_t authoredPointCount = 0;
             uint32_t instancerPathByteCount = 0;
             uint32_t instancerContextCount = 0;
+            uint32_t ptexMappingCount = 0;
+            uint32_t ptexMappingStatus = 0;
             constexpr size_t pathOffset = 276;
             if (ReadValue(data, size, offset + 8, &stableHash) &&
                 ReadValue(data, size, offset + 16, &primId) &&
@@ -891,7 +893,9 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 ReadValue(data, size, offset + 252, &authoredEdgeCount) &&
                 ReadValue(data, size, offset + 256, &authoredPointCount) &&
                 ReadValue(data, size, offset + 260, &instancerPathByteCount) &&
-                ReadValue(data, size, offset + 264, &instancerContextCount))
+                ReadValue(data, size, offset + 264, &instancerContextCount) &&
+                ReadValue(data, size, offset + 268, &ptexMappingCount) &&
+                ReadValue(data, size, offset + 272, &ptexMappingStatus))
             {
                 size_t pointBytes = 0;
                 size_t indexBytes = 0;
@@ -1126,6 +1130,91 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     contextValid = parsedContext.back().first == instancerPath;
                 }
                 sizesValid = sizesValid && contextValid;
+                // ABI v32 appends the Ptex mapping entries after instancer
+                // context. Include and validate that tail before the exact-size
+                // check so mapped pages are not rejected or misparsed.
+                constexpr size_t ptexMappingEntrySize =
+                    sizeof(uint32_t) + (6 * sizeof(float));
+                const size_t ptexMappingTailOffset = expectedSize;
+                size_t ptexMappingBytes = 0;
+                const bool ptexStatusValid =
+                    ptexMappingStatus <=
+                    OPENUSD_SILK_PTEX_MAPPING_STATUS_TEXTURE_FACE_OUT_OF_RANGE;
+                const bool ptexCountValid =
+                    ptexMappingStatus ==
+                            OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED
+                        ? topologyKind == OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST &&
+                            ptexMappingCount == triangleCount
+                        : ptexMappingCount == 0;
+                bool ptexMappingsValid =
+                    MultiplySize(
+                        ptexMappingCount,
+                        ptexMappingEntrySize,
+                        &ptexMappingBytes) &&
+                    AddSize(&expectedSize, ptexMappingBytes);
+                ptexMappingsValid =
+                    ptexStatusValid &&
+                    ptexCountValid &&
+                    ptexMappingsValid &&
+                    sizesValid &&
+                    ptexMappingTailOffset <= byteSize &&
+                    expectedSize <= byteSize;
+                for (uint32_t mappingIndex = 0;
+                     ptexMappingsValid && mappingIndex < ptexMappingCount;
+                     ++mappingIndex)
+                {
+                    size_t mappingOffset = 0;
+                    ptexMappingsValid =
+                        MultiplySize(
+                            mappingIndex,
+                            ptexMappingEntrySize,
+                            &mappingOffset) &&
+                        mappingOffset <= byteSize - ptexMappingTailOffset &&
+                        ptexMappingEntrySize <=
+                            byteSize - ptexMappingTailOffset - mappingOffset;
+                    if (!ptexMappingsValid)
+                    {
+                        break;
+                    }
+
+                    const size_t entryOffset =
+                        offset + ptexMappingTailOffset + mappingOffset;
+                    uint32_t faceIndex = 0;
+                    ptexMappingsValid =
+                        ReadValue(data, size, entryOffset, &faceIndex) &&
+                        faceIndex <=
+                            static_cast<uint32_t>(
+                                std::numeric_limits<int32_t>::max());
+                    for (size_t coordinate = 0;
+                         ptexMappingsValid && coordinate < 6;
+                         ++coordinate)
+                    {
+                        float value = 0.0F;
+                        ptexMappingsValid =
+                            ReadValue(
+                                data,
+                                size,
+                                entryOffset + sizeof(uint32_t) +
+                                    (coordinate * sizeof(float)),
+                                &value) &&
+                            std::isfinite(value) &&
+                            value >= 0.0F && value <= 1.0F;
+                    }
+                }
+                if (!ptexMappingsValid)
+                {
+                    std::cerr << "Malformed Ptex mapping block (status="
+                              << ptexMappingStatus << ", count="
+                              << ptexMappingCount << ", triangles="
+                              << triangleCount << ", status-valid="
+                              << ptexStatusValid << ", count-valid="
+                              << ptexCountValid << ", sizes-valid="
+                              << sizesValid << ", tail="
+                              << ptexMappingTailOffset << ", expected="
+                              << expectedSize << ", command-size="
+                              << byteSize << ").\n";
+                }
+                sizesValid = sizesValid && ptexMappingsValid;
                 sizesValid = sizesValid && subprimValid &&
                     expectedSize == byteSize &&
                     ((instancerPathByteCount != 0) == (instanceId != 0)) &&
@@ -1783,6 +1872,31 @@ HdSilkMeshRecord MakeSceneStateRecord(
     record.indices = {0, 1, 2};
     record.triangleSubprims = {0};
     return record;
+}
+
+size_t FindCommandOffset(
+    const std::vector<uint8_t>& bytes,
+    uint32_t wantedType)
+{
+    size_t offset = 0;
+    while (offset + 8 <= bytes.size())
+    {
+        uint32_t type = 0;
+        uint32_t byteSize = 0;
+        if (!ReadValue(bytes.data(), bytes.size(), offset, &type) ||
+            !ReadValue(bytes.data(), bytes.size(), offset + 4, &byteSize) ||
+            byteSize < 8 ||
+            static_cast<size_t>(byteSize) > bytes.size() - offset)
+        {
+            return bytes.size();
+        }
+        if (type == wantedType)
+        {
+            return offset;
+        }
+        offset += byteSize;
+    }
+    return bytes.size();
 }
 
 const ParsedMeshIdentity* FindMeshIdentity(
@@ -5113,8 +5227,362 @@ bool VerifyLuminanceMixWireValidation()
     return true;
 }
 
+/// ABI v32 appends the Ptex mapping discriminator to the fixed mesh header and
+/// the packed face/coordinate entries after the variable mesh payload.
+bool VerifyPtexMappingWireSerialization()
+{
+    constexpr char Path[] = "/PtexMapped";
+    HdSilkMeshRecord mapped = MakeSceneStateRecord(Path, 64);
+    mapped.ptexMappingStatus = OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED;
+    HdSilkPtexMeshTriangle mapping{};
+    mapping.faceIndex = 7;
+    const std::array<float, 6> expectedCoordinates{
+        0.125F, 0.25F, 0.5F, 0.625F, 0.875F, 1.0F};
+    std::copy(
+        expectedCoordinates.begin(),
+        expectedCoordinates.end(),
+        mapping.cornerCoordinates);
+    mapped.ptexMappings.push_back(mapping);
+
+    HdSilkSceneState state;
+    ReplaceSingleMesh(state, Path, std::move(mapped));
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const size_t meshOffset = FindCommandOffset(
+        bytes,
+        OPENUSD_SILK_COMMAND_MESH_UPSERT);
+    uint32_t byteSize = 0;
+    uint32_t mappingCount = 0;
+    uint32_t mappingStatus = 0;
+    const size_t mappingOffset =
+        276 + std::char_traits<char>::length(Path) +
+        (3 * 3 * sizeof(float)) +
+        (3 * sizeof(uint32_t)) +
+        sizeof(uint32_t);
+    uint32_t faceIndex = 0;
+    std::array<float, 6> actualCoordinates{};
+    if (commandCount != 2 ||
+        meshOffset == bytes.size() ||
+        !ReadValue(bytes.data(), bytes.size(), meshOffset + 4, &byteSize) ||
+        !ReadValue(bytes.data(), bytes.size(), meshOffset + 268, &mappingCount) ||
+        !ReadValue(bytes.data(), bytes.size(), meshOffset + 272, &mappingStatus) ||
+        byteSize != mappingOffset + (7 * sizeof(uint32_t)) ||
+        mappingCount != 1 ||
+        mappingStatus != OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED ||
+        !ReadValue(bytes.data(), bytes.size(), meshOffset + mappingOffset, &faceIndex))
+    {
+        return false;
+    }
+    for (size_t coordinate = 0; coordinate < actualCoordinates.size(); ++coordinate)
+    {
+        if (!ReadValue(
+                bytes.data(),
+                bytes.size(),
+                meshOffset + mappingOffset + sizeof(uint32_t) +
+                    (coordinate * sizeof(float)),
+                &actualCoordinates[coordinate]))
+        {
+            return false;
+        }
+    }
+    if (faceIndex != 7 || actualCoordinates != expectedCoordinates)
+    {
+        std::cerr << "hdSilk Ptex mapping face or coordinate bytes changed.\n";
+        return false;
+    }
+
+    for (uint32_t status : {
+             OPENUSD_SILK_PTEX_MAPPING_STATUS_NOT_REQUESTED,
+             OPENUSD_SILK_PTEX_MAPPING_STATUS_TEXTURE_FACE_OUT_OF_RANGE})
+    {
+        HdSilkMeshRecord refused = MakeSceneStateRecord("/PtexRefused", 65);
+        refused.ptexMappingStatus = status;
+        HdSilkSceneState refusedState;
+        const std::string refusedPath = refused.path;
+        ReplaceSingleMesh(refusedState, refusedPath, std::move(refused));
+        uint32_t refusedCommandCount = 0;
+        const std::vector<uint8_t> refusedBytes =
+            refusedState.BuildPage(nullptr, &refusedCommandCount);
+        const size_t refusedOffset = FindCommandOffset(
+            refusedBytes,
+            OPENUSD_SILK_COMMAND_MESH_UPSERT);
+        uint32_t refusedCount = 1;
+        uint32_t publishedStatus = 0;
+        if (refusedCommandCount != 2 ||
+            refusedOffset == refusedBytes.size() ||
+            !ReadValue(
+                refusedBytes.data(),
+                refusedBytes.size(),
+                refusedOffset + 268,
+                &refusedCount) ||
+            !ReadValue(
+                refusedBytes.data(),
+                refusedBytes.size(),
+                refusedOffset + 272,
+                &publishedStatus) ||
+            refusedCount != 0 ||
+            publishedStatus != status)
+        {
+            std::cerr << "hdSilk no-entry Ptex status did not round trip.\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool VerifyInvalidPtexMappingsRejectedAndRecover()
+{
+    constexpr char Path[] = "/PtexRecovery";
+    const auto mappedRecord = [] {
+        HdSilkMeshRecord record = MakeSceneStateRecord("/PtexRecovery", 66);
+        record.ptexMappingStatus = OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED;
+        HdSilkPtexMeshTriangle mapping{};
+        mapping.faceIndex = 3;
+        const std::array<float, 6> coordinates{
+            0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F};
+        std::copy(
+            coordinates.begin(),
+            coordinates.end(),
+            mapping.cornerCoordinates);
+        record.ptexMappings.push_back(mapping);
+        return record;
+    };
+
+    HdSilkMeshRecord badStatus = MakeSceneStateRecord(Path, 66);
+    badStatus.ptexMappingStatus =
+        OPENUSD_SILK_PTEX_MAPPING_STATUS_TEXTURE_FACE_OUT_OF_RANGE + 1;
+    HdSilkMeshRecord mappedWithoutEntry = MakeSceneStateRecord(Path, 66);
+    mappedWithoutEntry.ptexMappingStatus = OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED;
+    HdSilkMeshRecord mappedWithTooManyEntries = mappedRecord();
+    mappedWithTooManyEntries.ptexMappings.push_back(
+        mappedWithTooManyEntries.ptexMappings[0]);
+    HdSilkMeshRecord refusedWithEntry = mappedRecord();
+    refusedWithEntry.ptexMappingStatus =
+        OPENUSD_SILK_PTEX_MAPPING_STATUS_NOT_REQUESTED;
+    HdSilkMeshRecord nonTriangle = mappedRecord();
+    nonTriangle.topologyKind = OPENUSD_SILK_TOPOLOGY_LINE_LIST;
+    nonTriangle.indices = {0, 1};
+    HdSilkMeshRecord invalidFace = mappedRecord();
+    invalidFace.ptexMappings[0].faceIndex =
+        static_cast<uint32_t>(std::numeric_limits<int>::max()) + 1u;
+    HdSilkMeshRecord nanCoordinate = mappedRecord();
+    nanCoordinate.ptexMappings[0].cornerCoordinates[0] =
+        std::numeric_limits<float>::quiet_NaN();
+    HdSilkMeshRecord belowUnit = mappedRecord();
+    belowUnit.ptexMappings[0].cornerCoordinates[0] = -0.01F;
+    HdSilkMeshRecord aboveUnit = mappedRecord();
+    aboveUnit.ptexMappings[0].cornerCoordinates[0] = 1.01F;
+
+    if (!RejectsInvalidSceneStateRecord(std::move(badStatus)) ||
+        !RejectsInvalidSceneStateRecord(std::move(mappedWithoutEntry)) ||
+    !RejectsInvalidSceneStateRecord(std::move(mappedWithTooManyEntries)) ||
+    !RejectsInvalidSceneStateRecord(std::move(refusedWithEntry)) ||
+        !RejectsInvalidSceneStateRecord(std::move(nonTriangle)) ||
+        !RejectsInvalidSceneStateRecord(std::move(invalidFace)) ||
+        !RejectsInvalidSceneStateRecord(std::move(nanCoordinate)) ||
+        !RejectsInvalidSceneStateRecord(std::move(belowUnit)) ||
+        !RejectsInvalidSceneStateRecord(std::move(aboveUnit)))
+    {
+        std::cerr << "hdSilk accepted a malformed published Ptex mapping.\n";
+        return false;
+    }
+
+    // A refused malformed publication must not poison the retained path: a
+    // corrected mapping on the next publication is serialized normally.
+    HdSilkSceneState state;
+    HdSilkMeshRecord invalid = mappedRecord();
+    invalid.ptexMappings[0].cornerCoordinates[0] =
+        std::numeric_limits<float>::quiet_NaN();
+    ReplaceSingleMesh(state, Path, std::move(invalid));
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> rejectedBytes =
+        state.BuildPage(nullptr, &commandCount);
+    if (FindCommandOffset(rejectedBytes, OPENUSD_SILK_COMMAND_MESH_UPSERT) !=
+        rejectedBytes.size())
+    {
+        return false;
+    }
+
+    ReplaceSingleMesh(state, Path, mappedRecord());
+    const std::vector<uint8_t> recoveredBytes =
+        state.BuildPage(nullptr, &commandCount);
+    const size_t meshOffset = FindCommandOffset(
+        recoveredBytes,
+        OPENUSD_SILK_COMMAND_MESH_UPSERT);
+    uint32_t mappingCount = 0;
+    uint32_t mappingStatus = 0;
+    uint32_t faceIndex = 0;
+    if (meshOffset == recoveredBytes.size() ||
+        !ReadValue(
+            recoveredBytes.data(),
+            recoveredBytes.size(),
+            meshOffset + 268,
+            &mappingCount) ||
+        !ReadValue(
+            recoveredBytes.data(),
+            recoveredBytes.size(),
+            meshOffset + 272,
+            &mappingStatus) ||
+        !ReadValue(
+            recoveredBytes.data(),
+            recoveredBytes.size(),
+            meshOffset + 276 + std::char_traits<char>::length(Path) +
+                (3 * 3 * sizeof(float)) +
+                (3 * sizeof(uint32_t)) +
+                sizeof(uint32_t),
+            &faceIndex) ||
+        commandCount != 2 ||
+        mappingCount != 1 ||
+        mappingStatus != OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED ||
+        faceIndex != 3)
+    {
+        std::cerr << "hdSilk Ptex publication did not recover after refusal.\n";
+        return false;
+    }
+    return true;
+}
+
+bool VerifyPtexMappingPageParsing()
+{
+    constexpr char Path[] = "/PtexMapped";
+    for (bool instanced : {false, true})
+    {
+        HdSilkMeshRecord mesh = MakeSceneStateRecord(Path, 64);
+        mesh.ptexMappingStatus = OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED;
+        HdSilkPtexMeshTriangle mapping{};
+        mapping.faceIndex = 7;
+        const std::array<float, 6> coordinates{
+            0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F};
+        std::copy(coordinates.begin(), coordinates.end(), mapping.cornerCoordinates);
+        mesh.ptexMappings.push_back(mapping);
+        if (instanced)
+        {
+            mesh.instanceId = 42;
+            mesh.instancerPath = "/Outer/Inner";
+            mesh.instancerContext = {{"/Outer", 2}, {"/Outer/Inner", 5}};
+        }
+
+        HdSilkSceneState state;
+        ReplaceSingleMesh(state, Path, std::move(mesh));
+        uint32_t commandCount = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        if (commandCount != 2 || !page.mesh_identity_valid ||
+            page.mesh_identities.size() != 1 || page.mesh_identities[0].path != Path ||
+            page.mesh_point_counts != std::vector<uint32_t>{3} ||
+            page.mesh_identities[0].instancer_context.size() != (instanced ? 2u : 0u) ||
+            (instanced &&
+                (page.mesh_identities[0].instancer_context[0] !=
+                    std::make_pair(std::string("/Outer"), 2) ||
+                 page.mesh_identities[0].instancer_context[1] !=
+                    std::make_pair(std::string("/Outer/Inner"), 5))))
+        {
+            std::cerr << "A mapped Ptex mesh did not survive page parsing.\n";
+            return false;
+        }
+
+        uint32_t frameType = 0;
+        uint32_t meshOffset = 0;
+        uint32_t meshType = 0;
+        uint32_t meshSize = 0;
+        if (!ReadValue(bytes.data(), bytes.size(), 0, &frameType) ||
+            !ReadValue(bytes.data(), bytes.size(), 4, &meshOffset) ||
+            !ReadValue(bytes.data(), bytes.size(), meshOffset, &meshType) ||
+            !ReadValue(bytes.data(), bytes.size(), static_cast<size_t>(meshOffset) + 4, &meshSize) ||
+            frameType != OPENUSD_SILK_COMMAND_FRAME ||
+            meshType != OPENUSD_SILK_COMMAND_MESH_UPSERT ||
+            meshOffset > bytes.size() || bytes.size() - meshOffset < 276 ||
+            meshSize != bytes.size() - meshOffset)
+        {
+            return false;
+        }
+
+        for (const auto& invalid : std::array<std::pair<size_t, uint32_t>, 4>{{
+                 {268, 0},
+                 {268, 2},
+                 {272, OPENUSD_SILK_PTEX_MAPPING_STATUS_NOT_REQUESTED},
+                 {272, OPENUSD_SILK_PTEX_MAPPING_STATUS_TEXTURE_FACE_OUT_OF_RANGE + 1}}})
+        {
+            std::vector<uint8_t> malformed = bytes;
+            std::memcpy(malformed.data() + meshOffset + invalid.first,
+                &invalid.second, sizeof(invalid.second));
+            if (ParseCommands(malformed.data(), malformed.size()).mesh_identity_valid)
+            {
+                std::cerr << "A malformed Ptex mapping header was accepted.\n";
+                return false;
+            }
+        }
+
+        const size_t mappingOffset =
+            static_cast<size_t>(meshOffset) + meshSize - 28;
+        const uint32_t invalidFace =
+            static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) + 1u;
+        std::vector<uint8_t> invalidMapping = bytes;
+        std::memcpy(
+            invalidMapping.data() + mappingOffset, &invalidFace, sizeof(invalidFace));
+        if (ParseCommands(invalidMapping.data(), invalidMapping.size()).mesh_identity_valid)
+        {
+            std::cerr << "An out-of-range Ptex face was accepted.\n";
+            return false;
+        }
+        const uint32_t maximumFace =
+            static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
+        std::memcpy(
+            invalidMapping.data() + mappingOffset,
+            &maximumFace,
+            sizeof(maximumFace));
+        if (!ParseCommands(invalidMapping.data(), invalidMapping.size()).mesh_identity_valid)
+        {
+            std::cerr << "The maximum supported Ptex face was rejected.\n";
+            return false;
+        }
+        for (float invalidCoordinate :
+            {std::numeric_limits<float>::quiet_NaN(), -0.01F, 1.01F})
+        {
+            invalidMapping = bytes;
+            std::memcpy(
+                invalidMapping.data() + mappingOffset + sizeof(uint32_t),
+                &invalidCoordinate, sizeof(invalidCoordinate));
+            if (ParseCommands(invalidMapping.data(), invalidMapping.size()).mesh_identity_valid)
+            {
+                std::cerr << "An invalid Ptex coordinate was accepted.\n";
+                return false;
+            }
+        }
+
+        std::vector<uint8_t> truncated = bytes;
+        truncated.pop_back();
+        --meshSize;
+        std::memcpy(truncated.data() + meshOffset + 4, &meshSize, sizeof(meshSize));
+        if (ParseCommands(truncated.data(), truncated.size()).mesh_identity_valid)
+        {
+            std::cerr << "A truncated Ptex mapping was accepted.\n";
+            return false;
+        }
+    }
+
+    HdSilkMeshRecord refused = MakeSceneStateRecord(Path, 64);
+    refused.ptexMappingStatus = OPENUSD_SILK_PTEX_MAPPING_STATUS_REFINER_UNAVAILABLE;
+    HdSilkSceneState state;
+    ReplaceSingleMesh(state, Path, std::move(refused));
+    uint32_t commandCount = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+    const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+    if (commandCount != 2 || !page.mesh_identity_valid ||
+        page.mesh_identities.size() != 1 || page.mesh_identities[0].path != Path)
+    {
+        std::cerr << "A refused Ptex mapping did not survive page parsing.\n";
+        return false;
+    }
+    return true;
+}
+
 bool VerifySceneStateSerialization()
 {
+    if (!VerifyPtexMappingPageParsing())
+    {
+        return false;
+    }
     HdSilkSceneState state;
     ReplaceSingleMesh(state, "/Zed", MakeSceneStateRecord("/Zed", 2));
     ReplaceSingleMesh(state, "/Alpha", MakeSceneStateRecord("/Alpha", 1, 5));
@@ -5179,6 +5647,8 @@ bool VerifySceneStateSerialization()
     return RejectsInvalidSceneStateRecord(std::move(invalidPoints)) &&
         RejectsInvalidSceneStateRecord(std::move(invalidMapping)) &&
         RejectsInvalidSceneStateRecord(std::move(invalidInstance)) &&
+        VerifyPtexMappingWireSerialization() &&
+        VerifyInvalidPtexMappingsRejectedAndRecover() &&
         VerifyInstancedSceneStateSerialization() &&
         VerifyNestedInstancerContextSerialization() &&
         VerifySparsePrototypeInstanceSerialization() &&
@@ -12475,6 +12945,10 @@ bool VerifyDeformationInvalidation(
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string(argv[1]) == "--ptex-mapping-parser")
+    {
+        return VerifyPtexMappingPageParsing() ? 0 : 1;
+    }
     if (argc == 3 && std::string(argv[1]) == "--mesh-empty-truncated")
     {
         const int32_t result =
