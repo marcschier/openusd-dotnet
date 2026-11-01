@@ -3,6 +3,7 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
+using OpenUsd.Interop;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
 using OpenUsd.Rendering.Silk.Metal;
@@ -200,21 +201,22 @@ public sealed class VolumeRenderingConformanceTests
             Skip.Test("Direct3D 12 is available only on Windows, so the two backends cannot be compared here.");
         }
 
-        ClearVolumeCache();
         string asset = ResolveOpenVdbAsset("sampled_density.vdb");
         ParityImage vulkan;
+        byte[]? decoded;
         try
         {
             vulkan = CaptureStage(
                 WriteVdbStage("volume-vdb-cross-backend-vulkan", asset, 0, 1, sampleDensity: true),
-                VulkanSilkGraphicsDevice.Create);
+                VulkanSilkGraphicsDevice.Create,
+                out decoded);
         }
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
         }
-        if (!TryReadMeanCachedDensity("volume-vdb-cross-backend-vulkan", out _))
+        if (!TryGetMeanDensity(decoded, out _))
         {
             WriteEvidence(
                 "volume-vdb-cross-backend.txt",
@@ -246,6 +248,105 @@ public sealed class VolumeRenderingConformanceTests
     }
 
     [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task DeferredSampledVdbPageRetainsItsGridAcrossSessions(bool sharedDirectory)
+    {
+        string firstAssetPath = ResolveOpenVdbAsset("sampled_density.vdb");
+        string secondAssetPath = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
+        string firstStage = WriteVdbStage(
+            "volume-vdb-deferred-first",
+            firstAssetPath,
+            0,
+            1,
+            sampleDensity: true);
+        string secondStage = WriteVdbStage(
+            "volume-vdb-deferred-second",
+            secondAssetPath,
+            0,
+            1,
+            sampleDensity: true);
+        if (!sharedDirectory)
+        {
+            string directory = Path.Combine(StageDirectory, "second-stage");
+            Directory.CreateDirectory(directory);
+            secondStage = Path.Combine(directory, "volume-vdb-deferred-second.usda");
+            File.WriteAllText(secondStage, CreateVdbStage(secondAssetPath, 0, 1, sampleDensity: true),
+                new UTF8Encoding(false));
+        }
+        ParityImage firstReference;
+        byte[]? firstReferenceDensity;
+        try
+        {
+            firstReference = CaptureStage(firstStage, VulkanSilkGraphicsDevice.Create, out firstReferenceDensity);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
+        {
+            Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
+        }
+        if (!TryGetMeanDensity(firstReferenceDensity, out _))
+        {
+            Skip.Test("hioOpenVDB reader is unavailable in the native profile.");
+        }
+        ParityImage secondReference = CaptureStage(secondStage, VulkanSilkGraphicsDevice.Create);
+        await Assert.That(ImageDelta.Compare(firstReference, secondReference).MeanChannelDelta)
+            .IsGreaterThanOrEqualTo(MinimumTranslatedMeanDelta)
+            .Because("the two authored grids must produce distinguishable references.");
+
+        using OpenUsdSilkSession firstSession = OpenUsdSilkRuntime.Create(ResolvePluginPath(), firstStage);
+        using OpenUsdSilkSession secondSession = OpenUsdSilkRuntime.Create(ResolvePluginPath(), secondStage);
+        var camera = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []);
+        using OpenUsdSilkPage firstPage = firstSession.Sync(Width, Height, TimeCode, camera);
+        using var firstScene = new SilkSceneState();
+        _ = firstScene.Apply(firstPage);
+        const string materialPath = "/World/Vdb/Volume/__hdSilkVolumeMaterial";
+        SilkMaterialTexture firstTexture =
+            firstScene.Materials[materialPath].GetTexture(SilkMaterialParameter.VolumeDensity)
+            ?? throw new InvalidOperationException("The first sampled volume has no density texture.");
+        byte[] firstBytes = ReadVolumeDensity(firstTexture);
+        await Assert.That(firstBytes.SequenceEqual(firstReferenceDensity!)).IsTrue();
+        using (SilkVolumeAssets lease = firstPage.AcquireVolumeAssets(required: true)!)
+        {
+            byte[] shortDestination = Enumerable.Repeat((byte)0xA5, firstBytes.Length - 1).ToArray();
+            OpenUsdSilkException? badSize = await Assert.That(() => lease.Copy(materialPath, shortDestination))
+                .Throws<OpenUsdSilkException>();
+            await Assert.That(badSize!.Status).IsEqualTo(OpenUsdNativeStatus.InvalidArgument);
+            await Assert.That(shortDestination.All(value => value == 0xA5)).IsTrue();
+
+            byte[] missingDestination = Enumerable.Repeat((byte)0xA5, firstBytes.Length).ToArray();
+            OpenUsdSilkException? missing = await Assert.That(() => lease.Copy("/Missing", missingDestination))
+                .Throws<OpenUsdSilkException>();
+            await Assert.That(missing!.Status).IsEqualTo(OpenUsdNativeStatus.NotFound);
+            await Assert.That(missingDestination.All(value => value == 0xA5)).IsTrue();
+        }
+        firstSession.Dispose();
+
+        using OpenUsdSilkPage secondPage = secondSession.Sync(Width, Height, TimeCode, camera);
+        using var secondScene = new SilkSceneState();
+        _ = secondScene.Apply(secondPage);
+        SilkMaterialTexture secondTexture =
+            secondScene.Materials[materialPath].GetTexture(SilkMaterialParameter.VolumeDensity)
+            ?? throw new InvalidOperationException("The second sampled volume has no density texture.");
+        byte[] secondBytes = ReadVolumeDensity(secondTexture);
+        await Assert.That(firstBytes.SequenceEqual(secondBytes)).IsFalse()
+            .Because("the shifted grid must carry different decoded values.");
+        await Assert.That(ReadVolumeDensity(firstTexture).SequenceEqual(firstBytes)).IsTrue()
+            .Because("the earlier decoded field must retain the values published with its page.");
+
+        ParityImage deferredFirst = CapturePage(firstPage, VulkanSilkGraphicsDevice.Create);
+        ParityImage deferredSecond = CapturePage(secondPage, VulkanSilkGraphicsDevice.Create);
+        await Assert.That(ImageDelta.Compare(firstReference, deferredFirst).MaximumChannelDelta).IsEqualTo((byte)0)
+            .Because("a later session must not change the grid referenced by an earlier page.");
+        await Assert.That(ImageDelta.Compare(secondReference, deferredSecond).MaximumChannelDelta).IsEqualTo((byte)0);
+        firstPage.Dispose();
+        await Assert.That(ReadVolumeDensity(firstTexture).SequenceEqual(firstBytes)).IsTrue()
+            .Because("the retained scene must keep its field after the page and session are disposed.");
+        firstScene.Dispose();
+        await Assert.That(() => ReadVolumeDensity(firstTexture)).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
     public async Task SampledOpenVdbDensityUsesStormReferenceWhenAvailable()
     {
         if (!OperatingSystem.IsWindows())
@@ -257,22 +358,23 @@ public sealed class VolumeRenderingConformanceTests
             Skip.Test("The current platform cannot create the Storm OpenGL context used by this harness.");
         }
 
-        ClearVolumeCache();
         string asset = ResolveOpenVdbAsset("sampled_density.vdb");
         string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
         ParityImage silkSampled;
+        byte[]? decoded;
         try
         {
             silkSampled = CaptureStage(
                 WriteVdbStage("volume-vdb-storm-reference-hdsilk-sampled", asset, 0, 1, sampleDensity: true),
-                VulkanSilkGraphicsDevice.Create);
+                VulkanSilkGraphicsDevice.Create,
+                out decoded);
         }
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
             Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
         }
-        if (!TryReadMeanCachedDensity("volume-vdb-storm-reference-hdsilk-sampled", out double meanDensity))
+        if (!TryGetMeanDensity(decoded, out double meanDensity))
         {
             WriteEvidence(
                 "volume-vdb-storm-reference.txt",
@@ -358,15 +460,16 @@ public sealed class VolumeRenderingConformanceTests
         Func<ISilkGraphicsDevice> createDevice,
         string evidenceFileName)
     {
-        ClearVolumeCache();
         string asset = ResolveOpenVdbAsset("sampled_density.vdb");
         string shiftedAsset = ResolveOpenVdbAsset("sampled_density_shifted.vdb");
         ParityImage sampled;
+        byte[]? decoded;
         try
         {
             sampled = CaptureStage(
                 WriteVdbStage($"volume-vdb-{backendName}-sampled", asset, 0, 1, sampleDensity: true),
-                createDevice);
+                createDevice,
+                out decoded);
         }
         catch (Exception exception) when (exception is DllNotFoundException or DirectoryNotFoundException)
         {
@@ -380,7 +483,7 @@ public sealed class VolumeRenderingConformanceTests
             Skip.Test($"The hdSilk native runtime is unavailable: {exception.Message}");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.", exception);
         }
-        if (!TryReadMeanCachedDensity($"volume-vdb-{backendName}-sampled", out double meanDensity))
+        if (!TryGetMeanDensity(decoded, out double meanDensity))
         {
             WriteEvidence(
                 evidenceFileName,
@@ -427,7 +530,7 @@ public sealed class VolumeRenderingConformanceTests
             .Because("translating the VDB density grid inside the same proxy must move the sampled density footprint.");
 
         await VerifyExternalNamedDensityField(
-            backendName, createDevice, asset, sampled).ConfigureAwait(false);
+            backendName, createDevice, asset, sampled, decoded!).ConfigureAwait(false);
     }
 
     private static async Task VerifyTimeSampledVolumeDensity()
@@ -465,7 +568,7 @@ public sealed class VolumeRenderingConformanceTests
                 new UTF8Encoding(false));
             byte[] original = File.ReadAllBytes(stagePath);
             using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stagePath);
-            var scene = new SilkSceneState();
+            using var scene = new SilkSceneState();
             foreach (double invalidTime in new double[] { 4, 5 })
             {
                 await Assert.That(() =>
@@ -523,7 +626,8 @@ public sealed class VolumeRenderingConformanceTests
         string backendName,
         Func<ISilkGraphicsDevice> createDevice,
         string originalAsset,
-        ParityImage sampledReference)
+        ParityImage sampledReference,
+        byte[] referenceDensity)
     {
         string directory = Path.Combine(Path.GetTempPath(), $"openusd-volume-field-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
@@ -541,11 +645,6 @@ public sealed class VolumeRenderingConformanceTests
             ParityImage doubledReference = CaptureStage(
                 WriteVdbStage($"volume-external-{backendName}-double", originalAsset, 0, 2, sampleDensity: true),
                 createDevice);
-            string referenceCache = Path.Combine(StageDirectory, "hdsilk-volume-cache");
-            string referenceField = Directory.EnumerateFiles(
-                referenceCache, "_World_Vdb_Volume_Density_*.r32").Single();
-            byte[] referenceDensity = File.ReadAllBytes(referenceField);
-
             using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stagePath);
             using ISilkGraphicsDevice device = createDevice();
             using ISilkGraphicsTexture color = device.CreateTexture2D(
@@ -560,18 +659,40 @@ public sealed class VolumeRenderingConformanceTests
             var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
             const string materialPath = "/World/Vdb/Volume/__hdSilkVolumeMaterial";
 
-            ParityImage renderAt(double time)
+            ParityImage renderAt(double time, string? tempDirectory = null)
             {
-                using OpenUsdSilkPage page = session.Sync(
-                    Width,
-                    Height,
-                    time,
-                    new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
-                _ = renderer.ApplyAndRender(page, color, depth, options);
-                _ = renderer.ApplyAndRender(page, color, depth, options);
-                byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
-                color.ReadbackForTesting(pixels);
-                return new ParityImage(Width, Height, pixels);
+                string? originalTemp = Environment.GetEnvironmentVariable("TEMP");
+                string? originalTmp = Environment.GetEnvironmentVariable("TMP");
+                string? originalTmpDir = Environment.GetEnvironmentVariable("TMPDIR");
+                OpenUsdSilkPage page;
+                try
+                {
+                    if (tempDirectory is not null)
+                    {
+                        Environment.SetEnvironmentVariable("TEMP", tempDirectory);
+                        Environment.SetEnvironmentVariable("TMP", tempDirectory);
+                        Environment.SetEnvironmentVariable("TMPDIR", tempDirectory);
+                    }
+                    page = session.Sync(
+                        Width,
+                        Height,
+                        time,
+                        new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("TEMP", originalTemp);
+                    Environment.SetEnvironmentVariable("TMP", originalTmp);
+                    Environment.SetEnvironmentVariable("TMPDIR", originalTmpDir);
+                }
+                using (page)
+                {
+                    _ = renderer.ApplyAndRender(page, color, depth, options);
+                    _ = renderer.ApplyAndRender(page, color, depth, options);
+                    byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+                    color.ReadbackForTesting(pixels);
+                    return new ParityImage(Width, Height, pixels);
+                }
             }
 
             ParityImage missing = renderAt(1);
@@ -585,20 +706,20 @@ public sealed class VolumeRenderingConformanceTests
             await Assert.That(renderer.Scene.Materials[materialPath]
                     .GetTexture(SilkMaterialParameter.VolumeDensity))
                 .IsNotNull();
-            string cachedField = Directory.EnumerateFiles(
-                Path.Combine(directory, "hdsilk-volume-cache"), "_World_Fields_Density_*.r32").Single();
-            await Assert.That(File.ReadAllBytes(cachedField).SequenceEqual(referenceDensity)).IsTrue()
+            SilkMaterialTexture recoveredTexture = renderer.Scene.Materials[materialPath]
+                .GetTexture(SilkMaterialParameter.VolumeDensity)!;
+            await Assert.That(ReadVolumeDensity(recoveredTexture).SequenceEqual(referenceDensity)).IsTrue()
                 .Because("the renamed OpenVDB grid must decode to the same density values.");
             await Assert.That(ImageDelta.Compare(sampledReference, recovered).MaximumChannelDelta).IsEqualTo((byte)0)
                 .Because("the density relationship selects the equivalent grid named smoke in an external field.");
             ulong sampledBytes = renderer.GpuResources.Statistics.TextureResidentGpuBytes;
             await Assert.That(sampledBytes).IsGreaterThan(0UL);
 
-            File.Delete(cachedField);
-            Directory.CreateDirectory(cachedField);
+            string blockedTemp = Path.Combine(directory, "blocked-temp");
+            File.WriteAllText(blockedTemp, "not a directory");
             try
             {
-                ParityImage cacheUnavailable = renderAt(1);
+                ParityImage cacheUnavailable = renderAt(1, blockedTemp);
                 await Assert.That(renderer.Scene.Materials[materialPath]
                         .GetTexture(SilkMaterialParameter.VolumeDensity))
                     .IsNull();
@@ -608,7 +729,7 @@ public sealed class VolumeRenderingConformanceTests
             }
             finally
             {
-                Directory.Delete(cachedField);
+                File.Delete(blockedTemp);
             }
             ParityImage cacheRecovered = renderAt(1);
             await Assert.That(ImageDelta.Compare(recovered, cacheRecovered).MaximumChannelDelta).IsEqualTo((byte)0);
@@ -756,7 +877,13 @@ public sealed class VolumeRenderingConformanceTests
 
     private static ParityImage CaptureStage(
         string stagePath,
-        Func<ISilkGraphicsDevice> createDevice)
+        Func<ISilkGraphicsDevice> createDevice) =>
+        CaptureStage(stagePath, createDevice, out _);
+
+    private static ParityImage CaptureStage(
+        string stagePath,
+        Func<ISilkGraphicsDevice> createDevice,
+        out byte[]? density)
     {
         PrependHdSilkNativeSearchPath();
         using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stagePath);
@@ -765,6 +892,19 @@ public sealed class VolumeRenderingConformanceTests
             Height,
             TimeCode,
             new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+        return CapturePage(page, createDevice, out density);
+    }
+
+    private static ParityImage CapturePage(
+        OpenUsdSilkPage page,
+        Func<ISilkGraphicsDevice> createDevice) =>
+        CapturePage(page, createDevice, out _);
+
+    private static ParityImage CapturePage(
+        OpenUsdSilkPage page,
+        Func<ISilkGraphicsDevice> createDevice,
+        out byte[]? density)
+    {
         using ISilkGraphicsDevice device = createDevice();
         using ISilkGraphicsTexture color = device.CreateTexture2D(
             new SilkTextureDescriptor(
@@ -780,6 +920,10 @@ public sealed class VolumeRenderingConformanceTests
         _ = renderer.ApplyAndRender(page, color, depth, options);
         _ = renderer.ApplyAndRender(page, color, depth, options);
 
+        SilkMaterialTexture? texture = renderer.Scene.Materials.Values
+            .Select(static material => material.GetTexture(SilkMaterialParameter.VolumeDensity))
+            .FirstOrDefault(static candidate => candidate is not null);
+        density = texture is null ? null : ReadVolumeDensity(texture);
         byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
         color.ReadbackForTesting(pixels);
         return new ParityImage(Width, Height, pixels);
@@ -993,23 +1137,25 @@ public sealed class VolumeRenderingConformanceTests
         throw new FileNotFoundException("Could not find the OpenVDB test asset.", path);
     }
 
-    private static bool TryReadMeanCachedDensity(string stageName, out double mean)
+    private static byte[] ReadVolumeDensity(SilkMaterialTexture texture)
+    {
+        SilkVolumeTextureExtent extent = SilkVolumeTextureExtent.Parse(texture.UvPrimvar);
+        int byteCount = checked((int)((ulong)extent.Width * extent.Height * extent.Depth * sizeof(float)));
+        byte[] bytes = new byte[byteCount];
+        if (!texture.TryCopyVolumeAssets(bytes))
+        {
+            throw new InvalidOperationException("The sampled material has no retained native volume data.");
+        }
+        return bytes;
+    }
+
+    private static bool TryGetMeanDensity(byte[]? bytes, out double mean)
     {
         mean = 0;
-        string directory = Path.Combine(StageDirectory, "hdsilk-volume-cache");
-        if (!Directory.Exists(directory))
+        if (bytes is null)
         {
             return false;
         }
-        string file = Directory.EnumerateFiles(directory, $"*{stageName}*.r32")
-            .Concat(Directory.EnumerateFiles(directory, "*.r32"))
-            .OrderByDescending(File.GetLastWriteTimeUtc)
-            .FirstOrDefault() ?? string.Empty;
-        if (file.Length == 0)
-        {
-            return false;
-        }
-        byte[] bytes = File.ReadAllBytes(file);
         double sum = 0;
         int count = bytes.Length / sizeof(float);
         if (count == 0)
@@ -1036,15 +1182,6 @@ public sealed class VolumeRenderingConformanceTests
         string directory = Path.Combine(AppContext.BaseDirectory, "TestResults", "volumes");
         Directory.CreateDirectory(directory);
         File.WriteAllLines(Path.Combine(directory, fileName), lines);
-    }
-
-    private static void ClearVolumeCache()
-    {
-        string directory = Path.Combine(StageDirectory, "hdsilk-volume-cache");
-        if (Directory.Exists(directory))
-        {
-            Directory.Delete(directory, recursive: true);
-        }
     }
 
     /// <summary>

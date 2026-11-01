@@ -1708,6 +1708,7 @@ OpenUsd.Rendering.Silk.SilkSceneState
 OpenUsd.Rendering.Silk.SilkSceneState.Apply(OpenUsd.Rendering.Silk.OpenUsdSilkPage! page) -> OpenUsd.Rendering.Silk.SilkSceneDelta
 OpenUsd.Rendering.Silk.SilkSceneState.Apply(System.ReadOnlySpan<byte> data, uint commandCount, ulong revision) -> OpenUsd.Rendering.Silk.SilkSceneDelta
 OpenUsd.Rendering.Silk.SilkSceneState.DeformationRevision.get -> ulong
+OpenUsd.Rendering.Silk.SilkSceneState.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkSceneState.EnvironmentRevision.get -> ulong
 OpenUsd.Rendering.Silk.SilkSceneState.Environments.get -> System.Collections.Generic.IReadOnlyDictionary<string!, OpenUsd.Rendering.Silk.SilkEnvironmentData!>!
 OpenUsd.Rendering.Silk.SilkSceneState.Frame.get -> OpenUsd.Rendering.Silk.SilkFrameState!
@@ -2264,7 +2265,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 30 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 31 -> uint
 const OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.MaximumSlots = 12 -> int
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BindPoseBinding = 1 -> uint
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendDeltasBinding = 7 -> uint

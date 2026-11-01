@@ -97,6 +97,7 @@ public static unsafe partial class OpenUsdSilkRuntime
                     view.CommandCount, preparationUsage, commandLimit);
                 try
                 {
+                    page.SetVolumeAssets(RetainPageVolumeAssets(storage.Handle));
                     ThrowIfFailed(NativeMethods.PageAcknowledge(storage.Handle, ref error), message, error);
                     return page;
                 }

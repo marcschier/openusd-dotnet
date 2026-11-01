@@ -943,57 +943,64 @@ public sealed partial class SilkMeshRenderer :
                 return;
             }
             _disposed = true;
-            if (_rejectedPage?.Source is { } source && source.TryGetTarget(out OpenUsdSilkSession? session))
+            try
             {
-                session.RevokePageReplay(_replayRejectedPage);
-            }
-            _rejectedPage?.Dispose();
-            _rejectedPage = null;
-            var disposed = new ObjectDisposedException(nameof(SilkMeshRenderer));
-            _activePick?.Fail(disposed);
-            _pendingPick?.Fail(disposed);
-            _activePick = null;
-            _pendingPick = null;
-            if (_pickReadbacks is not null && _inFlightPicks is not null)
-            {
-                while (_pickReadbacks.TryDiscard(
-                    out int slotIndex,
-                    out _))
+                if (_rejectedPage?.Source is { } source && source.TryGetTarget(out OpenUsdSilkSession? session))
                 {
-                    _inFlightPicks[slotIndex]?.Fail(disposed);
-                    _inFlightPicks[slotIndex] = null;
-                    ReleaseInFlightPickBuffers(slotIndex);
+                    session.RevokePageReplay(_replayRejectedPage);
                 }
-            }
-            if (_inFlightPickBuffers is not null)
-            {
-                for (int slot = 0; slot < _inFlightPickBuffers.Length; slot++)
+                _rejectedPage?.Dispose();
+                _rejectedPage = null;
+                var disposed = new ObjectDisposedException(nameof(SilkMeshRenderer));
+                _activePick?.Fail(disposed);
+                _pendingPick?.Fail(disposed);
+                _activePick = null;
+                _pendingPick = null;
+                if (_pickReadbacks is not null && _inFlightPicks is not null)
                 {
-                    ReleaseInFlightPickBuffers(slot);
+                    while (_pickReadbacks.TryDiscard(
+                        out int slotIndex,
+                        out _))
+                    {
+                        _inFlightPicks[slotIndex]?.Fail(disposed);
+                        _inFlightPicks[slotIndex] = null;
+                        ReleaseInFlightPickBuffers(slotIndex);
+                    }
                 }
-            }
-            _pickDepthTarget?.Dispose();
-            _pickColorTarget?.Dispose();
-            _pickReadbacks?.Dispose();
-            foreach (ISilkPickGraphicsPipeline retired in _pickPipelines.Values)
-            {
-                retired.Dispose();
-            }
-            _pickPipelines.Clear();
-            DisposeSelectionOutlineInfrastructure();
-            _displayTransform.Dispose();
-            _shadowMaps.Dispose();
-            _frameTargets?.Dispose();
-            _frameTargets = null;
-            GpuResources.Dispose();
-            _materialShaderCompiler.Dispose();
-            _pipelineCache.Dispose();
+                if (_inFlightPickBuffers is not null)
+                {
+                    for (int slot = 0; slot < _inFlightPickBuffers.Length; slot++)
+                    {
+                        ReleaseInFlightPickBuffers(slot);
+                    }
+                }
+                _pickDepthTarget?.Dispose();
+                _pickColorTarget?.Dispose();
+                _pickReadbacks?.Dispose();
+                foreach (ISilkPickGraphicsPipeline retired in _pickPipelines.Values)
+                {
+                    retired.Dispose();
+                }
+                _pickPipelines.Clear();
+                DisposeSelectionOutlineInfrastructure();
+                _displayTransform.Dispose();
+                _shadowMaps.Dispose();
+                _frameTargets?.Dispose();
+                _frameTargets = null;
+                GpuResources.Dispose();
+                _materialShaderCompiler.Dispose();
+                _pipelineCache.Dispose();
 
-            // Batch keys reference geometry resources the GPU scene has just disposed, so the table
-            // is emptied here rather than left holding them for the lifetime of the renderer.
-            _batches.Clear();
-            _batchPool.Clear();
-            _batchOrder.Clear();
+                // Batch keys reference geometry resources the GPU scene has just disposed, so the table
+                // is emptied here rather than left holding them for the lifetime of the renderer.
+                _batches.Clear();
+                _batchPool.Clear();
+                _batchOrder.Clear();
+            }
+            finally
+            {
+                Scene.Dispose();
+            }
         }
     }
 

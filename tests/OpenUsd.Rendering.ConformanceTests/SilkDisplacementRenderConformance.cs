@@ -210,7 +210,7 @@ internal static class SilkDisplacementRenderConformance
         using ISilkGraphicsTexture color = CreateColor(device);
         using ISilkGraphicsTexture depth = CreateDepth(device);
         using var renderer = new SilkMeshRenderer(device);
-        using var initial = new OpenUsdSilkPage(30, 1,
+        using var initial = new OpenUsdSilkPage(31, 1,
             [
                 .. Frame(), .. Material(constant: null),
                 .. Quad("/Caster", localPoints, normals, transform: transform),
@@ -232,7 +232,7 @@ internal static class SilkDisplacementRenderConformance
         Vector3 movedCenter = (originalMinimum + movedMaximum) * 0.5f;
         Vector3 movedHalf = (movedMaximum - originalMinimum) * 0.5f;
         using var referenceRenderer = new SilkMeshRenderer(device);
-        using var reference = new OpenUsdSilkPage(30, 1,
+        using var reference = new OpenUsdSilkPage(31, 1,
             [
                 .. Frame(), .. Material(constant: null), .. Quad("/Caster", displaced, normals),
                 .. Receiver("/Floor"), .. Shadow(movedCenter, movedHalf)
@@ -242,12 +242,12 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(expected[shadowed]).IsLessThan((byte)40)
             .Because("The independently displaced caster must shadow the same receiver sample.");
         await Assert.That(expected[lit]).IsGreaterThan((byte)90);
-        using var noShadow = new OpenUsdSilkPage(30, 2, EmptyShadow(), 1);
+        using var noShadow = new OpenUsdSilkPage(31, 2, EmptyShadow(), 1);
         _ = referenceRenderer.ApplyAndRender(noShadow, color, depth);
         await Assert.That(ReadPixels(color)[shadowed]).IsGreaterThan((byte)90)
             .Because("The receiver sample must be lit when the reference shadow is retired.");
 
-        using var moved = new OpenUsdSilkPage(30, 2, Material(constant: amount), 1);
+        using var moved = new OpenUsdSilkPage(31, 2, Material(constant: amount), 1);
         _ = renderer.ApplyAndRender(moved, color, depth);
         byte[] actual = ReadPixels(color);
         await Assert.That(actual[shadowed]).IsLessThan((byte)40)
@@ -270,7 +270,7 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
         await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(actual)).IsTrue();
 
-        using var restored = new OpenUsdSilkPage(30, 3, Material(constant: null), 1);
+        using var restored = new OpenUsdSilkPage(31, 3, Material(constant: null), 1);
         _ = renderer.ApplyAndRender(restored, color, depth);
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
         await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(baseline)).IsTrue();
@@ -306,7 +306,7 @@ internal static class SilkDisplacementRenderConformance
         using ISilkGraphicsTexture color = CreateColor(device);
         using ISilkGraphicsTexture depth = CreateDepth(device);
         using var renderer = new SilkMeshRenderer(device, shaderFormat, HeightDecoder);
-        using var initial = new OpenUsdSilkPage(30, 1,
+        using var initial = new OpenUsdSilkPage(31, 1,
             [
                 .. Frame(),
                 .. Material(textureAsset: ShadowBoundsBaseHeightAsset, textureScale: textureScale),
@@ -323,7 +323,7 @@ internal static class SilkDisplacementRenderConformance
         ulong renders = renderer.ShadowMapRenderCount;
 
         using var referenceRenderer = new SilkMeshRenderer(device, shaderFormat, HeightDecoder);
-        using var reference = new OpenUsdSilkPage(30, 1,
+        using var reference = new OpenUsdSilkPage(31, 1,
             [
                 .. Frame(),
                 .. Material(textureAsset: ShadowBoundsRaisedHeightAsset, textureScale: 0f),
@@ -337,7 +337,7 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(expected[lit]).IsGreaterThan((byte)90);
         (int expectedLeft, int expectedRight) = ShadowExtent(expected, 32);
 
-        using var changed = new OpenUsdSilkPage(30, 2,
+        using var changed = new OpenUsdSilkPage(31, 2,
             Material(textureAsset: ShadowBoundsRaisedHeightAsset, textureScale: textureScale), 1);
         _ = renderer.ApplyAndRender(changed, color, depth);
         byte[] actual = ReadPixels(color);
@@ -354,7 +354,7 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
         await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(actual)).IsTrue();
 
-        using var restored = new OpenUsdSilkPage(30, 3,
+        using var restored = new OpenUsdSilkPage(31, 3,
             Material(textureAsset: ShadowBoundsBaseHeightAsset, textureScale: textureScale), 1);
         _ = renderer.ApplyAndRender(restored, color, depth);
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
@@ -385,7 +385,7 @@ internal static class SilkDisplacementRenderConformance
         using ISilkGraphicsTexture color = CreateColor(device);
         using ISilkGraphicsTexture depth = CreateDepth(device);
         using var renderer = new SilkMeshRenderer(device);
-        using var initial = new OpenUsdSilkPage(30, 1,
+        using var initial = new OpenUsdSilkPage(31, 1,
             [
                 .. Frame(),
                 .. Material(constant: null),
@@ -402,7 +402,7 @@ internal static class SilkDisplacementRenderConformance
         ulong renders = renderer.ShadowMapRenderCount;
 
         using var referenceRenderer = new SilkMeshRenderer(device);
-        using var reference = new OpenUsdSilkPage(30, 1,
+        using var reference = new OpenUsdSilkPage(31, 1,
             [
                 .. Frame(),
                 .. Material(constant: null),
@@ -416,7 +416,7 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(expected[lit]).IsGreaterThan((byte)90);
         (int expectedLeft, int expectedRight) = ShadowExtent(expected, 32, 8, 52);
 
-        using var changed = new OpenUsdSilkPage(30, 2, Material(constant: amount), 1);
+        using var changed = new OpenUsdSilkPage(31, 2, Material(constant: amount), 1);
         _ = renderer.ApplyAndRender(changed, color, depth);
         byte[] actual = ReadPixels(color);
         await Assert.That(actual[shadowed]).IsLessThan((byte)40)
@@ -432,7 +432,7 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
         await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(actual)).IsTrue();
 
-        using var restored = new OpenUsdSilkPage(30, 3, Material(constant: null), 1);
+        using var restored = new OpenUsdSilkPage(31, 3, Material(constant: null), 1);
         _ = renderer.ApplyAndRender(restored, color, depth);
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
         await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(baseline)).IsTrue();
@@ -469,7 +469,7 @@ internal static class SilkDisplacementRenderConformance
         using ISilkGraphicsTexture color = CreateColor(device);
         using ISilkGraphicsTexture depth = CreateDepth(device);
         using var renderer = new SilkMeshRenderer(device);
-        using var initial = new OpenUsdSilkPage(30, 1,
+        using var initial = new OpenUsdSilkPage(31, 1,
             [
                 .. Frame(),
                 .. Material(constant: null),
@@ -505,7 +505,7 @@ internal static class SilkDisplacementRenderConformance
         ulong renders = renderer.ShadowMapRenderCount;
 
         using var referenceRenderer = new SilkMeshRenderer(device);
-        using var reference = new OpenUsdSilkPage(30, 1,
+        using var reference = new OpenUsdSilkPage(31, 1,
             [
                 .. Frame(),
                 .. Material(constant: null),
@@ -521,7 +521,7 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(expected[lit]).IsGreaterThan((byte)90);
         (int expectedLeft, int expectedRight) = ShadowExtent(expected, 32, 8, 52);
 
-        using var changed = new OpenUsdSilkPage(30, 2, Material(constant: amount), 1);
+        using var changed = new OpenUsdSilkPage(31, 2, Material(constant: amount), 1);
         _ = renderer.ApplyAndRender(changed, color, depth);
         byte[] actual = ReadPixels(color);
         await Assert.That(actual[shadowed]).IsLessThan((byte)40)
@@ -537,7 +537,7 @@ internal static class SilkDisplacementRenderConformance
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(renders);
         await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(actual)).IsTrue();
 
-        using var restored = new OpenUsdSilkPage(30, 3, Material(constant: null), 1);
+        using var restored = new OpenUsdSilkPage(31, 3, Material(constant: null), 1);
         _ = renderer.ApplyAndRender(restored, color, depth);
         await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++renders);
         await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(baseline)).IsTrue();
@@ -887,13 +887,13 @@ internal static class SilkDisplacementRenderConformance
             .. Frame(), .. Material(textureAsset: HeightAsset),
             .. Quad("/Quad", QuadPoints(), QuadNormals())
         ];
-        using var first = new OpenUsdSilkPage(30, 1, initial, 3);
+        using var first = new OpenUsdSilkPage(31, 1, initial, 3);
         renderer.ApplyPage(first);
         byte[] before = RenderInto(renderer, color, depth);
         await Assert.That(CountLit(before)).IsGreaterThan(100);
         ulong retained = budget.Usage.ReservedBytes;
         await Assert.That(retained).IsGreaterThanOrEqualTo(16ul);
-        using var changed = new OpenUsdSilkPage(30, 2,
+        using var changed = new OpenUsdSilkPage(31, 2,
             Material(textureAsset: HeightAsset, textureScale: 0.5f), 1);
         using (budget.Reserve(budget.MaximumBytes - retained - 15))
         {

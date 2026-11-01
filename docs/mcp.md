@@ -1244,7 +1244,7 @@ Camera exposure is applied, not refused; the HDR binding convention
 `renderer-working-composited-camera-exposed-before-display` records that. Native adapters must apply
 the exact purpose mask and material-binding
 purpose, preserve retained state when returning to viewport jobs, and pass actual pixel cases.
-The current explicit hdSilk profile requires session ABI 6, masks containing `default` and a single
+The current explicit hdSilk profile requires session ABI 7, masks containing `default` and a single
 `full` or `preview` binding purpose. Filter changes repopulate from current USD data rather than
 restoring cached geometry. Windows execution covers D3D12 MCP output and D3D12/Vulkan native
 ingestion; it does not establish other-platform or general UsdRender support.

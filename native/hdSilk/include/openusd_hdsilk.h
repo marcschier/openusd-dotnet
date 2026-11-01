@@ -29,8 +29,8 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 30u
-#define OPENUSD_SILK_SESSION_ABI_VERSION 6u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 31u
+#define OPENUSD_SILK_SESSION_ABI_VERSION 7u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 
 /// Command types written into openusd_silk_page_view::data. Every command
@@ -622,8 +622,11 @@ extern "C" {
 ///       88    * uint8    asset[asset_byte_count] (UTF-8, resolved, no NUL)
 ///        *    * uint8    uv_primvar[uv_primvar_byte_count] (UTF-8, no NUL)
 ///
-/// For OPENUSD_SILK_MATERIAL_VOLUME_DENSITY, uv_primvar instead contains the
-/// comma-separated width, height and depth of the cached R32 field.
+/// For OPENUSD_SILK_MATERIAL_VOLUME_DENSITY, uv_primvar contains the
+/// comma-separated width, height and depth of the R32 field. A native sampled
+/// field's asset begins with "hdsilk-volume:" followed by the resolved source
+/// VDB path; it is not a decoded-file path. Retain the page's volume assets and
+/// copy the field by material path before releasing that lease.
 ///
 /// ABI v13 adds output_channel. It is the resolved output port of the connected
 /// UsdUVTexture -- the "r", "g", "b", "a" or "rgb" token the surface input is
@@ -1418,6 +1421,7 @@ extern "C" {
 
 typedef struct openusd_silk_session openusd_silk_session;
 typedef struct openusd_silk_page openusd_silk_page;
+typedef struct openusd_silk_volume_assets openusd_silk_volume_assets;
 
 /// A native-owned, immutable view over a single serialized page of wire
 /// commands. The memory referenced by "data" remains valid until the
@@ -1647,6 +1651,28 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_page_get_preparation_usage(
     const openusd_silk_page* page,
     openusd_silk_mesh_preparation_usage* usage,
     openusd_error_buffer* error);
+
+/// Retains the immutable decoded volume fields associated with a page. An empty
+/// page returns a null lease. The lease remains valid after page or session
+/// release and must be released with openusd_silk_volume_assets_release.
+OPENUSD_HDSILK_API openusd_status openusd_silk_page_retain_volume_assets(
+    const openusd_silk_page* page,
+    openusd_silk_volume_assets** assets,
+    openusd_error_buffer* error);
+
+/// Copies the complete R32 density field for a material from a retained lease.
+/// The destination size must exactly match the dimensions in the material
+/// command. A missing material or incorrect size is refused without copying.
+/// A storage read failure can leave a partial copy; discard the destination.
+OPENUSD_HDSILK_API openusd_status openusd_silk_volume_assets_copy(
+    openusd_silk_volume_assets* assets,
+    const char* material_path,
+    uint8_t* destination,
+    size_t destination_size,
+    openusd_error_buffer* error);
+
+OPENUSD_HDSILK_API void openusd_silk_volume_assets_release(
+    openusd_silk_volume_assets* assets) OPENUSD_HDSILK_NOEXCEPT;
 
 /// Enables explicit page acknowledgement before this session's first sync.
 /// Existing C callers that do not opt in retain their historical immediate publication.

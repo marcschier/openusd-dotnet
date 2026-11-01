@@ -623,7 +623,7 @@ public sealed partial class SilkSceneGpuResources
         private readonly SilkSceneGpuResources _owner;
         private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _textures;
         private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _failed;
-        private readonly Dictionary<string, TextureCacheEntry> _volumes;
+        private readonly Dictionary<SilkMaterialTexture, TextureCacheEntry> _volumes;
         private readonly Dictionary<TextureCacheEntry, (ulong Stamp, bool Uploaded)> _state;
         private readonly Dictionary<string, RenderDiagnostic> _diagnostics;
         private readonly Dictionary<SilkSamplerDescriptor, ISilkGraphicsSampler> _samplers;
@@ -642,7 +642,7 @@ public sealed partial class SilkSceneGpuResources
             _owner = owner;
             _textures = new(owner._textures);
             _failed = new(owner._failedTextures);
-            _volumes = new(owner._volumeTextures, StringComparer.Ordinal);
+            _volumes = new(owner._volumeTextures);
             _diagnostics = new(owner._diagnostics, StringComparer.Ordinal);
             _samplers = new(owner._samplers);
             _clock = owner._textureUseClock;

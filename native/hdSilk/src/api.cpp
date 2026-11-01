@@ -55,7 +55,6 @@
 #include <cstring>
 #include <exception>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -67,6 +66,30 @@
 PXR_NAMESPACE_USING_DIRECTIVE
 
 struct SilkSessionState;
+
+namespace
+{
+constexpr size_t VolumeFieldTargetBytes = 64ull * 1024ull * 1024ull;
+constexpr size_t VolumeTransferBytes = 64ull * 1024ull;
+
+struct SilkVolumeAsset
+{
+    explicit SilkVolumeAsset(const std::vector<float>& values)
+        : file(values.size() * sizeof(float),
+            std::min(values.size() * sizeof(float), VolumeTransferBytes))
+    {
+        file.Append(
+            reinterpret_cast<const uint8_t*>(values.data()),
+            values.size() * sizeof(float));
+        file.Flush();
+    }
+
+    HdSilkCommandFile file;
+    std::mutex readMutex;
+};
+
+using SilkVolumeAssetMap = std::unordered_map<std::string, std::shared_ptr<SilkVolumeAsset>>;
+}
 
 namespace
 {
@@ -283,6 +306,7 @@ struct SilkSessionState
     uint64_t sourceIdentityStageSerial = 0;
     std::vector<std::string> volumeProxyPaths;
     std::vector<std::string> volumeMaterialPaths;
+    SilkVolumeAssetMap volumeAssets;
     mutable std::mutex mutex;
     std::mutex lifetime_mutex;
     std::condition_variable lifetime_changed;
@@ -296,6 +320,7 @@ struct openusd_silk_page
 {
     std::vector<uint8_t> data;
     std::unique_ptr<HdSilkCommandFile> file;
+    SilkVolumeAssetMap volumeAssets;
     std::mutex readMutex;
     uint32_t maximumCommandBytes = 0;
     uint32_t maximumTransferBytes = 0;
@@ -306,6 +331,11 @@ struct openusd_silk_page
     bool acknowledged = false;
     openusd_silk_mesh_preparation_usage preparationUsage{
         sizeof(openusd_silk_mesh_preparation_usage), OPENUSD_SILK_MESH_PREPARATION_VERSION, 0, 0, 0};
+};
+
+struct openusd_silk_volume_assets
+{
+    SilkVolumeAssetMap assets;
 };
 
 namespace
@@ -863,6 +893,7 @@ void RetirePreviousVolumes(SilkSessionState* state)
     }
     state->volumeProxyPaths.clear();
     state->volumeMaterialPaths.clear();
+    state->volumeAssets.clear();
 }
 
 bool ResolveDensityField(
@@ -914,23 +945,6 @@ float ReadVolumeDensity(const UsdPrim& prim, UsdTimeCode time)
     return 1.0f;
 }
 
-std::string SanitizeCacheName(const std::string& value)
-{
-    std::string result;
-    result.reserve(value.size());
-    for (char ch : value)
-    {
-        const bool safe =
-            (ch >= 'a' && ch <= 'z') ||
-            (ch >= 'A' && ch <= 'Z') ||
-            (ch >= '0' && ch <= '9') ||
-            ch == '-' ||
-            ch == '_';
-        result.push_back(safe ? ch : '_');
-    }
-    return result.empty() ? "density" : result;
-}
-
 struct VolumeFieldBuffer
 {
     std::vector<float> values;
@@ -949,7 +963,7 @@ bool TryReadVolumeWithHio(
         fieldName,
         0,
         std::string(),
-        64ull * 1024ull * 1024ull);
+        VolumeFieldTargetBytes);
     if (!data || !data->Read() || !data->HasRawBuffer() ||
         data->GetFormat() != HioFormatFloat32)
     {
@@ -970,6 +984,10 @@ bool TryReadVolumeWithHio(
     {
         return false;
     }
+    if (byteCount > VolumeFieldTargetBytes)
+    {
+        throw std::length_error("A decoded hdSilk volume field exceeds the 64-MiB field limit.");
+    }
 
     buffer->width = width;
     buffer->height = height;
@@ -983,14 +1001,15 @@ bool TryReadVolumeWithHio(
 }
 
 bool TryCreateVolumeTexture(
-    const UsdStageRefPtr& stage,
+    SilkSessionState* state,
     const UsdPrim& volumePrim,
     const SdfPath& fieldPath,
     const SdfAssetPath& assetPath,
+    const std::string& materialPath,
     UsdTimeCode time,
     HdSilkMaterialTexture* texture)
 {
-    const UsdPrim fieldPrim = stage->GetPrimAtPath(fieldPath);
+    const UsdPrim fieldPrim = state->stage->GetPrimAtPath(fieldPath);
     bool sampleDensity = true;
     const UsdAttribute sampleAttribute =
         volumePrim.GetAttribute(TfToken("hdsilk:sampleDensity"));
@@ -1044,43 +1063,28 @@ bool TryCreateVolumeTexture(
         return false;
     }
 
-    std::filesystem::path anchor;
-    if (const SdfLayerHandle layer = stage->GetRootLayer())
+    try
     {
-        anchor = layer->GetRealPath();
+        auto stored = std::make_shared<SilkVolumeAsset>(field.values);
+        if (!state->volumeAssets.emplace(materialPath, std::move(stored)).second)
+        {
+            throw std::logic_error("A volume material was published more than once in one sync.");
+        }
     }
-    if (anchor.empty())
-    {
-        anchor = std::filesystem::absolute("hdsilk-volume-cache.usda");
-    }
-    std::filesystem::path cacheDirectory =
-        anchor.parent_path() / "hdsilk-volume-cache";
-    std::filesystem::create_directories(cacheDirectory);
-    const std::string cacheName =
-        SanitizeCacheName(fieldPath.GetString()) + "_" +
-        std::to_string(width) + "x" +
-        std::to_string(height) + "x" +
-        std::to_string(depth) + ".r32";
-    const std::filesystem::path cachePath = cacheDirectory / cacheName;
-    std::ofstream output(cachePath, std::ios::binary | std::ios::trunc);
-    if (!output)
+    catch (const HdSilkCommandStorageError& error)
     {
         TF_WARN(
-            "hdSilk volume '%s' uses uniform density: could not create cache '%s'.",
+            "hdSilk volume '%s' uses uniform density: decoded-field storage failed: %s",
             volumePrim.GetPath().GetText(),
-            cachePath.string().c_str());
+            error.what());
         return false;
     }
-    output.write(
-        reinterpret_cast<const char*>(field.values.data()),
-        static_cast<std::streamsize>(byteCount));
-    output.close();
-    if (!output)
+    catch (const std::filesystem::filesystem_error& error)
     {
         TF_WARN(
-            "hdSilk volume '%s' uses uniform density: could not write cache '%s'.",
+            "hdSilk volume '%s' uses uniform density: decoded-field storage failed: %s",
             volumePrim.GetPath().GetText(),
-            cachePath.string().c_str());
+            error.what());
         return false;
     }
 
@@ -1089,10 +1093,8 @@ bool TryCreateVolumeTexture(
     texture->wrapT = OPENUSD_SILK_WRAP_CLAMP;
     texture->sourceColorSpace = OPENUSD_SILK_COLOR_SPACE_RAW;
     texture->componentCount = 1;
-    // The cached field is a single-channel R32 density image, so its one channel
-    // is the red channel of the decoded texel.
     texture->outputChannel = OPENUSD_SILK_TEXTURE_CHANNEL_R;
-    texture->asset = cachePath.string();
+    texture->asset = "hdsilk-volume:" + resolvedPath;
     texture->uvPrimvar =
         std::to_string(width) + "," +
         std::to_string(height) + "," +
@@ -1130,7 +1132,7 @@ void PublishVolumeProxy(
     material.scalars.push_back(densityScalar);
     HdSilkMaterialTexture volumeTexture;
     if (TryCreateVolumeTexture(
-            state->stage, prim, fieldPath, assetPath, time, &volumeTexture))
+            state, prim, fieldPath, assetPath, materialPath, time, &volumeTexture))
     {
         material.textures.push_back(std::move(volumeTexture));
     }
@@ -1581,6 +1583,7 @@ openusd_status SyncSessionWithSceneIngestionState(
             return serialStatus;
         }
         auto result = std::make_unique<openusd_silk_page>();
+        result->volumeAssets = state->volumeAssets;
         if (state->pageAcknowledgementEnabled)
         {
             result->acknowledgementState = owner;
@@ -2004,6 +2007,74 @@ openusd_status openusd_silk_page_get_preparation_usage(
     }
     *usage = page->preparationUsage;
     return OPENUSD_STATUS_OK;
+}
+
+openusd_status openusd_silk_page_retain_volume_assets(
+    const openusd_silk_page* page,
+    openusd_silk_volume_assets** assets,
+    openusd_error_buffer* error)
+{
+    if (assets != nullptr)
+    {
+        *assets = nullptr;
+    }
+    if (page == nullptr || assets == nullptr)
+    {
+        WriteError(error, "An owned command page and volume-lease output are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        if (!page->volumeAssets.empty())
+        {
+            auto result = std::make_unique<openusd_silk_volume_assets>();
+            result->assets = page->volumeAssets;
+            *assets = result.release();
+        }
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_volume_assets_copy(
+    openusd_silk_volume_assets* assets,
+    const char* material_path,
+    uint8_t* destination,
+    size_t destination_size,
+    openusd_error_buffer* error)
+{
+    if (assets == nullptr || material_path == nullptr || destination == nullptr)
+    {
+        WriteError(error, "A volume lease, material path and destination are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        const auto found = assets->assets.find(material_path);
+        if (found == assets->assets.end())
+        {
+            WriteError(error, "The volume lease does not contain the requested material.");
+            return OPENUSD_STATUS_NOT_FOUND;
+        }
+        SilkVolumeAsset& asset = *found->second;
+        std::lock_guard<std::mutex> lock(asset.readMutex);
+        if (asset.file.size() != destination_size)
+        {
+            WriteError(error, "The destination size does not match the decoded volume field.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        for (size_t offset = 0; offset < destination_size;)
+        {
+            const size_t count = std::min(destination_size - offset, VolumeTransferBytes);
+            asset.file.Read(offset, destination + offset, count);
+            offset += count;
+        }
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+void openusd_silk_volume_assets_release(openusd_silk_volume_assets* assets) noexcept
+{
+    delete assets;
 }
 
 openusd_status openusd_silk_session_set_command_storage_limits(

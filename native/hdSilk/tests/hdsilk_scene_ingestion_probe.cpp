@@ -20,8 +20,8 @@
 
 namespace
 {
-static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6u);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 30u);
+static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 7u);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 31u);
 static_assert(sizeof(openusd_silk_scene_ingestion_request) == 32u);
 static_assert(offsetof(openusd_silk_scene_ingestion_request, material_binding_purpose) == 24u);
 
@@ -1118,11 +1118,11 @@ bool VerifyStoredUpdatesOwnBytesAndEnforceLiveQuota(const char* pluginPath)
 bool VerifyRetainedInvalidation(const char* pluginPath)
 {
     Require(
-        openusd_silk_get_session_abi_version() == 6u,
-        "The built hdSilk binary does not export session ABI 6.");
+        openusd_silk_get_session_abi_version() == 7u,
+        "The built hdSilk binary does not export session ABI 7.");
     Require(
-        openusd_silk_get_page_abi_version() == 30u,
-        "The built hdSilk binary does not export page ABI 30.");
+        openusd_silk_get_page_abi_version() == 31u,
+        "The built hdSilk binary does not export page ABI 31.");
 
     const std::filesystem::path scene = WriteStage();
     char errorBytes[4096] = {};

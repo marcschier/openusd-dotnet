@@ -28,6 +28,9 @@ public sealed class SilkMaterialScalar
 /// </summary>
 public sealed class SilkMaterialTexture
 {
+    private SilkVolumeAssets? _volumeAssets;
+    private string? _volumeMaterialPath;
+
     internal SilkMaterialTexture(
         SilkMaterialParameter parameter,
         SilkTextureWrap wrapS,
@@ -111,7 +114,12 @@ public sealed class SilkMaterialTexture
     /// <summary>Gets the value used when the asset cannot be loaded.</summary>
     public IReadOnlyList<float> Fallback { get; }
 
-    /// <summary>Gets the resolved texture asset path.</summary>
+    /// <summary>Gets the texture asset identifier.</summary>
+    /// <remarks>
+    /// For a native sampled volume, this is <c>hdsilk-volume:</c> followed by
+    /// the source VDB path, not a path to decoded R32 data. The decoded field is
+    /// retained separately by its page and scene.
+    /// </remarks>
     public string Asset { get; }
 
     /// <summary>
@@ -128,6 +136,25 @@ public sealed class SilkMaterialTexture
     /// height and depth as a comma-separated string.
     /// </remarks>
     public string UvPrimvar { get; }
+
+    internal void BindVolumeAssets(SilkVolumeAssets assets, string materialPath)
+    {
+        _volumeAssets = assets;
+        _volumeMaterialPath = materialPath;
+    }
+
+    internal bool HasNativeVolumeAssets => _volumeAssets is not null;
+
+    internal bool TryCopyVolumeAssets(Span<byte> destination)
+    {
+        if (_volumeAssets is not { } assets)
+        {
+            return false;
+        }
+        assets.Copy(_volumeMaterialPath ?? throw new InvalidOperationException(
+            "A native volume texture must name its material."), destination);
+        return true;
+    }
 }
 
 /// <summary>
@@ -136,6 +163,8 @@ public sealed class SilkMaterialTexture
 /// </summary>
 public sealed class SilkMaterialData
 {
+    private SilkVolumeAssets? _volumeAssets;
+
     private SilkMaterialData(
         string path,
         ulong stableHash,
@@ -243,7 +272,16 @@ public sealed class SilkMaterialData
         SurfaceKind is SilkSurfaceKind.MaterialXProjected or SilkSurfaceKind.MaterialXGenerated;
 
     /// <summary>Copies one material upsert command into retained storage.</summary>
-    public static SilkMaterialData CopyFrom(SilkMaterialUpsertCommand command)
+    /// <exception cref="InvalidDataException">
+    /// The command contains a native sampled volume whose decoded field is owned
+    /// by its page. Apply the page to a <see cref="SilkSceneState"/> instead.
+    /// </exception>
+    public static SilkMaterialData CopyFrom(SilkMaterialUpsertCommand command) =>
+        CopyFrom(command, allowNativeVolumeAssets: false);
+
+    internal static SilkMaterialData CopyFrom(
+        SilkMaterialUpsertCommand command,
+        bool allowNativeVolumeAssets)
     {
         SilkMaterialScalar[] scalars = command.ScalarCount == 0
             ? []
@@ -304,6 +342,14 @@ public sealed class SilkMaterialData
         for (int index = 0; index < textures.Length; index++)
         {
             SilkMaterialTextureEntry entry = command.GetTexture(index);
+            if (entry.Parameter == SilkMaterialParameter.VolumeDensity &&
+                SilkVolumeTextureEncoding.IsNativeAsset(entry.Asset) &&
+                !allowNativeVolumeAssets)
+            {
+                throw new InvalidDataException(
+                    "A native sampled volume requires its owning OpenUsdSilkPage; command bytes alone " +
+                    "do not contain the decoded field.");
+            }
             if (entry.Parameter == SilkMaterialParameter.DetailNormal)
             {
                 if (hasDetailNormal || entry.ComponentCount != 3 ||
@@ -378,6 +424,21 @@ public sealed class SilkMaterialData
             generatedFragmentSpirV,
             generatedFragmentMslSource);
     }
+
+    internal void RetainVolumeAssets(OpenUsdSilkPage page)
+    {
+        SilkMaterialTexture? texture = GetTexture(SilkMaterialParameter.VolumeDensity);
+        if (texture is null || !SilkVolumeTextureEncoding.IsNativeAsset(texture.Asset))
+        {
+            return;
+        }
+        SilkVolumeAssets assets = page.AcquireVolumeAssets(required: true)
+            ?? throw new InvalidDataException("A native sampled volume page has no decoded-field lease.");
+        _volumeAssets = assets;
+        texture.BindVolumeAssets(assets, Path);
+    }
+
+    internal void ReleaseVolumeAssets() => Interlocked.Exchange(ref _volumeAssets, null)?.Dispose();
 
     /// <summary>
     /// Gets the constant value of one parameter, or an empty span when the

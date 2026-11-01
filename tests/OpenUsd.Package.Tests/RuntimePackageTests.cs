@@ -46,7 +46,7 @@ public sealed partial class RuntimePackageTests
     private const int RequiredStormAbiVersion = 9;
     private static readonly int RequiredSilkSessionAbiVersion =
         checked((int)ReadLockNumber("silkSession"));
-    private const int RequiredSilkPageAbiVersion = 30;
+    private const int RequiredSilkPageAbiVersion = 31;
     private const int RequiredStormChildAbiVersion = 9;
     private const int RequiredStormChildNavigationInputVersion = 2;
 
@@ -3985,6 +3985,7 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("COMMAND_PAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("SESSION_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("PAGE_COPY_ACKNOWLEDGEMENT=true");
+            await Assert.That(result.Output).Contains("VOLUME_LEASE_EXPORTS=true");
             await Assert.That(result.Output).Contains("COMMAND_STORAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("MATERIAL_STREAMING=true");
             await Assert.That(result.Output).Contains("SCALAR_R8_MIPS=true");
@@ -7720,11 +7721,32 @@ public sealed partial class RuntimePackageTests
                             throw new InvalidOperationException("The copied package page was not acknowledged once.");
                         }
                         Console.WriteLine("PAGE_COPY_ACKNOWLEDGEMENT=true");
+                        nint volumeLibrary = NativeLibrary.Load(hdSilkLibrary);
+                        try
+                        {
+                            foreach (string export in new[]
+                            {
+                                "openusd_silk_page_retain_volume_assets",
+                                "openusd_silk_volume_assets_copy",
+                                "openusd_silk_volume_assets_release"
+                            })
+                            {
+                                if (!NativeLibrary.TryGetExport(volumeLibrary, export, out _))
+                                {
+                                    throw new InvalidOperationException("The native package omitted " + export);
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            NativeLibrary.Free(volumeLibrary);
+                        }
+                        Console.WriteLine("VOLUME_LEASE_EXPORTS=true");
                         using var storedSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath,
                             new SilkPreparationLimits(1_000_000, admitted.ByteLength,
                                 new SilkCommandStorageLimits((ulong)admitted.ByteLength,
                                     (ulong)admitted.ByteLength, admitted.ByteLength, 31)));
-                        var storedScene = new SilkSceneState();
+                        using var storedScene = new SilkSceneState();
                         using (OpenUsdSilkPage storedPage = storedSession.Sync(16, 16))
                         {
                             if (storedPage.SerializedByteLength != (ulong)admitted.ByteLength)
@@ -7773,7 +7795,7 @@ public sealed partial class RuntimePackageTests
                             "rageLimits(65536, 65536, 65536, 31))))"}}
                     using (OpenUsdSilkPage fallbackPage = fallbackSession.Sync(16, 16))
                     {
-                        var fallbackState = new SilkSceneState();
+                        using var fallbackState = new SilkSceneState();
                         fallbackState.Apply(fallbackPage);
                         bool found = false;
                         foreach (SilkMeshData mesh in fallbackState.Meshes.Values)
@@ -8251,7 +8273,7 @@ public sealed partial class RuntimePackageTests
                     Console.WriteLine("SCALAR_R8_MIPS=true");
                     PackageAuthoredProductExecution.Run(device, pluginPath);
                     using var sceneResources = new SilkSceneGpuResources(device);
-                    var scene = new SilkSceneState();
+                    using var scene = new SilkSceneState();
                     using OpenUsdSilkSession session =
                         OpenUsdSilkRuntime.Create(pluginPath, stagePath);
 

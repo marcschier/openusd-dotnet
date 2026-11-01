@@ -26,7 +26,7 @@ unresolved reference.
 ## Authored RenderProduct captures
 
 **File > Render Authored Product...** and the command palette open a Viewer-owned dialog for bounded
-UsdRender product execution with the matching hdSilk session ABI 6 runtime. This source workflow
+UsdRender product execution with the matching hdSilk session ABI 7 runtime. This source workflow
 is not part of the published `0.14.0-alpha` runtime.
 The dialog reads the selected `UsdRenderSettings` without authoring,
 keeps unsupported products visible with their refusal reason, and renders only products admitted by

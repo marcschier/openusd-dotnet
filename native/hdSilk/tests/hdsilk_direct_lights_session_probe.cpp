@@ -22,8 +22,8 @@ namespace
 using namespace hdsilk_direct_lights_test;
 
 static_assert(OPENUSD_STATUS_NATIVE_ERROR == 4);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 30u);
-static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6u);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 31u);
+static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 7u);
 static_assert(OPENUSD_SILK_SCENE_INGESTION_VERSION == 1u);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128u);
 static_assert(OPENUSD_SILK_MAX_SHADOW_MAPS == 4u);
@@ -144,14 +144,14 @@ Frame ReadNativeFrame(const OwnedPage& page)
     const openusd_silk_page_view& view = page.view;
     Require(page.handle != nullptr, "Successful sync returned no owned page");
     Require(
-        openusd_silk_get_session_abi_version() == 6u &&
-            openusd_silk_get_page_abi_version() == 30u,
-        "Loaded native session/page ABI is not 6/30");
+        openusd_silk_get_session_abi_version() == 7u &&
+            openusd_silk_get_page_abi_version() == 31u,
+        "Loaded native session/page ABI is not 7/31");
     Require(
-        view.struct_size == sizeof(view) && view.abi_version == 30u &&
+        view.struct_size == sizeof(view) && view.abi_version == 31u &&
             view.revision != 0 && view.data != nullptr &&
             view.data_size >= FrameBytes,
-        "Successful sync returned an invalid page27 view");
+        "Successful sync returned an invalid page31 view");
     Frame frame = ReadFrame(view.data, view.data_size, view.command_count);
     Require(
         frame.width == 96 && frame.height == 96 && frame.clipPlaneCount == 0u,

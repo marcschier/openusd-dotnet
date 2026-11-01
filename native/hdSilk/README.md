@@ -90,8 +90,8 @@ rejected, token values are never reused, and the registry keeps no tombstones.
 
 Authored `UsdRender` execution needs explicit scene-ingestion choices that do
 not silently collapse to viewport defaults. The current public header describes
-session ABI 6 and page ABI 30. Managed creation requires the matching session/page
-version exports; older session-5 libraries cannot be mixed with these bindings.
+session ABI 7 and page ABI 31. Managed creation requires the matching session/page
+version exports; older libraries cannot be mixed with these bindings.
 
 The version-1 request is append-only and request-scoped: one struct carries the
 standard purpose mask, one exact material-binding-purpose token, and the
@@ -124,9 +124,23 @@ The defaults are density one and sampling enabled.
 An unavailable VDB or unreadable grid uses uniform density with a native warning;
 a later sync retries sampling. A missing usable density field or file path skips
 the volume with a warning. The file path and grid name are still read at default
-time. Decoded cache files are mutable and can be shared by stages in one
-directory, so deferred pages must not assume that a cache path retains its
-original contents across later syncs.
+time.
+
+Each sampled field is decoded into private storage owned by the native page and
+its retained leases. Its texture asset begins with `hdsilk-volume:` and names the
+resolved source VDB; it is not a path to the decoded bytes. The managed page
+retains the field lease before acknowledging publication. Replay snapshots and
+scene materials keep their own references, so later syncs and session disposal
+cannot replace a field still in use. Disposing `SilkSceneState` releases its
+retained fields. Applying raw command bytes or copying an isolated marked
+material is refused because the bytes do not contain the field; synthetic
+unmarked file-backed textures remain supported.
+
+Private-storage failure emits a warning and uses uniform density until a later
+sync can retry. A decoded field larger than 64 MiB is refused. This is a
+per-field limit, not a limit on all fields held by pages, scenes or sessions.
+OpenVDB/Hio allocations before that check and filesystem caching are also outside
+the limit.
 
 ## Bounded direct lighting
 

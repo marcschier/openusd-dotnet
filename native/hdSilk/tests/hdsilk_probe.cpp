@@ -91,8 +91,8 @@ struct ParsedAttribute
     float firstValue = 0.0F;
     std::vector<float> values;
 };
-static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 6);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 30);
+static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 7);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 31);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128);
 
 using ParsedLightMask = std::array<uint32_t, 4>;

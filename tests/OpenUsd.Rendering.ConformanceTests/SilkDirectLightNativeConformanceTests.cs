@@ -23,8 +23,8 @@ public sealed class SilkDirectLightNativeConformanceTests
     private const int Capacity = 128;
     private const int ExtraTag = 1001;
     private const byte ClearGreen = 32;
-    private const uint PageAbi = 30;
-    private const uint SessionAbi = 6;
+    private const uint PageAbi = SilkCommandParser.PageAbiVersion;
+    private const uint SessionAbi = 7;
     private const int FrameBufferSize = 17344;
     private const string RequiredVariable = "OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED";
     private const string HardwareVariable = "OPENUSD_DIRECT_LIGHT_HARDWARE_REQUIRED";
@@ -1498,7 +1498,7 @@ public sealed class SilkDirectLightNativeConformanceTests
                 "not just in generated text.");
         uint requiredSessionAbi = OpenUsdSilkRuntime.RequiredSilkSessionAbiVersion;
         await Assert.That(requiredSessionAbi).IsEqualTo(SessionAbi)
-            .Because("Successful real Create must have validated session ABI 6, not an older managed requirement.");
+            .Because("Successful real Create must have validated session ABI 7, not an older managed requirement.");
         await Assert.That(result.Device.Backend).IsEqualTo(result.Profile.Backend);
         await Assert.That(result.Device.Name.Length).IsGreaterThan(0);
         await Assert.That(result.Device.ApiVersion.Length).IsGreaterThan(0);
@@ -2016,7 +2016,7 @@ public sealed class SilkDirectLightNativeConformanceTests
         string message = failure?.Message ?? string.Empty;
         await Assert.That(message.Contains(RequiredVariable, StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains(backend.ToString(), StringComparison.Ordinal)).IsTrue();
-        await Assert.That(message.Contains("page ABI 30/session ABI 6", StringComparison.Ordinal)).IsTrue();
+        await Assert.That(message.Contains("page ABI 31/session ABI 7", StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains(PluginVariable, StringComparison.Ordinal)).IsTrue();
         await Assert.That(message.Contains("staged", StringComparison.Ordinal)).IsTrue();
         await Assert.That(failure?.GetType().Name == "SkipTestException").IsFalse();

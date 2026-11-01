@@ -93,8 +93,8 @@ constants, package validation, and tests must be updated together.
 | Data shim `openusd_dotnet` | ABI 26, required capabilities `0x1FFFFFFFFF` | Managed runtime validates both. |
 | Direct Storm `openusd_hydra` | ABI 9 | Managed Storm runtime requires an exact version. |
 | Viewer Storm child | ABI 9 | Managed child runtime requires the exact locked version. |
-| hdSilk session API | ABI 6 | Session/page exports are required and checked before creation. |
-| hdSilk command page | ABI 30 | Every managed page is validated before parsing. |
+| hdSilk session API | ABI 7 | Session/page exports are required and checked before creation. |
+| hdSilk command page | ABI 31 | Every managed page is validated before parsing. |
 | Optional `openusd_mdl` / `openusd_mdl_sdk` | ABI 7 | hdSilk checks the exact adapter version and result size. |
 | Retained physics `openusd_physx` | ABI 8 | Exact; checks every record size and the CPU mesh preparation exports. |
 | Physics extraction page | ABI 2 | Validated geometry windows, source fingerprints and detached prepared hull ranges. |
@@ -146,6 +146,13 @@ black; the version changes because a page-28 consumer does not know value 5. No 
 block uses the reserved lanes after the dome mask for the per-axis constant-border masks, and the checked mesh
 fragment permutations read them. Deploy the native library, managed parser and checked shaders together;
 a page-28 library is refused.
+
+hdSilk session ABI 7 and page ABI 31 retain decoded OpenVDB fields outside the command bytes. A
+sampled-field texture asset starts with `hdsilk-volume:` and identifies its resolved source VDB,
+not a decoded cache file. Consumers retain the page's volume assets and copy each field through
+the bulk C ABI before releasing the lease. A page-30 consumer would interpret the identifier as a
+file path, so it cannot consume these commands. Raw command bytes alone cannot reconstruct a
+sampled field; the managed scene requires an owning page.
 
 Direct Storm ABI 9 adds the owned bulk AOV contract in `openusd_storm_aov.h`:
 `openusd_storm_aov_capture`, `openusd_storm_aov_get_view`, and `openusd_storm_aov_release`.
@@ -297,12 +304,12 @@ tree is a packaging contract rather than an ABI extension point; see
 
 The hdSilk page is a pointer-free, little-endian wire format. A page-version change must update the
 native header and writer, managed parser, tests, lock metadata, and package evidence. Session ABI 6
-exports `openusd_silk_get_session_abi_version` and `openusd_silk_get_page_abi_version`; managed
+introduced `openusd_silk_get_session_abi_version` and `openusd_silk_get_page_abi_version`; managed
 session creation rejects missing exports or mismatched versions before consuming scene data.
 The version-1 explicit scene-ingestion request and page ABI 24 are independent extensions of that
 session interface. Page ABI 24 expands direct lighting to 128 entries and four-word direct/shadow
 masks without changing session ABI 6.
-Earlier session-5 libraries do not satisfy this interface and must not be mixed with these bindings.
+The current bindings require session ABI 7 and page ABI 31.
 
 The optional version-1 source-identity batch extension is additive to session 6/page 26.
 Its request/result layout and hard count/path/result limits are declared in `openusd_hdsilk.h`.

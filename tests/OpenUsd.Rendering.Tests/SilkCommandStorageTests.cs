@@ -78,6 +78,23 @@ public sealed class SilkCommandStorageTests
     }
 
     [Test]
+    public async Task StoredPageReleasesVolumeAssetsWhenStorageDisposalFails()
+    {
+        int pagesBefore = SilkManagedDiagnostics.LivePages;
+        using OpenUsdSilkPage page = Stored([], 0, 8, out MemoryStorage storage);
+        var assets = new SilkMaterialCommandTests.TrackedVolumeAssets("/Volume", [1, 2, 3, 4]);
+        page.SetVolumeAssets(assets);
+        storage.FailDisposal = true;
+
+        await Assert.That(() => page.Dispose()).Throws<IOException>()
+            .WithMessageContaining("stored-command disposal failure");
+        await Assert.That(assets.Disposed).IsTrue();
+        await Assert.That(storage.Disposals).IsEqualTo(1);
+        await Assert.That(SilkManagedDiagnostics.LivePages).IsEqualTo(pagesBefore);
+        page.Dispose();
+    }
+
+    [Test]
     public async Task PublicViewsAndEnumeratorCopiesSurviveAdvanceAndPageDisposal()
     {
         MemoryStorage storage = ReadPublicViews();
@@ -141,7 +158,7 @@ public sealed class SilkCommandStorageTests
     {
         const ulong start = 1ul << 32;
         var storage = new OffsetStorage(start);
-        using var page = new OpenUsdSilkPage(30, 1, storage, 1, null, 12);
+        using var page = new OpenUsdSilkPage(31, 1, storage, 1, null, 12);
         using (var reader = new SilkCommandStorageReader(storage, preserveViews: false))
         {
             ulong offset = start;
@@ -181,7 +198,7 @@ public sealed class SilkCommandStorageTests
         storage = new MemoryStorage(bytes, transfer);
         try
         {
-            return new OpenUsdSilkPage(30, 7, storage, commands, null, Math.Max(8, bytes.Length));
+            return new OpenUsdSilkPage(31, 7, storage, commands, null, Math.Max(8, bytes.Length));
         }
         finally
         {
@@ -198,6 +215,7 @@ public sealed class SilkCommandStorageTests
         internal int Disposals { get; private set; }
         internal int FailPass { get; set; }
         internal ulong FailOffset { get; set; }
+        internal bool FailDisposal { get; set; }
 
         protected override void ReadCore(ulong offset, Span<byte> destination)
         {
@@ -214,7 +232,14 @@ public sealed class SilkCommandStorageTests
             bytes.AsSpan(checked((int)offset), destination.Length).CopyTo(destination);
         }
 
-        protected override void DisposeCore() => Disposals++;
+        protected override void DisposeCore()
+        {
+            Disposals++;
+            if (FailDisposal)
+            {
+                throw new IOException("Injected stored-command disposal failure.");
+            }
+        }
     }
 
     private sealed class OffsetStorage(ulong start) : SilkCommandStorage(start + 12, 12, 5)

@@ -10,11 +10,14 @@ namespace OpenUsd.Rendering.Silk;
 /// reference managed-owned bytes and remain valid after enumeration advances.
 /// File-backed enumerator copies keep storage alive until their final reader is
 /// collected; renderer-owned enumeration releases its storage reference deterministically.
+/// Native sampled-volume fields belong to the page and are not part of its command
+/// bytes. A scene that applies the page retains its own field references.
 /// </remarks>
 public sealed class OpenUsdSilkPage : IDisposable
 {
     private byte[]? _data;
     private SilkCommandStorage? _storage;
+    private SilkVolumeAssets? _volumeAssets;
     private WeakReference<OpenUsdSilkSession>? _recoverySource;
 
     internal OpenUsdSilkPage(uint abiVersion, ulong revision, byte[] data, uint commandCount)
@@ -78,6 +81,21 @@ public sealed class OpenUsdSilkPage : IDisposable
 
     internal void SetRecoverySource(WeakReference<OpenUsdSilkSession> source) => _recoverySource = source;
 
+    internal void SetVolumeAssets(SilkVolumeAssets? assets)
+    {
+        _volumeAssets = assets;
+    }
+
+    internal SilkVolumeAssets? AcquireVolumeAssets(bool required = false)
+    {
+        SilkVolumeAssets? assets = Volatile.Read(ref _volumeAssets);
+        if (required && assets is null)
+        {
+            throw new InvalidDataException("A native sampled volume page has no decoded-field lease.");
+        }
+        return assets?.Acquire();
+    }
+
     internal void RegisterReplay(Action replay)
     {
         if (_recoverySource is { } source && source.TryGetTarget(out OpenUsdSilkSession? session))
@@ -89,16 +107,28 @@ public sealed class OpenUsdSilkPage : IDisposable
     internal ReplaySnapshot CaptureReplay()
     {
         byte[]? bytes = Volatile.Read(ref _data);
-        SilkCommandStorage? storage = bytes is null
-            ? (Volatile.Read(ref _storage) ?? throw new ObjectDisposedException(nameof(OpenUsdSilkPage))).Acquire()
-            : null;
-        return new(AbiVersion, Revision, bytes, CommandCount, MeshPreparationUsage,
-            MaximumCommandPageBytes, _recoverySource, storage);
+        SilkCommandStorage? storage = null;
+        try
+        {
+            storage = bytes is null
+                ? (Volatile.Read(ref _storage) ?? throw new ObjectDisposedException(nameof(OpenUsdSilkPage)))
+                    .Acquire()
+                : null;
+            SilkVolumeAssets? assets = AcquireVolumeAssets();
+            return new(AbiVersion, Revision, bytes, CommandCount, MeshPreparationUsage,
+                MaximumCommandPageBytes, _recoverySource, storage, assets);
+        }
+        catch
+        {
+            storage?.Dispose();
+            throw;
+        }
     }
 
     internal readonly record struct ReplaySnapshot(
         uint Abi, ulong Revision, byte[]? Data, uint Commands, SilkMeshPreparationUsage? Usage,
-        int? PageLimit, WeakReference<OpenUsdSilkSession>? Source, SilkCommandStorage? Storage = null) : IDisposable
+        int? PageLimit, WeakReference<OpenUsdSilkSession>? Source, SilkCommandStorage? Storage = null,
+        SilkVolumeAssets? VolumeAssets = null) : IDisposable
     {
         internal bool Matches(OpenUsdSilkPage page) =>
             Revision == page.Revision && (Data is not null
@@ -112,11 +142,30 @@ public sealed class OpenUsdSilkPage : IDisposable
                 : new(Abi, Revision, Storage ?? throw new ObjectDisposedException(nameof(ReplaySnapshot)),
                     Commands, Usage, PageLimit ?? throw new InvalidOperationException(
                         "Stored pages require a command limit."));
-            page._recoverySource = Source;
-            return page;
+            try
+            {
+                page._volumeAssets = VolumeAssets?.Acquire();
+                page._recoverySource = Source;
+                return page;
+            }
+            catch
+            {
+                page.Dispose();
+                throw;
+            }
         }
 
-        public void Dispose() => Storage?.Dispose();
+        public void Dispose()
+        {
+            try
+            {
+                Storage?.Dispose();
+            }
+            finally
+            {
+                VolumeAssets?.Dispose();
+            }
+        }
     }
 
     internal RenderDiagnosticsState WithPreparationDiagnostics(RenderDiagnosticsState diagnostics) =>
@@ -169,10 +218,23 @@ public sealed class OpenUsdSilkPage : IDisposable
         {
             SilkManagedDiagnostics.PageDestroyed();
         }
-        if (Interlocked.Exchange(ref _storage, null) is { } storage)
+        try
         {
-            storage.Dispose();
-            SilkManagedDiagnostics.PageDestroyed();
+            if (Interlocked.Exchange(ref _storage, null) is { } storage)
+            {
+                try
+                {
+                    storage.Dispose();
+                }
+                finally
+                {
+                    SilkManagedDiagnostics.PageDestroyed();
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _volumeAssets, null)?.Dispose();
         }
     }
 }

@@ -2061,7 +2061,8 @@ public readonly ref struct SilkMaterialTextureEntry
     /// <summary>Gets one component of the value used when the asset cannot load.</summary>
     public float GetFallback(int component) => ReadVector(60, component);
 
-    /// <summary>Gets the resolved texture asset path.</summary>
+    /// <summary>Gets the texture asset identifier.</summary>
+    /// <remarks>See <see cref="SilkMaterialTexture.Asset"/> for sampled-volume identifiers.</remarks>
     public string Asset => _asset;
 
     /// <summary>

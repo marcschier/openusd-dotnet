@@ -64,6 +64,9 @@ public sealed class SilkPageAbiVersionContractTests
         await Assert.That(header).Contains("openusd_silk_get_session_abi_version");
         await Assert.That(header).Contains("openusd_silk_get_page_abi_version");
         await Assert.That(header).Contains("openusd_silk_session_sync_with_scene_ingestion");
+        await Assert.That(header).Contains("openusd_silk_page_retain_volume_assets");
+        await Assert.That(header).Contains("openusd_silk_volume_assets_copy");
+        await Assert.That(header).Contains("openusd_silk_volume_assets_release");
     }
 
     [Test]
@@ -285,14 +288,14 @@ public sealed class SilkPageAbiVersionContractTests
     }
 
     [Test]
-    public async Task DeclaredPageAndSessionAbiContractsAre30And6()
+    public async Task DeclaredPageAndSessionAbiContractsAre31And7()
     {
         uint page = SilkCommandParser.PageAbiVersion;
         uint session = RenderNativeAbiVersions.SilkSessionAbi;
         uint loader = OpenUsdSilkRuntime.RequiredSilkSessionAbiVersion;
-        await Assert.That(page).IsEqualTo(30u);
-        await Assert.That(session).IsEqualTo(6u);
-        await Assert.That(loader).IsEqualTo(6u);
+        await Assert.That(page).IsEqualTo(31u);
+        await Assert.That(session).IsEqualTo(7u);
+        await Assert.That(loader).IsEqualTo(7u);
     }
 
     [Test]
@@ -304,7 +307,8 @@ public sealed class SilkPageAbiVersionContractTests
     [Arguments(27u)]
     [Arguments(28u)]
     [Arguments(29u)]
-    [Arguments(31u)]
+    [Arguments(30u)]
+    [Arguments(32u)]
     public async Task ParserRejectsAdjacentAndStalePageAbiVersions(uint rejectedVersion)
     {
         byte[] page = new byte[272];
@@ -322,7 +326,7 @@ public sealed class SilkPageAbiVersionContractTests
         }
 
         (int width, int height, double viewDiagonal, bool finished) =
-            ReadVersionedFrame(page, 30u);
+            ReadVersionedFrame(page, 31u);
         await Assert.That(width).IsEqualTo(123);
         await Assert.That(height).IsEqualTo(47);
         await Assert.That(viewDiagonal).IsEqualTo(1d);

@@ -119,8 +119,8 @@ The current contracts are:
 - data ABI 26 with required capabilities `0x1FFFFFFFFF`;
 - direct Storm ABI 9;
 - Storm child ABI 9;
-- hdSilk session ABI 6;
-- hdSilk command-page ABI 30;
+- hdSilk session ABI 7;
+- hdSilk command-page ABI 31;
 - retained physics world ABI 8; and
 - physics extraction page ABI 2.
 

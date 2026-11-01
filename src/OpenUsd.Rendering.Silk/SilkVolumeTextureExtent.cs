@@ -4,6 +4,14 @@ using System.Globalization;
 
 namespace OpenUsd.Rendering.Silk;
 
+internal static class SilkVolumeTextureEncoding
+{
+    internal const string NativeAssetPrefix = "hdsilk-volume:";
+
+    internal static bool IsNativeAsset(string asset) =>
+        asset.StartsWith(NativeAssetPrefix, StringComparison.Ordinal);
+}
+
 internal readonly record struct SilkVolumeTextureExtent(uint Width, uint Height, uint Depth)
 {
     internal const uint MaximumExactLayerCount = 512;

@@ -12,7 +12,8 @@ namespace OpenUsd.Rendering.Silk;
 /// <summary>
 /// Retains the latest scene resources produced by hdSilk command pages.
 /// </summary>
-public sealed class SilkSceneState
+/// <remarks>Dispose the scene to release native sampled-volume fields it retains.</remarks>
+public sealed class SilkSceneState : IDisposable
 {
     private readonly Dictionary<ulong, SilkMeshData> _meshes = [];
     private readonly Dictionary<(string Path, int InstanceIndex), SilkMeshData> _meshesByPath =
@@ -40,6 +41,7 @@ public sealed class SilkSceneState
     // table can never outgrow the driven set.
     private readonly Dictionary<ulong, SilkMeshData> _authoredMeshes = [];
     private readonly Func<string, ulong>? _pathHasher;
+    private bool _disposed;
 
     // The undo journal one page is applied under. A page is a transaction: it
     // either applies completely or changes nothing, and the state-dependent
@@ -206,13 +208,15 @@ public sealed class SilkSceneState
     public SilkSceneDelta Apply(OpenUsdSilkPage page)
     {
         ArgumentNullException.ThrowIfNull(page);
+        ObjectDisposedException.ThrowIf(_disposed, this);
         bool requiresJournal = Preflight(page.GetTransientEnumerator());
-        return Apply(page.GetTransientEnumerator(), page.Revision, requiresJournal);
+        return Apply(page.GetTransientEnumerator(), page.Revision, requiresJournal, page);
     }
 
     internal PreparedPage PreparePage(OpenUsdSilkPage page)
     {
         ArgumentNullException.ThrowIfNull(page);
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (_journaling)
         {
             throw new InvalidOperationException("A scene page is already being prepared.");
@@ -221,7 +225,7 @@ public sealed class SilkSceneState
         BeginTransaction();
         try
         {
-            return new PreparedPage(this, ApplyCore(page.GetTransientEnumerator(), page.Revision));
+            return new PreparedPage(this, ApplyCore(page.GetTransientEnumerator(), page.Revision, page));
         }
         catch
         {
@@ -288,6 +292,7 @@ public sealed class SilkSceneState
         out ulong meshId)
     {
         ArgumentNullException.ThrowIfNull(path);
+        ObjectDisposedException.ThrowIf(_disposed, this);
         meshId = 0;
         if (!_meshesByPath.TryGetValue((path, instanceIndex), out SilkMeshData? mesh))
         {
@@ -374,6 +379,7 @@ public sealed class SilkSceneState
     /// </remarks>
     public bool RestoreAuthoredPoints(ulong meshId)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_authoredMeshes.TryGetValue(meshId, out SilkMeshData? authored))
         {
             return false;
@@ -412,16 +418,22 @@ public sealed class SilkSceneState
     public bool HasAuthoredGeometry(ulong meshId) => _authoredMeshes.ContainsKey(meshId);
 
     /// <summary>Applies command bytes from a test or recorded page.</summary>
+    /// <remarks>
+    /// Native sampled-volume commands require their owning page and cannot be
+    /// reconstructed from command bytes alone. Apply the page instead.
+    /// </remarks>
     public SilkSceneDelta Apply(
         ReadOnlySpan<byte> data,
         uint commandCount,
         ulong revision)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         bool requiresJournal = Preflight(SilkCommandParser.Enumerate(data, commandCount));
         return Apply(
             SilkCommandParser.Enumerate(data, commandCount),
             revision,
-            requiresJournal);
+            requiresJournal,
+            page: null);
     }
 
     /// <summary>
@@ -689,7 +701,8 @@ public sealed class SilkSceneState
     private SilkSceneDelta Apply(
         SilkCommandEnumerator commands,
         ulong revision,
-        bool requiresJournal)
+        bool requiresJournal,
+        OpenUsdSilkPage? page)
     {
         using SilkCommandEnumerator owner = commands;
         if (!requiresJournal)
@@ -697,14 +710,14 @@ public sealed class SilkSceneState
             // Nothing in this page can be rejected against retained state, so
             // there is nothing to put back and the journal would be pure cost.
             // This is the frame-only page every interactive session publishes.
-            return ApplyCore(commands, revision);
+            return ApplyCore(commands, revision, page);
         }
 
         BeginTransaction();
         bool committed = false;
         try
         {
-            SilkSceneDelta delta = ApplyCore(commands, revision);
+            SilkSceneDelta delta = ApplyCore(commands, revision, page);
             CommitTransaction();
             committed = true;
             return delta;
@@ -718,7 +731,7 @@ public sealed class SilkSceneState
         }
     }
 
-    private SilkSceneDelta ApplyCore(SilkCommandEnumerator commands, ulong revision)
+    private SilkSceneDelta ApplyCore(SilkCommandEnumerator commands, ulong revision, OpenUsdSilkPage? page)
     {
         SilkMeshArrayPool? arrays = null;
         List<ulong>? upserts = null;
@@ -761,9 +774,21 @@ public sealed class SilkSceneState
                         break;
                     case SilkCommandType.MaterialUpsert:
                         SilkMaterialData material = SilkMaterialData.CopyFrom(
-                            commands.Current.AsMaterialUpsert());
+                            commands.Current.AsMaterialUpsert(), allowNativeVolumeAssets: page is not null);
                         VerifyStableHash(material.Path, material.StableHash);
-                        SetMaterial(material.Path, material);
+                        if (page is not null)
+                        {
+                            material.RetainVolumeAssets(page);
+                        }
+                        try
+                        {
+                            SetMaterial(material.Path, material);
+                        }
+                        catch
+                        {
+                            material.ReleaseVolumeAssets();
+                            throw;
+                        }
                         (materialChanges ??= []).Add(material.Path);
                         MaterialRevision++;
                         break;
@@ -840,6 +865,13 @@ public sealed class SilkSceneState
     private void CommitTransaction()
     {
         _journaling = false;
+        foreach (SilkStateUndo entry in _undo)
+        {
+            if (entry.Kind == SilkStateUndoKind.Material && entry.Value is SilkMaterialData material)
+            {
+                material.ReleaseVolumeAssets();
+            }
+        }
         _undo.Clear();
         _journaledInstancePaths?.Clear();
         PickIdentities.CommitTransaction();
@@ -913,6 +945,11 @@ public sealed class SilkSceneState
                     }
                     break;
                 case SilkStateUndoKind.Material:
+                    if (_materials.TryGetValue(entry.Path!, out SilkMaterialData? current) &&
+                        !ReferenceEquals(current, entry.Value))
+                    {
+                        current.ReleaseVolumeAssets();
+                    }
                     if (entry.Existed)
                     {
                         _materials[entry.Path!] = (SilkMaterialData)entry.Value!;
@@ -1115,24 +1152,66 @@ public sealed class SilkSceneState
 
     private void SetMaterial(string path, SilkMaterialData material)
     {
+        bool existed = _materials.TryGetValue(path, out SilkMaterialData? previous);
+        _materials[path] = material;
         if (_journaling)
         {
-            bool existed = _materials.TryGetValue(path, out SilkMaterialData? previous);
-            _undo.Add(new SilkStateUndo(
-                SilkStateUndoKind.Material, 0, path, 0, previous, existed));
+            try
+            {
+                _undo.Add(new SilkStateUndo(
+                    SilkStateUndoKind.Material, 0, path, 0, previous, existed));
+            }
+            catch
+            {
+                if (existed)
+                {
+                    _materials[path] = previous!;
+                }
+                else
+                {
+                    _ = _materials.Remove(path);
+                }
+                throw;
+            }
         }
-        _materials[path] = material;
+        else
+        {
+            previous?.ReleaseVolumeAssets();
+        }
     }
 
     private bool RemoveMaterial(string path)
     {
+        bool existed = _materials.TryGetValue(path, out SilkMaterialData? previous);
         if (_journaling)
         {
-            bool existed = _materials.TryGetValue(path, out SilkMaterialData? previous);
             _undo.Add(new SilkStateUndo(
                 SilkStateUndoKind.Material, 0, path, 0, previous, existed));
         }
-        return _materials.Remove(path);
+        bool removed = _materials.Remove(path);
+        if (!_journaling)
+        {
+            previous?.ReleaseVolumeAssets();
+        }
+        return removed;
+    }
+
+    /// <summary>Releases decoded volume fields retained by the scene.</summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+        if (_journaling)
+        {
+            throw new InvalidOperationException("A scene page is being prepared.");
+        }
+        _disposed = true;
+        foreach (SilkMaterialData material in _materials.Values)
+        {
+            material.ReleaseVolumeAssets();
+        }
     }
 
     private void SetEnvironment(string path, SilkEnvironmentData environment)
@@ -3122,8 +3201,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private ulong _surfaceLinkRevision = ulong.MaxValue;
     private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _textures = [];
     private readonly Dictionary<TextureCacheKey, TextureCacheEntry> _failedTextures = [];
-    private readonly Dictionary<string, TextureCacheEntry> _volumeTextures =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<SilkMaterialTexture, TextureCacheEntry> _volumeTextures = [];
     // Decoded displacement height fields, keyed by the identity that also keys the
     // retained geometry they displaced. Bounded by MaximumDisplacementImageBytes
     // and released with the resource.
@@ -3335,7 +3413,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     private readonly record struct EvictionCandidate(
         TextureCacheEntryKind Kind,
         TextureCacheKey OrdinaryKey,
-        string? VolumeKey,
+        SilkMaterialTexture? VolumeKey,
         TextureCacheEntry Entry);
 
     internal readonly record struct TextureDependency(
@@ -7003,7 +7081,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
 
     private TextureCacheEntry RequireVolumeTexture(SilkMaterialTexture texture)
     {
-        if (_volumeTextures.TryGetValue(texture.Asset, out TextureCacheEntry? entry))
+        if (_volumeTextures.TryGetValue(texture, out TextureCacheEntry? entry))
         {
             TouchEntry(entry);
             return entry;
@@ -7016,8 +7094,14 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         SilkVolumeTextureExtent info = SilkVolumeTextureExtent.Parse(texture.UvPrimvar);
         int requiredLength =
             checked((int)((ulong)info.Width * info.Height * info.Depth * sizeof(float)));
-        using var source = new FileStream(texture.Asset, FileMode.Open, FileAccess.Read, FileShare.Read);
-        if (source.Length != requiredLength)
+        if (SilkVolumeTextureEncoding.IsNativeAsset(texture.Asset) && !texture.HasNativeVolumeAssets)
+        {
+            throw new InvalidDataException("A native volume texture has no decoded-field lease.");
+        }
+        using FileStream? source = texture.HasNativeVolumeAssets
+            ? null
+            : new FileStream(texture.Asset, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (source is not null && source.Length != requiredLength)
         {
             throw new InvalidDataException(
                 $"Volume texture '{texture.Asset}' contains {source.Length} bytes, expected {requiredLength}.");
@@ -7028,10 +7112,17 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             _volumeTextures.EnsureCapacity(checked(_volumeTextures.Count + 1));
             byte[] pixels = new byte[requiredLength];
-            source.ReadExactly(pixels);
-            if (source.ReadByte() != -1)
+            if (source is not null)
             {
-                throw new InvalidDataException($"Volume texture '{texture.Asset}' changed during reading.");
+                source.ReadExactly(pixels);
+                if (source.ReadByte() != -1)
+                {
+                    throw new InvalidDataException($"Volume texture '{texture.Asset}' changed during reading.");
+                }
+            }
+            else if (!texture.TryCopyVolumeAssets(pixels))
+            {
+                throw new InvalidDataException("A native volume texture lost its decoded-field lease.");
             }
             gpuTexture = volumeDevice.CreateTexture3D(
                 info.Width,
@@ -7041,7 +7132,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             entry = new TextureCacheEntry(gpuTexture, pixels, checked((ulong)pixels.Length),
                 pixelReservation: reservation);
             RegisterEntry(entry);
-            _volumeTextures.Add(texture.Asset, entry);
+            _volumeTextures.Add(texture, entry);
             reservation = null;
             return entry;
         }
@@ -7527,15 +7618,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     /// material change. Editing one material's texture assignment must not force every other
     /// still-resident material's decoded/uploaded texture work to be redone next frame, which
     /// would defeat both the retained CPU budget (see <see cref="TextureCacheEntry.Pixels"/>) and
-    /// the frame working-set protection in <see cref="TrimTextureResidency"/>. Volume density
-    /// textures are keyed by asset path rather than material path (see
-    /// <see cref="_volumeTextures"/>), so they carry no material identity to prune selectively
-    /// by; there is no way to tell which, if any, volume texture belongs to a changed material,
-    /// so all of them are cleared and disposed here — the same coarse, whole-cache treatment
-    /// <see cref="ClearTextureCache"/> gives them. This also guarantees a volume texture is never
-    /// left stale after its owning material changes to reuse the same asset path with different
-    /// dimensions: <see cref="RequireVolumeTexture"/> keys purely on asset path, so without this
-    /// unconditional clear a dimension change alone could silently keep serving the old texture.
+    /// the frame working-set protection in <see cref="TrimTextureResidency"/>. Volume entries
+    /// are keyed by retained texture identity, since two materials can select different grids
+    /// from the same source VDB. They are cleared together on material changes.
     /// </summary>
     private void RemoveChangedMaterialTextureCacheEntries(ReadOnlySpan<string> changedMaterialPaths)
     {
@@ -7830,7 +7915,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
     {
         TextureCacheEntry? best = null;
         TextureCacheKey bestOrdinaryKey = default;
-        string? bestVolumeKey = null;
+        SilkMaterialTexture? bestVolumeKey = null;
         TextureCacheEntryKind bestKind = TextureCacheEntryKind.Ordinary;
         foreach (KeyValuePair<TextureCacheKey, TextureCacheEntry> pair in _textures)
         {
@@ -7841,7 +7926,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 bestKind = TextureCacheEntryKind.Ordinary;
             }
         }
-        foreach (KeyValuePair<string, TextureCacheEntry> pair in _volumeTextures)
+        foreach (KeyValuePair<SilkMaterialTexture, TextureCacheEntry> pair in _volumeTextures)
         {
             if (pair.Value.LastUsedStamp <= staleBoundary && IsOlder(pair.Value, best))
             {
@@ -7894,11 +7979,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 _failedTextures.Remove(candidate.OrdinaryKey);
                 return string.Concat(candidate.OrdinaryKey.MaterialPath, "\0", candidate.OrdinaryKey.Asset);
             case TextureCacheEntryKind.Volume:
-                string volumeAsset = candidate.VolumeKey ??
+                SilkMaterialTexture volume = candidate.VolumeKey ??
                     throw new InvalidOperationException(
                         "A volume eviction candidate must carry its owning cache key.");
-                _volumeTextures.Remove(volumeAsset);
-                return volumeAsset;
+                _volumeTextures.Remove(volume);
+                return volume.Asset;
             default:
                 throw new InvalidOperationException(
                     $"Unrecognized texture cache eviction candidate kind '{candidate.Kind}'.");
