@@ -819,7 +819,8 @@ public sealed class SilkLightLinkWireTests
         List<SilkLightLinkEntry> entries = [];
         bool finished;
         {
-            using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 31u);
+            using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(
+                page, 1, SilkCommandParser.PageAbiVersion);
             _ = commands.MoveNext();
             SilkLightLinkCommand command = commands.Current.AsLightLink();
             entryCount = command.EntryCount;
@@ -1090,7 +1091,8 @@ public sealed class SilkLightLinkWireTests
 
     private static void UpdateWideLinkTable(SilkLightLinkTable table, byte[] page)
     {
-        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(page, 1, 31u);
+        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(
+            page, 1, SilkCommandParser.PageAbiVersion);
         if (!commands.MoveNext())
         {
             throw new InvalidDataException("The wide light-link command is missing.");

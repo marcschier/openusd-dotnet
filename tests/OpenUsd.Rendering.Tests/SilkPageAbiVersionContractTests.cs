@@ -99,6 +99,7 @@ public sealed class SilkPageAbiVersionContractTests
         string[] testProjects = ["OpenUsd.Rendering.Tests", "OpenUsd.Rendering.ConformanceTests"];
         HashSet<string> stale = [];
         int constructorCount = 0;
+        int literalEnumeratorAbiCount = 0;
         foreach (string project in testProjects)
         {
             string directory = Path.Combine(root, "tests", project);
@@ -130,10 +131,32 @@ public sealed class SilkPageAbiVersionContractTests
                         stale.Add($"{Path.GetRelativePath(root, file)}: {version}");
                     }
                 }
+                foreach (Match match in Regex.Matches(
+                    text,
+                    @"SilkCommandParser\.Enumerate\s*\(\s*(?:[A-Za-z_]\w*|\[\])\s*,\s*\d+\s*,\s*(?<version>\d+)u?\s*\)",
+                    RegexOptions.None,
+                    TimeSpan.FromSeconds(5)))
+                {
+                    literalEnumeratorAbiCount++;
+                    uint version = uint.Parse(match.Groups["version"].Value, CultureInfo.InvariantCulture);
+                    string prefix = text[..match.Index];
+                    bool explicitRejection =
+                        Path.GetFileName(file) == "SilkMaterialCommandTests.cs" &&
+                        version == 4 &&
+                        prefix.LastIndexOf(
+                            "RejectsAPageFromThePreviousAbi",
+                            StringComparison.Ordinal) >
+                        prefix.LastIndexOf("[Test]", StringComparison.Ordinal);
+                    if (version != SilkCommandParser.PageAbiVersion && !explicitRejection)
+                    {
+                        stale.Add($"{Path.GetRelativePath(root, file)}: parser enumerator ABI {version}");
+                    }
+                }
             }
         }
 
         await Assert.That(constructorCount).IsGreaterThan(100);
+        await Assert.That(literalEnumeratorAbiCount).IsGreaterThan(0);
         await Assert.That(stale)
             .IsEmpty()
             .Because("Fixture pages must use the current ABI: " + string.Join("; ", stale.Order()));
