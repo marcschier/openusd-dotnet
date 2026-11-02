@@ -151,6 +151,72 @@ public sealed class SilkHdrColorCaptureTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task SecondPrivateTargetFailureReleasesDepthAndRetryKeepsDetachedResults(bool includeHdrColor)
+    {
+        using var device = new SilkHdrColorReadbackDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        var hdrOptions = new SilkHdrColorCaptureOptions(includeDeviceDepth: true);
+        SilkFrameCaptureResult first = capture();
+        int requests = device.TextureRequests;
+        int created = device.CreatedTextures;
+        int released = device.ReleasedTextures;
+        int retained = device.LiveTextures;
+        int submissions = device.Submissions;
+        int depthReadbacks = device.DepthReadbacks;
+        device.FailNextHdrTarget = true;
+
+        await Assert.That(() => capture(new CancellationToken(canceled: true)))
+            .Throws<OperationCanceledException>();
+        await Assert.That(device.TextureRequests).IsEqualTo(requests);
+        await Assert.That(device.FailNextHdrTarget).IsTrue();
+
+        InvalidOperationException? failure = Assert.Throws<InvalidOperationException>(() => capture());
+        await Assert.That(failure!.Message).IsEqualTo("Injected HDR target creation failure.");
+        await Assert.That(device.TextureRequests).IsEqualTo(requests + 2);
+        await Assert.That(device.CreatedTextures).IsEqualTo(created + 1);
+        await Assert.That(device.LastCreatedTextureFormat).IsEqualTo(SilkTextureFormat.D32Float);
+        await Assert.That(device.ReleasedTextures).IsEqualTo(released + 1);
+        await Assert.That(device.LiveTextures).IsEqualTo(retained);
+        await Assert.That(device.Submissions).IsEqualTo(submissions);
+        await Assert.That(device.DepthReadbacks).IsEqualTo(depthReadbacks);
+        await Assert.That(device.FailNextHdrTarget).IsFalse();
+
+        byte[] retryPixel = [0x00, 0x3C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3C];
+        retryPixel.CopyTo(device.Pixel, 0);
+        device.DepthValue = 0.25f;
+        SilkFrameCaptureResult retry = capture();
+        await Assert.That(device.Submissions).IsGreaterThan(submissions);
+        await Assert.That(device.LiveTextures).IsEqualTo(retained);
+        renderer.Dispose();
+        device.Dispose();
+
+        await Assert.That(device.LiveTextures).IsEqualTo(0);
+        await Assert.That(first.Rgba.Span.SequenceEqual<byte>([32, 128, 255, 255])).IsTrue();
+        await Assert.That(first.Depth!.Values.Span[0]).IsEqualTo(1f);
+        await Assert.That(retry.Rgba.Span.SequenceEqual<byte>([255, 0, 0, 255])).IsTrue();
+        await Assert.That(retry.Depth!.Values.Span[0]).IsEqualTo(0.25f);
+        if (includeHdrColor)
+        {
+            await Assert.That(first.HdrColor!.Rgba16Float.Span.SequenceEqual<byte>(
+                [0x00, 0x30, 0x00, 0x38, 0x00, 0x40, 0x00, 0x3C])).IsTrue();
+            await Assert.That(retry.HdrColor!.Rgba16Float.Span.SequenceEqual(retryPixel)).IsTrue();
+        }
+        else
+        {
+            await Assert.That(first.HdrColor).IsNull();
+            await Assert.That(retry.HdrColor).IsNull();
+        }
+
+        SilkFrameCaptureResult capture(CancellationToken cancellationToken = default) => includeHdrColor
+            ? SilkFrameCapture.CaptureRetainedWithHdrColor(
+                renderer, device, 1, 1, RenderSettings.Default, hdrOptions, cancellationToken: cancellationToken)
+            : SilkFrameCapture.CaptureRetainedWithDepth(
+                renderer, device, 1, 1, RenderSettings.Default, cancellationToken: cancellationToken);
+    }
+
+    [Test]
     [Arguments(0, 1)]
     [Arguments(1, 0)]
     [Arguments(-1, 1)]
