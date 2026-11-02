@@ -261,6 +261,34 @@ public sealed class SilkCommandParserTests
     }
 
     [Test]
+    public async Task PtexSelectionConsumesRetainedMappingsAfterSimulation()
+    {
+        SilkMeshData mesh = ReadSingleMesh(CreateMeshCommand(
+            ptexMappingStatus: SilkPtexMappingStatus.Mapped,
+            ptexMappings: MappedPtexFixture));
+        float[] movedPoints = mesh.Points.ToArray();
+        movedPoints[0] += 1;
+        SilkMeshData simulated = mesh.WithSimulatedPoints(movedPoints);
+
+        using SilkPtexMeshSelection selection = SilkPtexMeshSelection.Create(simulated);
+        using SilkPtexMeshSelection.Lease lease = selection.Acquire();
+        await Assert.That(lease.FaceIds.SequenceEqual(new uint[] { 7 })).IsTrue();
+        await Assert.That(lease.TriangleOrdinals.SequenceEqual(new uint[] { 0 })).IsTrue();
+        await Assert.That(simulated.PtexCoordinates.SequenceEqual(ExpectedPtexCoordinates)).IsTrue();
+    }
+
+    [Test]
+    [Arguments(SilkPtexMappingStatus.NotRequested)]
+    [Arguments(SilkPtexMappingStatus.TextureFaceOutOfRange)]
+    public async Task PtexSelectionRefusesUnmappedMeshes(SilkPtexMappingStatus status)
+    {
+        SilkMeshData mesh = ReadSingleMesh(CreateMeshCommand(ptexMappingStatus: status));
+
+        await Assert.That(() => SilkPtexMeshSelection.Create(mesh))
+            .Throws<NotSupportedException>().WithMessageContaining(status.ToString());
+    }
+
+    [Test]
     [Arguments(SilkPtexMappingStatus.Mapped)]
     [Arguments(SilkPtexMappingStatus.NotRequested)]
     [Arguments(SilkPtexMappingStatus.TextureFaceOutOfRange)]

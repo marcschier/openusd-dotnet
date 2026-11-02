@@ -69,6 +69,48 @@ public sealed class SilkNativePtexDecoderTests
     }
 
     [Test]
+    public async Task SamplingNeighborhoodAcceptsASelectionFromRepeatedMeshTriangles()
+    {
+        RequireNativePtex();
+        int[] triangles = new int[SilkNativePtexDecoder.MaximumRequestedFaces + 1];
+        Array.Fill(triangles, 3);
+        triangles[0] = 0;
+        var budget = new SilkCpuTextureBudget(2 * 1024 * 1024);
+        ulong selectionBytes = checked((ulong)(triangles.Length + 2) * sizeof(uint));
+
+        using SilkPtexMeshSelection selection = SilkPtexMeshSelection.Create(triangles, budget);
+        using (SilkPtexMeshSelection.Lease lease = selection.Acquire())
+        {
+            await Assert.That(lease.FaceIds.SequenceEqual(new uint[] { 0, 3 })).IsTrue();
+            await Assert.That(lease.TriangleOrdinals[0]).IsEqualTo(0u);
+            await Assert.That(lease.TriangleOrdinals[^1]).IsEqualTo(1u);
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(selectionBytes);
+        await Assert.That(() => SilkNativePtexDecoder.PrepareSamplingAtlas(
+            QuadColorsPath, selection, 8, 96, MaximumEncodedBytes, 5, budget))
+            .Throws<InvalidOperationException>().WithMessageContaining("maximum atlas dimension");
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(selectionBytes);
+        using (SilkPackedPtexAtlas atlas = SilkNativePtexDecoder.PrepareSamplingAtlas(
+            QuadColorsPath, selection, 8, 96, MaximumEncodedBytes, 12, budget))
+        {
+            await Assert.That(atlas.Tiles.Count).IsEqualTo(2);
+            SilkPtexAtlasTile white = atlas.Tiles[0];
+            SilkPtexAtlasTile blue = atlas.Tiles[3];
+            int whiteOffset = checked((int)(((ulong)white.ContentY * atlas.Width + white.ContentX) * 4));
+            int blueOffset = checked((int)(((ulong)blue.ContentY * atlas.Width + blue.ContentX) * 4));
+            await Assert.That(atlas.Pixels.AsSpan(whiteOffset, 4)
+                .SequenceEqual(new byte[] { 255, 255, 255, 255 })).IsTrue();
+            await Assert.That(atlas.Pixels.AsSpan(blueOffset, 4)
+                .SequenceEqual(new byte[] { 0, 0, 255, 255 })).IsTrue();
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(selectionBytes + 288);
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(selectionBytes);
+        selection.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
     public async Task SamplingNeighborhoodKeepsPixelsFromItsDescribedSourceAfterReplacement()
     {
         RequireNativePtex();

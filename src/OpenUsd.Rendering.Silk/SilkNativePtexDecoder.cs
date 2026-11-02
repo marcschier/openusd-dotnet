@@ -332,6 +332,29 @@ internal static unsafe partial class SilkNativePtexDecoder
             DecodeSnapshot(source, ids, maximumFaceDimension, maximumDecodedBytes));
     }
 
+    internal static SilkPackedPtexAtlas PrepareSamplingAtlas(
+        string asset,
+        SilkPtexMeshSelection selection,
+        uint maximumFaceDimension,
+        ulong maximumDecodedBytes,
+        ulong maximumEncodedBytes,
+        uint maximumAtlasDimension,
+        SilkCpuTextureBudget? budget = null)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        ArgumentOutOfRangeException.ThrowIfZero(maximumAtlasDimension);
+        if (!ReferenceEquals(selection.Budget, budget))
+        {
+            throw new ArgumentException(
+                "Ptex selection and atlas preparation must use the same CPU texture budget.",
+                nameof(budget));
+        }
+        using SilkPtexMeshSelection.Lease lease = selection.Acquire();
+        using SilkDecodedPtexFaces decoded = DecodeSamplingNeighborhood(
+            asset, lease.FaceIds, maximumFaceDimension, maximumDecodedBytes, maximumEncodedBytes, budget);
+        return SilkPtexAtlasPacker.Pack(decoded, lease.FaceIds, maximumAtlasDimension, budget);
+    }
+
     private static void ValidateRequest(
         string asset,
         ReadOnlySpan<uint> faceIds,
