@@ -748,6 +748,413 @@ public sealed class SilkTextureResidencyTests
     }
 
     [Test]
+    [Arguments(false, SilkRenderDiagnosticCodes.TextureAssetNotFound)]
+    [Arguments(true, SilkRenderDiagnosticCodes.TextureDecodeFailed)]
+    public async Task EvictedFailedFallbackIsRetriedAndReadmittedAsAnOrdinaryTexture(
+        bool corrupt, string expectedFailureCode)
+    {
+        const string recoverableAsset = "residency-retry.png";
+        int recoverableDecodeAttempts = 0;
+        int pressureDecodeAttempts = 0;
+        byte[] recoveredPixels =
+        [
+            17, 47, 101, 255, 17, 47, 101, 255,
+            17, 47, 101, 255, 17, 47, 101, 255,
+        ];
+        using var device = new TextureDevice();
+        using (var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) =>
+            {
+                if (asset == recoverableAsset)
+                {
+                    recoverableDecodeAttempts++;
+                    if (recoverableDecodeAttempts == 1)
+                    {
+                        if (corrupt)
+                        {
+                            throw new InvalidDataException("Texture data is corrupt.");
+                        }
+                        throw new FileNotFoundException("Texture is absent.", asset);
+                    }
+                    return new SilkDecodedImage(2, 2, recoveredPixels.ToArray());
+                }
+                pressureDecodeAttempts++;
+                return new SilkDecodedImage(2, 2, CreatePixels(2, 2));
+            },
+            residencyOptions: new SilkTextureResidencyOptions(
+                maxDecodedCpuBytes: ulong.MaxValue,
+                maxGpuBytes: OneOrdinaryTextureUploadBytes)))
+        {
+            using var commands = new TextureCommandList();
+            SilkMaterialData recoverable = CreateOneTextureMaterial(
+                "/World/Materials/Recoverable", SilkMaterialParameter.DiffuseColor, recoverableAsset);
+            SilkMaterialData pressure = CreateOneTextureMaterial(
+                "/World/Materials/Pressure", SilkMaterialParameter.DiffuseColor, "residency-pressure.png");
+
+            resources.UploadMaterialTexture(commands, recoverable, SilkMaterialParameter.DiffuseColor);
+            resources.UploadMaterialTexture(commands, recoverable, SilkMaterialParameter.DiffuseColor);
+
+            await Assert.That(recoverableDecodeAttempts).IsEqualTo(1);
+            await Assert.That(commands.Uploads.Count).IsEqualTo(1);
+            await Assert.That(commands.Uploads[0].SequenceEqual(new byte[] { 0, 0, 0, 255 })).IsTrue();
+            await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(1);
+            await Assert.That(resources.Statistics.TextureResidentDecodedBytes).IsEqualTo(FailedFallbackUploadBytes);
+            await Assert.That(resources.Statistics.TextureResidentGpuBytes).IsEqualTo(FailedFallbackUploadBytes);
+            await Assert.That(device.AllTextures.Count).IsEqualTo(1);
+            await Assert.That(device.AllTextures[0].DisposeCount).IsEqualTo(0);
+            await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+                .Contains(expectedFailureCode);
+            await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+                .DoesNotContain(corrupt
+                    ? SilkRenderDiagnosticCodes.TextureAssetNotFound
+                    : SilkRenderDiagnosticCodes.TextureDecodeFailed);
+            await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+                .Contains(SilkRenderDiagnosticCodes.TextureFallbackUsed);
+
+            // Advance the frame boundary so the failed fallback becomes the only stale candidate.
+            resources.TrimTextureResidency();
+            await Assert.That(resources.Statistics.TextureEvictionCount).IsEqualTo(0UL);
+            await Assert.That(device.AllTextures[0].DisposeCount).IsEqualTo(0);
+
+            resources.UploadMaterialTexture(commands, pressure, SilkMaterialParameter.DiffuseColor);
+            resources.TrimTextureResidency();
+
+            await Assert.That(recoverableDecodeAttempts).IsEqualTo(1);
+            await Assert.That(pressureDecodeAttempts).IsEqualTo(1);
+            await Assert.That(commands.Uploads.Count).IsEqualTo(2);
+            await Assert.That(device.AllTextures.Count).IsEqualTo(2);
+            await Assert.That(device.AllTextures[0].DisposeCount).IsEqualTo(1);
+            await Assert.That(device.AllTextures[1].DisposeCount).IsEqualTo(0);
+            await Assert.That(resources.Statistics.TextureEvictionCount).IsEqualTo(1UL);
+            await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(1);
+            await Assert.That(resources.Statistics.TextureResidentDecodedBytes)
+                .IsEqualTo(OneOrdinaryTextureUploadBytes);
+            await Assert.That(resources.Statistics.TextureResidentGpuBytes).IsEqualTo(OneOrdinaryTextureUploadBytes);
+
+            resources.UploadMaterialTexture(commands, recoverable, SilkMaterialParameter.DiffuseColor);
+
+            await Assert.That(recoverableDecodeAttempts).IsEqualTo(2);
+            await Assert.That(commands.Uploads.Count).IsEqualTo(3);
+            await Assert.That(commands.Uploads[2].AsSpan(0, recoveredPixels.Length)
+                .SequenceEqual(recoveredPixels)).IsTrue();
+            await Assert.That(device.AllTextures.Count).IsEqualTo(3);
+            await Assert.That(device.AllTextures[2].Width).IsEqualTo(2u);
+            await Assert.That(device.AllTextures[2].Height).IsEqualTo(2u);
+            await Assert.That(device.AllTextures[2].DisposeCount).IsEqualTo(0);
+            await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(2);
+            await Assert.That(resources.Statistics.TextureResidentDecodedBytes)
+                .IsEqualTo(2 * OneOrdinaryTextureUploadBytes);
+            await Assert.That(resources.Statistics.TextureResidentGpuBytes)
+                .IsEqualTo(2 * OneOrdinaryTextureUploadBytes);
+            await Assert.That(resources.Statistics.TextureUploadBytes)
+                .IsEqualTo(FailedFallbackUploadBytes + (2 * OneOrdinaryTextureUploadBytes));
+            await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+                .DoesNotContain(SilkRenderDiagnosticCodes.TextureAssetNotFound);
+            await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+                .DoesNotContain(SilkRenderDiagnosticCodes.TextureDecodeFailed);
+            await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+                .DoesNotContain(SilkRenderDiagnosticCodes.TextureFallbackUsed);
+
+            // The recovered image is pinned in this frame, so the older ordinary entry goes first.
+            resources.TrimTextureResidency();
+            await Assert.That(resources.Statistics.TextureEvictionCount).IsEqualTo(2UL);
+            await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(1);
+            await Assert.That(resources.Statistics.TextureResidentDecodedBytes)
+                .IsEqualTo(OneOrdinaryTextureUploadBytes);
+            await Assert.That(resources.Statistics.TextureResidentGpuBytes).IsEqualTo(OneOrdinaryTextureUploadBytes);
+            await Assert.That(device.AllTextures[0].DisposeCount).IsEqualTo(1);
+            await Assert.That(device.AllTextures[1].DisposeCount).IsEqualTo(1);
+            await Assert.That(device.AllTextures[2].DisposeCount).IsEqualTo(0);
+
+            // Explicitly clearing failed fallbacks must not remove the recovered ordinary entry.
+            resources.RetryFailedTextures();
+            await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(1);
+            await Assert.That(device.AllTextures[2].DisposeCount).IsEqualTo(0);
+            resources.UploadMaterialTexture(commands, recoverable, SilkMaterialParameter.DiffuseColor);
+            await Assert.That(recoverableDecodeAttempts).IsEqualTo(2);
+            await Assert.That(commands.Uploads.Count).IsEqualTo(3);
+            await Assert.That(device.AllTextures.Count).IsEqualTo(3);
+        }
+
+        await Assert.That(device.AllTextures[0].DisposeCount).IsEqualTo(1);
+        await Assert.That(device.AllTextures[1].DisposeCount).IsEqualTo(1);
+        await Assert.That(device.AllTextures[2].DisposeCount).IsEqualTo(1);
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task RecoveringEvictedParameterPreservesOtherSharedAssetFailureDiagnostics(
+        bool firstCorrupt,
+        bool secondCorrupt)
+    {
+        const string materialPath = "/World/Materials/SharedFailure";
+        const string sharedAsset = "residency-shared-missing.png";
+        const string pressureAsset = "residency-shared-pressure.png";
+        int sharedDecodeAttempts = 0;
+        int pressureDecodeAttempts = 0;
+        byte[] recoveredPixels =
+        [
+            19, 53, 107, 255, 19, 53, 107, 255,
+            19, 53, 107, 255, 19, 53, 107, 255,
+        ];
+        using var device = new TextureDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) =>
+            {
+                if (asset == sharedAsset)
+                {
+                    sharedDecodeAttempts++;
+                    if (sharedDecodeAttempts <= 2)
+                    {
+                        bool corrupt = sharedDecodeAttempts == 1 ? firstCorrupt : secondCorrupt;
+                        if (corrupt)
+                        {
+                            throw new InvalidDataException("Texture data is corrupt.");
+                        }
+                        throw new FileNotFoundException("Texture is absent.", asset);
+                    }
+                    return new SilkDecodedImage(2, 2, recoveredPixels.ToArray());
+                }
+                if (asset == pressureAsset)
+                {
+                    pressureDecodeAttempts++;
+                    return new SilkDecodedImage(2, 2, CreatePixels(2, 2));
+                }
+                throw new InvalidOperationException($"Unexpected texture asset '{asset}'.");
+            },
+            residencyOptions: new SilkTextureResidencyOptions(
+                maxDecodedCpuBytes: ulong.MaxValue,
+                maxGpuBytes: OneOrdinaryTextureUploadBytes + FailedFallbackUploadBytes));
+        using var commands = new TextureCommandList();
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            materialPath,
+            SilkSurfaceKind.PreviewSurface,
+            [
+                new TextureSpec(SilkMaterialParameter.DiffuseColor, sharedAsset),
+                new TextureSpec(SilkMaterialParameter.EmissiveColor, sharedAsset),
+            ]));
+        SilkMaterialData pressure = CreateOneTextureMaterial(
+            "/World/Materials/Pressure", SilkMaterialParameter.DiffuseColor, pressureAsset);
+
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.EmissiveColor);
+
+        await Assert.That(sharedDecodeAttempts).IsEqualTo(2);
+        await Assert.That(commands.Uploads.Count).IsEqualTo(2);
+        await Assert.That(device.AllTextures.Count).IsEqualTo(2);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(2);
+        RenderDiagnostic[] initialFailures = resources.Diagnostics.Entries
+            .Where(entry => entry.Code is SilkRenderDiagnosticCodes.TextureAssetNotFound or
+                SilkRenderDiagnosticCodes.TextureDecodeFailed).ToArray();
+        RenderDiagnostic[] initialFallbacks = resources.Diagnostics.Entries
+            .Where(entry => entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed).ToArray();
+        await Assert.That(initialFailures.Length).IsEqualTo(firstCorrupt == secondCorrupt ? 1 : 2);
+        await Assert.That(initialFailures.All(entry =>
+            entry.Message.Contains(materialPath, StringComparison.Ordinal) &&
+            entry.Message.Contains(sharedAsset, StringComparison.Ordinal))).IsTrue();
+        await Assert.That(initialFailures.Any(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TextureAssetNotFound))
+            .IsEqualTo(!firstCorrupt || !secondCorrupt);
+        await Assert.That(initialFailures.Any(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TextureDecodeFailed))
+            .IsEqualTo(firstCorrupt || secondCorrupt);
+        await Assert.That(initialFallbacks.Length).IsEqualTo(2);
+        await Assert.That(initialFallbacks.All(entry =>
+            entry.Message.Contains(materialPath, StringComparison.Ordinal) &&
+            entry.Message.Contains(sharedAsset, StringComparison.Ordinal))).IsTrue();
+        await Assert.That(initialFallbacks.Count(entry =>
+            entry.Message.Contains("for DiffuseColor texture", StringComparison.Ordinal))).IsEqualTo(1);
+        await Assert.That(initialFallbacks.Count(entry =>
+            entry.Message.Contains("for EmissiveColor texture", StringComparison.Ordinal))).IsEqualTo(1);
+
+        // Pin the second fallback while the new ordinary texture makes the first stale one evictable.
+        resources.TrimTextureResidency();
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.EmissiveColor);
+        resources.UploadMaterialTexture(commands, pressure, SilkMaterialParameter.DiffuseColor);
+        resources.TrimTextureResidency();
+
+        await Assert.That(sharedDecodeAttempts).IsEqualTo(2);
+        await Assert.That(pressureDecodeAttempts).IsEqualTo(1);
+        await Assert.That(commands.Uploads.Count).IsEqualTo(3);
+        await Assert.That(device.AllTextures.Count).IsEqualTo(3);
+        await Assert.That(device.AllTextures[0].DisposeCount).IsEqualTo(1);
+        await Assert.That(device.AllTextures[1].DisposeCount).IsEqualTo(0);
+        await Assert.That(device.AllTextures[2].DisposeCount).IsEqualTo(0);
+        await Assert.That(resources.Statistics.TextureEvictionCount).IsEqualTo(1UL);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(2);
+        await Assert.That(resources.Statistics.TextureResidentGpuBytes)
+            .IsEqualTo(OneOrdinaryTextureUploadBytes + FailedFallbackUploadBytes);
+
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.EmissiveColor);
+
+        await Assert.That(sharedDecodeAttempts).IsEqualTo(3);
+        await Assert.That(commands.Uploads.Count).IsEqualTo(4);
+        await Assert.That(commands.Uploads[3].AsSpan(0, recoveredPixels.Length)
+            .SequenceEqual(recoveredPixels)).IsTrue();
+        await Assert.That(device.AllTextures.Count).IsEqualTo(4);
+        await Assert.That(device.AllTextures[1].DisposeCount).IsEqualTo(0);
+        await Assert.That(device.AllTextures[3].DisposeCount).IsEqualTo(0);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(3);
+
+        RenderDiagnostic[] remainingFailures = resources.Diagnostics.Entries
+            .Where(entry => entry.Code is SilkRenderDiagnosticCodes.TextureAssetNotFound or
+                SilkRenderDiagnosticCodes.TextureDecodeFailed).ToArray();
+        RenderDiagnostic[] remainingFallbacks = resources.Diagnostics.Entries
+            .Where(entry => entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed).ToArray();
+        await Assert.That(remainingFailures.Length).IsEqualTo(1);
+        await Assert.That(remainingFailures[0].Code).IsEqualTo(secondCorrupt
+            ? SilkRenderDiagnosticCodes.TextureDecodeFailed
+            : SilkRenderDiagnosticCodes.TextureAssetNotFound);
+        await Assert.That(remainingFailures[0].Message).Contains(materialPath);
+        await Assert.That(remainingFailures[0].Message).Contains(sharedAsset);
+        await Assert.That(remainingFallbacks.Length).IsEqualTo(1);
+        await Assert.That(remainingFallbacks[0].Severity).IsEqualTo(RenderDiagnosticSeverity.Warning);
+        await Assert.That(remainingFallbacks[0].Message).Contains("for EmissiveColor texture");
+        await Assert.That(remainingFallbacks[0].Message).Contains(materialPath);
+        await Assert.That(remainingFallbacks[0].Message).Contains(sharedAsset);
+        await Assert.That(remainingFallbacks.Any(entry =>
+            entry.Message.Contains("for DiffuseColor texture", StringComparison.Ordinal))).IsFalse();
+    }
+
+    [Test]
+    public async Task SharedParameterDiagnosticsPersistUntilBothCompositeOperandsRecover()
+    {
+        const string materialPath = "/World/Materials/SharedCompositeFailure";
+        const string sharedAsset = "residency-shared-composite.png";
+        const string pressureAsset = "residency-composite-pressure.png";
+        byte[] primaryPixels = [17, 47, 101, 255];
+        byte[] compositePixels = [31, 79, 113, 255];
+        int sharedDecodeAttempts = 0;
+        int pressureDecodeAttempts = 0;
+        using var device = new TextureDevice();
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) =>
+            {
+                if (asset == sharedAsset)
+                {
+                    sharedDecodeAttempts++;
+                    return sharedDecodeAttempts switch
+                    {
+                        1 or 2 => throw new FileNotFoundException("Texture is absent.", asset),
+                        3 => new SilkDecodedImage(1, 1, primaryPixels.ToArray()),
+                        4 => new SilkDecodedImage(1, 1, compositePixels.ToArray()),
+                        _ => throw new InvalidOperationException("Unexpected shared texture decode."),
+                    };
+                }
+                if (asset == pressureAsset)
+                {
+                    pressureDecodeAttempts++;
+                    return new SilkDecodedImage(1, 1, [3, 7, 11, 255]);
+                }
+                throw new InvalidOperationException($"Unexpected texture asset '{asset}'.");
+            },
+            residencyOptions: new SilkTextureResidencyOptions(
+                maxDecodedCpuBytes: ulong.MaxValue,
+                maxGpuBytes: 2 * FailedFallbackUploadBytes));
+        using var commands = new TextureCommandList();
+        SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+            materialPath,
+            SilkSurfaceKind.MaterialXProjected,
+            [
+                new TextureSpec(SilkMaterialParameter.DiffuseColor, sharedAsset, ComponentCount: 3),
+                new TextureSpec(SilkMaterialParameter.DiffuseColor, sharedAsset, ComponentCount: 3,
+                    CompositeOperator: SilkCompositeOperator.Multiply),
+            ]));
+        SilkMaterialData pressure = CreateOneTextureMaterial(
+            "/World/Materials/CompositePressure", SilkMaterialParameter.DiffuseColor, pressureAsset);
+        SilkMaterialTexture primary = material.GetTexture(SilkMaterialParameter.DiffuseColor)!;
+        SilkMaterialTexture composite = material.GetCompositeTexture()!;
+        await Assert.That(material.Textures.Count).IsEqualTo(2);
+        await Assert.That(primary.Asset).IsEqualTo(sharedAsset);
+        await Assert.That(composite.Asset).IsEqualTo(sharedAsset);
+        await Assert.That(composite.Parameter).IsEqualTo(primary.Parameter);
+        await Assert.That(composite.Channel).IsEqualTo(primary.Channel);
+        await Assert.That(primary.CompositeOperator).IsEqualTo(SilkCompositeOperator.None);
+        await Assert.That(composite.CompositeOperator).IsEqualTo(SilkCompositeOperator.Multiply);
+
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+        resources.UploadCompositeTexture(commands, material);
+
+        await Assert.That(sharedDecodeAttempts).IsEqualTo(2);
+        await Assert.That(commands.Uploads.Count).IsEqualTo(2);
+        await Assert.That(device.AllTextures.Count).IsEqualTo(2);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(2);
+        await Assert.That(resources.Diagnostics.Entries.Count(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TextureAssetNotFound)).IsEqualTo(1);
+        await Assert.That(resources.Diagnostics.Entries.Count(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed)).IsEqualTo(1);
+
+        // Keep the composite fallback in the current working set while pressure evicts the primary.
+        resources.TrimTextureResidency();
+        resources.UploadCompositeTexture(commands, material);
+        resources.UploadMaterialTexture(commands, pressure, SilkMaterialParameter.DiffuseColor);
+        resources.TrimTextureResidency();
+        await Assert.That(sharedDecodeAttempts).IsEqualTo(2);
+        await Assert.That(pressureDecodeAttempts).IsEqualTo(1);
+        await Assert.That(commands.Uploads.Count).IsEqualTo(3);
+        await Assert.That(device.AllTextures.Count).IsEqualTo(3);
+        await Assert.That(device.AllTextures[0].DisposeCount).IsEqualTo(1);
+        await Assert.That(device.AllTextures[1].DisposeCount).IsEqualTo(0);
+        await Assert.That(resources.Statistics.TextureEvictionCount).IsEqualTo(1UL);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(2);
+
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+        resources.UploadCompositeTexture(commands, material);
+        await Assert.That(sharedDecodeAttempts).IsEqualTo(3);
+        await Assert.That(commands.Uploads.Count).IsEqualTo(4);
+        await Assert.That(commands.Uploads[3].SequenceEqual(primaryPixels)).IsTrue();
+        await Assert.That(device.AllTextures.Count).IsEqualTo(4);
+        await Assert.That(device.AllTextures[1].DisposeCount).IsEqualTo(0);
+        await Assert.That(device.AllTextures[3].DisposeCount).IsEqualTo(0);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(3);
+        await Assert.That(resources.Diagnostics.Entries.Count(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TextureAssetNotFound)).IsEqualTo(1);
+        await Assert.That(resources.Diagnostics.Entries.Count(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed)).IsEqualTo(1);
+        RenderDiagnostic missing = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TextureAssetNotFound);
+        RenderDiagnostic fallback = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed);
+        await Assert.That(missing.Message).Contains(materialPath);
+        await Assert.That(missing.Message).Contains(sharedAsset);
+        await Assert.That(fallback.Message).Contains(materialPath);
+        await Assert.That(fallback.Message).Contains(sharedAsset);
+        await Assert.That(fallback.Message).Contains("for DiffuseColor texture");
+
+        // Advance the boundary with all three entries pinned, then leave only the composite stale.
+        resources.UploadMaterialTexture(commands, pressure, SilkMaterialParameter.DiffuseColor);
+        resources.TrimTextureResidency();
+        await Assert.That(resources.Statistics.TextureEvictionCount).IsEqualTo(1UL);
+        resources.UploadMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+        resources.UploadMaterialTexture(commands, pressure, SilkMaterialParameter.DiffuseColor);
+        resources.TrimTextureResidency();
+        await Assert.That(resources.Statistics.TextureEvictionCount).IsEqualTo(2UL);
+        await Assert.That(device.AllTextures[1].DisposeCount).IsEqualTo(1);
+        await Assert.That(device.AllTextures[3].DisposeCount).IsEqualTo(0);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(2);
+
+        resources.UploadCompositeTexture(commands, material);
+        await Assert.That(sharedDecodeAttempts).IsEqualTo(4);
+        await Assert.That(pressureDecodeAttempts).IsEqualTo(1);
+        await Assert.That(commands.Uploads.Count).IsEqualTo(5);
+        await Assert.That(commands.Uploads[4].SequenceEqual(compositePixels)).IsTrue();
+        await Assert.That(device.AllTextures.Count).IsEqualTo(5);
+        await Assert.That(device.AllTextures[4].DisposeCount).IsEqualTo(0);
+        await Assert.That(resources.Statistics.TextureCacheEntryCount).IsEqualTo(3);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .DoesNotContain(SilkRenderDiagnosticCodes.TextureAssetNotFound);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .DoesNotContain(SilkRenderDiagnosticCodes.TextureFallbackUsed);
+    }
+
+    [Test]
     public async Task EachGpuTextureIsDisposedExactlyOnceAcrossEvictionAndSceneDisposal()
     {
         using var device = new TextureDevice();

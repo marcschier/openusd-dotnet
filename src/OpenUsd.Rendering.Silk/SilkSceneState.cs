@@ -3405,7 +3405,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
 
         internal bool IsUdim { get; } = isUdim;
 
-        internal bool IsFallback { get; } = isFallback;
+        internal bool IsFallback { get; private set; } = isFallback;
+
+        internal string? FailureDiagnosticCode { get; private set; }
 
         internal TextureDependency[]? Dependencies { get; } = dependencies;
 
@@ -3427,6 +3429,12 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         internal ulong SequenceId { get; set; }
 
         internal IDisposable? PixelReservation { get; private set; } = pixelReservation;
+
+        internal void MarkFailed(string diagnosticCode)
+        {
+            IsFallback = true;
+            FailureDiagnosticCode = diagnosticCode;
+        }
 
         internal void ReleasePixels()
         {
@@ -6520,6 +6528,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
         if (StreamsMaterialTextures && TryReuseStreamedTexture(key, texture, out TextureCacheEntry? reused))
         {
+            ClearRecoveredTextureFailureDiagnostics(key);
             return reused;
         }
 
@@ -6532,7 +6541,9 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 using ISilkGraphicsCommandList probe = _device.CreateCommandList();
                 if (probe is ISilkTextureRowUploadCommandList)
                 {
-                    return CreateStreamedUdimEntry(key, material, texture, effectiveColorSpace);
+                    TextureCacheEntry streamed = CreateStreamedUdimEntry(key, material, texture, effectiveColorSpace);
+                    ClearRecoveredTextureFailureDiagnostics(key);
+                    return streamed;
                 }
             }
             image = texture.Asset.Contains("<UDIM>", StringComparison.Ordinal)
@@ -6569,13 +6580,75 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                 SilkRenderDiagnosticCodes.TextureDecodeFailed,
                 exception.Message);
         }
-        return CreateTextureEntry(
+        TextureCacheEntry created = CreateTextureEntry(
             key,
             image,
             _textures,
             texture.Asset.Contains("<UDIM>", StringComparison.Ordinal),
             dependencies,
             texture.Parameter is SilkMaterialParameter.Normal or SilkMaterialParameter.DetailNormal);
+        ClearRecoveredTextureFailureDiagnostics(key);
+        return created;
+    }
+
+    private void ClearRecoveredTextureFailureDiagnostics(TextureCacheKey key)
+    {
+        if (_diagnostics.Count == 0)
+        {
+            return;
+        }
+
+        string identity = string.Concat(key.MaterialPath, "\0", key.Asset);
+        string missingKey = string.Concat(SilkRenderDiagnosticCodes.TextureAssetNotFound, "\0", identity);
+        string decodeKey = string.Concat(SilkRenderDiagnosticCodes.TextureDecodeFailed, "\0", identity);
+        string fallbackKey = string.Concat(
+            SilkRenderDiagnosticCodes.TextureFallbackUsed, "\0", identity, "\0", key.Parameter);
+        if (!_diagnostics.ContainsKey(missingKey) &&
+            !_diagnostics.ContainsKey(decodeKey) &&
+            !_diagnostics.ContainsKey(fallbackKey))
+        {
+            return;
+        }
+
+        bool assetStillMissing = false;
+        bool assetStillUndecodable = false;
+        bool parameterStillFailed = false;
+        foreach (KeyValuePair<TextureCacheKey, TextureCacheEntry> pair in _failedTextures)
+        {
+            TextureCacheKey failed = pair.Key;
+            if (failed.MaterialPath == key.MaterialPath && failed.Asset == key.Asset)
+            {
+                switch (pair.Value.FailureDiagnosticCode)
+                {
+                    case SilkRenderDiagnosticCodes.TextureAssetNotFound:
+                        assetStillMissing = true;
+                        break;
+                    case SilkRenderDiagnosticCodes.TextureDecodeFailed:
+                        assetStillUndecodable = true;
+                        break;
+                    default:
+                        throw new InvalidOperationException(
+                            "A retained failed texture must have its failure diagnostic code.");
+                }
+                parameterStillFailed |= failed.Parameter == key.Parameter;
+                if (assetStillMissing && assetStillUndecodable && parameterStillFailed)
+                {
+                    break;
+                }
+            }
+        }
+        if (!parameterStillFailed)
+        {
+            _diagnostics.Remove(fallbackKey);
+        }
+        if (!assetStillMissing)
+        {
+            _diagnostics.Remove(missingKey);
+        }
+        if (!assetStillUndecodable)
+        {
+            _diagnostics.Remove(decodeKey);
+        }
     }
 
     private TextureCacheEntry CreateFailedTexture(
@@ -6595,7 +6668,7 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             string.Concat(materialPath, "\0", texture.Asset, "\0", texture.Parameter),
             RenderDiagnosticSeverity.Warning,
             $"Material '{materialPath}' used the authored fallback for {texture.Parameter} texture '{texture.Asset}'.");
-        return CreateTextureEntry(
+        TextureCacheEntry entry = CreateTextureEntry(
             key,
             PadConstantBorder(CreateFallbackImage(texture), texture),
             _failedTextures,
@@ -6603,6 +6676,8 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             dependencies: null,
             isNormalMap: texture.Parameter is SilkMaterialParameter.Normal or SilkMaterialParameter.DetailNormal,
             isFallback: true);
+        entry.MarkFailed(code);
+        return entry;
     }
 
     private TextureCacheEntry CreateTextureEntry(

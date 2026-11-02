@@ -1941,6 +1941,69 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task FailedTextureDoesNotResolveWrapMetadataUntilRecovery(bool streaming)
+    {
+        SilkMaterialData material = CreateUseMetadataMaterial();
+        using var device = new TextureGraphicsDevice { SupportsRowUploads = streaming };
+        int decodeCalls = 0;
+        int descriptionCalls = 0;
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (asset, _) =>
+            {
+                decodeCalls++;
+                if (decodeCalls == 1)
+                {
+                    throw new FileNotFoundException("Texture is absent.", asset);
+                }
+                return new SilkDecodedImage(1, 1, [255, 255, 255, 255]);
+            },
+            residencyOptions: new SilkTextureResidencyOptions(4096, 4096, streaming),
+            imageDescriber: _ =>
+            {
+                descriptionCalls++;
+                return new SilkImageDescription(
+                    1,
+                    1,
+                    SilkTextureFormat.Rgba8Unorm,
+                    Observed: SilkImageObservation.Queried |
+                        SilkImageObservation.AddressU |
+                        SilkImageObservation.AddressV,
+                    AddressU: SilkImageAddressObservation.Repeat,
+                    AddressV: SilkImageAddressObservation.MirrorRepeat);
+            });
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(decodeCalls).IsEqualTo(1);
+        await Assert.That(descriptionCalls).IsEqualTo(0);
+        await Assert.That(device.CreatedSamplers.Single().AddressU)
+            .IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
+        await Assert.That(device.CreatedSamplers.Single().AddressV)
+            .IsEqualTo(SilkSamplerAddressMode.ClampToBorder);
+        await Assert.That(resources.Diagnostics.Entries.Count(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TextureAssetNotFound)).IsEqualTo(1);
+        await Assert.That(resources.Diagnostics.Entries.Count(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TextureFallbackUsed)).IsEqualTo(1);
+
+        resources.RetryFailedTextures();
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor);
+
+        await Assert.That(decodeCalls).IsEqualTo(2);
+        await Assert.That(descriptionCalls).IsEqualTo(1);
+        await Assert.That(device.CreatedSamplers.Last().AddressU)
+            .IsEqualTo(SilkSamplerAddressMode.Repeat);
+        await Assert.That(device.CreatedSamplers.Last().AddressV)
+            .IsEqualTo(SilkSamplerAddressMode.MirrorRepeat);
+        await Assert.That(resources.Diagnostics.Entries.Any(entry =>
+            entry.Code is SilkRenderDiagnosticCodes.TextureAssetNotFound or
+                SilkRenderDiagnosticCodes.TextureFallbackUsed)).IsFalse();
+    }
+
+    [Test]
     public async Task UseMetadataWithoutImageWrapMetadataUsesBlackBorder()
     {
         SilkMaterialData material = CreateUseMetadataMaterial();
