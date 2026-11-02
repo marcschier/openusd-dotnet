@@ -426,6 +426,70 @@ public sealed class SilkPointPreparationNativeTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task TimeSampledPrototypeAssignmentsKeepSelectionAcrossScrubbing(
+        SilkGraphicsBackend backend)
+    {
+        using var fixture = new Fixture(InstancedPoints);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim instancer = stage.GetPrim("/Instances");
+            instancer.SetInt32Array("protoIndices", [0, 1, 0], 1);
+            instancer.SetInt32Array("protoIndices", [0, 1, 1], 2);
+            instancer.SetInt32Array("protoIndices", [0, 1, 0], 3);
+        });
+        int[] sampledIndices = await scheduler.InvokeAsync(
+            stage => stage.GetPrim("/Instances").GetInt32Array("protoIndices", 2));
+        await Assert.That(sampledIndices.AsSpan().SequenceEqual([0, 1, 1])).IsTrue();
+
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(64, 64));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(64, 64));
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0, 0, 3), Vector3.Zero, Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+
+        SilkPickFrameBinding binding = RenderPoints(session, renderer, color, depth, camera, 1, 1);
+        SelectionItem selected = await AssertPointHit(session, renderer, color, depth, binding, 48, 16, 2, 1);
+        renderer.UpdateSelection(
+            new SelectionState([selected]),
+            new SilkSelectionOutlineSettings(true, new SilkColor(1, 0.55f, 0, 1), 2, true));
+        _ = renderer.Render(color, depth, binding);
+        await AssertSelectionPixels(renderer, color, depth, binding, 48, 16, true, (16, 16));
+
+        binding = RenderPoints(session, renderer, color, depth, camera, 2, 2);
+        await Assert.That((await PickNear(renderer, color, depth, binding, 48, 16)).Status)
+            .IsEqualTo(RenderPickStatus.Miss);
+        _ = await AssertPointHit(session, renderer, color, depth, binding, 16, 16, 0, 1);
+        await Assert.That(renderer.SelectionOutlineDiagnostics.Status)
+            .IsEqualTo(SilkSelectionOutlineStatus.NoMatchingMeshes);
+        await AssertSelectionPixels(renderer, color, depth, binding, 48, 16, false);
+
+        foreach ((double time, ulong revision) in new (double, ulong)[] { (3, 3), (1, 4) })
+        {
+            binding = RenderPoints(session, renderer, color, depth, camera, revision, time);
+            SelectionItem restored = await AssertPointHit(session, renderer, color, depth, binding, 48, 16, 2, 1);
+            await Assert.That(restored).IsEqualTo(selected);
+            await Assert.That(renderer.SelectionOutlineDiagnostics.Status)
+                .IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+            await AssertSelectionPixels(renderer, color, depth, binding, 48, 16, true, (16, 16));
+        }
+
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + InstancedPoints);
+        renderer.Dispose();
+        color.Dispose();
+        depth.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task BoundedAndLegacyRenderingMatchWithVisiblePoints(SilkGraphicsBackend backend)
     {
         using var fixture = new Fixture(Points);
@@ -475,9 +539,10 @@ public sealed class SilkPointPreparationNativeTests
         ISilkGraphicsTexture color,
         ISilkGraphicsTexture depth,
         CameraState camera,
-        ulong stateRevision)
+        ulong stateRevision,
+        double timeCode = 0)
     {
-        using OpenUsdSilkPage page = session.Sync(64, 64, Options(4096), camera: camera);
+        using OpenUsdSilkPage page = session.Sync(64, 64, Options(4096), timeCode: timeCode, camera: camera);
         var binding = new SilkPickFrameBinding(stateRevision, page.Revision);
         _ = renderer.ApplyAndRender(page, color, depth, binding);
         return binding;
