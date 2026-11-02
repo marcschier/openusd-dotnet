@@ -95,11 +95,12 @@ internal static class SilkMeshGeometryBuilder
                 double ny = (abz * acx) - (abx * acz);
                 double nz = (abx * acy) - (aby * acx);
                 double lengthSquared = (nx * nx) + (ny * ny) + (nz * nz);
-                if (!double.IsFinite(lengthSquared) || lengthSquared <= NormalEpsilonSquared)
+                if (!double.IsFinite(lengthSquared))
                 {
                     continue;
                 }
 
+                // A tiny face can still change the sum at a shared vertex.
                 Accumulate(normals, pa, nx, ny, nz);
                 Accumulate(normals, pb, nx, ny, nz);
                 Accumulate(normals, pc, nx, ny, nz);

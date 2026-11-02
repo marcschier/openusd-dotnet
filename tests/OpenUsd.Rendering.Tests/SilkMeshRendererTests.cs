@@ -498,6 +498,56 @@ public sealed class SilkMeshRendererTests
     }
 
     [Test]
+    public async Task SubthresholdTriangleChangesAnAdjacentFallbackNormal()
+    {
+        SilkMeshData mesh = CreateMesh(
+            [0, 0, 0, 1, 0, 0, 0, 1.2e-15f, 0, 0, 0, 0.9e-15f],
+            [0, 1, 2, 0, 3, 1]);
+        await Assert.That(mesh.PointOrigins.IsEmpty).IsTrue();
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
+
+        await AssertFallbackNormals(geometry,
+        [
+            0, 0.6f, 0.8f,
+            0, 0.6f, 0.8f,
+            0, 0, 1,
+            0, 0, 1,
+        ]);
+    }
+
+    [Test]
+    public async Task SubthresholdTrianglesCanSumAboveTheFallbackEpsilon()
+    {
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(
+            [0, 0, 0, 1, 0, 0, 0, 0, 0.6e-15f, 0, 0, -0.6e-15f],
+            [0, 2, 1, 0, 1, 3]));
+
+        await AssertFallbackNormals(geometry,
+        [
+            0, 1, 0,
+            0, 1, 0,
+            0, 0, 1,
+            0, 0, 1,
+        ]);
+    }
+
+    [Test]
+    public async Task SubthresholdTriangleCanCancelAUsableFallbackNormal()
+    {
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(
+            [0, 0, 0, 1, 0, 0, 0, 0, 1.4e-15f, 0, 0, 0.5e-15f],
+            [0, 2, 1, 0, 1, 3]));
+
+        await AssertFallbackNormals(geometry,
+        [
+            0, 0, 1,
+            0, 0, 1,
+            0, 1, 0,
+            0, 0, 1,
+        ]);
+    }
+
+    [Test]
     public async Task ComputedNormalsHandleFiniteCoordinatesWhoseDifferenceExceedsFloatRange()
     {
         SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(
@@ -865,6 +915,19 @@ public sealed class SilkMeshRendererTests
             points, [0, 1, 2], [0], [1, 1, 1, 1],
             [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
             0, true, SilkMeshCullStyle.Nothing, [], "", attributes);
+    }
+
+    private static async Task AssertFallbackNormals(SilkMeshGeometry geometry, float[] expected)
+    {
+        await Assert.That(geometry.Vertices.Length).IsEqualTo(expected.Length * 2);
+        for (int vertex = 0; vertex < expected.Length / 3; vertex++)
+        {
+            for (int component = 0; component < 3; component++)
+            {
+                await Assert.That(geometry.Vertices[(vertex * 6) + 3 + component])
+                    .IsEqualTo(expected[(vertex * 3) + component]).Within(1e-6f);
+            }
+        }
     }
 
     private static SilkMeshData CreateMesh(
