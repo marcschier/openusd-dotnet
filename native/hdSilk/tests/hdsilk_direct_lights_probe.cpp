@@ -3529,7 +3529,7 @@ void VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow()
         "unchanged perspective shadow must not republish a changed SHADOW page");
 }
 
-void VerifyZeroRadiusUnshapedSphereRemainsUnsupported()
+void VerifyPointInsideBoundsRemainsUnsupported()
 {
     HdSilkSceneState state;
     HdSilkLightRecord light;
@@ -3554,7 +3554,7 @@ void VerifyZeroRadiusUnshapedSphereRemainsUnsupported()
     uint32_t count = 0;
     const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
     const RetainedPage page = ReadRetainedPage(bytes, count);
-    RequireOrder(page, {1u, 9u, 2u}, "zero-radius unshaped sphere unsupported");
+    RequireOrder(page, {1u, 9u, 2u}, "point inside scene bounds unsupported");
     Require(revision == 1u && page.frame.directLightCount == 1u &&
             page.frame.directLights[0].type == 2u &&
             page.frame.directLights[0].shadowEnabled == 1u &&
@@ -3562,14 +3562,14 @@ void VerifyZeroRadiusUnshapedSphereRemainsUnsupported()
             page.frame.directLights[0].shapingConeAngle == 180.0f,
         "zero-radius unshaped sphere must remain an enabled direct light");
     RequireShadowHeader(page, 0u, 1u, OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
-        "zero-radius unshaped sphere unsupported diagnostic");
+        "point inside scene bounds unsupported diagnostic");
     Require(page.shadows.maps.empty(),
-        "zero-radius unshaped sphere must remain unsupported until cubemap support");
+        "a point inside the scene bounds must not publish a partial perspective map");
 }
 
 void VerifyZeroRadiusSpherePerspectiveConeBoundaries()
 {
-    for (const float cone : {0.0f, 90.0f})
+    for (const float cone : {0.0f})
     {
         HdSilkSceneState state;
         HdSilkLightRecord light;
@@ -3599,8 +3599,315 @@ void VerifyZeroRadiusSpherePerspectiveConeBoundaries()
         RequireShadowHeader(page, 0u, 1u, OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
             "zero-radius sphere cone boundary unsupported diagnostic");
         Require(page.shadows.maps.empty(),
-            "zero-radius sphere cone outside (0, 90) must not publish a perspective map");
+            "zero-radius sphere zero cone must not publish a perspective map");
     }
+}
+
+ShadowOracle BoundedPointZOracle()
+{
+    const double padding = 3.0 / 512.0;
+    const double nearPlane = 8.0 - padding;
+    const double farPlane = 12.0 + padding;
+    const double tangent = ((2.0 + padding) / nearPlane) * (8193.0 / 8192.0);
+    return ShadowOracle{
+        {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+         0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -10.0, 1.0},
+        {1.0 / tangent, 0.0, 0.0, 0.0,
+         0.0, 1.0 / tangent, 0.0, 0.0,
+         0.0, 0.0, -(farPlane + nearPlane) / (farPlane - nearPlane), -1.0,
+         0.0, 0.0, -(2.0 * farPlane * nearPlane) / (farPlane - nearPlane), 0.0},
+        static_cast<float>((3.0 * farPlane * tangent) / 1024.0)};
+}
+
+void RequirePointBoundsInside(
+    const ShadowView& shadow,
+    const std::array<double, 3>& minimum,
+    const std::array<double, 3>& maximum,
+    const std::string& label)
+{
+    for (int corner = 0; corner < 8; ++corner)
+    {
+        const std::array<double, 4> world{
+            (corner & 1) != 0 ? maximum[0] : minimum[0],
+            (corner & 2) != 0 ? maximum[1] : minimum[1],
+            (corner & 4) != 0 ? maximum[2] : minimum[2],
+            1.0};
+        std::array<double, 4> view{};
+        std::array<double, 4> clip{};
+        for (size_t column = 0; column < 4; ++column)
+        {
+            for (size_t row = 0; row < 4; ++row)
+            {
+                view[column] += world[row] * shadow.view[(row * 4) + column];
+            }
+        }
+        for (size_t column = 0; column < 4; ++column)
+        {
+            for (size_t row = 0; row < 4; ++row)
+            {
+                clip[column] += view[row] * shadow.projection[(row * 4) + column];
+            }
+        }
+        Require(clip[3] > 0.0 && std::abs(clip[0]) < clip[3] &&
+                std::abs(clip[1]) < clip[3] &&
+                clip[2] > -clip[3] && clip[2] < clip[3],
+            label + ": world box corner " + std::to_string(corner) +
+            " must lie strictly inside the perspective frustum");
+    }
+}
+
+void VerifyBoundedPointShadowProjectionAndLifecycle()
+{
+    for (const float cone : {90.0f, 120.0f, 180.0f})
+    {
+        HdSilkSceneState state;
+        HdSilkLightRecord light;
+        light.path = "/Lights/Point";
+        light.type = OPENUSD_SILK_LIGHT_SPHERE;
+        light.radius = 0.0f;
+        light.shapingConeAngle = cone;
+        light.shadowEnabled = 1u;
+        light.transform[14] = 10.0;
+        state.ReplaceLight(light);
+
+        HdSilkMeshRecord mesh;
+        mesh.path = "/Geom/PointCaster";
+        mesh.primId = 96;
+        mesh.topologyRevision = 1;
+        mesh.points = CasterPoints3;
+        mesh.indices = {0u, 1u, 2u};
+        mesh.triangleSubprims = {0u};
+        state.ReplaceMeshInstances(mesh.path, {mesh});
+
+        uint64_t revision = 0;
+        uint32_t count = 0;
+        std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+        const RetainedPage baseline = ReadRetainedPage(bytes, count);
+        const std::string label = "bounded point cone " + std::to_string(cone);
+        RequireOrder(baseline, {1u, 9u, 2u}, label + " baseline");
+        Require(revision == 1u && baseline.frame.directLights[0].radius == 0.0f &&
+                baseline.frame.directLights[0].shapingConeAngle == cone,
+            label + ": FRAME must retain the authored zero-radius light and cone");
+        RequireShadowHeader(baseline, 1u, 1u, 0u, label + " baseline");
+        RequireShadow(baseline.shadows.maps[0], 0u, 0u, 0u, BoundedPointZOracle(), label);
+        RequirePointBoundsInside(
+            baseline.shadows.maps[0], {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, label);
+
+        bytes = state.BuildPage(&revision, &count);
+        const RetainedPage quiet = ReadRetainedPage(bytes, count);
+        RequireOrder(quiet, {1u}, label + " unchanged");
+        Require(!quiet.hasShadows, label + ": unchanged bounds must retain the map");
+
+        // Rotation changes the emitted cone, not the position-based point view.
+        light.transform[0] = 0.0;
+        light.transform[2] = -1.0;
+        light.transform[8] = 1.0;
+        light.transform[10] = 0.0;
+        state.ReplaceLight(light);
+        bytes = state.BuildPage(&revision, &count);
+        const RetainedPage rotated = ReadRetainedPage(bytes, count);
+        RequireOrder(rotated, {1u}, label + " light-axis edit");
+        Require(!rotated.hasShadows && rotated.frameBytes != baseline.frameBytes,
+            label + ": emitter-axis edits must not rotate a point shadow projection");
+
+        light.transform[14] = 12.0;
+        state.ReplaceLight(light);
+        bytes = state.BuildPage(&revision, &count);
+        const RetainedPage moved = ReadRetainedPage(bytes, count);
+        RequireShadowHeader(moved, 1u, 1u, 0u, label + " moved");
+        Require(moved.shadowBytes != baseline.shadowBytes,
+            label + ": moving the point must replace its retained projection");
+        RequirePointBoundsInside(
+            moved.shadows.maps[0], {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, label + " moved");
+
+        light.transform[14] = 2.0;
+        state.ReplaceLight(light);
+        bytes = state.BuildPage(&revision, &count);
+        const RetainedPage intersecting = ReadRetainedPage(bytes, count);
+        RequireShadowHeader(intersecting, 0u, 1u, OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
+            label + " intersecting scene bounds");
+
+        light.transform[14] = 10.0;
+        state.ReplaceLight(light);
+        bytes = state.BuildPage(&revision, &count);
+        const RetainedPage restored = ReadRetainedPage(bytes, count);
+        RequireShadowHeader(restored, 1u, 1u, 0u, label + " restored");
+        Require(restored.shadowBytes == baseline.shadowBytes,
+            label + ": a corrected point position must restore the original projection");
+
+        light.shadowEnabled = 0u;
+        state.ReplaceLight(light);
+        bytes = state.BuildPage(&revision, &count);
+        const RetainedPage retired = ReadRetainedPage(bytes, count);
+        RequireShadowHeader(retired, 0u, 0u, 0u, label + " disabled");
+
+        light.shadowEnabled = 1u;
+        state.ReplaceLight(light);
+        bytes = state.BuildPage(&revision, &count);
+        const RetainedPage readmitted = ReadRetainedPage(bytes, count);
+        RequireShadowHeader(readmitted, 1u, 1u, 0u, label + " readmitted");
+        Require(readmitted.shadowBytes == baseline.shadowBytes,
+            label + ": reenabling must readmit the same map");
+    }
+}
+
+void VerifyBoundedPointShadowFrustumAndRefusal()
+{
+    struct Case
+    {
+        const char* name;
+        std::array<double, 3> eye;
+        bool supported;
+    };
+    const Case cases[] = {
+        {"vertical fallback basis", {0.0, 10.0, 0.0}, true},
+        {"outside box but inside bounding sphere", {0.0, 0.0, 2.5}, true},
+        {"diagonal outside box", {3.0, 3.0, 3.0}, true},
+        {"inside box", {0.0, 0.0, 0.0}, false},
+        {"on box", {0.0, 0.0, 2.0}, false},
+        {"inside conservative padding", {0.0, 0.0, 2.001}, false},
+        {"unresolvable angular extent", {1.006, 0.0, 0.0}, false}};
+    for (const Case& row : cases)
+    {
+        HdSilkSceneState state;
+        HdSilkLightRecord light;
+        light.path = "/Lights/Point";
+        light.type = OPENUSD_SILK_LIGHT_SPHERE;
+        light.radius = 0.0f;
+        light.shapingConeAngle = 180.0f;
+        light.shadowEnabled = 1u;
+        light.transform[12] = row.eye[0];
+        light.transform[13] = row.eye[1];
+        light.transform[14] = row.eye[2];
+        state.ReplaceLight(light);
+        HdSilkMeshRecord mesh;
+        mesh.path = "/Geom/PointCaster";
+        mesh.primId = 97;
+        mesh.topologyRevision = 1;
+        mesh.points = CasterPoints3;
+        mesh.indices = {0u, 1u, 2u};
+        mesh.triangleSubprims = {0u};
+        state.ReplaceMeshInstances(mesh.path, {mesh});
+
+        uint64_t revision = 0;
+        uint32_t count = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+        const RetainedPage page = ReadRetainedPage(bytes, count);
+        RequireShadowHeader(page, row.supported ? 1u : 0u, 1u,
+            row.supported ? 0u : OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE, row.name);
+        if (row.supported)
+        {
+            RequirePointBoundsInside(
+                page.shadows.maps[0], {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, row.name);
+        }
+    }
+
+    HdSilkSceneState empty;
+    HdSilkLightRecord light;
+    light.path = "/Lights/Point";
+    light.type = OPENUSD_SILK_LIGHT_SPHERE;
+    light.radius = 0.0f;
+    light.shapingConeAngle = 180.0f;
+    light.shadowEnabled = 1u;
+    light.transform[14] = 10.0;
+    empty.ReplaceLight(light);
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    const std::vector<uint8_t> bytes = empty.BuildPage(&revision, &count);
+    RequireShadowHeader(ReadRetainedPage(bytes, count), 0u, 1u,
+        OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS, "point without geometry");
+}
+
+void VerifyBoundedPointShadowBudgetAndPublicationRetry()
+{
+    HdSilkSceneState state;
+    HdSilkMeshRecord mesh;
+    mesh.path = "/Geom/PointCaster";
+    mesh.primId = 98;
+    mesh.topologyRevision = 1;
+    mesh.points = CasterPoints3;
+    mesh.indices = {0u, 1u, 2u};
+    mesh.triangleSubprims = {0u};
+    state.ReplaceMeshInstances(mesh.path, {mesh});
+    std::vector<HdSilkLightRecord> lights;
+    for (uint32_t index = 0; index < 5; ++index)
+    {
+        HdSilkLightRecord light;
+        light.path = "/Lights/P" + std::to_string(index);
+        light.type = OPENUSD_SILK_LIGHT_SPHERE;
+        light.radius = 0.0f;
+        light.shapingConeAngle = 180.0f;
+        light.shadowEnabled = 1u;
+        light.transform[14] = 10.0;
+        state.ReplaceLight(light);
+        lights.push_back(light);
+    }
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+    const RetainedPage full = ReadRetainedPage(bytes, count);
+    RequireShadowHeader(full, 4u, 5u, OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET,
+        "five point lights under four-map limit");
+    for (uint32_t index = 0; index < 4; ++index)
+    {
+        RequireShadow(full.shadows.maps[index], index, index, 0u, BoundedPointZOracle(),
+            "bounded point map " + std::to_string(index));
+    }
+    state.RemoveLight(lights[0].path);
+    bytes = state.BuildPage(&revision, &count);
+    const RetainedPage admitted = ReadRetainedPage(bytes, count);
+    RequireShadowHeader(admitted, 4u, 4u, 0u, "fifth point admitted after retirement");
+    for (uint32_t index = 0; index < 4; ++index)
+    {
+        RequireShadow(admitted.shadows.maps[index], index, index, 0u, BoundedPointZOracle(),
+            "readmitted point map " + std::to_string(index));
+    }
+
+    HdSilkSceneState publication;
+    publication.ReplaceMeshInstances(mesh.path, {mesh});
+    HdSilkLightRecord point = lights[0];
+    point.path = "/Lights/Point";
+    publication.ReplaceLight(point);
+    for (uint32_t index = 0; index < 127; ++index)
+    {
+        const std::string digits = std::to_string(index);
+        HdSilkLightRecord other;
+        other.path = "/Lights/L" + std::string(3 - digits.size(), '0') + digits;
+        other.type = OPENUSD_SILK_LIGHT_DISTANT;
+        publication.ReplaceLight(other);
+    }
+    bytes = publication.BuildPage(&revision, &count);
+    const RetainedPage before = ReadRetainedPage(bytes, count);
+    RequireShadowHeader(before, 1u, 128u, 0u, "point publication baseline");
+    const uint64_t beforeRevision = revision;
+    point.transform[14] = 12.0;
+    publication.ReplaceLight(point);
+    HdSilkLightRecord extra;
+    extra.path = "/Lights/Overflow";
+    extra.type = OPENUSD_SILK_LIGHT_DISTANT;
+    publication.ReplaceLight(extra);
+    uint64_t rejectedRevision = 12345u;
+    uint32_t rejectedCount = 678u;
+    bool rejected = false;
+    try
+    {
+        (void)publication.BuildPage(&rejectedRevision, &rejectedCount);
+    }
+    catch (const std::length_error&)
+    {
+        rejected = true;
+    }
+    Require(rejected && rejectedRevision == 12345u && rejectedCount == 678u,
+        "overflow must refuse publication without consuming the pending point edit");
+    publication.RemoveLight(extra.path);
+    bytes = publication.BuildPage(&revision, &count);
+    const RetainedPage retry = ReadRetainedPage(bytes, count);
+    Require(revision == beforeRevision + 1u, "point retry must advance once");
+    RequireShadowHeader(retry, 1u, 128u, 0u, "point publication retry");
+    Require(retry.shadowBytes != before.shadowBytes,
+        "the point projection edit must survive a refused publication");
+    RequirePointBoundsInside(
+        retry.shadows.maps[0], {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, "point retry");
 }
 
 void VerifyShadowBudgetAndUnsupportedTypes()
@@ -4005,10 +4312,16 @@ int main(int argc, char* argv[])
         {"domes-shadows", "VerifyHighIndexShadowDescriptors", VerifyHighIndexShadowDescriptors},
         {"domes-shadows", "VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow",
             VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow},
-        {"domes-shadows", "VerifyZeroRadiusUnshapedSphereRemainsUnsupported",
-            VerifyZeroRadiusUnshapedSphereRemainsUnsupported},
+        {"domes-shadows", "VerifyPointInsideBoundsRemainsUnsupported",
+            VerifyPointInsideBoundsRemainsUnsupported},
         {"domes-shadows", "VerifyZeroRadiusSpherePerspectiveConeBoundaries",
             VerifyZeroRadiusSpherePerspectiveConeBoundaries},
+        {"domes-shadows", "VerifyBoundedPointShadowProjectionAndLifecycle",
+            VerifyBoundedPointShadowProjectionAndLifecycle},
+        {"domes-shadows", "VerifyBoundedPointShadowFrustumAndRefusal",
+            VerifyBoundedPointShadowFrustumAndRefusal},
+        {"domes-shadows", "VerifyBoundedPointShadowBudgetAndPublicationRetry",
+            VerifyBoundedPointShadowBudgetAndPublicationRetry},
         {"domes-shadows", "VerifyShadowBudgetAndUnsupportedTypes", VerifyShadowBudgetAndUnsupportedTypes},
         {"domes-shadows", "VerifyShadowEligibilityBoundaries", VerifyShadowEligibilityBoundaries}};
 

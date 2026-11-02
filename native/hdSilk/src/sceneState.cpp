@@ -2712,17 +2712,10 @@ void BuildOrthographicShadowProjection(
     outProjection[15] = 1.0;
 }
 
-/// Builds the row-major, row-vector view of a shaped sphere light. Its local
-/// +Z axis points from the receiver toward the light, so the emitter looks back
-/// along -Z. The published caster sphere must lie wholly in front of the eye.
-bool BuildPerspectiveSpotShadowView(
+void BuildPerspectiveShadowView(
     const GfVec3d& direction,
     const GfVec3d& eye,
-    const GfVec3d& center,
-    double radius,
-    double (&outView)[16],
-    double* outNearPlane,
-    double* outFarPlane)
+    double (&outView)[16])
 {
     const GfVec3d zAxis = direction.GetNormalized();
     const GfVec3d up =
@@ -2746,6 +2739,22 @@ bool BuildPerspectiveSpotShadowView(
     outView[13] = -GfDot(eye, yAxis);
     outView[14] = -GfDot(eye, zAxis);
     outView[15] = 1.0;
+}
+
+/// Builds the row-major, row-vector view of a shaped sphere light. Its local
+/// +Z axis points from the receiver toward the light, so the emitter looks back
+/// along -Z. The published caster sphere must lie wholly in front of the eye.
+bool BuildPerspectiveSpotShadowView(
+    const GfVec3d& direction,
+    const GfVec3d& eye,
+    const GfVec3d& center,
+    double radius,
+    double (&outView)[16],
+    double* outNearPlane,
+    double* outFarPlane)
+{
+    const GfVec3d zAxis = direction.GetNormalized();
+    BuildPerspectiveShadowView(direction, eye, outView);
 
     const double centerDepth = -GfDot(center - eye, zAxis);
     *outNearPlane = centerDepth - radius;
@@ -2754,17 +2763,15 @@ bool BuildPerspectiveSpotShadowView(
         *outNearPlane > 1e-6 && *outFarPlane > *outNearPlane;
 }
 
-/// Builds an OpenGL [-w, +w] depth perspective projection. UsdLux's cone angle
-/// is the half-angle around the emitter's -Z axis.
-bool BuildPerspectiveSpotShadowProjection(
+bool BuildPerspectiveShadowProjection(
     double nearPlane,
     double farPlane,
-    double coneHalfAngleDegrees,
+    double tangent,
     double (&outProjection)[16])
 {
-    constexpr double pi = 3.14159265358979323846;
-    const double tangent = std::tan(coneHalfAngleDegrees * (pi / 180.0));
-    if (!std::isfinite(tangent) || tangent <= 0.0)
+    if (!std::isfinite(nearPlane) || !std::isfinite(farPlane) ||
+        nearPlane <= 0.0 || farPlane <= nearPlane ||
+        !std::isfinite(tangent) || tangent <= 0.0)
     {
         return false;
     }
@@ -2782,6 +2789,101 @@ bool BuildPerspectiveSpotShadowProjection(
     return std::all_of(
         outProjection, outProjection + 16,
         [](double value) { return std::isfinite(value); });
+}
+
+/// Builds an OpenGL [-w, +w] depth perspective projection. UsdLux's cone angle
+/// is the half-angle around the emitter's -Z axis.
+bool BuildPerspectiveSpotShadowProjection(
+    double nearPlane,
+    double farPlane,
+    double coneHalfAngleDegrees,
+    double (&outProjection)[16])
+{
+    constexpr double pi = 3.14159265358979323846;
+    return BuildPerspectiveShadowProjection(
+        nearPlane, farPlane, std::tan(coneHalfAngleDegrees * (pi / 180.0)), outProjection);
+}
+
+// A point outside the expanded world box has a separating view through its
+// closest box point. Perspective extrema over that box occur at its corners
+// while every corner has positive depth.
+bool BuildPerspectivePointShadow(
+    const GfVec3d& eye,
+    const HdSilkWorldBounds& bounds,
+    double radius,
+    double (&outView)[16],
+    double (&outProjection)[16],
+    double* outFarPlane,
+    double* outTangent)
+{
+    const double padding = std::max(radius / 512.0, 1e-6);
+    if (!std::isfinite(padding))
+    {
+        return false;
+    }
+
+    GfVec3d minimum;
+    GfVec3d maximum;
+    GfVec3d closest;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        minimum[axis] = bounds.minimum[axis] - padding;
+        maximum[axis] = bounds.maximum[axis] + padding;
+        if (!std::isfinite(eye[axis]) ||
+            !std::isfinite(minimum[axis]) || !std::isfinite(maximum[axis]) ||
+            minimum[axis] > maximum[axis])
+        {
+            return false;
+        }
+        closest[axis] = std::clamp(eye[axis], minimum[axis], maximum[axis]);
+    }
+
+    const GfVec3d direction = eye - closest;
+    const double distance = std::hypot(direction[0], direction[1], direction[2]);
+    if (!std::isfinite(distance) || distance <= 1e-6)
+    {
+        return false;
+    }
+    BuildPerspectiveShadowView(direction / distance, eye, outView);
+    if (!std::all_of(outView, outView + 16,
+            [](double value) { return std::isfinite(value); }))
+    {
+        return false;
+    }
+
+    double nearPlane = std::numeric_limits<double>::infinity();
+    double farPlane = 0.0;
+    double tangent = 0.0;
+    for (int corner = 0; corner < 8; ++corner)
+    {
+        const GfVec3d delta(
+            ((corner & 1) != 0 ? maximum[0] : minimum[0]) - eye[0],
+            ((corner & 2) != 0 ? maximum[1] : minimum[1]) - eye[1],
+            ((corner & 4) != 0 ? maximum[2] : minimum[2]) - eye[2]);
+        const double x = delta[0] * outView[0] + delta[1] * outView[4] + delta[2] * outView[8];
+        const double y = delta[0] * outView[1] + delta[1] * outView[5] + delta[2] * outView[9];
+        const double depth = -(delta[0] * outView[2] + delta[1] * outView[6] + delta[2] * outView[10]);
+        if (!std::isfinite(x) || !std::isfinite(y) ||
+            !std::isfinite(depth) || depth <= 1e-6)
+        {
+            return false;
+        }
+        nearPlane = std::min(nearPlane, depth);
+        farPlane = std::max(farPlane, depth);
+        tangent = std::max(tangent, std::max(std::abs(x), std::abs(y)) / depth);
+    }
+
+    // Leave room for float matrix conversion and reject a near-180-degree
+    // frustum whose depth and angular resolution cannot represent this bound.
+    tangent *= 1.0 + (1.0 / 8192.0);
+    if (!std::isfinite(tangent) || tangent > 64.0 ||
+        !BuildPerspectiveShadowProjection(nearPlane, farPlane, tangent, outProjection))
+    {
+        return false;
+    }
+    *outFarPlane = farPlane;
+    *outTangent = tangent;
+    return true;
 }
 
 /// Resolves the masks one prim's categories produce against the ordered direct
@@ -3287,7 +3389,7 @@ HdSilkSceneState::_ResolveShadowTable(
     // A scene whose published geometry is a single point, a single line, or
     // nothing has no extent to project. Padding it to an arbitrary size would
     // silently choose a shadow frustum no author asked for.
-    const bool hasCasters = bounds.valid && radius > 1e-6;
+    const bool hasCasters = bounds.valid && std::isfinite(radius) && radius > 1e-6;
 
     uint32_t flags = OPENUSD_SILK_SHADOW_UNSUPPORTED_NONE;
     size_t budgetOverflow = 0;
@@ -3302,11 +3404,10 @@ HdSilkSceneState::_ResolveShadowTable(
         const bool distant = light.type == OPENUSD_SILK_LIGHT_DISTANT;
         const bool spot = light.type == OPENUSD_SILK_LIGHT_SPHERE &&
             light.radius == 0.0f && coneHalfAngle > 0.0f && coneHalfAngle < 90.0f;
-        if (!distant && !spot)
+        const bool point = light.type == OPENUSD_SILK_LIGHT_SPHERE &&
+            light.radius == 0.0f && coneHalfAngle >= 90.0f;
+        if (!distant && !spot && !point)
         {
-            // A zero-radius sphere with a cone half-angle below 90 degrees fits
-            // one perspective map. Wider cones, omnidirectional points, finite
-            // spheres and area lights need another projection or more maps.
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
             continue;
         }
@@ -3326,7 +3427,8 @@ HdSilkSceneState::_ResolveShadowTable(
             light.transform[9],
             light.transform[10]);
         const double directionLengthSquared = GfDot(direction, direction);
-        if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1e-12)
+        if (!point &&
+            (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1e-12))
         {
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
             continue;
@@ -3354,7 +3456,7 @@ HdSilkSceneState::_ResolveShadowTable(
                 descriptor.projection);
             texelWorldSize = (2.0 * radius) / static_cast<double>(descriptor.resolution);
         }
-        else
+        else if (spot)
         {
             const GfVec3d eye(
                 light.transform[12],
@@ -3375,7 +3477,31 @@ HdSilkSceneState::_ResolveShadowTable(
                 std::tan(static_cast<double>(coneHalfAngle) * (pi / 180.0))) /
                 static_cast<double>(descriptor.resolution);
         }
+        else
+        {
+            const GfVec3d eye(
+                light.transform[12],
+                light.transform[13],
+                light.transform[14]);
+            double farPlane = 0.0;
+            double tangent = 0.0;
+            if (!BuildPerspectivePointShadow(
+                    eye, bounds, radius, descriptor.view, descriptor.projection,
+                    &farPlane, &tangent))
+            {
+                flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                continue;
+            }
+            texelWorldSize = (2.0 * farPlane * tangent) /
+                static_cast<double>(descriptor.resolution);
+        }
         if (!std::isfinite(texelWorldSize) || texelWorldSize <= 0.0)
+        {
+            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+            continue;
+        }
+        const double normalBias = 1.5 * texelWorldSize;
+        if (!std::isfinite(normalBias) || normalBias > std::numeric_limits<float>::max())
         {
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
             continue;
@@ -3385,7 +3511,7 @@ HdSilkSceneState::_ResolveShadowTable(
         // normal bias stays in world units because the receiver it offsets is.
         descriptor.depthBias =
             static_cast<float>(1.5 / static_cast<double>(descriptor.resolution));
-        descriptor.normalBias = static_cast<float>(1.5 * texelWorldSize);
+        descriptor.normalBias = static_cast<float>(normalBias);
         descriptor.pcfRadius = 1.0f;
 
         for (const HdSilkLinkEntry& entry : links.entries)

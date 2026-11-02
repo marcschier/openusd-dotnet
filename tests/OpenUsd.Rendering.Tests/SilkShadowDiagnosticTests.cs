@@ -198,8 +198,6 @@ public sealed class SilkShadowDiagnosticTests
     [Test]
     public async Task AnUnsupportedLightTypeIsNamedByTheProjectionItWouldNeed()
     {
-        // This legacy-length frame has no shaping table, so its zero-radius
-        // sphere remains omnidirectional and needs the unimplemented cubemap path.
         using var device = new ShadowDiagnosticGraphicsDevice(supportsRasterShadows: true);
         using var resources = new SilkSceneGpuResources(
             device,
@@ -212,6 +210,80 @@ public sealed class SilkShadowDiagnosticTests
             entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
         await Assert.That(diagnostic.Message).Contains("sphere");
         await Assert.That(diagnostic.Message).Contains("cone half-angle");
+    }
+
+    [Test]
+    [Arguments(1u, "covered by one finite perspective map")]
+    [Arguments(2u, "shadow-map budget")]
+    [Arguments(4u, "no world extent")]
+    public async Task ARefusedPointShadowReportsItsProjectionReason(uint reason, string expected)
+    {
+        using var device = new ShadowDiagnosticGraphicsDevice(supportsRasterShadows: true);
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => throw new InvalidOperationException("No image is decoded."));
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateLightingFrame([(Type: 2u, ShadowEnabled: 1u)]), 1, 1);
+        _ = scene.Apply(CreateEmptyShadowTable(1u, reason), 1, 2);
+        _ = resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, exposure: 0f);
+
+        RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
+        await Assert.That(diagnostic.Message).Contains(expected);
+    }
+
+    [Test]
+    public async Task AFiniteSphereShadowRequiresAreaSamplingRatherThanPointProjection()
+    {
+        byte[] frame = CreateLightingFrame([(Type: 2u, ShadowEnabled: 1u)]);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            frame.AsSpan(LightTableOffset + 172, 4), 0.5f);
+        using var device = new ShadowDiagnosticGraphicsDevice(supportsRasterShadows: true);
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => throw new InvalidOperationException("No image is decoded."));
+        var scene = new SilkSceneState();
+        _ = scene.Apply(frame, 1, 1);
+        _ = scene.Apply(CreateEmptyShadowTable(1u, 1u), 1, 2);
+        _ = resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, exposure: 0f);
+
+        RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
+        await Assert.That(diagnostic.Message).Contains("area-light shadow sampling");
+        await Assert.That(diagnostic.Message).Contains("not a point-light projection");
+    }
+
+    [Test]
+    public async Task AdmittingAFormerlyRefusedPointMapClearsItsDiagnostic()
+    {
+        using var device = new ShadowDiagnosticGraphicsDevice(supportsRasterShadows: true);
+        using var resources = new SilkSceneGpuResources(
+            device,
+            (_, _) => throw new InvalidOperationException("No image is decoded."));
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateLightingFrame([(Type: 2u, ShadowEnabled: 1u)]), 1, 1);
+        _ = scene.Apply(CreateEmptyShadowTable(1u, 1u), 1, 2);
+        _ = resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, exposure: 0f);
+        bool refused = resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
+
+        _ = scene.Apply(CreateShadowTable(lightCount: 1u, lightIndex: 0u), 1, 3);
+        _ = resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, exposure: 0f);
+        bool reportedAfterAdmission = resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
+
+        await Assert.That(refused).IsTrue();
+        await Assert.That(reportedAfterAdmission).IsFalse();
+    }
+
+    private static byte[] CreateEmptyShadowTable(uint lightCount, uint reasons)
+    {
+        var bytes = new byte[24];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Shadow);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), lightCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), reasons);
+        return bytes;
     }
 
     /// <summary>Builds an ABI v19 shadow table with one orthographic descriptor.</summary>

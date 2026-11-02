@@ -909,6 +909,895 @@ public sealed class SilkMeshInvalidPointsNativeTests
         await Assert.That(textureBudgets.GpuTextureBudget!.Usage.ReservedBytes).IsEqualTo(0ul);
     }
 
+    [Test]
+    [MethodDataSource(nameof(NormalBackends))]
+    public async Task ComputedAreaWeightedNormalsMatchAuthoredReferencePixels(SilkGraphicsBackend backend)
+    {
+        const string weightedNormals = """
+            normal3f[] normals = [
+                (0,0.242535625,0.9701425), (0,0.242535625,0.9701425),
+                (0,0,1), (0,1,0)
+            ] (interpolation = "vertex")
+            """;
+        const string equalWeightedNormals = """
+            normal3f[] normals = [
+                (0,0.70710678,0.70710678), (0,0.70710678,0.70710678),
+                (0,0,1), (0,1,0)
+            ] (interpolation = "vertex")
+            """;
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using Fixture actualFixture = Create(AreaWeightedMesh(string.Empty));
+        using Fixture referenceFixture = Create(AreaWeightedMesh(weightedNormals));
+        using Fixture equalWeightedFixture = Create(AreaWeightedMesh(equalWeightedNormals));
+        await using UsdStageScheduler actualScheduler = UsdStageScheduler.Open(actualFixture.Path);
+        await using UsdStageScheduler referenceScheduler = UsdStageScheduler.Open(referenceFixture.Path);
+        await using UsdStageScheduler equalWeightedScheduler = UsdStageScheduler.Open(equalWeightedFixture.Path);
+        using UsdStageRenderSource actualSource = await actualScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource referenceSource = await referenceScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource equalWeightedSource = await equalWeightedScheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession actual = OpenUsdSilkRuntime.Create(actualFixture.Plugins, actualSource);
+        using OpenUsdSilkSession reference = OpenUsdSilkRuntime.Create(referenceFixture.Plugins, referenceSource);
+        using OpenUsdSilkSession equalWeighted =
+            OpenUsdSilkRuntime.Create(equalWeightedFixture.Plugins, equalWeightedSource);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        using var equalWeightedRenderer = new SilkMeshRenderer(device);
+
+        byte[] initial = Capture(actual, device, renderer, enableShadows: false);
+        byte[] expected = Capture(reference, device, referenceRenderer, enableShadows: false);
+        byte[] equalWeightedPixels = Capture(equalWeighted, device, equalWeightedRenderer, enableShadows: false);
+        SilkMeshData actualMesh = renderer.Scene.Meshes.Values.Single();
+        await Assert.That(actualMesh.AuthoredNormals.IsEmpty).IsTrue();
+        await Assert.That(actualMesh.Points.Length).IsEqualTo(12);
+        await Assert.That(actualMesh.Indices.Span.SequenceEqual(new uint[] { 0, 1, 2, 0, 3, 1 })).IsTrue();
+        await AssertPixelsNear(initial, expected);
+        await Assert.That(CountDifferentPixels(initial, equalWeightedPixels)).IsGreaterThan(50);
+        ulong builds = renderer.GpuResources.Statistics.GeometryBuilds;
+        await Assert.That(Capture(actual, device, renderer, enableShadows: false).SequenceEqual(initial)).IsTrue();
+        await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsEqualTo(builds);
+
+        UsdVec3f[] changedPoints =
+            [new(-0.6f, -0.6f, 0), new(0.6f, -0.6f, 0), new(-0.6f, 0.6f, 0), new(-0.6f, -0.6f, 0.6f)];
+        await actualScheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points", changedPoints));
+        await referenceScheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            mesh.SetVec3fArray("points", changedPoints);
+            mesh.SetVec3fArray("normals",
+                [new(0, 0.4472136f, 0.8944272f), new(0, 0.4472136f, 0.8944272f), new(0, 0, 1), new(0, 1, 0)]);
+        });
+        byte[] updated = Capture(actual, device, renderer, enableShadows: false);
+        byte[] updatedReference = Capture(reference, device, referenceRenderer, enableShadows: false);
+        await AssertPixelsNear(updated, updatedReference);
+        await Assert.That(updated.SequenceEqual(initial)).IsFalse();
+        await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsGreaterThan(builds);
+        renderer.Dispose();
+        referenceRenderer.Dispose();
+        equalWeightedRenderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task SmallTriangleNormalsFollowSimulationAndRestore(bool authored, bool bounded)
+    {
+        string normals = authored ? """
+            normal3f[] normals = [
+                (0,0.6,0.8), (0,0.6,0.8), (0,0,1), (0,0,1)
+            ] (interpolation = "vertex")
+            """ : string.Empty;
+        string geometry = $$"""
+            def Mesh "Mesh" {
+                uniform token subdivisionScheme = "catmullClark"
+                point3f[] points = [(0,0,0), (1,0,0), (0,1.2e-15,0), (0,0,0.9e-15)]
+                int[] faceVertexCounts = [3,3]
+                int[] faceVertexIndices = [0,1,2,0,3,1]
+                {{normals}}
+            }
+            """;
+        using Fixture fixture = Create(geometry);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(page);
+
+        SilkMeshData original = scene.Meshes.Values.Single();
+        float[] originalPoints = original.Points.ToArray();
+        int[] originalOrigins = original.PointOrigins.ToArray();
+        await Assert.That(originalPoints.Length).IsEqualTo(12);
+        await Assert.That(original.Indices.Span.SequenceEqual([0u, 1u, 2u, 0u, 3u, 1u])).IsTrue();
+        await Assert.That(original.AuthoredNormals.IsEmpty).IsEqualTo(!authored);
+        await AssertSmallTriangleNormals(original, 0.6f, 0.8f);
+
+        ulong revision = scene.GeometryRevision;
+        SilkDeformationResult unchanged = scene.ReplacePoints("/Mesh", 0, originalPoints, out ulong meshId);
+        await Assert.That(unchanged).IsEqualTo(SilkDeformationResult.Unchanged);
+        await Assert.That(meshId).IsEqualTo(original.Id);
+        await Assert.That(scene.GeometryRevision).IsEqualTo(revision);
+        await Assert.That(scene.HasAuthoredGeometry(meshId)).IsFalse();
+
+        float[] simulatedPoints = originalPoints.ToArray();
+        simulatedPoints[11] = 0.3e-15f;
+        SilkDeformationResult changed = scene.ReplacePoints("/Mesh", 0, simulatedPoints, out meshId);
+        await Assert.That(changed).IsEqualTo(SilkDeformationResult.Applied);
+        SilkMeshData simulated = scene.Meshes[meshId];
+        await Assert.That(simulated.Points.Span.SequenceEqual(simulatedPoints)).IsTrue();
+        await Assert.That(simulated.AuthoredNormals.IsEmpty).IsTrue();
+        await Assert.That(simulated.TopologyFingerprint).IsEqualTo(original.TopologyFingerprint);
+        await Assert.That(simulated.TopologyRevision).IsEqualTo(original.TopologyRevision);
+        await Assert.That(simulated.PointOrigins.Span.SequenceEqual(originalOrigins)).IsTrue();
+        await Assert.That(scene.GeometryRevision).IsEqualTo(revision + 1);
+        await Assert.That(scene.HasAuthoredGeometry(meshId)).IsTrue();
+        await AssertSmallTriangleNormals(simulated, 0.242535625f, 0.9701425f);
+
+        await Assert.That(scene.RestoreAuthoredPoints(meshId)).IsTrue();
+        await Assert.That(scene.Meshes[meshId]).IsSameReferenceAs(original);
+        await Assert.That(scene.Meshes[meshId].Points.Span.SequenceEqual(originalPoints)).IsTrue();
+        await Assert.That(scene.GeometryRevision).IsEqualTo(revision + 2);
+        await Assert.That(scene.HasAuthoredGeometry(meshId)).IsFalse();
+        await Assert.That(scene.RestoreAuthoredPoints(meshId)).IsFalse();
+        await AssertSmallTriangleNormals(scene.Meshes[meshId], 0.6f, 0.8f);
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task CoplanarSeamNormalsFollowEqualCopiesAndRestore(bool authored, bool bounded)
+    {
+        string normals = authored ? """
+            normal3f[] normals = [(0,0,1), (0,0,1), (0,0,1), (0,0,1)] (interpolation = "vertex")
+            """ : string.Empty;
+        string geometry = $$"""
+            def Mesh "Mesh" {
+                uniform token subdivisionScheme = "catmullClark"
+                point3f[] points = [(-0.6,-0.6,0), (0.6,-0.6,0), (0.6,0.6,0), (-0.6,0.6,0)]
+                int[] faceVertexCounts = [3,3]
+                int[] faceVertexIndices = [0,1,2,0,2,3]
+                texCoord2f[] primvars:st = [
+                    (0,0), (1,0), (1,1), (0.2,0.2), (0.8,0.8), (0,1)
+                ] (interpolation = "faceVarying")
+                {{normals}}
+            }
+            """;
+        using Fixture fixture = Create(geometry);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(page);
+
+        SilkMeshData original = scene.Meshes.Values.Single();
+        float[] originalPoints = original.Points.ToArray();
+        float[] originalNormals = original.AuthoredNormals.ToArray();
+        float[] originalUvs = original.FindTexCoord("st")!.Data.ToArray();
+        int[] originalOrigins = original.PointOrigins.ToArray();
+        await Assert.That(originalPoints.Length).IsEqualTo(18);
+        await Assert.That(originalNormals.Length).IsEqualTo(authored ? originalPoints.Length : 0);
+        int[] copies = Enumerable.Range(0, originalPoints.Length / 3)
+            .Where(vertex => originalPoints[vertex * 3] == -0.6f &&
+                originalPoints[(vertex * 3) + 1] == -0.6f &&
+                originalPoints[(vertex * 3) + 2] == 0)
+            .ToArray();
+        await Assert.That(copies.Length).IsEqualTo(2);
+        await AssertCoplanarSeamNormals(original, 0, 1, originalUvs);
+
+        float[] simulatedPoints = originalPoints.ToArray();
+        for (int component = 0; component < simulatedPoints.Length; component += 3)
+        {
+            simulatedPoints[component + 2] = simulatedPoints[component + 1] * 0.5f;
+        }
+        await Assert.That(simulatedPoints[(copies[0] * 3) + 2])
+            .IsEqualTo(simulatedPoints[(copies[1] * 3) + 2]);
+        SilkDeformationResult result = scene.ReplacePoints("/Mesh", 0, simulatedPoints, out ulong meshId);
+        await Assert.That(result).IsEqualTo(SilkDeformationResult.Applied);
+        SilkMeshData simulated = scene.Meshes[meshId];
+        await Assert.That(simulated.Points.Span.SequenceEqual(simulatedPoints)).IsTrue();
+        await Assert.That(simulated.AuthoredNormals.IsEmpty).IsTrue();
+        await Assert.That(simulated.PointOrigins.Span.SequenceEqual(originalOrigins)).IsTrue();
+        await Assert.That(simulated.TopologyFingerprint).IsEqualTo(original.TopologyFingerprint);
+        await Assert.That(simulated.TopologyRevision).IsEqualTo(original.TopologyRevision);
+        await AssertCoplanarSeamNormals(simulated, -0.4472136f, 0.8944272f, originalUvs);
+
+        await Assert.That(scene.RestoreAuthoredPoints(meshId)).IsTrue();
+        await Assert.That(scene.Meshes[meshId]).IsSameReferenceAs(original);
+        await Assert.That(scene.Meshes[meshId].Points.Span.SequenceEqual(originalPoints)).IsTrue();
+        await Assert.That(scene.Meshes[meshId].AuthoredNormals.Span.SequenceEqual(originalNormals)).IsTrue();
+        await AssertCoplanarSeamNormals(scene.Meshes[meshId], 0, 1, originalUvs);
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task DivergentEmittedCopiesRemainAcceptedAndRestoreTheAuthoredMesh(bool authored, bool bounded)
+    {
+        string geometry = CoarseMeshNormalFixture.Mesh(
+            "catmullClark", true, true, authored ? CoarseMeshNormalFixture.SharedNormals : string.Empty);
+        using Fixture fixture = Create(geometry);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = SyncMesh(session, RenderComplexity.Low, bounded);
+        scene.Apply(page);
+
+        SilkMeshData original = scene.Meshes.Values.Single();
+        float[] originalPoints = original.Points.ToArray();
+        float[] originalNormals = original.AuthoredNormals.ToArray();
+        int[] originalOrigins = original.PointOrigins.ToArray();
+        var copies = new List<int>();
+        for (int vertex = 0; vertex < originalPoints.Length / 3; vertex++)
+        {
+            int component = vertex * 3;
+            if (originalPoints[component] == -0.6f &&
+                originalPoints[component + 1] == -0.6f &&
+                originalPoints[component + 2] == 0)
+            {
+                copies.Add(vertex);
+            }
+        }
+        await Assert.That(copies.Count).IsEqualTo(2);
+        await Assert.That(originalNormals.Length).IsEqualTo(authored ? originalPoints.Length : 0);
+
+        float[] simulatedPoints = originalPoints.ToArray();
+        simulatedPoints[(copies[0] * 3) + 2] = 0.2f;
+        simulatedPoints[(copies[1] * 3) + 2] = -0.3f;
+        SilkDeformationResult result = scene.ReplacePoints("/Mesh", 0, simulatedPoints, out ulong meshId);
+        await Assert.That(result).IsEqualTo(SilkDeformationResult.Applied);
+        SilkMeshData simulated = scene.Meshes[meshId];
+        await Assert.That(simulated.Points.Span.SequenceEqual(simulatedPoints)).IsTrue();
+        await Assert.That(simulated.AuthoredNormals.IsEmpty).IsTrue();
+        await Assert.That(simulated.Indices.Span.SequenceEqual(original.Indices.Span)).IsTrue();
+        await Assert.That(simulated.TriangleSubprims.Span.SequenceEqual(original.TriangleSubprims.Span)).IsTrue();
+        await Assert.That(simulated.PointOrigins.Span.SequenceEqual(originalOrigins)).IsTrue();
+        await Assert.That(simulated.TopologyFingerprint).IsEqualTo(original.TopologyFingerprint);
+        await Assert.That(simulated.TopologyRevision).IsEqualTo(original.TopologyRevision);
+
+        await Assert.That(scene.RestoreAuthoredPoints(meshId)).IsTrue();
+        await Assert.That(scene.Meshes[meshId]).IsSameReferenceAs(original);
+        await Assert.That(scene.Meshes[meshId].Points.Span.SequenceEqual(originalPoints)).IsTrue();
+        await Assert.That(scene.Meshes[meshId].AuthoredNormals.Span.SequenceEqual(originalNormals)).IsTrue();
+        await Assert.That(scene.RestoreAuthoredPoints(meshId)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task DistinctCoarseNormalSourcesHaveIdenticalVisibleTriangles(bool hiddenFace, bool bounded)
+    {
+        string first = CoarseMeshNormalFixture.Mesh(
+            hiddenFace ? "catmullClark" : "none", true, false, string.Empty, holeSecondFace: hiddenFace);
+        string second = hiddenFace ? """
+            def Mesh "Mesh" {
+                uniform token subdivisionScheme = "catmullClark"
+                point3f[] points = [(-0.6,-0.6,0), (0.6,-0.6,0), (-0.6,0.6,0), (-0.6,-0.6,1.2)]
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0,1,2]
+            }
+            """ : CoarseMeshNormalFixture.Mesh("catmullClark", true, false, string.Empty);
+        using Fixture firstFixture = Create(first);
+        using Fixture secondFixture = Create(second);
+        await using UsdStageScheduler firstScheduler = UsdStageScheduler.Open(firstFixture.Path);
+        await using UsdStageScheduler secondScheduler = UsdStageScheduler.Open(secondFixture.Path);
+        using UsdStageRenderSource firstSource = await firstScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource secondSource = await secondScheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession firstSession = OpenUsdSilkRuntime.Create(firstFixture.Plugins, firstSource);
+        using OpenUsdSilkSession secondSession = OpenUsdSilkRuntime.Create(secondFixture.Plugins, secondSource);
+        using var firstScene = new SilkSceneState();
+        using var secondScene = new SilkSceneState();
+        using OpenUsdSilkPage firstPage = SyncMesh(firstSession, RenderComplexity.Low, bounded);
+        using OpenUsdSilkPage secondPage = SyncMesh(secondSession, RenderComplexity.Low, bounded);
+        firstScene.Apply(firstPage);
+        secondScene.Apply(secondPage);
+
+        SilkMeshData firstMesh = firstScene.Meshes.Values.Single();
+        SilkMeshData secondMesh = secondScene.Meshes.Values.Single();
+        float[] expected = hiddenFace
+            ? [-0.6f, -0.6f, 0, 0.6f, -0.6f, 0, -0.6f, 0.6f, 0]
+            : [
+                -0.6f, -0.6f, 0, 0.6f, -0.6f, 0, -0.6f, 0.6f, 0,
+                -0.6f, -0.6f, 0, -0.6f, -0.6f, 1.2f, 0.6f, -0.6f, 0
+            ];
+        int[] expectedSubprims = hiddenFace ? [0] : [0, 1];
+        await Assert.That(first == second).IsFalse();
+        await Assert.That(ExpandTrianglePoints(firstMesh).AsSpan().SequenceEqual(expected)).IsTrue();
+        await Assert.That(ExpandTrianglePoints(secondMesh).AsSpan().SequenceEqual(expected)).IsTrue();
+        await Assert.That(firstMesh.TriangleSubprims.Span.SequenceEqual(expectedSubprims)).IsTrue();
+        await Assert.That(secondMesh.TriangleSubprims.Span.SequenceEqual(expectedSubprims)).IsTrue();
+        await Assert.That(firstMesh.AuthoredNormals.IsEmpty).IsTrue();
+        await Assert.That(secondMesh.AuthoredNormals.IsEmpty).IsTrue();
+    }
+
+    [Test]
+    [MethodDataSource(nameof(FallbackNormalCases))]
+    public async Task FallbackNormalsRespectSubdivisionAndPointIdentity(
+        SilkGraphicsBackend backend, string scheme, bool sharedPoints, bool faceVarying)
+    {
+        bool smooth = (scheme is "catmullClark" or "loop") && sharedPoints;
+        string geometry = CoarseMeshNormalFixture.Mesh(scheme, sharedPoints, faceVarying, string.Empty);
+        using Fixture actualFixture = Create(geometry);
+        using Fixture referenceFixture = Create(CoarseMeshNormalFixture.Mesh(
+            scheme, sharedPoints, faceVarying,
+            smooth ? CoarseMeshNormalFixture.SharedNormals : sharedPoints
+                ? CoarseMeshNormalFixture.FlatCornerNormals : CoarseMeshNormalFixture.SeparateNormals));
+        using Fixture incorrectFixture = Create(CoarseMeshNormalFixture.Mesh(
+            scheme, sharedPoints, faceVarying,
+            smooth ? CoarseMeshNormalFixture.FlatCornerNormals : sharedPoints
+                ? CoarseMeshNormalFixture.SharedNormals : CoarseMeshNormalFixture.JoinedSeparateNormals));
+        await using UsdStageScheduler actualScheduler = UsdStageScheduler.Open(actualFixture.Path);
+        await using UsdStageScheduler referenceScheduler = UsdStageScheduler.Open(referenceFixture.Path);
+        await using UsdStageScheduler incorrectScheduler = UsdStageScheduler.Open(incorrectFixture.Path);
+        using UsdStageRenderSource actualSource = await actualScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource referenceSource = await referenceScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource incorrectSource = await incorrectScheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession actual = OpenUsdSilkRuntime.Create(actualFixture.Plugins, actualSource);
+        using OpenUsdSilkSession reference = OpenUsdSilkRuntime.Create(referenceFixture.Plugins, referenceSource);
+        using OpenUsdSilkSession incorrect = OpenUsdSilkRuntime.Create(incorrectFixture.Plugins, incorrectSource);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        using var incorrectRenderer = new SilkMeshRenderer(device);
+
+        byte[] initial = Capture(actual, device, renderer, enableShadows: false);
+        byte[] expected = Capture(reference, device, referenceRenderer, enableShadows: false);
+        byte[] incorrectPixels = Capture(incorrect, device, incorrectRenderer, enableShadows: false);
+        SilkMeshData actualMesh = renderer.Scene.Meshes.Values.Single();
+        await Assert.That(actualMesh.AuthoredNormals.IsEmpty).IsTrue();
+        if (faceVarying)
+        {
+            await Assert.That(actualMesh.FindTexCoord("st")).IsNotNull();
+            await Assert.That(actualMesh.Points.Length).IsEqualTo(18);
+            int[] origins = sharedPoints ? [0, 1, 2, 0, 3, 1] : [0, 1, 2, 3, 4, 5];
+            await Assert.That(actualMesh.PointOrigins.Span.SequenceEqual(origins)).IsTrue();
+        }
+        else
+        {
+            await Assert.That(actualMesh.FindTexCoord("st")).IsNull();
+        }
+        await Assert.That(CountDifferentPixels(expected, incorrectPixels)).IsGreaterThan(50);
+        await AssertPixelsNear(initial, expected);
+
+        ulong builds = renderer.GpuResources.Statistics.GeometryBuilds;
+        await Assert.That(Capture(actual, device, renderer, enableShadows: false).SequenceEqual(initial)).IsTrue();
+        await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsEqualTo(builds);
+        UsdVec3f[] changedPoints = sharedPoints
+            ? [new(-0.6f, -0.6f, 0), new(0.6f, -0.6f, 0), new(-0.6f, 0.6f, 0), new(-0.6f, -0.6f, 0.3f)]
+            : [
+                new(-0.6f, -0.6f, 0), new(0.6f, -0.6f, 0), new(-0.6f, 0.6f, 0),
+                new(-0.6f, -0.6f, 0), new(-0.6f, -0.6f, 0.3f), new(0.6f, -0.6f, 0)
+            ];
+        UsdVec3f[] changedNormals = smooth
+            ? [new(0, 0.242535625f, 0.9701425f), new(0, 0.242535625f, 0.9701425f), new(0, 0, 1), new(0, 1, 0)]
+            : [new(0, 0, 1), new(0, 0, 1), new(0, 0, 1), new(0, 1, 0), new(0, 1, 0), new(0, 1, 0)];
+        await actualScheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points", changedPoints));
+        await referenceScheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            mesh.SetVec3fArray("points", changedPoints);
+            mesh.SetVec3fArray("normals", changedNormals);
+        });
+        byte[] updated = Capture(actual, device, renderer, enableShadows: false);
+        await AssertPixelsNear(updated, Capture(reference, device, referenceRenderer, enableShadows: false));
+        await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsGreaterThan(builds);
+        if (smooth)
+        {
+            await Assert.That(updated.SequenceEqual(initial)).IsFalse();
+        }
+        await Assert.That(await File.ReadAllTextAsync(actualFixture.Path)).IsEqualTo("#usda 1.0\n" + geometry);
+        renderer.Dispose();
+        referenceRenderer.Dispose();
+        incorrectRenderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [MethodDataSource(nameof(NgonNormalCases))]
+    public async Task CoarseNgonFallbackNormalsUseFaceAdjacency(
+        SilkGraphicsBackend backend, bool faceVarying, bool bounded)
+    {
+        string geometry = CoarseMeshNormalFixture.NgonMesh("catmullClark", faceVarying, string.Empty);
+        using Fixture actualFixture = Create(geometry);
+        using Fixture referenceFixture = Create(CoarseMeshNormalFixture.NgonMesh(
+            "catmullClark", faceVarying, CoarseMeshNormalFixture.NgonNormals));
+        using Fixture incorrectFixture = Create(CoarseMeshNormalFixture.NgonMesh(
+            "catmullClark", faceVarying, CoarseMeshNormalFixture.NgonTriangulatedNormals));
+        await using UsdStageScheduler actualScheduler = UsdStageScheduler.Open(actualFixture.Path);
+        await using UsdStageScheduler referenceScheduler = UsdStageScheduler.Open(referenceFixture.Path);
+        await using UsdStageScheduler incorrectScheduler = UsdStageScheduler.Open(incorrectFixture.Path);
+        using UsdStageRenderSource actualSource = await actualScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource referenceSource = await referenceScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource incorrectSource = await incorrectScheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession actual = OpenUsdSilkRuntime.Create(actualFixture.Plugins, actualSource);
+        using OpenUsdSilkSession reference = OpenUsdSilkRuntime.Create(referenceFixture.Plugins, referenceSource);
+        using OpenUsdSilkSession incorrect = OpenUsdSilkRuntime.Create(incorrectFixture.Plugins, incorrectSource);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        using var incorrectRenderer = new SilkMeshRenderer(device);
+
+        byte[] initial = Capture(actual, device, renderer, enableShadows: false, bounded: bounded);
+        byte[] expected = Capture(reference, device, referenceRenderer, enableShadows: false, bounded: bounded);
+        byte[] incorrectPixels = Capture(incorrect, device, incorrectRenderer, enableShadows: false, bounded: bounded);
+        SilkMeshData actualMesh = renderer.Scene.Meshes.Values.Single();
+        await Assert.That(actualMesh.AuthoredNormals.IsEmpty).IsTrue();
+        await Assert.That(actualMesh.FindTexCoord("st") is not null).IsEqualTo(faceVarying);
+        await Assert.That(CountDifferentPixels(expected, incorrectPixels)).IsGreaterThan(50);
+        await AssertPixelsNear(initial, expected);
+
+        ulong builds = renderer.GpuResources.Statistics.GeometryBuilds;
+        await Assert.That(Capture(actual, device, renderer, enableShadows: false, bounded: bounded)
+            .SequenceEqual(initial)).IsTrue();
+        await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsEqualTo(builds);
+        float[] retainedPoints = actualMesh.Points.ToArray();
+        UsdVec3f[] changedPoints = CreateChangedNgonPoints(0.3f);
+        await UpdateNgonReferenceAsync(referenceScheduler, changedPoints, 0.242535625f, 0.9701425f);
+
+        float[] simulatedPoints = CreateSimulatedNgonPoints(retainedPoints, 0.3f, out int movedVertices);
+        await Assert.That(movedVertices).IsGreaterThan(0);
+        SilkDeformationResult mismatch = renderer.Scene.ReplacePoints(
+            "/Mesh", 0, [0f], out ulong refusedId);
+        await Assert.That(mismatch).IsEqualTo(SilkDeformationResult.VertexCountMismatch);
+        await Assert.That(refusedId).IsEqualTo(actualMesh.Id);
+        float[] invalidPoints = simulatedPoints.ToArray();
+        invalidPoints[0] = float.NaN;
+        SilkDeformationResult invalid = renderer.Scene.ReplacePoints(
+            "/Mesh", 0, invalidPoints, out refusedId);
+        await Assert.That(invalid).IsEqualTo(SilkDeformationResult.NonFiniteValue);
+        await Assert.That(refusedId).IsEqualTo(actualMesh.Id);
+        await Assert.That(renderer.Scene.Meshes[refusedId].Points.Span.SequenceEqual(retainedPoints)).IsTrue();
+        await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsEqualTo(builds);
+        await Assert.That(Capture(actual, device, renderer, enableShadows: false, bounded: bounded)
+            .SequenceEqual(initial)).IsTrue();
+
+        SilkDeformationResult result = renderer.Scene.ReplacePoints(
+            "/Mesh", 0, simulatedPoints, out ulong meshId);
+        await Assert.That(result).IsEqualTo(SilkDeformationResult.Applied);
+        renderer.GpuResources.Apply(
+            renderer.Scene, new SilkSceneDelta(new[] { meshId }, ReadOnlyMemory<ulong>.Empty));
+        byte[] simulated = Capture(actual, device, renderer, enableShadows: false, bounded: bounded);
+        await Assert.That(renderer.Scene.Meshes[meshId].Points.Span.SequenceEqual(simulatedPoints)).IsTrue();
+        await AssertPixelsNear(
+            simulated, Capture(reference, device, referenceRenderer, enableShadows: false, bounded: bounded));
+        await Assert.That(simulated.SequenceEqual(initial)).IsFalse();
+        ulong simulatedBuilds = renderer.GpuResources.Statistics.GeometryBuilds;
+        await Assert.That(simulatedBuilds).IsGreaterThan(builds);
+
+        await Assert.That(renderer.Scene.RestoreAuthoredPoints(meshId)).IsTrue();
+        renderer.GpuResources.Apply(
+            renderer.Scene, new SilkSceneDelta(new[] { meshId }, ReadOnlyMemory<ulong>.Empty));
+        byte[] restored = Capture(actual, device, renderer, enableShadows: false, bounded: bounded);
+        await Assert.That(renderer.Scene.Meshes[meshId].Points.Span.SequenceEqual(retainedPoints)).IsTrue();
+        await AssertPixelsNear(restored, expected);
+        await Assert.That(renderer.Scene.RestoreAuthoredPoints(meshId)).IsFalse();
+        builds = renderer.GpuResources.Statistics.GeometryBuilds;
+        await Assert.That(builds).IsGreaterThan(simulatedBuilds);
+
+        await actualScheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points", changedPoints));
+        if (bounded)
+        {
+            var refused = new SilkSceneIngestionOptions(
+                RenderPurpose.Default | RenderPurpose.Render | RenderPurpose.Proxy, "full", 1);
+            await Assert.That(() => actual.Sync(64, 64, refused)).Throws<OpenUsdSilkException>();
+            await Assert.That(renderer.Scene.Meshes.Values.Single().Points.Span.SequenceEqual(retainedPoints)).IsTrue();
+            await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsEqualTo(builds);
+        }
+        byte[] updated = Capture(actual, device, renderer, enableShadows: false, bounded: bounded);
+        await AssertPixelsNear(
+            updated, Capture(reference, device, referenceRenderer, enableShadows: false, bounded: bounded));
+        await Assert.That(updated.SequenceEqual(initial)).IsFalse();
+        await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsGreaterThan(builds);
+        await Assert.That(await File.ReadAllTextAsync(actualFixture.Path)).IsEqualTo("#usda 1.0\n" + geometry);
+        renderer.Dispose();
+        referenceRenderer.Dispose();
+        incorrectRenderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [MethodDataSource(nameof(NonplanarNgonNormalCases))]
+    public async Task NonplanarNgonNormalsUseEachOriginalFaceCorner(
+        SilkGraphicsBackend backend, bool faceVarying, bool bounded)
+    {
+        string geometry = CoarseMeshNormalFixture.NgonMesh(
+            "catmullClark", faceVarying, string.Empty, skewed: true);
+        using Fixture actualFixture = Create(geometry);
+        using Fixture referenceFixture = Create(CoarseMeshNormalFixture.NgonMesh(
+            "catmullClark", faceVarying, CoarseMeshNormalFixture.SkewedNgonCornerNormals, skewed: true));
+        using Fixture incorrectFixture = Create(CoarseMeshNormalFixture.NgonMesh(
+            "catmullClark", faceVarying, CoarseMeshNormalFixture.SkewedNgonFaceAreaNormals, skewed: true));
+        await using UsdStageScheduler actualScheduler = UsdStageScheduler.Open(actualFixture.Path);
+        await using UsdStageScheduler referenceScheduler = UsdStageScheduler.Open(referenceFixture.Path);
+        await using UsdStageScheduler incorrectScheduler = UsdStageScheduler.Open(incorrectFixture.Path);
+        using UsdStageRenderSource actualSource = await actualScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource referenceSource = await referenceScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource incorrectSource = await incorrectScheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession actual = OpenUsdSilkRuntime.Create(actualFixture.Plugins, actualSource);
+        using OpenUsdSilkSession reference = OpenUsdSilkRuntime.Create(referenceFixture.Plugins, referenceSource);
+        using OpenUsdSilkSession incorrect = OpenUsdSilkRuntime.Create(incorrectFixture.Plugins, incorrectSource);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        using var incorrectRenderer = new SilkMeshRenderer(device);
+
+        byte[] expected = Capture(reference, device, referenceRenderer, enableShadows: false, bounded: bounded);
+        byte[] incorrectPixels = Capture(incorrect, device, incorrectRenderer, enableShadows: false, bounded: bounded);
+        await Assert.That(CountDifferentPixels(expected, incorrectPixels)).IsGreaterThan(0);
+        await AssertPixelsNear(
+            Capture(actual, device, renderer, enableShadows: false, bounded: bounded), expected);
+
+        renderer.Dispose();
+        referenceRenderer.Dispose();
+        incorrectRenderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(await File.ReadAllTextAsync(actualFixture.Path)).IsEqualTo("#usda 1.0\n" + geometry);
+    }
+
+    [Test]
+    [MethodDataSource(nameof(FlatNonplanarNgonNormalCases))]
+    public async Task NonplanarPolygonFlatNormalsUseEachEmittedTriangle(
+        SilkGraphicsBackend backend, string scheme, bool faceVarying, bool bounded)
+    {
+        string geometry = CoarseMeshNormalFixture.NgonMesh(scheme, faceVarying, string.Empty, skewed: true);
+        using Fixture actualFixture = Create(geometry);
+        using Fixture referenceFixture = Create(CoarseMeshNormalFixture.NgonMesh(
+            scheme, faceVarying, CoarseMeshNormalFixture.SkewedNgonTriangulatedFlatNormals,
+            skewed: true, triangulated: true));
+        using Fixture incorrectFixture = Create(CoarseMeshNormalFixture.NgonMesh(
+            scheme, faceVarying, CoarseMeshNormalFixture.SkewedNgonFlatNormals, skewed: true));
+        await using UsdStageScheduler actualScheduler = UsdStageScheduler.Open(actualFixture.Path);
+        await using UsdStageScheduler referenceScheduler = UsdStageScheduler.Open(referenceFixture.Path);
+        await using UsdStageScheduler incorrectScheduler = UsdStageScheduler.Open(incorrectFixture.Path);
+        using UsdStageRenderSource actualSource = await actualScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource referenceSource = await referenceScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource incorrectSource = await incorrectScheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession actual = OpenUsdSilkRuntime.Create(actualFixture.Plugins, actualSource);
+        using OpenUsdSilkSession reference = OpenUsdSilkRuntime.Create(referenceFixture.Plugins, referenceSource);
+        using OpenUsdSilkSession incorrect = OpenUsdSilkRuntime.Create(incorrectFixture.Plugins, incorrectSource);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        using var incorrectRenderer = new SilkMeshRenderer(device);
+
+        byte[] initial = Capture(actual, device, renderer, enableShadows: false, bounded: bounded);
+        byte[] expected = Capture(reference, device, referenceRenderer, enableShadows: false, bounded: bounded);
+        byte[] incorrectPixels = Capture(incorrect, device, incorrectRenderer, enableShadows: false, bounded: bounded);
+        await Assert.That(CountDifferentPixels(expected, incorrectPixels)).IsGreaterThan(0);
+        await AssertPixelsNear(initial, expected);
+
+        SilkMeshData mesh = renderer.Scene.Meshes.Values.Single();
+        await Assert.That(mesh.AuthoredNormals.IsEmpty).IsTrue();
+        float[] originalPoints = mesh.Points.ToArray();
+        float[] simulatedPoints = originalPoints.ToArray();
+        int movedVertices = 0;
+        for (int index = 0; index < simulatedPoints.Length; index += 3)
+        {
+            if (MathF.Abs(simulatedPoints[index]) < 0.00001f &&
+                MathF.Abs(simulatedPoints[index + 1] - 0.4f) < 0.00001f &&
+                MathF.Abs(simulatedPoints[index + 2] - 0.8f) < 0.00001f)
+            {
+                simulatedPoints[index + 2] = 0.4f;
+                movedVertices++;
+            }
+        }
+        await Assert.That(movedVertices).IsGreaterThan(0);
+        await referenceScheduler.InvokeAsync(stage =>
+        {
+            UsdPrim referenceMesh = stage.GetPrim("/Mesh");
+            referenceMesh.SetVec3fArray("points",
+            [
+                new(-0.8f, -0.4f, 0), new(0.8f, -0.4f, 0), new(0, 0.4f, 0.4f),
+                new(-0.8f, 0.4f, 0), new(-0.8f, -0.4f, 0.8f)
+            ]);
+            referenceMesh.SetVec3fArray("normals",
+            [
+                new(0, -0.4472136f, 0.8944272f),
+                new(0, -0.4472136f, 0.8944272f),
+                new(0, -0.4472136f, 0.8944272f),
+                new(-0.4472136f, 0, 0.8944272f),
+                new(-0.4472136f, 0, 0.8944272f),
+                new(-0.4472136f, 0, 0.8944272f),
+                new(0, 1, 0), new(0, 1, 0), new(0, 1, 0)
+            ]);
+        });
+
+        ulong builds = renderer.GpuResources.Statistics.GeometryBuilds;
+        SilkDeformationResult result = renderer.Scene.ReplacePoints(
+            "/Mesh", 0, simulatedPoints, out ulong meshId);
+        await Assert.That(result).IsEqualTo(SilkDeformationResult.Applied);
+        renderer.GpuResources.Apply(
+            renderer.Scene, new SilkSceneDelta(new[] { meshId }, ReadOnlyMemory<ulong>.Empty));
+        byte[] simulated = Capture(actual, device, renderer, enableShadows: false, bounded: bounded);
+        await Assert.That(renderer.Scene.Meshes[meshId].Points.Span.SequenceEqual(simulatedPoints)).IsTrue();
+        await AssertPixelsNear(
+            simulated, Capture(reference, device, referenceRenderer, enableShadows: false, bounded: bounded));
+        await Assert.That(simulated.SequenceEqual(initial)).IsFalse();
+        ulong simulatedBuilds = renderer.GpuResources.Statistics.GeometryBuilds;
+        await Assert.That(simulatedBuilds).IsGreaterThan(builds);
+
+        await Assert.That(renderer.Scene.RestoreAuthoredPoints(meshId)).IsTrue();
+        renderer.GpuResources.Apply(
+            renderer.Scene, new SilkSceneDelta(new[] { meshId }, ReadOnlyMemory<ulong>.Empty));
+        byte[] restored = Capture(actual, device, renderer, enableShadows: false, bounded: bounded);
+        await Assert.That(renderer.Scene.Meshes[meshId].Points.Span.SequenceEqual(originalPoints)).IsTrue();
+        await AssertPixelsNear(restored, expected);
+        await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsGreaterThan(simulatedBuilds);
+        await Assert.That(await File.ReadAllTextAsync(actualFixture.Path)).IsEqualTo("#usda 1.0\n" + geometry);
+        renderer.Dispose();
+        referenceRenderer.Dispose();
+        incorrectRenderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [MethodDataSource(nameof(SimulatedNgonNormalCases))]
+    public async Task CoarseNgonSimulationRecomputesAuthoredNormalsFromFaceAdjacency(
+        SilkGraphicsBackend backend, bool faceVarying)
+    {
+        string geometry = CoarseMeshNormalFixture.NgonMesh(
+            "catmullClark", faceVarying, CoarseMeshNormalFixture.NgonNormals);
+        using Fixture actualFixture = Create(geometry);
+        using Fixture referenceFixture = Create(geometry);
+        using Fixture incorrectFixture = Create(CoarseMeshNormalFixture.NgonMesh(
+            "catmullClark", faceVarying, CoarseMeshNormalFixture.HalfHeightNgonTriangulatedNormals));
+        await using UsdStageScheduler actualScheduler = UsdStageScheduler.Open(actualFixture.Path);
+        await using UsdStageScheduler referenceScheduler = UsdStageScheduler.Open(referenceFixture.Path);
+        await using UsdStageScheduler incorrectScheduler = UsdStageScheduler.Open(incorrectFixture.Path);
+        using UsdStageRenderSource actualSource = await actualScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource referenceSource = await referenceScheduler.AcquireRenderSourceAsync();
+        using UsdStageRenderSource incorrectSource = await incorrectScheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession actual = OpenUsdSilkRuntime.Create(actualFixture.Plugins, actualSource);
+        using OpenUsdSilkSession reference = OpenUsdSilkRuntime.Create(referenceFixture.Plugins, referenceSource);
+        using OpenUsdSilkSession incorrect = OpenUsdSilkRuntime.Create(incorrectFixture.Plugins, incorrectSource);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(4_194_304);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        using var incorrectRenderer = new SilkMeshRenderer(device);
+
+        byte[] initial = Capture(actual, device, renderer, enableShadows: false);
+        await AssertPixelsNear(initial, Capture(reference, device, referenceRenderer, enableShadows: false));
+        SilkMeshData authored = renderer.Scene.Meshes.Values.Single();
+        await Assert.That(authored.AuthoredNormals.IsEmpty).IsFalse();
+        float[] originalPoints = authored.Points.ToArray();
+        float[] simulatedPoints = CreateSimulatedNgonPoints(originalPoints, 0.6f, out int movedVertices);
+        await Assert.That(movedVertices).IsGreaterThan(0);
+        UsdVec3f[] changedPoints = CreateChangedNgonPoints(0.6f);
+        await UpdateNgonReferenceAsync(referenceScheduler, changedPoints, 0.4472136f, 0.8944272f);
+        await incorrectScheduler.InvokeAsync(
+            stage => stage.GetPrim("/Mesh").SetVec3fArray("points", changedPoints));
+
+        ulong builds = renderer.GpuResources.Statistics.GeometryBuilds;
+        SilkDeformationResult result = renderer.Scene.ReplacePoints(
+            "/Mesh", 0, simulatedPoints, out ulong meshId);
+        await Assert.That(result).IsEqualTo(SilkDeformationResult.Applied);
+        await Assert.That(renderer.Scene.Meshes[meshId].AuthoredNormals.IsEmpty).IsTrue();
+        renderer.GpuResources.Apply(
+            renderer.Scene, new SilkSceneDelta(new[] { meshId }, ReadOnlyMemory<ulong>.Empty));
+        byte[] simulated = Capture(actual, device, renderer, enableShadows: false);
+        await Assert.That(renderer.Scene.Meshes[meshId].Points.Span.SequenceEqual(simulatedPoints)).IsTrue();
+        byte[] expected = Capture(reference, device, referenceRenderer, enableShadows: false);
+        byte[] incorrectPixels = Capture(incorrect, device, incorrectRenderer, enableShadows: false);
+        await Assert.That(CountDifferentPixels(expected, incorrectPixels)).IsGreaterThan(0);
+        await AssertPixelsNear(simulated, expected);
+        await Assert.That(simulated.SequenceEqual(initial)).IsFalse();
+        ulong simulatedBuilds = renderer.GpuResources.Statistics.GeometryBuilds;
+        await Assert.That(simulatedBuilds).IsGreaterThan(builds);
+
+        await Assert.That(renderer.Scene.RestoreAuthoredPoints(meshId)).IsTrue();
+        renderer.GpuResources.Apply(
+            renderer.Scene, new SilkSceneDelta(new[] { meshId }, ReadOnlyMemory<ulong>.Empty));
+        byte[] restored = Capture(actual, device, renderer, enableShadows: false);
+        await Assert.That(renderer.Scene.Meshes[meshId].Points.Span.SequenceEqual(originalPoints)).IsTrue();
+        await Assert.That(renderer.Scene.Meshes[meshId].AuthoredNormals.IsEmpty).IsFalse();
+        await Assert.That(restored.SequenceEqual(initial)).IsTrue();
+        await Assert.That(renderer.GpuResources.Statistics.GeometryBuilds).IsGreaterThan(simulatedBuilds);
+        renderer.Dispose();
+        referenceRenderer.Dispose();
+        incorrectRenderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    public static IEnumerable<SilkGraphicsBackend> NormalBackends()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return [SilkGraphicsBackend.D3D12, SilkGraphicsBackend.Vulkan];
+        }
+        if (OperatingSystem.IsLinux())
+        {
+            return [SilkGraphicsBackend.Vulkan];
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            return [SilkGraphicsBackend.Metal];
+        }
+        throw new PlatformNotSupportedException("Normal conformance requires D3D12, Vulkan, or Metal.");
+    }
+
+    public static IEnumerable<(SilkGraphicsBackend, string, bool, bool)> FallbackNormalCases()
+    {
+        foreach (SilkGraphicsBackend backend in NormalBackends())
+        {
+            yield return (backend, "none", true, false);
+            yield return (backend, "none", true, true);
+            yield return (backend, "none", false, true);
+            yield return (backend, "bilinear", true, false);
+            yield return (backend, "bilinear", true, true);
+            yield return (backend, "catmullClark", true, false);
+            yield return (backend, "catmullClark", true, true);
+            yield return (backend, "catmullClark", false, false);
+            yield return (backend, "catmullClark", false, true);
+            yield return (backend, "loop", true, false);
+            yield return (backend, "loop", true, true);
+            yield return (backend, "loop", false, true);
+        }
+    }
+
+    public static IEnumerable<(SilkGraphicsBackend, bool, bool)> NgonNormalCases()
+    {
+        foreach (SilkGraphicsBackend backend in NormalBackends())
+        {
+            yield return (backend, false, false);
+            yield return (backend, true, false);
+            yield return (backend, false, true);
+            yield return (backend, true, true);
+        }
+    }
+
+    public static IEnumerable<(SilkGraphicsBackend, bool, bool)> NonplanarNgonNormalCases()
+    {
+        foreach (SilkGraphicsBackend backend in NormalBackends())
+        {
+            yield return (backend, false, false);
+            yield return (backend, true, false);
+            yield return (backend, false, true);
+            yield return (backend, true, true);
+        }
+    }
+
+    public static IEnumerable<(SilkGraphicsBackend, string, bool, bool)> FlatNonplanarNgonNormalCases()
+    {
+        foreach (SilkGraphicsBackend backend in NormalBackends())
+        {
+            foreach (string scheme in new[] { "none", "bilinear" })
+            {
+                yield return (backend, scheme, false, false);
+                yield return (backend, scheme, true, false);
+                yield return (backend, scheme, false, true);
+                yield return (backend, scheme, true, true);
+            }
+        }
+    }
+
+    public static IEnumerable<(SilkGraphicsBackend, bool)> SimulatedNgonNormalCases()
+    {
+        foreach (SilkGraphicsBackend backend in NormalBackends())
+        {
+            yield return (backend, false);
+            yield return (backend, true);
+        }
+    }
+
+    private static UsdVec3f[] CreateChangedNgonPoints(float height) =>
+    [
+        new(-0.6f, -0.6f, 0), new(0.6f, -0.6f, 0), new(0.6f, 0.6f, 0),
+        new(-0.6f, 0.6f, 0), new(-0.6f, -0.6f, height)
+    ];
+
+    private static ValueTask UpdateNgonReferenceAsync(
+        UsdStageScheduler scheduler, UsdVec3f[] points, float normalY, float normalZ) =>
+        scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim mesh = stage.GetPrim("/Mesh");
+            mesh.SetVec3fArray("points", points);
+            mesh.SetVec3fArray("normals", [
+                new(0, normalY, normalZ), new(0, normalY, normalZ),
+                new(0, 0, 1), new(0, 0, 1), new(0, 1, 0)
+            ]);
+        });
+
+    private static float[] CreateSimulatedNgonPoints(
+        ReadOnlySpan<float> points, float height, out int movedVertices)
+    {
+        float[] simulated = points.ToArray();
+        movedVertices = 0;
+        for (int component = 2; component < simulated.Length; component += 3)
+        {
+            if (simulated[component] == 1.2f)
+            {
+                simulated[component] = height;
+                movedVertices++;
+            }
+        }
+        return simulated;
+    }
+
+    private static async Task AssertSmallTriangleNormals(SilkMeshData mesh, float sharedY, float sharedZ)
+    {
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
+        float[] expected =
+        [
+            0, sharedY, sharedZ,
+            0, sharedY, sharedZ,
+            0, 0, 1,
+            0, 0, 1,
+        ];
+        await Assert.That(geometry.Vertices.Length).IsEqualTo(expected.Length * 2);
+        for (int vertex = 0; vertex < expected.Length / 3; vertex++)
+        {
+            for (int component = 0; component < 3; component++)
+            {
+                await Assert.That(geometry.Vertices[(vertex * 6) + 3 + component])
+                    .IsEqualTo(expected[(vertex * 3) + component]).Within(1e-6f);
+            }
+        }
+    }
+
+    private static async Task AssertCoplanarSeamNormals(
+        SilkMeshData mesh, float normalY, float normalZ, float[] expectedUvs)
+    {
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh, "st");
+        await Assert.That(geometry.Vertices.Length).IsEqualTo(48);
+        await Assert.That(expectedUvs.Length).IsEqualTo(12);
+        for (int vertex = 0; vertex < 6; vertex++)
+        {
+            int offset = vertex * 8;
+            await Assert.That(geometry.Vertices[offset + 3]).IsEqualTo(0f).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 4]).IsEqualTo(normalY).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 5]).IsEqualTo(normalZ).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 6]).IsEqualTo(expectedUvs[vertex * 2]);
+            await Assert.That(geometry.Vertices[offset + 7]).IsEqualTo(expectedUvs[(vertex * 2) + 1]);
+        }
+    }
+
+    private static float[] ExpandTrianglePoints(SilkMeshData mesh)
+    {
+        ReadOnlySpan<float> points = mesh.Points.Span;
+        ReadOnlySpan<uint> indices = mesh.Indices.Span;
+        float[] expanded = new float[checked(indices.Length * 3)];
+        for (int corner = 0; corner < indices.Length; corner++)
+        {
+            int source = checked((int)indices[corner] * 3);
+            points.Slice(source, 3).CopyTo(expanded.AsSpan(corner * 3, 3));
+        }
+        return expanded;
+    }
+
+    private static int CountDifferentPixels(byte[] first, byte[] second) =>
+        Enumerable.Range(0, first.Length / 4).Count(index =>
+            Enumerable.Range(0, 3).Any(channel =>
+                Math.Abs(first[(index * 4) + channel] - second[(index * 4) + channel]) > 5));
+
+    private static async Task AssertPixelsNear(byte[] actual, byte[] expected)
+    {
+        await Assert.That(actual.Length).IsEqualTo(expected.Length);
+        int largestDifference = Enumerable.Range(0, actual.Length)
+            .Max(index => Math.Abs(actual[index] - expected[index]));
+        await Assert.That(largestDifference).IsLessThanOrEqualTo(2);
+    }
+
     private static async Task AssertGeometry(
         (string Path, float[] Points, uint[] Indices)[] expected, SilkSceneState scene)
     {
@@ -929,16 +1818,30 @@ public sealed class SilkMeshInvalidPointsNativeTests
 
     private static byte[] Capture(
         OpenUsdSilkSession session, ISilkGraphicsDevice device, SilkMeshRenderer renderer,
-        RenderComplexity complexity = RenderComplexity.Low)
+        RenderComplexity complexity = RenderComplexity.Low, bool enableShadows = true, bool bounded = false)
     {
         var camera = new CameraState(
             Matrix4x4.CreateLookAt(new Vector3(0, 0, 3), Vector3.Zero, Vector3.UnitY),
             Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
-        var settings = new RenderSettings(1, true, true, new Vector4(0, 0, 0, 1),
+        var settings = new RenderSettings(1, true, enableShadows, new Vector4(0, 0, 0, 1),
             backfaceCulling: true, useSceneMaterials: true, complexity: complexity);
         return SilkFrameCapture.CaptureCore(
-            session, device, renderer, 64, 64, settings, 0, camera).Rgba.ToArray();
+            session, device, renderer, 64, 64, settings, 0, camera, ingestionOptions: bounded ? Options : null)
+            .Rgba.ToArray();
     }
+
+    private static string AreaWeightedMesh(string normals) => $$"""
+        def Mesh "Mesh" {
+            uniform token subdivisionScheme = "catmullClark"
+            point3f[] points = [(-0.6,-0.6,0), (0.6,-0.6,0), (-0.6,0.6,0), (-0.6,-0.6,0.3)]
+            int[] faceVertexCounts = [3,3]
+            int[] faceVertexIndices = [0,1,2,0,3,1]
+            {{normals}}
+        }
+        def DistantLight "Key" {
+            float inputs:intensity = 1
+        }
+        """;
 
     private static string TexturedMesh() =>
         RefinedMesh.Replace("def Mesh \"Mesh\" {",

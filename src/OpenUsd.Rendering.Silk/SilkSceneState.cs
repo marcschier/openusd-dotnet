@@ -4277,19 +4277,33 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         {
             if (light.Radius != 0)
             {
-                return "a finite-radius sphere requires a cubemap shadow projection";
+                return "a finite-radius sphere requires area-light shadow sampling, " +
+                    "not a point-light projection";
             }
-            if (light.ShapingConeAngle <= 0 || light.ShapingConeAngle >= 90)
+            if (light.ShapingConeAngle <= 0)
             {
-                return "a single perspective map requires a zero-radius sphere cone half-angle " +
-                    "greater than 0 and less than 90 degrees; wider cones require multiple maps";
+                return "a zero-radius sphere cone half-angle must be greater than 0 degrees";
+            }
+            if ((unsupported & SilkShadowUnsupportedFeatures.NoCasters) != 0)
+            {
+                return "the published geometry has no world extent to derive a light-space " +
+                    "projection from";
+            }
+            if ((unsupported & SilkShadowUnsupportedFeatures.MapBudget) != 0)
+            {
+                return $"the page shadow-map budget of {SilkShadowCommand.MaximumMaps} was " +
+                    "exceeded, or this light could not be fitted to one perspective map";
+            }
+            if (light.ShapingConeAngle >= 90)
+            {
+                return "the zero-radius sphere cone half-angle and scene bounds cannot be " +
+                    "covered by one finite perspective map; additional faces are unavailable";
             }
             return "the zero-radius sphere spot cannot be fitted to a finite perspective frustum";
         }
         if (light.Type != 1)
         {
-            return "only distant lights and zero-radius sphere spots with a cone half-angle " +
-                "below 90 degrees have a derived light-space projection";
+            return "finite-area lights do not have a supported shadow projection";
         }
         if ((unsupported & SilkShadowUnsupportedFeatures.NoCasters) != 0)
         {

@@ -1556,12 +1556,19 @@ float4 FRAGMENT_ENTRY_POINT(
             int shadowSlot = (int)ReadFrameShadowSlot(lightIndex).x;
             if (shadowSlot >= 0)
             {
+                float3 shadowLightDirection = lightDirection;
+                if (lightType == 2.0)
+                {
+                    float3 toShadowLight = ReadFrameLight(0u, lightIndex).xyz - worldPosition;
+                    shadowLightDirection = toShadowLight *
+                        rsqrt(max(dot(toShadowLight, toShadowLight), SurfaceEpsilon));
+                }
                 shadowVisibility = ResolveShadowVisibility(
                     frame,
                     shadowSlot,
                     worldPosition,
                     worldGeometricNormal,
-                    lightDirection);
+                    shadowLightDirection);
             }
         }
         float3 sampleOffsets[5];

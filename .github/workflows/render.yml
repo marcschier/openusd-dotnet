@@ -92,6 +92,11 @@ on:
       - 'eng/test-viewer-source-identity.ps1'
       - 'eng/test-viewer-evidence-contract.ps1'
       - 'eng/test-ocio-alias-evidence.ps1'
+      - 'eng/managed-workflow-reports.ps1'
+      - 'eng/run-managed-tests.ps1'
+      - 'eng/silk-cubic-shadow-report.ps1'
+      - 'eng/test-silk-cubic-shadow-report.ps1'
+      - 'eng/run-silk-cubic-shadow-conformance.ps1'
       - 'eng/run-parity-capture.ps1'
       - 'eng/run-viewer-workflow-tests.ps1'
       - 'eng/physx.lock.json'
@@ -176,6 +181,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
+      - name: Validate cubic and point-shadow report guard
+        shell: pwsh
+        run: ./eng/test-silk-cubic-shadow-report.ps1
       # Restore-only, and keyed character-identically to the cache native.yml saves.
       # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
       - id: native-cache
@@ -596,6 +604,35 @@ jobs:
             -Configuration Release `
             -MinimumExpectedTests 2 `
             -TestArguments @('--treenode-filter', '/*/*/SilkCurveDirtyNativeTests/*')
+      - name: Execute required Windows cubic and point-shadow conformance
+        id: windows-cubic-shadow
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_REQUIRE_SWIFTSHADER: '1'
+          OPENUSD_MESH_PREPARATION_REQUIRED: '1'
+          OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED: '1'
+        run: |
+          $runtime = Join-Path $PWD 'artifacts/parity-capture/win-x64/runtime'
+          $env:OPENUSD_PARITY_RUNTIME_ROOT = $runtime
+          $env:OPENUSD_TEST_PLUGIN_PATH = Join-Path $runtime 'plugin/usd'
+          $env:PATH = "$(Join-Path $runtime 'bin');$(Join-Path $runtime 'lib');$env:PATH"
+          Remove-Item Env:VK_DRIVER_FILES, Env:VK_ICD_FILENAMES -ErrorAction SilentlyContinue
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0
+          if ($LASTEXITCODE -ne 0) { throw 'Cubic and point-shadow conformance build failed.' }
+          ./eng/run-silk-cubic-shadow-conformance.ps1 -Configuration Release
+      - name: Upload Windows cubic and point-shadow evidence
+        if: >-
+          always() && steps.native-ready.outputs.ready == 'true' &&
+          (steps.windows-cubic-shadow.outcome == 'success' ||
+           steps.windows-cubic-shadow.outcome == 'failure')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: silk-cubic-shadow-win-x64-${{ github.run_id }}
+          path: artifacts/silk-cubic-shadow-conformance/windows
+          if-no-files-found: warn
       - name: Execute native Ptex decoder conformance
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -1143,6 +1180,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
+      - name: Validate cubic and point-shadow report guard
+        shell: pwsh
+        run: ./eng/test-silk-cubic-shadow-report.ps1
       # Restore-only, and keyed character-identically to the cache native.yml saves.
       # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
       - id: native-cache
@@ -1469,6 +1509,32 @@ jobs:
           echo "Using Vulkan loader $loader and lavapipe ICD $icd."
           echo "loader=$loader" >> "$GITHUB_OUTPUT"
           echo "icd=$icd" >> "$GITHUB_OUTPUT"
+      - name: Execute required Linux cubic and point-shadow conformance
+        id: linux-cubic-shadow
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.linux-vulkan-runtime.outputs.icd }}
+          VK_ICD_FILENAMES: ${{ steps.linux-vulkan-runtime.outputs.icd }}
+          OPENUSD_TEST_PLUGIN_PATH: ${{ github.workspace }}/artifacts/parity-capture/linux-x64/runtime/plugin/usd
+          OPENUSD_MESH_PREPARATION_REQUIRED: '1'
+          OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED: '1'
+          LD_LIBRARY_PATH: ${{ github.workspace }}/artifacts/parity-capture/linux-x64/runtime/lib:${{ github.workspace }}/artifacts/parity-capture/linux-x64/runtime/bin
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0
+          if ($LASTEXITCODE -ne 0) { throw 'Cubic and point-shadow conformance build failed.' }
+          ./eng/run-silk-cubic-shadow-conformance.ps1 -Configuration Release
+      - name: Upload Linux cubic and point-shadow evidence
+        if: >-
+          always() && steps.native-ready.outputs.ready == 'true' &&
+          (steps.linux-cubic-shadow.outcome == 'success' ||
+           steps.linux-cubic-shadow.outcome == 'failure')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: silk-cubic-shadow-linux-x64-${{ github.run_id }}
+          path: artifacts/silk-cubic-shadow-conformance/linux
+          if-no-files-found: warn
       - name: Execute required X11 Vulkan import smoke
         if: >-
           steps.native-ready.outputs.ready == 'true' &&
@@ -1797,6 +1863,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
+      - name: Validate cubic and point-shadow report guard
+        shell: pwsh
+        run: ./eng/test-silk-cubic-shadow-report.ps1
       # Restore-only, and keyed character-identically to the cache native.yml saves.
       # Push runs defer on a miss so these four render consumers never rebuild OpenUSD.
       - id: native-cache
@@ -2029,6 +2098,30 @@ jobs:
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/stage-hdsilk-runtime.ps1 -Rid osx-arm64
+      - name: Execute required macOS cubic and point-shadow conformance
+        id: macos-cubic-shadow
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          OPENUSD_TEST_PLUGIN_PATH: ${{ steps.macos-volume-runtime.outputs.plugin }}
+          DYLD_LIBRARY_PATH: ${{ steps.macos-volume-runtime.outputs.library-path }}
+          OPENUSD_MESH_PREPARATION_REQUIRED: '1'
+          OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED: '1'
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0 -p:OpenUsdRequireMetalShaderLibrary=true
+          if ($LASTEXITCODE -ne 0) { throw 'Cubic and point-shadow conformance build failed.' }
+          ./eng/run-silk-cubic-shadow-conformance.ps1 -Configuration Release
+      - name: Upload macOS cubic and point-shadow evidence
+        if: >-
+          always() && steps.native-ready.outputs.ready == 'true' &&
+          (steps.macos-cubic-shadow.outcome == 'success' ||
+           steps.macos-cubic-shadow.outcome == 'failure')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: silk-cubic-shadow-osx-arm64-${{ github.run_id }}
+          path: artifacts/silk-cubic-shadow-conformance/macos
+          if-no-files-found: warn
       - name: Execute actual IOSurface Metal composition tests
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

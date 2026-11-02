@@ -93,6 +93,34 @@ public sealed class SilkShadowNormalSpaceSourceContractTests
     }
 
     [Test]
+    public async Task PointShadowBiasUsesTheReceiverToEmitterDirection()
+    {
+        string source = await ReadMeshShaderAsync();
+        int branch = source.IndexOf("if (lightType == 2.0)", StringComparison.Ordinal);
+        await Assert.That(branch).IsGreaterThan(0);
+        int offset = source.IndexOf(
+            "ReadFrameLight(0u, lightIndex).xyz - worldPosition",
+            branch,
+            StringComparison.Ordinal);
+        await Assert.That(offset).IsGreaterThan(branch);
+        int normalize = source.IndexOf(
+            "rsqrt(max(dot(toShadowLight, toShadowLight), SurfaceEpsilon))",
+            offset,
+            StringComparison.Ordinal);
+        await Assert.That(normalize).IsGreaterThan(offset);
+        Match call = Regex.Match(
+            source,
+            @"ResolveShadowVisibility\(\s*frame,\s*shadowSlot,\s*worldPosition,\s*worldGeometricNormal,\s*(?<direction>\w+)\)",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(5));
+
+        await Assert.That(call.Success).IsTrue();
+        await Assert.That(call.Groups["direction"].Value).IsEqualTo("shadowLightDirection");
+        await Assert.That(source).Contains("float3 shadowLightDirection = lightDirection;");
+        await Assert.That(source).Contains("shadowLightDirection = toShadowLight *");
+    }
+
+    [Test]
     public async Task TheEmittedMetalShaderCarriesTheSameDerivation()
     {
         // The checked Metal source is the artifact an unproven backend would ship,
