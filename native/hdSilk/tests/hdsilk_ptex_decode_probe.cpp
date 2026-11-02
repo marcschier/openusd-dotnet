@@ -112,6 +112,32 @@ void RefusesRequestsBeforeReturningPartialData(const std::string& path)
         "missing Ptex file was not refused");
 }
 
+void InsufficientOutputCapacityDoesNotDecodePixels(const std::string& path)
+{
+    constexpr std::array<uint32_t, 4> faceIds = {0, 1, 2, 3};
+    std::array<uint8_t, 192> pixels;
+    pixels.fill(0xA5);
+    const auto expected = pixels;
+
+    const HdSilkPtexDecodedFaces query = HdSilkDecodePtexFacesInto(
+        path, faceIds.data(), faceIds.size(), 8, 192, 0, nullptr, 0);
+    Require(!query.pixelsDecoded, "metadata sizing decoded face pixels");
+    Require(query.faces.size() == faceIds.size(), "sizing omitted requested face layouts");
+    Require(query.requiredByteCount == pixels.size(), "sizing returned the wrong byte count");
+
+    const HdSilkPtexDecodedFaces shortPixelBuffer = HdSilkDecodePtexFacesInto(
+        path, faceIds.data(), faceIds.size(), 8, 192,
+        faceIds.size(), pixels.data(), pixels.size() - 1);
+    Require(!shortPixelBuffer.pixelsDecoded, "short pixel capacity decoded face pixels");
+    Require(pixels == expected, "short pixel capacity modified the caller buffer");
+
+    const HdSilkPtexDecodedFaces shortFaceBuffer = HdSilkDecodePtexFacesInto(
+        path, faceIds.data(), faceIds.size(), 8, 192,
+        faceIds.size() - 1, pixels.data(), pixels.size());
+    Require(!shortFaceBuffer.pixelsDecoded, "short face capacity decoded face pixels");
+    Require(pixels == expected, "short face capacity modified the caller buffer");
+}
+
 void DuplicateFaceIdsHaveIndependentOutputSpans(const std::string& path)
 {
     constexpr std::array<uint32_t, 2> faceIds = {2, 2};
@@ -143,6 +169,7 @@ int main(int argc, char** argv)
     {
         DecodesSelectedFacesWithinLimits(argv[1]);
         RefusesRequestsBeforeReturningPartialData(argv[1]);
+        InsufficientOutputCapacityDoesNotDecodePixels(argv[1]);
         DuplicateFaceIdsHaveIndependentOutputSpans(argv[1]);
         return 0;
     }
