@@ -269,18 +269,20 @@ internal static class SilkMeshGeometryBuilder
         int pa = a * 3;
         int pb = b * 3;
         int pc = c * 3;
-        double edge1X = points[pb] - points[pa];
-        double edge1Y = points[pb + 1] - points[pa + 1];
-        double edge1Z = points[pb + 2] - points[pa + 2];
-        double edge2X = points[pc] - points[pa];
-        double edge2Y = points[pc + 1] - points[pa + 1];
-        double edge2Z = points[pc + 2] - points[pa + 2];
-        double du1 = uv.GetComponent(b, 0) - uv.GetComponent(a, 0);
-        double dv1 = (uv.ComponentCount > 1 ? uv.GetComponent(b, 1) : 0) -
-            (uv.ComponentCount > 1 ? uv.GetComponent(a, 1) : 0);
-        double du2 = uv.GetComponent(c, 0) - uv.GetComponent(a, 0);
-        double dv2 = (uv.ComponentCount > 1 ? uv.GetComponent(c, 1) : 0) -
-            (uv.ComponentCount > 1 ? uv.GetComponent(a, 1) : 0);
+        double edge1X = (double)points[pb] - points[pa];
+        double edge1Y = (double)points[pb + 1] - points[pa + 1];
+        double edge1Z = (double)points[pb + 2] - points[pa + 2];
+        double edge2X = (double)points[pc] - points[pa];
+        double edge2Y = (double)points[pc + 1] - points[pa + 1];
+        double edge2Z = (double)points[pc + 2] - points[pa + 2];
+        double du1 = (double)uv.GetComponent(b, 0) - uv.GetComponent(a, 0);
+        double dv1 = uv.ComponentCount > 1
+            ? (double)uv.GetComponent(b, 1) - uv.GetComponent(a, 1)
+            : 0;
+        double du2 = (double)uv.GetComponent(c, 0) - uv.GetComponent(a, 0);
+        double dv2 = uv.ComponentCount > 1
+            ? (double)uv.GetComponent(c, 1) - uv.GetComponent(a, 1)
+            : 0;
         double determinant = (du1 * dv2) - (du2 * dv1);
         if (!double.IsFinite(determinant) || Math.Abs(determinant) <= 1e-12)
         {

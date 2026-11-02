@@ -514,6 +514,117 @@ public sealed class SilkMeshRendererTests
     }
 
     [Test]
+    [Arguments(0, false, false)]
+    [Arguments(1, false, false)]
+    [Arguments(2, false, false)]
+    [Arguments(0, true, false)]
+    [Arguments(1, true, false)]
+    [Arguments(2, true, false)]
+    [Arguments(0, false, true)]
+    [Arguments(1, false, true)]
+    [Arguments(2, false, true)]
+    [Arguments(0, true, true)]
+    [Arguments(1, true, true)]
+    [Arguments(2, true, true)]
+    public async Task ComputedTangentsHandleFinitePositionDifferencesBeyondFloatRange(
+        int rotation, bool secondary, bool exceedFloatRange)
+    {
+        float max = exceedFloatRange ? float.MaxValue : float.MaxValue / 4;
+        float[] points = rotation switch
+        {
+            0 => [-max, -max, -max, max, max, -max, -max, max, max],
+            1 => [-max, -max, -max, -max, max, max, max, -max, max],
+            _ => [-max, -max, -max, max, -max, max, max, max, -max],
+        };
+        var mesh = CreateTangentMesh(
+            points, [0, 0, 1, 0, 0, 1], secondary);
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
+            mesh, "st", requireTangents: true,
+            secondaryUvPrimvar: secondary ? "st1" : "",
+            tangentsFromSecondary: secondary);
+
+        int stride = secondary ? 14 : 12;
+        float inverseRootTwo = 1 / MathF.Sqrt(2);
+        float inverseRootThree = 1 / MathF.Sqrt(3);
+        (float nx, float ny, float nz) = rotation switch
+        {
+            0 => (inverseRootThree, -inverseRootThree, inverseRootThree),
+            1 => (inverseRootThree, inverseRootThree, -inverseRootThree),
+            _ => (-inverseRootThree, inverseRootThree, inverseRootThree),
+        };
+        (float tx, float ty, float tz) = rotation switch
+        {
+            0 => (inverseRootTwo, inverseRootTwo, 0f),
+            1 => (0f, inverseRootTwo, inverseRootTwo),
+            _ => (inverseRootTwo, 0f, inverseRootTwo),
+        };
+        for (int vertex = 0; vertex < 3; vertex++)
+        {
+            int offset = vertex * stride;
+            await Assert.That(geometry.Vertices[offset + 3]).IsEqualTo(nx).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 4]).IsEqualTo(ny).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 5]).IsEqualTo(nz).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 8]).IsEqualTo(tx).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 9]).IsEqualTo(ty).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 10]).IsEqualTo(tz).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 11]).IsEqualTo(1f);
+        }
+    }
+
+    [Test]
+    [Arguments(0, false, false)]
+    [Arguments(1, false, false)]
+    [Arguments(2, false, false)]
+    [Arguments(3, false, false)]
+    [Arguments(0, true, false)]
+    [Arguments(1, true, false)]
+    [Arguments(2, true, false)]
+    [Arguments(3, true, false)]
+    [Arguments(0, false, true)]
+    [Arguments(1, false, true)]
+    [Arguments(2, false, true)]
+    [Arguments(3, false, true)]
+    [Arguments(0, true, true)]
+    [Arguments(1, true, true)]
+    [Arguments(2, true, true)]
+    [Arguments(3, true, true)]
+    public async Task ComputedTangentsHandleFiniteUvDifferencesBeyondFloatRange(
+        int component, bool secondary, bool exceedFloatRange)
+    {
+        float max = exceedFloatRange ? float.MaxValue : float.MaxValue / 4;
+        float[] uv = component switch
+        {
+            0 => [-max, 0, max, 0, -max, 1],
+            1 => [-max, 0, -max, 1, max, 0],
+            2 => [0, -max, 0, max, 1, -max],
+            _ => [0, -max, 1, -max, 0, max],
+        };
+        var mesh = CreateTangentMesh(
+            [0, 0, 0, 1e25f, 1e25f, 0, 0, 0, 1e25f],
+            uv,
+            secondary);
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(
+            mesh, "st", requireTangents: true,
+            secondaryUvPrimvar: secondary ? "st1" : "",
+            tangentsFromSecondary: secondary);
+
+        int stride = secondary ? 14 : 12;
+        bool tangentAlongFirstEdge = component is 0 or 3;
+        float inverseRootTwo = 1 / MathF.Sqrt(2);
+        for (int vertex = 0; vertex < 3; vertex++)
+        {
+            int offset = vertex * stride;
+            await Assert.That(geometry.Vertices[offset + 8])
+                .IsEqualTo(tangentAlongFirstEdge ? inverseRootTwo : 0f).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 9])
+                .IsEqualTo(tangentAlongFirstEdge ? inverseRootTwo : 0f).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 10])
+                .IsEqualTo(tangentAlongFirstEdge ? 0f : 1f).Within(1e-6f);
+            await Assert.That(geometry.Vertices[offset + 11]).IsEqualTo(tangentAlongFirstEdge ? 1f : -1f);
+        }
+    }
+
+    [Test]
     public async Task DegenerateTrianglesUseDeterministicFallbackNormals()
     {
         SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(
@@ -738,6 +849,22 @@ public sealed class SilkMeshRendererTests
         await Assert.That(resources.Statistics.VertexUploads).IsEqualTo(1ul);
         await Assert.That(resources.Statistics.IndexUploads).IsEqualTo(1ul);
         await Assert.That(resources.Statistics.MeshCount).IsEqualTo(2);
+    }
+
+    private static SilkMeshData CreateTangentMesh(float[] points, float[] uv, bool secondary)
+    {
+        SilkVertexAttributeData[] attributes = secondary
+            ? [
+                new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2,
+                    [0, 0, 1, 0, 0, 1]),
+                new("st1", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2, uv),
+            ]
+            : [new("st", SilkAttributeSemantic.TexCoord, SilkAttributeInterpolation.Vertex, 2, uv)];
+        return new SilkMeshData(
+            7, "/Triangle", 1, 0, 0, SilkTopologyKind.TriangleList, 1,
+            points, [0, 1, 2], [0], [1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            0, true, SilkMeshCullStyle.Nothing, [], "", attributes);
     }
 
     private static SilkMeshData CreateMesh(
