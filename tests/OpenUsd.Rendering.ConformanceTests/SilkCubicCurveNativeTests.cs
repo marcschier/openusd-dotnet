@@ -991,7 +991,8 @@ public sealed class SilkCubicCurveNativeTests
             {
                 if (Environment.GetEnvironmentVariable("OPENUSD_MESH_PREPARATION_REQUIRED") == "1")
                 {
-                    throw new InvalidOperationException("The native curve preparation profile requires matched plugins.");
+                    throw new InvalidOperationException(
+                        "The native curve preparation profile requires matched plugins.");
                 }
                 Skip.Test("Set OPENUSD_TEST_PLUGIN_PATH to a matched native runtime.");
                 throw new InvalidOperationException("Skip.Test returned unexpectedly.");

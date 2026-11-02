@@ -110,7 +110,8 @@ public sealed class SilkShadowNormalSpaceSourceContractTests
         await Assert.That(normalize).IsGreaterThan(offset);
         Match call = Regex.Match(
             source,
-            @"ResolveShadowVisibility\(\s*frame,\s*shadowSlot,\s*worldPosition,\s*worldGeometricNormal,\s*(?<direction>\w+)\)",
+            @"ResolveShadowVisibility\(\s*frame,\s*shadowSlot,\s*worldPosition," +
+                @"\s*worldGeometricNormal,\s*(?<direction>\w+)\)",
             RegexOptions.None,
             TimeSpan.FromSeconds(5));
 
