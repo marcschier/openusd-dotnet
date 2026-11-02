@@ -1424,7 +1424,7 @@ public sealed partial class RuntimePackageTests
     }
 
     [Test]
-    public async Task SilkPackageCarriesCheckedMaskedShadowShadersForEveryFramework()
+    public async Task SilkPackageCarriesCheckedShadowAndMeshShadersForEveryFramework()
     {
         string repositoryRoot = FindRepositoryRoot();
         string workRoot = CreateWorkRoot(repositoryRoot);
@@ -1432,6 +1432,10 @@ public sealed partial class RuntimePackageTests
         {
             string packageRoot = Path.Combine(workRoot, "packages");
             Directory.CreateDirectory(packageRoot);
+            string[] restoreArguments =
+                Environment.GetEnvironmentVariable("OPENUSD_TEST_SILK_SHADER_PACK_NO_RESTORE") == "1"
+                    ? ["--no-restore"]
+                    : [];
             CommandResult result = await RunDotnetAsync(
                 repositoryRoot,
                 [
@@ -1440,6 +1444,7 @@ public sealed partial class RuntimePackageTests
                     "-c", "Release", "--nologo", "-m:1",
                     "-p:UseSharedCompilation=false",
                     $"-p:PackageOutputPath={packageRoot}",
+                    .. restoreArguments,
                 ]);
             await Assert.That(result.ExitCode).IsEqualTo(0).Because(result.Output);
             using ZipArchive package = ZipFile.OpenRead(FindPackage(packageRoot, "OpenUsd.Rendering.Silk"));
@@ -1451,6 +1456,19 @@ public sealed partial class RuntimePackageTests
                 "shadow.mask.fragment.dxil",
                 "shadow.mask.fragment.spv",
                 "shadow.mask.fragment.reflection.json",
+                "mesh.fragment.dxil",
+                "mesh.fragment.spv",
+                "mesh.fragment.uv.dxil",
+                "mesh.fragment.uv.spv",
+                "mesh.fragment.uv+material.dxil",
+                "mesh.fragment.uv+material.spv",
+                "mesh.fragment.uv+normal.dxil",
+                "mesh.fragment.uv+normal.spv",
+                "mesh.fragment.uv+material+normal.dxil",
+                "mesh.fragment.uv+material+normal.spv",
+                "mesh.volume.fragment.dxil",
+                "mesh.volume.fragment.spv",
+                "manifest.json",
             ];
             foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
             {
