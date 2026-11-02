@@ -654,7 +654,20 @@ jobs:
             -Entry @{ Id = 'SilkPointPreparationNativeTests'; Class = 'SilkPointPreparationNativeTests' } `
             -ReportAssembly OpenUsd.Rendering.ConformanceTests `
             -RequireNoSkips $true
-          if ($result.passed -lt 18) { throw 'Point preparation conformance executed fewer than eighteen tests.' }
+          if ($result.passed -lt 20) { throw 'Point preparation conformance executed fewer than twenty tests.' }
+          $pointReport = Get-Content -LiteralPath (Join-Path $reports $result.rawReport) -Raw | ConvertFrom-Json
+          $scrubRows = @($pointReport.groups.tests | Where-Object {
+            $_.methodName -ceq 'TimeSampledPrototypeAssignmentsKeepSelectionAcrossScrubbing'
+          })
+          $expectedScrubRows = @(
+            'TimeSampledPrototypeAssignmentsKeepSelectionAcrossScrubbing(D3D12)',
+            'TimeSampledPrototypeAssignmentsKeepSelectionAcrossScrubbing(Vulkan)'
+          )
+          if ($scrubRows.Count -ne $expectedScrubRows.Count -or
+              @($scrubRows | Where-Object { $_.status -cne 'passed' }).Count -ne 0 -or
+              @(Compare-Object @($scrubRows.displayName) $expectedScrubRows -CaseSensitive).Count -ne 0) {
+            throw 'Time-sampled point-instance selection did not pass on both required Windows backends.'
+          }
           $meshResult = Invoke-ManagedWorkflowScenario `
             -Runner (Join-Path $PWD 'eng\run-managed-tests.ps1') `
             -Project $project `
