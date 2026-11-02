@@ -76,6 +76,9 @@ jobs:
         if: runner.os == 'Linux'
         shell: pwsh
         run: ./eng/test-documentation.ps1
+      - name: Validate checkout provenance reporting
+        shell: pwsh
+        run: ./eng/test-workflow-checkout-report.ps1
       - name: Validate native artifact workflow
         if: runner.os == 'Linux'
         shell: pwsh

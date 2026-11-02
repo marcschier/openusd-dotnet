@@ -1258,28 +1258,34 @@ public sealed class WorkflowStructureContractTests
     public async Task ConsumerCheckoutReportsSurviveATagRelease()
     {
         string root = FindRepositoryRoot();
+        string reporter = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "report-validated-checkout.ps1"));
         foreach (string workflow in new[] { "package.yml", "viewer-distribution.yml" })
         {
             string text = await File.ReadAllTextAsync(
                 Path.Combine(root, ".github", "workflows", workflow));
 
             await Assert.That(text)
-                .DoesNotContain("git rev-parse \"origin/$branch\"", StringComparison.Ordinal)
-                .Because(
-                    "a tag release sets ref_name to the tag, so origin/<ref> does not resolve; " +
-                    "plain git rev-parse echoes the argument and exits 128, which pwsh " +
-                    "propagates and fails the step");
-            await Assert.That(text)
-                .Contains(
-                    "git rev-parse --verify --quiet \"refs/remotes/origin/$branch\"",
-                    StringComparison.Ordinal)
-                .Because("the resolution must fail quietly so the fallback SHA can be used");
-            await Assert.That(text)
-                .Contains("$global:LASTEXITCODE = 0", StringComparison.Ordinal)
-                .Because(
-                    "release run 31250563169 lost all three package jobs because the failed " +
-                    "rev-parse left a non-zero exit code that the pwsh shell propagated");
+                .Contains("./eng/report-validated-checkout.ps1", StringComparison.Ordinal)
+                .Because($"{workflow} must use the shared checkout reporter");
         }
+
+        await Assert.That(reporter)
+            .DoesNotContain("git rev-parse \"origin/$branch\"", StringComparison.Ordinal)
+            .Because(
+                "a tag release sets ref_name to the tag, so origin/<ref> does not resolve; " +
+                "plain git rev-parse echoes the argument and exits 128, which pwsh " +
+                "propagates and fails the step");
+        await Assert.That(reporter)
+            .Contains(
+                "git rev-parse --verify --quiet \"refs/remotes/origin/$branch\"",
+                StringComparison.Ordinal)
+            .Because("the resolution must fail quietly so the fallback SHA can be used");
+        await Assert.That(reporter)
+            .Contains("$global:LASTEXITCODE = 0", StringComparison.Ordinal)
+            .Because(
+                "release run 31250563169 lost all three package jobs because the failed " +
+                "rev-parse left a non-zero exit code that the pwsh shell propagated");
     }
 
     [Test]
@@ -1830,30 +1836,42 @@ public sealed class WorkflowStructureContractTests
     public async Task ConsumerWorkflowsAnnounceValidatedCommitAndStaleWorkflowRunCheckouts()
     {
         string root = FindRepositoryRoot();
+        string reporter = await File.ReadAllTextAsync(
+            Path.Combine(root, "eng", "report-validated-checkout.ps1"));
         foreach (string workflowName in new[] { "package.yml", "viewer-distribution.yml" })
         {
             string workflow = await File.ReadAllTextAsync(
                 Path.Combine(root, ".github", "workflows", workflowName));
 
             await Assert.That(workflow)
-                .Contains("WORKFLOW_CHECKOUT_VALIDATION", StringComparison.Ordinal)
-                .Because($"{workflowName} must say which commit its gates validate");
+                .Contains("./eng/report-validated-checkout.ps1", StringComparison.Ordinal)
+                .Because($"{workflowName} must use the shared checkout reporter");
             await Assert.That(workflow)
-                .Contains("WORKFLOW_CHECKOUT_STALE", StringComparison.Ordinal)
-                .Because($"{workflowName} must warn when workflow_run validates a commit behind the branch head");
+                .Contains("github.event.pull_request.head.sha", StringComparison.Ordinal)
+                .Because($"{workflowName} must pass the pull request's triggering head to the reporter");
             await Assert.That(workflow)
-                .Contains(
-                    "this is the native artifact pipeline commit and can lag behind the branch head",
-                    StringComparison.Ordinal)
-                .Because(
-                    $"{workflowName} workflow_run failures must not be " +
-                    "mistaken for regressions at current branch head");
-            await Assert.That(workflow)
-                .Contains(
-                    "git rev-parse --verify --quiet \"refs/remotes/origin/$branch\"",
-                    StringComparison.Ordinal)
-                .Because($"{workflowName} must compare the validated checkout with the current branch head");
+                .Contains("github.event.pull_request.head.repo.full_name", StringComparison.Ordinal)
+                .Because($"{workflowName} must identify fork heads before comparing origin branches");
         }
+
+        await Assert.That(reporter)
+            .Contains("WORKFLOW_CHECKOUT_VALIDATION", StringComparison.Ordinal)
+            .Because("the reporter must say which commit its gates validate");
+        await Assert.That(reporter)
+            .Contains("WORKFLOW_CHECKOUT_STALE", StringComparison.Ordinal)
+            .Because("the reporter must warn when workflow_run validates a commit behind the branch head");
+        await Assert.That(reporter)
+            .Contains(
+                "this is the native artifact pipeline commit and can lag behind the branch head",
+                StringComparison.Ordinal)
+            .Because("workflow_run failures must not be mistaken for regressions at current branch head");
+        await Assert.That(reporter)
+            .Contains("git rev-parse --verify --quiet \"refs/remotes/origin/$branch\"", StringComparison.Ordinal)
+            .Because("the reporter must compare the validated checkout with the fetched branch head");
+        string ci = await File.ReadAllTextAsync(Path.Combine(root, ".github", "workflows", "ci.yml"));
+        await Assert.That(ci)
+            .Contains("./eng/test-workflow-checkout-report.ps1", StringComparison.Ordinal)
+            .Because("CI must execute the checkout reporter's behavioral controls");
     }
 
     [Test]

@@ -88,6 +88,7 @@ on:
     branches: [ master, main ]
     paths: &package-paths
       - '.github/workflows/package.yml'
+      - 'eng/report-validated-checkout.ps1'
       - 'eng/pack-packages.ps1'
       - 'eng/generate-native-notices.py'
       - 'eng/shaderc-source-patches.lock.json'
@@ -218,24 +219,11 @@ jobs:
                 github.event.workflow_run.head_branch || github.head_ref || github.ref_name }}
           CHECKOUT_FALLBACK_SHA: >-
             ${{ github.event_name == 'workflow_run' &&
-                github.event.workflow_run.head_sha || github.sha }}
+                github.event.workflow_run.head_sha ||
+                github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          VALIDATED_PULL_REQUEST_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          $validated = (git rev-parse HEAD).Trim()
-          $branch = $env:VALIDATED_BRANCH
-          # A tag release sets ref_name to the tag, so origin/<ref> does not
-          # resolve. Plain `git rev-parse` echoes the argument and exits 128,
-          # which the pwsh shell propagates and fails the step -- that is how
-          # release run 31250563169 lost all three package jobs.
-          $branchHead = git rev-parse --verify --quiet "refs/remotes/origin/$branch"
-          if ($LASTEXITCODE -ne 0 -or -not $branchHead) {
-            $branchHead = $env:CHECKOUT_FALLBACK_SHA
-          }
-          $global:LASTEXITCODE = 0
-          $branchHead = "$branchHead".Trim()
-          Write-Host "::notice::WORKFLOW_CHECKOUT_VALIDATION: package.yml is validating commit $validated from '$branch'; current branch head is $branchHead."
-          if ($validated -ne $branchHead) {
-            Write-Host "::warning::WORKFLOW_CHECKOUT_STALE: package.yml is validating $validated, not current '$branch' head $branchHead. For workflow_run, this is the native artifact pipeline commit and can lag behind the branch head."
-          }
+          ./eng/report-validated-checkout.ps1 -Label 'package.yml'
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
