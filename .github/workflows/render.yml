@@ -668,6 +668,35 @@ jobs:
               @(Compare-Object @($scrubRows.displayName) $expectedScrubRows -CaseSensitive).Count -ne 0) {
             throw 'Time-sampled point-instance selection did not pass on both required Windows backends.'
           }
+          $animatedResult = Invoke-ManagedWorkflowScenario `
+            -Runner (Join-Path $PWD 'eng\run-managed-tests.ps1') `
+            -Project $project `
+            -AssemblyDirectory (Join-Path $PWD 'tests\OpenUsd.Rendering.ConformanceTests\bin\Release\net10.0') `
+            -EvidenceRoot $reports `
+            -Entry @{ Id = 'SilkAnimatedPointsNativeConformanceTests'; Class = 'SilkAnimatedPointsNativeConformanceTests' } `
+            -ReportAssembly OpenUsd.Rendering.ConformanceTests `
+            -RequireNoSkips $true
+          $animatedReport = Get-Content -LiteralPath (Join-Path $reports $animatedResult.rawReport) -Raw | ConvertFrom-Json
+          $animatedRows = @($animatedReport.groups.tests)
+          $expectedAnimatedRows = @(
+            'TimeSampledPositionsMatchStaticControlsAndPreservePointIdentity(D3D12)',
+            'TimeSampledPositionsMatchStaticControlsAndPreservePointIdentity(Vulkan)'
+          )
+          if ($animatedResult.passed -ne 2 -or $animatedReport.schemaVersion -ne 1 -or
+              @($animatedReport.groups).Count -ne 1 -or
+              $animatedReport.groups[0].className -cne 'SilkAnimatedPointsNativeConformanceTests' -or
+              $animatedReport.summary.total -ne 2 -or $animatedReport.summary.passed -ne 2 -or
+              $animatedReport.summary.failed -ne 0 -or $animatedReport.summary.skipped -ne 0 -or
+              $animatedReport.summary.cancelled -ne 0 -or $animatedReport.summary.timedOut -ne 0 -or
+              $animatedReport.summary.flaky -ne 0 -or $animatedRows.Count -ne 2 -or
+              @($animatedRows | Where-Object {
+                $_.className -cne 'SilkAnimatedPointsNativeConformanceTests' -or
+                $_.methodName -cne 'TimeSampledPositionsMatchStaticControlsAndPreservePointIdentity' -or
+                $_.status -cne 'passed' -or [string]::IsNullOrWhiteSpace($_.id)
+              }).Count -ne 0 -or @($animatedRows.id | Sort-Object -Unique).Count -ne 2 -or
+              @(Compare-Object @($animatedRows.displayName) $expectedAnimatedRows -CaseSensitive).Count -ne 0) {
+            throw 'Time-sampled particle positions did not pass on both required Windows backends.'
+          }
           $meshResult = Invoke-ManagedWorkflowScenario `
             -Runner (Join-Path $PWD 'eng\run-managed-tests.ps1') `
             -Project $project `

@@ -1,0 +1,6 @@
+#usda 1.0
+
+def Points "Particles" {
+    point3f[] points = [(0, 0.5, 0), (0, -0.5, 0)]
+    color3f[] primvars:displayColor = [(1, 0.5, 0.1)] (interpolation = "constant")
+}
