@@ -198,6 +198,10 @@ jobs:
             tests/**/TestResults/*-report.html
           if-no-files-found: warn
           retention-days: 14
+      - name: Execute sampled flat ordinal transport conformance
+        if: runner.os != 'macOS'
+        shell: pwsh
+        run: ./eng/run-compact-ordinal-conformance.ps1 -Configuration Release
       - name: Execute original Vulkan platform-partition evidence
         if: runner.os != 'macOS'
         shell: pwsh

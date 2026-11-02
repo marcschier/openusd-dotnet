@@ -178,11 +178,17 @@ if ($stormParityTestNames.Count -ne $testAttributeCount -or
 }
 # The resource census intentionally skips unless explicitly enabled.
 $optInParityTests = @('RecordsCuratedResourceFootprintsForBaselineReview')
-foreach ($testName in $optInParityTests)
+$windowsQualifiedStormReferences = @(
+    'StormCoarseNormalsFollowSchemeAndPointIdentity',
+    'StormCoarseNgonNormalsUseFaceAdjacency',
+    'StormNonplanarNgonSmoothNormalsUseEachOriginalFaceCorner',
+    'StormCoarseSmoothNormalsIncludeHoleFaces',
+    'StormNonplanarPolygonFlatNormalsUseEachEmittedTriangle')
+foreach ($testName in @($optInParityTests + $windowsQualifiedStormReferences))
 {
     if ($testName -notin $stormParityTestNames)
     {
-        throw "Opt-in Storm parity test '$testName' was not discovered."
+        throw "Declared Storm parity test '$testName' was not discovered."
     }
 }
 $windowsOnlyStormParityTestNames = @([regex]::Matches(
@@ -208,6 +214,7 @@ $expectedMacosCglTests = @($stormParityTestNames |
         $_ -notlike '*OnD3D12' -and
         $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels' -and
         $_ -notin $optInParityTests -and
+        $_ -notin $windowsQualifiedStormReferences -and
         $_ -notin $windowsOnlyStormParityTestNames
     })
 $expectedLinuxGlxTests = @($stormParityTestNames |
@@ -216,6 +223,7 @@ $expectedLinuxGlxTests = @($stormParityTestNames |
         $_ -notlike '*OnD3D12' -and
         $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels' -and
         $_ -notin $optInParityTests -and
+        $_ -notin $windowsQualifiedStormReferences -and
         $_ -notin $windowsOnlyStormParityTestNames -and
         $_ -notin $macosOnlyStormParityTestNames
     })
@@ -225,6 +233,8 @@ Assert-SetEqual $linuxGlxTests $expectedLinuxGlxTests 'Linux GLX parity test lis
 Assert-Contains $parityCapture '-MinimumExpectedTests $windowsWglTestNames.Count' 'Parity capture runner'
 Assert-Contains $parityCapture '-MinimumExpectedTests $macosCglTestNames.Count' 'Parity capture runner'
 Assert-Contains $parityCapture '-MinimumExpectedTests $linuxGlxTestNames.Count' 'Parity capture runner'
+Assert-Contains $parityCapture 'verify-storm-normal-reference-report.py' 'Parity capture runner'
+Assert-Contains $renderWorkflow "'eng/verify-storm-normal-reference-report.py'" 'Render workflow'
 Assert-Contains $platformSmoke 'prepare-mesa-wgl-test-runtime.ps1' 'Platform smoke runner'
 Assert-Contains $platformSmoke '-Preflight' 'Platform smoke runner'
 Assert-Contains $mesaWglLock 'mesa-llvmpipe-x64-26.2.4.7z' 'Mesa WGL runtime lock'

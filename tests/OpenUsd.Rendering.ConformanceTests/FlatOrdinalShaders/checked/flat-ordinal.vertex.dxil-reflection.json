@@ -1,0 +1,364 @@
+{
+    "version": "1.1",
+    "parameters": [
+        {
+            "name": "flatOrdinalInstances",
+            "binding": {"kind": "shaderResource", "index": 6},
+            "type": {
+                "kind": "resource",
+                "baseShape": "structuredBuffer",
+                "resultType": {
+                    "kind": "struct",
+                    "name": "FlatOrdinalInstanceParameters",
+                    "fields": [
+                        {
+                            "name": "objectToLightClip",
+                            "type": {
+                                "kind": "matrix",
+                                "rowCount": 4,
+                                "columnCount": 4,
+                                "elementType": {
+                                    "kind": "scalar",
+                                    "scalarType": "float32"
+                                },
+                                "sizes": [
+                                    {"kind": "uniform", "value": 64, "alignment": 4}
+                                ]
+                            },
+                            "binding": {"kind": "uniform", "offset": 0, "size": 64, "elementStride": 0}
+                        },
+                        {
+                            "name": "reserved",
+                            "type": {
+                                "kind": "vector",
+                                "elementCount": 4,
+                                "elementType": {
+                                    "kind": "scalar",
+                                    "scalarType": "float32"
+                                },
+                                "sizes": [
+                                    {"kind": "uniform", "value": 16, "alignment": 4}
+                                ]
+                            },
+                            "binding": {"kind": "uniform", "offset": 64, "size": 16, "elementStride": 4}
+                        }
+                    ],
+                    "sizes": [
+                        {"kind": "uniform", "value": 80, "alignment": 4}
+                    ]
+                },
+                "sizes": [
+                    {"kind": "shaderResource", "value": 1}
+                ]
+            }
+        }
+    ],
+    "globalScope": {
+        "kind": "none",
+        "parameters": [
+            {
+                "name": "flatOrdinalInstances",
+                "binding": {"kind": "shaderResource", "index": 6},
+                "type": {
+                    "kind": "resource",
+                    "baseShape": "structuredBuffer",
+                    "resultType": {
+                        "kind": "struct",
+                        "name": "FlatOrdinalInstanceParameters",
+                        "fields": [
+                            {
+                                "name": "objectToLightClip",
+                                "type": {
+                                    "kind": "matrix",
+                                    "rowCount": 4,
+                                    "columnCount": 4,
+                                    "elementType": {
+                                        "kind": "scalar",
+                                        "scalarType": "float32"
+                                    },
+                                    "sizes": [
+                                        {"kind": "uniform", "value": 64, "alignment": 4}
+                                    ]
+                                },
+                                "binding": {"kind": "uniform", "offset": 0, "size": 64, "elementStride": 0}
+                            },
+                            {
+                                "name": "reserved",
+                                "type": {
+                                    "kind": "vector",
+                                    "elementCount": 4,
+                                    "elementType": {
+                                        "kind": "scalar",
+                                        "scalarType": "float32"
+                                    },
+                                    "sizes": [
+                                        {"kind": "uniform", "value": 16, "alignment": 4}
+                                    ]
+                                },
+                                "binding": {"kind": "uniform", "offset": 64, "size": 16, "elementStride": 4}
+                            }
+                        ],
+                        "sizes": [
+                            {"kind": "uniform", "value": 80, "alignment": 4}
+                        ]
+                    },
+                    "sizes": [
+                        {"kind": "shaderResource", "value": 1}
+                    ]
+                }
+            }
+        ]
+    },
+    "entryPoints": [
+        {
+            "name": "flatOrdinalTransportVertexMain",
+            "stage": "vertex",
+            "scope": {
+                "kind": "none",
+                "parameters": [
+                    {
+                        "name": "input",
+                        "stage": "vertex",
+                        "binding": {"kind": "varyingInput", "index": 0, "count": 4},
+                        "type": {
+                            "kind": "struct",
+                            "name": "FlatOrdinalVertexInput",
+                            "fields": [
+                                {
+                                    "name": "position",
+                                    "type": {
+                                        "kind": "vector",
+                                        "elementCount": 3,
+                                        "elementType": {
+                                            "kind": "scalar",
+                                            "scalarType": "float32"
+                                        },
+                                        "sizes": [
+                                            {"kind": "varyingInput", "value": 1}
+                                        ]
+                                    },
+                                    "stage": "vertex",
+                                    "binding": {"kind": "varyingInput", "index": 0},
+                                    "semanticName": "POSITION"
+                                },
+                                {
+                                    "name": "normal",
+                                    "type": {
+                                        "kind": "vector",
+                                        "elementCount": 3,
+                                        "elementType": {
+                                            "kind": "scalar",
+                                            "scalarType": "float32"
+                                        },
+                                        "sizes": [
+                                            {"kind": "varyingInput", "value": 1}
+                                        ]
+                                    },
+                                    "stage": "vertex",
+                                    "binding": {"kind": "varyingInput", "index": 1},
+                                    "semanticName": "NORMAL"
+                                },
+                                {
+                                    "name": "ordinal",
+                                    "type": {
+                                        "kind": "vector",
+                                        "elementCount": 2,
+                                        "elementType": {
+                                            "kind": "scalar",
+                                            "scalarType": "float32"
+                                        },
+                                        "sizes": [
+                                            {"kind": "varyingInput", "value": 1}
+                                        ]
+                                    },
+                                    "stage": "vertex",
+                                    "binding": {"kind": "varyingInput", "index": 2},
+                                    "semanticName": "TEXCOORD"
+                                },
+                                {
+                                    "name": "secondary",
+                                    "type": {
+                                        "kind": "vector",
+                                        "elementCount": 2,
+                                        "elementType": {
+                                            "kind": "scalar",
+                                            "scalarType": "float32"
+                                        },
+                                        "sizes": [
+                                            {"kind": "varyingInput", "value": 1}
+                                        ]
+                                    },
+                                    "stage": "vertex",
+                                    "binding": {"kind": "varyingInput", "index": 3},
+                                    "semanticName": "TEXCOORD",
+                                    "semanticIndex": 1
+                                }
+                            ],
+                            "sizes": [
+                                {"kind": "varyingInput", "value": 4}
+                            ]
+                        }
+                    },
+                    {
+                        "name": "instanceId",
+                        "semanticName": "SV_INSTANCEID",
+                        "type": {
+                            "kind": "scalar",
+                            "scalarType": "uint32",
+                            "sizes": [
+
+                            ]
+                        }
+                    }
+                ]
+            },
+            "parameters": [
+                {
+                    "name": "input",
+                    "stage": "vertex",
+                    "binding": {"kind": "varyingInput", "index": 0, "count": 4},
+                    "type": {
+                        "kind": "struct",
+                        "name": "FlatOrdinalVertexInput",
+                        "fields": [
+                            {
+                                "name": "position",
+                                "type": {
+                                    "kind": "vector",
+                                    "elementCount": 3,
+                                    "elementType": {
+                                        "kind": "scalar",
+                                        "scalarType": "float32"
+                                    },
+                                    "sizes": [
+                                        {"kind": "varyingInput", "value": 1}
+                                    ]
+                                },
+                                "stage": "vertex",
+                                "binding": {"kind": "varyingInput", "index": 0},
+                                "semanticName": "POSITION"
+                            },
+                            {
+                                "name": "normal",
+                                "type": {
+                                    "kind": "vector",
+                                    "elementCount": 3,
+                                    "elementType": {
+                                        "kind": "scalar",
+                                        "scalarType": "float32"
+                                    },
+                                    "sizes": [
+                                        {"kind": "varyingInput", "value": 1}
+                                    ]
+                                },
+                                "stage": "vertex",
+                                "binding": {"kind": "varyingInput", "index": 1},
+                                "semanticName": "NORMAL"
+                            },
+                            {
+                                "name": "ordinal",
+                                "type": {
+                                    "kind": "vector",
+                                    "elementCount": 2,
+                                    "elementType": {
+                                        "kind": "scalar",
+                                        "scalarType": "float32"
+                                    },
+                                    "sizes": [
+                                        {"kind": "varyingInput", "value": 1}
+                                    ]
+                                },
+                                "stage": "vertex",
+                                "binding": {"kind": "varyingInput", "index": 2},
+                                "semanticName": "TEXCOORD"
+                            },
+                            {
+                                "name": "secondary",
+                                "type": {
+                                    "kind": "vector",
+                                    "elementCount": 2,
+                                    "elementType": {
+                                        "kind": "scalar",
+                                        "scalarType": "float32"
+                                    },
+                                    "sizes": [
+                                        {"kind": "varyingInput", "value": 1}
+                                    ]
+                                },
+                                "stage": "vertex",
+                                "binding": {"kind": "varyingInput", "index": 3},
+                                "semanticName": "TEXCOORD",
+                                "semanticIndex": 1
+                            }
+                        ],
+                        "sizes": [
+                            {"kind": "varyingInput", "value": 4}
+                        ]
+                    }
+                },
+                {
+                    "name": "instanceId",
+                    "semanticName": "SV_INSTANCEID",
+                    "type": {
+                        "kind": "scalar",
+                        "scalarType": "uint32",
+                        "sizes": [
+
+                        ]
+                    }
+                }
+            ],
+            "result": {
+                "stage": "vertex",
+                "binding": {"kind": "varyingOutput", "index": 0},
+                "type": {
+                    "kind": "struct",
+                    "name": "FlatOrdinalVertexOutput",
+                    "fields": [
+                        {
+                            "name": "position",
+                            "type": {
+                                "kind": "vector",
+                                "elementCount": 4,
+                                "elementType": {
+                                    "kind": "scalar",
+                                    "scalarType": "float32"
+                                },
+                                "sizes": [
+
+                                ]
+                            },
+                            "semanticName": "SV_POSITION"
+                        },
+                        {
+                            "name": "ordinal",
+                            "type": {
+                                "kind": "vector",
+                                "elementCount": 2,
+                                "elementType": {
+                                    "kind": "scalar",
+                                    "scalarType": "float32"
+                                },
+                                "sizes": [
+                                    {"kind": "varyingOutput", "value": 1}
+                                ]
+                            },
+                            "stage": "vertex",
+                            "binding": {"kind": "varyingOutput", "index": 0},
+                            "semanticName": "TEXCOORD"
+                        }
+                    ],
+                    "sizes": [
+                        {"kind": "varyingOutput", "value": 1}
+                    ]
+                }
+            },
+            "bindings": [
+                {
+                    "name": "flatOrdinalInstances",
+                    "binding": {"kind": "shaderResource", "index": 6, "used": 1}
+                }
+            ]
+        }
+    ]
+}

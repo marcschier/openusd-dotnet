@@ -612,6 +612,11 @@ try
         'ComparisonDetectsPerturbedCaptures',
         'PtexQuadReferenceRespondsToOffsetsAndAuthoredFaceIndices',
         'PtexReferenceRespondsToAuthoredFaceOffsets',
+        'StormCoarseNormalsFollowSchemeAndPointIdentity',
+        'StormCoarseNgonNormalsUseFaceAdjacency',
+        'StormNonplanarNgonSmoothNormalsUseEachOriginalFaceCorner',
+        'StormCoarseSmoothNormalsIncludeHoleFaces',
+        'StormNonplanarPolygonFlatNormalsUseEachEmittedTriangle',
         'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
         'DisplayColorReachesPixelsForImplicitSurfacesAndMeshes',
@@ -724,6 +729,7 @@ try
         'ShapedRectLightBackSideMatchesUnlitSceneOnVulkan')
     if ($Rid -eq 'win-x64')
     {
+        $normalReferenceStarted = [DateTime]::UtcNow
         & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
             -Project $testProject `
             -Framework net10.0 `
@@ -732,7 +738,17 @@ try
             -TestArguments @(
                 '--treenode-filter',
                 (New-StormParityTreeFilter -TestNames $windowsWglTestNames))
-        exit (Get-ValidatedParityExitCode -TestExitCode $LASTEXITCODE)
+        $testExitCode = $LASTEXITCODE
+        $normalReferenceFinished = [DateTime]::UtcNow
+        if ($testExitCode -eq 0)
+        {
+            & python (Join-Path $PSScriptRoot 'verify-storm-normal-reference-report.py') `
+                --report (Join-Path $testHostRoot 'TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json') `
+                --started-utc $normalReferenceStarted.ToString('O') `
+                --finished-utc $normalReferenceFinished.ToString('O')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
+        exit (Get-ValidatedParityExitCode -TestExitCode $testExitCode)
     }
 
     if ($Rid -eq 'osx-arm64')
