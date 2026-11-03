@@ -445,11 +445,14 @@ the SBOM after changing a pin. Use listed stable packages in the supported relea
 the numerically highest flat-container entry: DXC uses the official `1.9.2609.5` release; the higher
 `101.7.2207.25` package is unlisted and is not a newer production release.
 
-The next release is planned as `0.15.0-alpha`, retaining the exact `alpha` prerelease tag.
-This is a minor increment because the source includes public API and native ABI additions since
-the published `0.14.0-alpha` baseline, not just package patch updates. A version pin is not proof
-of publication: the published baseline remains current until every qualification and feed-promotion
-gate succeeds.
+The published baseline is `0.16.6-alpha`. Its release history is integrated into the current
+source, retaining Vulkan host-readback presentation and rendered-batch acknowledgment.
+Additional source changes remain unreleased; the baseline version in the manifests does not
+make those changes part of the published packages or establish their qualification.
+The complete managed and native package family ships at the same version, including Metal and
+all runtime RIDs; publishing only the modified packages is not a supported release.
+The published baseline remains current until the next release passes every qualification and
+feed-promotion gate.
 
 `eng/check-sbom.ps1` regenerates to a temporary comparison, reports stale output when the pinned
 inputs move, then validates the checked file. CI runs it on Linux. Release packing also regenerates
@@ -492,7 +495,7 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Thirty-one packages ship at `0.14.0-alpha`. `eng/pack-packages.ps1` is the single source of truth
+Thirty-one packages ship at `0.16.6-alpha`. `eng/pack-packages.ps1` is the single source of truth
 for the published set; release and promotion workflows derive their expected IDs from
 `-ListPublished` rather than restating the list. The script packs projects explicitly instead of
 packing the solution, then asserts that the produced set matches exactly. Adding a project cannot
