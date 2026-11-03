@@ -4,7 +4,7 @@
 
 #include "openusd_image_exr.h"
 
-/* Separate probe DLL only; never defined in the packaged data library. */
+/* Separate probe binary only; never defined in the packaged data library. */
 #define EXR_TEST_NONE 0u
 #define EXR_TEST_WRITE_ONCE 1u
 #define EXR_TEST_WRITE_PERSISTENT 2u

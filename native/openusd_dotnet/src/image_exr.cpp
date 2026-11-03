@@ -8,12 +8,21 @@ static_assert(sizeof(openusd_image_encode_exr_result_v1) == 40);
 static_assert(offsetof(openusd_image_encode_exr_request_v1, pixel_ceiling) == 72);
 static_assert(offsetof(openusd_image_encode_exr_result_v1, encoded_bytes) == 16);
 
-#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__)) && \
-    !defined(OPENUSD_IMAGE_EXR_FORCE_UNSUPPORTED)
+#if !defined(OPENUSD_IMAGE_EXR_FORCE_UNSUPPORTED) && \
+    ((defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))) || \
+    ((defined(__linux__) || defined(__APPLE__)) && \
+    (defined(__x86_64__) || defined(__aarch64__)) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 
+#if defined(_WIN32)
 #define NOMINMAX
 #include <Windows.h>
 #include <winternl.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #if defined(OPENUSD_IMAGE_EXR_TEST_SEAM)
 #include "image_exr_test_hooks.h"
 #endif
@@ -28,9 +37,12 @@ static_assert(offsetof(openusd_image_encode_exr_result_v1, encoded_bytes) == 16)
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <thread>
 
+#if defined(_WIN32)
 extern "C" NTSYSAPI NTSTATUS NTAPI NtQueryInformationFile(
     HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS);
+#endif
 
 namespace Exr = OPENEXR_IMF_NAMESPACE;
 static_assert(sizeof(void*) == 8);
@@ -55,14 +67,18 @@ thread_local Fault Test;
 
 struct Operation
 {
+#if defined(_WIN32)
     HANDLE file = nullptr;
+#else
+    int file = -1;
+#endif
     uint64_t limit = 0;
     uint64_t position = 0;
     uint64_t extent = 0;
     uint32_t rows = 0;
     uint32_t status = OPENUSD_IMAGE_ENCODE_OK;
     uint32_t error = 0;
-    DWORD thread = GetCurrentThreadId();
+    std::thread::id thread = std::this_thread::get_id();
     openusd_image_encode_cancel_v1 callback = nullptr;
     void* context = nullptr;
 
@@ -90,7 +106,7 @@ struct Operation
 #endif
             throw Stop{};
         }
-        if (GetCurrentThreadId() != thread) Fail(OPENUSD_IMAGE_ENCODE_NATIVE_ERROR);
+        if (std::this_thread::get_id() != thread) Fail(OPENUSD_IMAGE_ENCODE_NATIVE_ERROR);
         if (callback && callback(context, phase, rows, extent) != 0) Fail(OPENUSD_IMAGE_ENCODE_CANCELLED);
     }
 
@@ -115,11 +131,18 @@ struct Operation
 #if defined(OPENUSD_IMAGE_EXR_TEST_SEAM)
         ++Test.stats.seeks;
         if (target < position) ++Test.stats.backwards_seeks;
-        if (FaultAt(true) != EXR_TEST_NONE) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, ERROR_SEEK);
+        if (FaultAt(true) != EXR_TEST_NONE) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, SeekError);
 #endif
+#if defined(_WIN32)
         LARGE_INTEGER offset{};
         offset.QuadPart = static_cast<LONGLONG>(target);
         if (!SetFilePointerEx(file, offset, nullptr, FILE_BEGIN)) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, GetLastError());
+#else
+        off_t offset;
+        do { offset = lseek(file, static_cast<off_t>(target), SEEK_SET); } while (offset < 0 && errno == EINTR);
+        if (offset < 0) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, static_cast<uint32_t>(errno));
+        if (static_cast<uint64_t>(offset) != target) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, SeekError);
+#endif
         position = target;
     }
 
@@ -129,7 +152,7 @@ struct Operation
         if (count < 0) Fail(OPENUSD_IMAGE_ENCODE_NATIVE_ERROR);
         if (position > limit || static_cast<uint64_t>(count) > limit - position)
             Fail(OPENUSD_IMAGE_ENCODE_QUOTA_EXCEEDED);
-        DWORD requested = static_cast<DWORD>(count);
+        uint32_t requested = static_cast<uint32_t>(count);
         bool short_write = false;
 #if defined(OPENUSD_IMAGE_EXR_TEST_SEAM)
         ++Test.stats.writes;
@@ -145,19 +168,35 @@ struct Operation
             throw std::bad_alloc{};
         }
         if (fault == EXR_TEST_WRITE_ONCE || fault == EXR_TEST_WRITE_PERSISTENT)
-            Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, ERROR_WRITE_FAULT);
+            Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, WriteError);
         short_write = fault == EXR_TEST_SHORT_WRITE_ONCE;
         if (short_write) requested /= 2;
 #endif
+#if defined(_WIN32)
         DWORD written = 0;
         const BOOL success = WriteFile(file, data, requested, &written, nullptr);
         const DWORD native_error = success ? ERROR_SUCCESS : GetLastError();
+#else
+        ssize_t count_written;
+        do { count_written = write(file, data, requested); } while (count_written < 0 && errno == EINTR);
+        const bool success = count_written >= 0;
+        const uint32_t native_error = success ? 0u : static_cast<uint32_t>(errno);
+        const uint32_t written = success ? static_cast<uint32_t>(count_written) : 0u;
+#endif
         if (written > requested) Fail(OPENUSD_IMAGE_ENCODE_NATIVE_ERROR);
         position += written;
         extent = std::max(extent, position);
         if (!success || written != requested || short_write)
-            Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, native_error ? native_error : ERROR_WRITE_FAULT);
+            Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, native_error ? native_error : WriteError);
     }
+
+#if defined(_WIN32)
+    static constexpr uint32_t SeekError = ERROR_SEEK;
+    static constexpr uint32_t WriteError = ERROR_WRITE_FAULT;
+#else
+    static constexpr uint32_t SeekError = EIO;
+    static constexpr uint32_t WriteError = EIO;
+#endif
 };
 
 class BorrowedStream final : public Exr::OStream
@@ -198,6 +237,7 @@ uint64_t MinimumFileBytes(const openusd_image_encode_exr_request_v1& request) no
 
 void ValidateFile(Operation& operation, uint64_t handle)
 {
+#if defined(_WIN32)
     if (handle == 0 || handle == UINT64_MAX) operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT, ERROR_INVALID_HANDLE);
     operation.file = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(handle));
     SetLastError(ERROR_SUCCESS);
@@ -232,6 +272,33 @@ void ValidateFile(Operation& operation, uint64_t handle)
     if (!SetFilePointerEx(operation.file, zero, &position, FILE_CURRENT))
         operation.Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, GetLastError());
     if (position.QuadPart != 0) operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT);
+#else
+    static_assert(sizeof(off_t) >= 8);
+    if (handle > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+        operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT, EBADF);
+    operation.file = static_cast<int>(handle);
+    struct stat info{};
+    int stat_status;
+    do { stat_status = fstat(operation.file, &info); } while (stat_status != 0 && errno == EINTR);
+    if (stat_status != 0)
+        operation.Fail(errno == EBADF ? OPENUSD_IMAGE_ENCODE_INVALID_INPUT : OPENUSD_IMAGE_ENCODE_IO_ERROR,
+            static_cast<uint32_t>(errno));
+    if (!S_ISREG(info.st_mode)) operation.Fail(OPENUSD_IMAGE_ENCODE_UNSUPPORTED);
+    int flags;
+    do { flags = fcntl(operation.file, F_GETFL); } while (flags < 0 && errno == EINTR);
+    if (flags < 0) operation.Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, static_cast<uint32_t>(errno));
+    int unsupported = O_APPEND | O_NONBLOCK;
+#if defined(O_DIRECT)
+    unsupported |= O_DIRECT;
+#endif
+    if ((flags & O_ACCMODE) == O_RDONLY || (flags & unsupported) != 0)
+        operation.Fail(OPENUSD_IMAGE_ENCODE_UNSUPPORTED);
+    if (info.st_size != 0) operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT);
+    off_t position;
+    do { position = lseek(operation.file, 0, SEEK_CUR); } while (position < 0 && errno == EINTR);
+    if (position < 0) operation.Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, static_cast<uint32_t>(errno));
+    if (position != 0) operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT);
+#endif
 }
 
 bool WindowCorner(int64_t origin, uint64_t extent) noexcept

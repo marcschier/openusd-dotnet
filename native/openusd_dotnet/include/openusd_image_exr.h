@@ -13,9 +13,9 @@
 
 /*
  * Guarded Data ABI 24 API. The declaration and integer layouts are portable C.
- * The initial encoder supports only Windows x64 synchronous regular files.
- * Other hosts return UNSUPPORTED without file I/O; capability presence describes
- * the available guarded API, not POSIX/macOS/other handle-profile support.
+ * The encoder supports Windows x64 and Linux/macOS little-endian x64/ARM64
+ * regular files. Other hosts return UNSUPPORTED without file I/O.
+ * Capability presence describes the guarded API, not every handle profile.
  *
  * These status values form a DEDICATED encode domain, not openusd_status.
  */
@@ -80,6 +80,7 @@ typedef struct openusd_image_encode_exr_request_v1
     uint64_t reserved2;
 } openusd_image_encode_exr_request_v1;
 
+/* win32_error retains its ABI name: Win32 error on Windows, errno on POSIX. */
 typedef struct openusd_image_encode_exr_result_v1
 {
     uint32_t struct_size;
@@ -129,6 +130,11 @@ extern "C" {
  * Windows x64 profile: zero-extended borrowed HANDLE, neither 0 nor UINT64_MAX,
  * regular writable FILE_WRITE_DATA, synchronous buffered random access, empty,
  * positioned at zero, with exclusive caller I/O ownership. No path is reopened.
+ * Linux/macOS x64/ARM64 profile: zero-extended borrowed nonnegative int file
+ * descriptor (including zero), regular writable random access, empty, positioned
+ * at zero. O_APPEND, O_NONBLOCK and O_DIRECT (where available) are refused.
+ * The windows_file_handle parameter retains its name/layout for ABI compatibility;
+ * on POSIX it carries the descriptor. Exclusive caller I/O ownership is required.
  * No close/delete/truncate, durable flush or atomic publication is performed.
  * Caller stages/publishes or resets/discards bounded partial output on failure.
  * A successful call leaves the native cursor at EOF. Byte bounds are logical
