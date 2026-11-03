@@ -2071,7 +2071,7 @@ internal static class SilkFrameUniformWriter
                 destination,
                 ShadowSlotOffset + (light * 16),
                 shadows.GetSlotForLight(light),
-                0,
+                shadows.GetMapCountForLight(light),
                 0,
                 0);
         }
@@ -4292,12 +4292,12 @@ public sealed partial class SilkSceneGpuResources : IDisposable
             if ((unsupported & SilkShadowUnsupportedFeatures.MapBudget) != 0)
             {
                 return $"the page shadow-map budget of {SilkShadowCommand.MaximumMaps} was " +
-                    "exceeded, or this light could not be fitted to one perspective map";
+                    "exceeded, or four other lights already own the available projection groups";
             }
             if (light.ShapingConeAngle >= 90)
             {
-                return "the zero-radius sphere cone half-angle and scene bounds cannot be " +
-                    "covered by one finite perspective map; additional faces are unavailable";
+                return "the page published no complete six-face perspective projection for this " +
+                    "zero-radius sphere light";
             }
             return "the zero-radius sphere spot cannot be fitted to a finite perspective frustum";
         }
@@ -4313,18 +4313,18 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         if ((unsupported & SilkShadowUnsupportedFeatures.MapBudget) != 0)
         {
             return $"more lights asked for a shadow map than the page budget of " +
-                $"{SilkShadowCommand.MaximumMaps} allows";
+                "four shadow-casting lights allows";
         }
         return "the page published no shadow descriptor for it";
     }
 
     /// <summary>
     /// Reports every prim that was dropped from the shadow maps because its
-    /// material is opacity-masked.
+    /// material requires unsupported shadow coverage.
     /// </summary>
     /// <remarks>
     /// Re-derived whenever the cache re-collects its casters, so a prim whose
-    /// material stops being opacity-masked stops being reported. Named by prim
+    /// material changes to supported coverage stops being reported. Named by prim
     /// path, because unlike a light a caster has one.
     /// </remarks>
     internal void ReportUnsupportedShadowCasters(
@@ -4349,11 +4349,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                     SilkRenderDiagnosticCodes.ShadowCasterUnsupported,
                     path,
                     RenderDiagnosticSeverity.Warning,
-                    $"Prim '{path}' casts no shadow because its material is opacity-masked. " +
-                    "The depth-only shadow caster program binds no material and cannot " +
-                    "discard a fragment, so drawing it would cast the solid shadow of its " +
-                    "geometry rather than of its visible coverage. The prim is still lit " +
-                    "and still receives shadows.");
+                    $"Prim '{path}' casts no shadow because its material requires unsupported " +
+                    "blended or non-PreviewSurface shadow coverage. PreviewSurface opacity " +
+                    "cutoffs are supported by the material-aware caster program; continuous " +
+                    "opacity requires a separate shadow transmittance model. The prim is " +
+                    "still lit and still receives shadows.");
             }
             _shadowCasterDiagnosticRevision = revision;
         }

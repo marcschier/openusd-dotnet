@@ -31,6 +31,17 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkShadowNormalSpaceSourceContractTests
 {
     [Test]
+    public async Task AuthoredDirectBrdfUsesWorldMappedNormalsAndMatchingEyeSpace()
+    {
+        string source = await ReadMeshShaderAsync();
+        await Assert.That(source).Contains("float3 directNormal = hasSceneLighting ? worldNormal : normal;");
+        await Assert.That(source).Contains("float directNormalDotEye = saturate(abs(dot(directNormal, lightEyeBase))");
+        await Assert.That(source).Contains("float normalDotLight = saturate(dot(directNormal, sampleDirection));");
+        await Assert.That(source).Contains("float normalDotHalf = saturate(dot(directNormal, half));");
+        await Assert.That(source).DoesNotContain("float normalDotLight = saturate(dot(normal, sampleDirection));");
+    }
+
+    [Test]
     public async Task TheShadowBiasReceivesAWorldSpaceGeometricNormal()
     {
         string source = await ReadMeshShaderAsync();

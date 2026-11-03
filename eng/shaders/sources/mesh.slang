@@ -29,6 +29,12 @@
 #endif
 
 static const uint MaximumDirectLights = 128;
+static const uint MaximumShadowMaps = 24;
+static const uint ShadowMatrixByteOffset = 224 + 6 * 16 * MaximumDirectLights + 64;
+static const uint ShadowTileByteOffset = ShadowMatrixByteOffset + 64 * MaximumShadowMaps;
+static const uint ShadowControlByteOffset = ShadowTileByteOffset + 16 * MaximumShadowMaps;
+static const uint ShadowSlotByteOffset = ShadowControlByteOffset + 16 * MaximumShadowMaps;
+static const uint EnvironmentControlByteOffset = ShadowSlotByteOffset + 16 * MaximumDirectLights;
 
 struct VertexInput
 {
@@ -52,11 +58,8 @@ struct VertexOutput
     float3 objectPosition : TEXCOORD2;
     float3 normal : NORMAL;
     float4 tint : COLOR0;
-    // The interpolated shading basis in *world* space, which is the space the
-    // prefiltered environment maps are baked in. It is carried alongside the
-    // object-space normal rather than replacing it because the direct-light loop
-    // shades on the object-space one and changing that would move every gated
-    // parity image; see the environment block in the fragment stage.
+    // Authored direct lights and prefiltered environments use world space.
+    // Keep the object basis alongside it for the deterministic headlight.
     //
     // worldNormal is transformed by the cofactor matrix of the object-to-world
     // upper 3x3, which is the inverse transpose up to a positive scale, so a
@@ -107,9 +110,9 @@ struct FrameParameters
     // shadow atlas; shadowControls[slot] is (depthBias, normalBias, pcfRadius in
     // texels, one shadow texel in atlas UV); shadowSlots[light].x is the slot the
     // direct light at that index samples, or -1 when the light casts no shadow.
-    float4x4 shadowWorldToLightClip[4];
-    float4 shadowTile[4];
-    float4 shadowControls[4];
+    float4x4 shadowWorldToLightClip[MaximumShadowMaps];
+    float4 shadowTile[MaximumShadowMaps];
+    float4 shadowControls[MaximumShadowMaps];
     float4 shadowSlots[MaximumDirectLights];
     // Prefiltered image-based environment lighting.
     //   x: non-zero when the environment resources are live for this frame.
@@ -183,9 +186,6 @@ struct FragmentFrameParameters
     FrameVectorView lightTangentShapeX;
     FrameVectorView lightBitangentShapeY;
     float4x4 eyeToWorld;
-    float4x4 shadowWorldToLightClip[4];
-    float4 shadowTile[4];
-    float4 shadowControls[4];
     FrameVectorView shadowSlots;
     float4 environmentControls;
     float4 domeControls;
@@ -217,18 +217,11 @@ FragmentFrameParameters LoadFragmentFrameParameters()
     frame.lightControls.byteOffset = 224 + 3 * 16 * MaximumDirectLights;
     frame.lightTangentShapeX.byteOffset = 224 + 4 * 16 * MaximumDirectLights;
     frame.lightBitangentShapeY.byteOffset = 224 + 5 * 16 * MaximumDirectLights;
-    frame.shadowSlots.byteOffset = 12960;
+    frame.shadowSlots.byteOffset = ShadowSlotByteOffset;
     frame.eyeToWorld = frameParameters.Load<float4x4>(12512);
-    [unroll]
-    for (uint index = 0; index < 4; index++)
-    {
-        frame.shadowWorldToLightClip[index] = frameParameters.Load<float4x4>(12576 + index * 64);
-        frame.shadowTile[index] = frameParameters.Load<float4>(12832 + index * 16);
-        frame.shadowControls[index] = frameParameters.Load<float4>(12896 + index * 16);
-    }
-    frame.environmentControls = frameParameters.Load<float4>(15008);
-    frame.domeControls = frameParameters.Load<float4>(15024);
-    FragmentDomeParameters domes = frameParameters.Load<FragmentDomeParameters>(15040);
+    frame.environmentControls = frameParameters.Load<float4>(EnvironmentControlByteOffset);
+    frame.domeControls = frameParameters.Load<float4>(EnvironmentControlByteOffset + 16);
+    FragmentDomeParameters domes = frameParameters.Load<FragmentDomeParameters>(EnvironmentControlByteOffset + 32);
     frame.domeAmbient = domes.ambient;
     frame.domeEnvironment = domes.environment;
     return frame;
@@ -244,7 +237,7 @@ typedef FrameParameters FragmentFrameParameters;
 static const uint FrameLightArrayBytes = MaximumDirectLights * 16u;
 static const uint FrameLightArraysOffset = 224u;
 static const uint FrameShadowSlotsOffset =
-    FrameLightArraysOffset + 6u * FrameLightArrayBytes + 64u + 4u * (64u + 16u + 16u);
+    ShadowSlotByteOffset;
 
 [ForceInline]
 float4 ReadFrameLight(uint field, uint index)
@@ -256,6 +249,12 @@ float4 ReadFrameLight(uint field, uint index)
 float4 ReadFrameShadowSlot(uint index)
 {
     return frameParameters.Load<float4>(FrameShadowSlotsOffset + index * 16u);
+}
+
+[ForceInline]
+float4x4 ReadShadowMatrix(uint slot)
+{
+    return frameParameters.Load<float4x4>(ShadowMatrixByteOffset + slot * 64u);
 }
 
 // After the shadow slots: environment and dome controls (32 bytes), then the
@@ -747,8 +746,8 @@ float ResolveShadowVisibility(
     float3 worldNormal,
     float3 lightDirection)
 {
-    float4 controls = frame.shadowControls[slot];
-    float4 tile = frame.shadowTile[slot];
+    float4 controls = frameParameters.Load<float4>(ShadowControlByteOffset + slot * 16u);
+    float4 tile = frameParameters.Load<float4>(ShadowTileByteOffset + slot * 16u);
 
     // A normal derived from screen-space derivatives carries the sign of the
     // triangle's screen winding, which is meaningless here. The bias always
@@ -763,7 +762,7 @@ float ResolveShadowVisibility(
     float slope = clamp(1.0 - normalDotLight, 0.0, 1.0);
     float3 offsetPosition = worldPosition + (orientedNormal * (controls.y * slope));
     float4 lightClip = mul(
-        frame.shadowWorldToLightClip[slot],
+        ReadShadowMatrix(slot),
         float4(offsetPosition, 1.0));
     if (lightClip.w <= 0.0)
     {
@@ -1068,12 +1067,8 @@ float4 FRAGMENT_ENTRY_POINT(
     float clearcoatAmount = surface.clearcoatShaded.x;
     float clearcoatRoughness = surface.clearcoatShaded.y;
     float3 shadingNormal = input.normal;
-    // The world-space shading basis, carried from the vertex stage through the
-    // cofactor of the object-to-world 3x3. It is what the environment maps are
-    // sampled with, and it is maintained in parallel with the object-space
-    // `shadingNormal` above rather than replacing it: the direct-light loop
-    // shades on the object-space one, and unifying the two would move every
-    // gated Storm parity image and cannot be re-measured here.
+    // The cofactor basis keeps normal maps and authored normals in the same
+    // world space as the direct lights and environment.
     float3 worldShadingNormal = input.worldNormal;
     uint textureMask = (uint)round(surface.textureControls.x);
     uint udimMask = (uint)round(surface.textureControls.y);
@@ -1383,7 +1378,6 @@ float4 FRAGMENT_ENTRY_POINT(
     // into the cofactor normal, because the rasterizer's facing state is
     // computed from the transformed winding.
     worldNormal = isFrontFace ? worldNormal : -worldNormal;
-    float normalDotEye = saturate(abs(dot(normal, eye)) + 1.0e-5);
 
     // Storm clamps roughness rather than clamping into a minimum band.
     float specularRoughness = max(0.001, roughness);
@@ -1540,6 +1534,8 @@ float4 FRAGMENT_ENTRY_POINT(
         float3 lightEyeBase = lightIndex == 0u && !hasSceneLighting
             ? eye
             : sceneEye;
+        float3 directNormal = hasSceneLighting ? worldNormal : normal;
+        float directNormalDotEye = saturate(abs(dot(directNormal, lightEyeBase)) + 1.0e-5);
         // UsdLux ShapingAPI, as Storm applies it to rect and disk lights: a
         // spotlight cone around the light's -Z emission axis with a pow(cos,
         // focus) falloff. The headlight is never shaped.
@@ -1553,9 +1549,25 @@ float4 FRAGMENT_ENTRY_POINT(
         float shadowVisibility = 1.0;
         if (hasSceneLighting)
         {
-            int shadowSlot = (int)ReadFrameShadowSlot(lightIndex).x;
+            float4 shadowGroup = ReadFrameShadowSlot(lightIndex);
+            int shadowSlot = (int)shadowGroup.x;
             if (shadowSlot >= 0)
             {
+                if (shadowGroup.y == 6.0)
+                {
+                    int firstSlot = shadowSlot;
+                    float greatestDepth = -1.0;
+                    for (int face = 0; face < 6; face++)
+                    {
+                        float4 faceClip = mul(ReadShadowMatrix(firstSlot + face),
+                            float4(worldPosition, 1.0));
+                        if (faceClip.w > greatestDepth)
+                        {
+                            greatestDepth = faceClip.w;
+                            shadowSlot = firstSlot + face;
+                        }
+                    }
+                }
                 float3 shadowLightDirection = lightDirection;
                 if (lightType == 2.0)
                 {
@@ -1636,8 +1648,8 @@ float4 FRAGMENT_ENTRY_POINT(
                 }
             }
             float3 half = normalize(sampleDirection + lightEyeBase);
-            float normalDotLight = saturate(dot(normal, sampleDirection));
-            float normalDotHalf = saturate(dot(normal, half));
+            float normalDotLight = saturate(dot(directNormal, sampleDirection));
+            float normalDotHalf = saturate(dot(directNormal, half));
             float eyeDotHalf = saturate(dot(lightEyeBase, half));
             float fresnel = SchlickFresnel(eyeDotHalf);
             float3 diffuseFresnel = omniPbrSpecular
@@ -1651,7 +1663,7 @@ float4 FRAGMENT_ENTRY_POINT(
                 specularRoughness,
                 fresnel,
                 normalDotLight,
-                normalDotEye,
+                directNormalDotEye,
                 normalDotHalf);
             if (clearcoatAmount > 0.0)
             {
@@ -1661,7 +1673,7 @@ float4 FRAGMENT_ENTRY_POINT(
                     clearcoatRoughness,
                     fresnel,
                     normalDotLight,
-                    normalDotEye,
+                    directNormalDotEye,
                     normalDotHalf);
             }
             float3 diffuseIrradiance = lightColor * sampleIntensity * SurfacePi;

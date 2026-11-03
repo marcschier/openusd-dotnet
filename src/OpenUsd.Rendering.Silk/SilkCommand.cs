@@ -3251,7 +3251,7 @@ public enum SilkShadowUnsupportedFeatures : uint
 
     /// <summary>
     /// The light has no supported projection. Distant lights and zero-radius
-    /// sphere spots with a cone half-angle below 90 degrees are supported.
+    /// sphere lights with a positive cone half-angle have projections.
     /// </summary>
     LightType = 1,
 
@@ -3315,7 +3315,13 @@ public enum SilkShadowDescriptorOptions : uint
     /// collection, so ignoring the link table's shadow mask renders a knowably
     /// different image.
     /// </summary>
-    CasterLinked = 2
+    CasterLinked = 2,
+
+    /// <summary>
+    /// One of six consecutive perspective maps for the same light, ordered
+    /// +X, -X, +Y, -Y, +Z, -Z in world space.
+    /// </summary>
+    CubeFace = 4
 }
 
 /// <summary>
@@ -3337,7 +3343,7 @@ public readonly ref struct SilkShadowCommand
     private readonly ReadOnlySpan<byte> _bytes;
 
     /// <summary>Gets the page budget for one shadow table.</summary>
-    public const uint MaximumMaps = 4;
+    public const uint MaximumMaps = 24;
 
     /// <summary>Gets the smallest square shadow-map edge length.</summary>
     public const uint MinimumResolution = 256;
@@ -3346,7 +3352,8 @@ public readonly ref struct SilkShadowCommand
     public const uint MaximumResolution = 2048;
 
     private const SilkShadowDescriptorOptions KnownFlags =
-        SilkShadowDescriptorOptions.Orthographic | SilkShadowDescriptorOptions.CasterLinked;
+        SilkShadowDescriptorOptions.Orthographic | SilkShadowDescriptorOptions.CasterLinked |
+        SilkShadowDescriptorOptions.CubeFace;
 
     private const SilkShadowUnsupportedFeatures KnownUnsupported =
         SilkShadowUnsupportedFeatures.LightType |
@@ -3388,6 +3395,12 @@ public readonly ref struct SilkShadowCommand
         // Validated whole here so that a malformed table is rejected before any
         // of it is applied, and so every later read is a bounds-checked slice of
         // an already valid span.
+        UInt128 seenLights = 0;
+        uint cubeRemaining = 0;
+        uint cubeLight = 0;
+        uint cubeResolution = 0;
+        uint cubeFlags = 0;
+        uint projectionGroups = 0;
         for (uint index = 0; index < descriptorCount; index++)
         {
             ReadOnlySpan<byte> descriptor =
@@ -3416,6 +3429,42 @@ public readonly ref struct SilkShadowCommand
             {
                 throw new InvalidDataException("A shadow descriptor flag is unknown.");
             }
+            uint flags = BinaryPrimitives.ReadUInt32LittleEndian(descriptor[12..16]);
+            bool cube = (flags & (uint)SilkShadowDescriptorOptions.CubeFace) != 0;
+            if (cubeRemaining > 0)
+            {
+                if (!cube || lightIndex != cubeLight || resolution != cubeResolution ||
+                    flags != cubeFlags)
+                {
+                    throw new InvalidDataException(
+                        "A cube shadow requires six consecutive matching descriptors for one light.");
+                }
+                cubeRemaining--;
+            }
+            else
+            {
+                UInt128 lightBit = (UInt128)1 << (int)lightIndex;
+                if ((seenLights & lightBit) != 0)
+                {
+                    throw new InvalidDataException("A light has more than one shadow projection group.");
+                }
+                seenLights |= lightBit;
+                if (++projectionGroups > 4)
+                {
+                    throw new InvalidDataException("The shadow table exceeds the four-light budget.");
+                }
+                if (cube)
+                {
+                    if ((flags & (uint)SilkShadowDescriptorOptions.Orthographic) != 0)
+                    {
+                        throw new InvalidDataException("A cube shadow face must be perspective.");
+                    }
+                    cubeRemaining = 5;
+                    cubeLight = lightIndex;
+                    cubeResolution = resolution;
+                    cubeFlags = flags;
+                }
+            }
             for (int element = 0; element < 32; element++)
             {
                 double value = BinaryPrimitives.ReadDoubleLittleEndian(
@@ -3442,6 +3491,10 @@ public readonly ref struct SilkShadowCommand
             }
         }
 
+        if (cubeRemaining != 0)
+        {
+            throw new InvalidDataException("A cube shadow projection group is incomplete.");
+        }
         _bytes = bytes;
     }
 

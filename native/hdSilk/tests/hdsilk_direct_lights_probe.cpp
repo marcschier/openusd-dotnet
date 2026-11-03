@@ -1153,7 +1153,7 @@ ShadowTableView ReadShadows(CommandView command)
         map.pcfRadius = ReadF32Le(command, offset + 280);
         map.reserved = ReadU32Le(command, offset + 284);
         Require(map.lightIndex < table.directCount && map.mapIndex == index &&
-                (map.flags & ~3u) == 0u && map.reserved == 0u,
+                (map.flags & ~7u) == 0u && map.reserved == 0u,
             "SHADOW: invalid descriptor identity, flags or reserved word");
         table.maps.push_back(map);
     }
@@ -3529,7 +3529,7 @@ void VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow()
         "unchanged perspective shadow must not republish a changed SHADOW page");
 }
 
-void VerifyPointInsideBoundsRemainsUnsupported()
+void VerifyPointInsideBoundsPublishesSixFaces()
 {
     HdSilkSceneState state;
     HdSilkLightRecord light;
@@ -3554,17 +3554,22 @@ void VerifyPointInsideBoundsRemainsUnsupported()
     uint32_t count = 0;
     const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
     const RetainedPage page = ReadRetainedPage(bytes, count);
-    RequireOrder(page, {1u, 9u, 2u}, "point inside scene bounds unsupported");
+    RequireOrder(page, {1u, 9u, 2u}, "point inside scene bounds");
     Require(revision == 1u && page.frame.directLightCount == 1u &&
             page.frame.directLights[0].type == 2u &&
             page.frame.directLights[0].shadowEnabled == 1u &&
             page.frame.directLights[0].radius == 0.0f &&
             page.frame.directLights[0].shapingConeAngle == 180.0f,
         "zero-radius unshaped sphere must remain an enabled direct light");
-    RequireShadowHeader(page, 0u, 1u, OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
-        "point inside scene bounds unsupported diagnostic");
-    Require(page.shadows.maps.empty(),
-        "a point inside the scene bounds must not publish a partial perspective map");
+    RequireShadowHeader(page, 6u, 1u, 0u, "point inside scene bounds");
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        const ShadowView& map = page.shadows.maps[face];
+        Require(map.lightIndex == 0u && map.mapIndex == face &&
+                map.flags == OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE &&
+                map.projection[0] == 1.0 && map.projection[5] == 1.0,
+            "a point inside the scene bounds requires all six perspective faces");
+    }
 }
 
 void VerifyZeroRadiusSpherePerspectiveConeBoundaries()
@@ -3606,9 +3611,9 @@ void VerifyZeroRadiusSpherePerspectiveConeBoundaries()
 ShadowOracle BoundedPointZOracle()
 {
     const double padding = 3.0 / 512.0;
-    const double nearPlane = 8.0 - padding;
+    const double nearPlane = 3.0 / 65536.0;
     const double farPlane = 12.0 + padding;
-    const double tangent = ((2.0 + padding) / nearPlane) * (8193.0 / 8192.0);
+    const double tangent = 1.0;
     return ShadowOracle{
         {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
          0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -10.0, 1.0},
@@ -3620,7 +3625,7 @@ ShadowOracle BoundedPointZOracle()
 }
 
 void RequirePointBoundsInside(
-    const ShadowView& shadow,
+    const std::vector<ShadowView>& shadows,
     const std::array<double, 3>& minimum,
     const std::array<double, 3>& maximum,
     const std::string& label)
@@ -3632,27 +3637,32 @@ void RequirePointBoundsInside(
             (corner & 2) != 0 ? maximum[1] : minimum[1],
             (corner & 4) != 0 ? maximum[2] : minimum[2],
             1.0};
-        std::array<double, 4> view{};
-        std::array<double, 4> clip{};
-        for (size_t column = 0; column < 4; ++column)
+        bool covered = false;
+        for (const ShadowView& shadow : shadows)
         {
-            for (size_t row = 0; row < 4; ++row)
+            std::array<double, 4> view{};
+            std::array<double, 4> clip{};
+            for (size_t column = 0; column < 4; ++column)
             {
-                view[column] += world[row] * shadow.view[(row * 4) + column];
+                for (size_t row = 0; row < 4; ++row)
+                {
+                    view[column] += world[row] * shadow.view[(row * 4) + column];
+                }
             }
-        }
-        for (size_t column = 0; column < 4; ++column)
-        {
-            for (size_t row = 0; row < 4; ++row)
+            for (size_t column = 0; column < 4; ++column)
             {
-                clip[column] += view[row] * shadow.projection[(row * 4) + column];
+                for (size_t row = 0; row < 4; ++row)
+                {
+                    clip[column] += view[row] * shadow.projection[(row * 4) + column];
+                }
             }
+            covered = covered || (clip[3] > 0.0 && std::abs(clip[0]) <= clip[3] &&
+                    std::abs(clip[1]) <= clip[3] &&
+                    clip[2] > -clip[3] && clip[2] < clip[3]);
         }
-        Require(clip[3] > 0.0 && std::abs(clip[0]) < clip[3] &&
-                std::abs(clip[1]) < clip[3] &&
-                clip[2] > -clip[3] && clip[2] < clip[3],
+        Require(covered,
             label + ": world box corner " + std::to_string(corner) +
-            " must lie strictly inside the perspective frustum");
+            " must be covered by at least one cube face");
     }
 }
 
@@ -3688,10 +3698,20 @@ void VerifyBoundedPointShadowProjectionAndLifecycle()
         Require(revision == 1u && baseline.frame.directLights[0].radius == 0.0f &&
                 baseline.frame.directLights[0].shapingConeAngle == cone,
             label + ": FRAME must retain the authored zero-radius light and cone");
-        RequireShadowHeader(baseline, 1u, 1u, 0u, label + " baseline");
-        RequireShadow(baseline.shadows.maps[0], 0u, 0u, 0u, BoundedPointZOracle(), label);
+        RequireShadowHeader(baseline, 6u, 1u, 0u, label + " baseline");
+        const ShadowOracle oracle = BoundedPointZOracle();
+        const ShadowView& negativeZ = baseline.shadows.maps[5];
+        Require(negativeZ.lightIndex == 0u && negativeZ.mapIndex == 5u &&
+                negativeZ.flags == OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE &&
+                negativeZ.view == oracle.view,
+            label + ": negative-Z cube face has the wrong identity or independent basis");
+        for (size_t element = 0; element < 16; ++element)
+        {
+            Require(std::abs(negativeZ.projection[element] - oracle.projection[element]) < 1e-12,
+                label + ": cube projection differs from the independent near/far reference");
+        }
         RequirePointBoundsInside(
-            baseline.shadows.maps[0], {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, label);
+            baseline.shadows.maps, {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, label);
 
         bytes = state.BuildPage(&revision, &count);
         const RetainedPage quiet = ReadRetainedPage(bytes, count);
@@ -3714,24 +3734,24 @@ void VerifyBoundedPointShadowProjectionAndLifecycle()
         state.ReplaceLight(light);
         bytes = state.BuildPage(&revision, &count);
         const RetainedPage moved = ReadRetainedPage(bytes, count);
-        RequireShadowHeader(moved, 1u, 1u, 0u, label + " moved");
+        RequireShadowHeader(moved, 6u, 1u, 0u, label + " moved");
         Require(moved.shadowBytes != baseline.shadowBytes,
             label + ": moving the point must replace its retained projection");
         RequirePointBoundsInside(
-            moved.shadows.maps[0], {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, label + " moved");
+            moved.shadows.maps, {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, label + " moved");
 
         light.transform[14] = 2.0;
         state.ReplaceLight(light);
         bytes = state.BuildPage(&revision, &count);
         const RetainedPage intersecting = ReadRetainedPage(bytes, count);
-        RequireShadowHeader(intersecting, 0u, 1u, OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
+        RequireShadowHeader(intersecting, 6u, 1u, 0u,
             label + " intersecting scene bounds");
 
         light.transform[14] = 10.0;
         state.ReplaceLight(light);
         bytes = state.BuildPage(&revision, &count);
         const RetainedPage restored = ReadRetainedPage(bytes, count);
-        RequireShadowHeader(restored, 1u, 1u, 0u, label + " restored");
+        RequireShadowHeader(restored, 6u, 1u, 0u, label + " restored");
         Require(restored.shadowBytes == baseline.shadowBytes,
             label + ": a corrected point position must restore the original projection");
 
@@ -3745,7 +3765,7 @@ void VerifyBoundedPointShadowProjectionAndLifecycle()
         state.ReplaceLight(light);
         bytes = state.BuildPage(&revision, &count);
         const RetainedPage readmitted = ReadRetainedPage(bytes, count);
-        RequireShadowHeader(readmitted, 1u, 1u, 0u, label + " readmitted");
+        RequireShadowHeader(readmitted, 6u, 1u, 0u, label + " readmitted");
         Require(readmitted.shadowBytes == baseline.shadowBytes,
             label + ": reenabling must readmit the same map");
     }
@@ -3763,10 +3783,10 @@ void VerifyBoundedPointShadowFrustumAndRefusal()
         {"vertical fallback basis", {0.0, 10.0, 0.0}, true},
         {"outside box but inside bounding sphere", {0.0, 0.0, 2.5}, true},
         {"diagonal outside box", {3.0, 3.0, 3.0}, true},
-        {"inside box", {0.0, 0.0, 0.0}, false},
-        {"on box", {0.0, 0.0, 2.0}, false},
-        {"inside conservative padding", {0.0, 0.0, 2.001}, false},
-        {"unresolvable angular extent", {1.006, 0.0, 0.0}, false}};
+        {"inside box", {0.0, 0.0, 0.0}, true},
+        {"on box", {0.0, 0.0, 2.0}, true},
+        {"inside conservative padding", {0.0, 0.0, 2.001}, true},
+        {"formerly unresolvable angular extent", {1.006, 0.0, 0.0}, true}};
     for (const Case& row : cases)
     {
         HdSilkSceneState state;
@@ -3793,12 +3813,12 @@ void VerifyBoundedPointShadowFrustumAndRefusal()
         uint32_t count = 0;
         const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
         const RetainedPage page = ReadRetainedPage(bytes, count);
-        RequireShadowHeader(page, row.supported ? 1u : 0u, 1u,
+        RequireShadowHeader(page, row.supported ? 6u : 0u, 1u,
             row.supported ? 0u : OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE, row.name);
         if (row.supported)
         {
             RequirePointBoundsInside(
-                page.shadows.maps[0], {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, row.name);
+                page.shadows.maps, {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, row.name);
         }
     }
 
@@ -3846,21 +3866,26 @@ void VerifyBoundedPointShadowBudgetAndPublicationRetry()
     uint32_t count = 0;
     std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
     const RetainedPage full = ReadRetainedPage(bytes, count);
-    RequireShadowHeader(full, 4u, 5u, OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET,
-        "five point lights under four-map limit");
+    RequireShadowHeader(full, 24u, 5u, OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET,
+        "five point lights under four-light limit");
     for (uint32_t index = 0; index < 4; ++index)
     {
-        RequireShadow(full.shadows.maps[index], index, index, 0u, BoundedPointZOracle(),
-            "bounded point map " + std::to_string(index));
+        for (uint32_t face = 0; face < 6; ++face)
+        {
+            const ShadowView& map = full.shadows.maps[index * 6 + face];
+            Require(map.lightIndex == index && map.mapIndex == index * 6 + face && map.flags == 4u,
+                "every admitted point light must publish a complete cube group");
+        }
     }
     state.RemoveLight(lights[0].path);
     bytes = state.BuildPage(&revision, &count);
     const RetainedPage admitted = ReadRetainedPage(bytes, count);
-    RequireShadowHeader(admitted, 4u, 4u, 0u, "fifth point admitted after retirement");
+    RequireShadowHeader(admitted, 24u, 4u, 0u, "fifth point admitted after retirement");
     for (uint32_t index = 0; index < 4; ++index)
     {
-        RequireShadow(admitted.shadows.maps[index], index, index, 0u, BoundedPointZOracle(),
-            "readmitted point map " + std::to_string(index));
+        Require(admitted.shadows.maps[index * 6].lightIndex == index &&
+                admitted.shadows.maps[index * 6 + 5].lightIndex == index,
+            "readmitted point lights must retain complete cube groups");
     }
 
     HdSilkSceneState publication;
@@ -3878,7 +3903,7 @@ void VerifyBoundedPointShadowBudgetAndPublicationRetry()
     }
     bytes = publication.BuildPage(&revision, &count);
     const RetainedPage before = ReadRetainedPage(bytes, count);
-    RequireShadowHeader(before, 1u, 128u, 0u, "point publication baseline");
+    RequireShadowHeader(before, 6u, 128u, 0u, "point publication baseline");
     const uint64_t beforeRevision = revision;
     point.transform[14] = 12.0;
     publication.ReplaceLight(point);
@@ -3903,16 +3928,17 @@ void VerifyBoundedPointShadowBudgetAndPublicationRetry()
     bytes = publication.BuildPage(&revision, &count);
     const RetainedPage retry = ReadRetainedPage(bytes, count);
     Require(revision == beforeRevision + 1u, "point retry must advance once");
-    RequireShadowHeader(retry, 1u, 128u, 0u, "point publication retry");
+    RequireShadowHeader(retry, 6u, 128u, 0u, "point publication retry");
     Require(retry.shadowBytes != before.shadowBytes,
         "the point projection edit must survive a refused publication");
     RequirePointBoundsInside(
-        retry.shadows.maps[0], {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, "point retry");
+        retry.shadows.maps, {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, "point retry");
 }
 
 void VerifyShadowBudgetAndUnsupportedTypes()
 {
-    static_assert(OPENUSD_SILK_MAX_SHADOW_MAPS == 4u);
+    static_assert(OPENUSD_SILK_MAX_SHADOW_MAPS == 24u);
+    static_assert(OPENUSD_SILK_MAX_SHADOW_LIGHTS == 4u);
     static_assert(OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE == 1u);
     static_assert(OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET == 2u);
     static_assert(OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS == 4u);
@@ -4312,8 +4338,8 @@ int main(int argc, char* argv[])
         {"domes-shadows", "VerifyHighIndexShadowDescriptors", VerifyHighIndexShadowDescriptors},
         {"domes-shadows", "VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow",
             VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow},
-        {"domes-shadows", "VerifyPointInsideBoundsRemainsUnsupported",
-            VerifyPointInsideBoundsRemainsUnsupported},
+        {"domes-shadows", "VerifyPointInsideBoundsPublishesSixFaces",
+            VerifyPointInsideBoundsPublishesSixFaces},
         {"domes-shadows", "VerifyZeroRadiusSpherePerspectiveConeBoundaries",
             VerifyZeroRadiusSpherePerspectiveConeBoundaries},
         {"domes-shadows", "VerifyBoundedPointShadowProjectionAndLifecycle",

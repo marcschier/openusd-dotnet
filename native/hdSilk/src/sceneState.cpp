@@ -2804,11 +2804,9 @@ bool BuildPerspectiveSpotShadowProjection(
         nearPlane, farPlane, std::tan(coneHalfAngleDegrees * (pi / 180.0)), outProjection);
 }
 
-// A point outside the expanded world box has a separating view through its
-// closest box point. Perspective extrema over that box occur at its corners
-// while every corner has positive depth.
-bool BuildPerspectivePointShadow(
+bool BuildPointShadowFace(
     const GfVec3d& eye,
+    uint32_t face,
     const HdSilkWorldBounds& bounds,
     double radius,
     double (&outView)[16],
@@ -2816,73 +2814,34 @@ bool BuildPerspectivePointShadow(
     double* outFarPlane,
     double* outTangent)
 {
-    const double padding = std::max(radius / 512.0, 1e-6);
-    if (!std::isfinite(padding))
+    if (face >= 6u || !std::isfinite(radius))
     {
         return false;
     }
-
-    GfVec3d minimum;
-    GfVec3d maximum;
-    GfVec3d closest;
+    double farPlane = 0.0;
     for (int axis = 0; axis < 3; ++axis)
     {
-        minimum[axis] = bounds.minimum[axis] - padding;
-        maximum[axis] = bounds.maximum[axis] + padding;
         if (!std::isfinite(eye[axis]) ||
-            !std::isfinite(minimum[axis]) || !std::isfinite(maximum[axis]) ||
-            minimum[axis] > maximum[axis])
+            !std::isfinite(bounds.minimum[axis]) || !std::isfinite(bounds.maximum[axis]))
         {
             return false;
         }
-        closest[axis] = std::clamp(eye[axis], minimum[axis], maximum[axis]);
+        farPlane = std::max(farPlane, std::max(
+            std::abs(bounds.minimum[axis] - eye[axis]),
+            std::abs(bounds.maximum[axis] - eye[axis])));
     }
-
-    const GfVec3d direction = eye - closest;
-    const double distance = std::hypot(direction[0], direction[1], direction[2]);
-    if (!std::isfinite(distance) || distance <= 1e-6)
-    {
-        return false;
-    }
-    BuildPerspectiveShadowView(direction / distance, eye, outView);
-    if (!std::all_of(outView, outView + 16,
-            [](double value) { return std::isfinite(value); }))
-    {
-        return false;
-    }
-
-    double nearPlane = std::numeric_limits<double>::infinity();
-    double farPlane = 0.0;
-    double tangent = 0.0;
-    for (int corner = 0; corner < 8; ++corner)
-    {
-        const GfVec3d delta(
-            ((corner & 1) != 0 ? maximum[0] : minimum[0]) - eye[0],
-            ((corner & 2) != 0 ? maximum[1] : minimum[1]) - eye[1],
-            ((corner & 4) != 0 ? maximum[2] : minimum[2]) - eye[2]);
-        const double x = delta[0] * outView[0] + delta[1] * outView[4] + delta[2] * outView[8];
-        const double y = delta[0] * outView[1] + delta[1] * outView[5] + delta[2] * outView[9];
-        const double depth = -(delta[0] * outView[2] + delta[1] * outView[6] + delta[2] * outView[10]);
-        if (!std::isfinite(x) || !std::isfinite(y) ||
-            !std::isfinite(depth) || depth <= 1e-6)
-        {
-            return false;
-        }
-        nearPlane = std::min(nearPlane, depth);
-        farPlane = std::max(farPlane, depth);
-        tangent = std::max(tangent, std::max(std::abs(x), std::abs(y)) / depth);
-    }
-
-    // Leave room for float matrix conversion and reject a near-180-degree
-    // frustum whose depth and angular resolution cannot represent this bound.
-    tangent *= 1.0 + (1.0 / 8192.0);
-    if (!std::isfinite(tangent) || tangent > 64.0 ||
-        !BuildPerspectiveShadowProjection(nearPlane, farPlane, tangent, outProjection))
+    GfVec3d direction(0.0);
+    // The view's +Z axis points back toward the emitter.
+    direction[face / 2u] = (face & 1u) == 0u ? -1.0 : 1.0;
+    BuildPerspectiveShadowView(direction, eye, outView);
+    farPlane += std::max(radius / 512.0, 1e-6);
+    const double nearPlane = std::max(radius / 65536.0, 1e-6);
+    if (!BuildPerspectiveShadowProjection(nearPlane, farPlane, 1.0, outProjection))
     {
         return false;
     }
     *outFarPlane = farPlane;
-    *outTangent = tangent;
+    *outTangent = 1.0;
     return true;
 }
 
@@ -3393,6 +3352,7 @@ HdSilkSceneState::_ResolveShadowTable(
 
     uint32_t flags = OPENUSD_SILK_SHADOW_UNSUPPORTED_NONE;
     size_t budgetOverflow = 0;
+    uint32_t admittedLights = 0;
     for (size_t index = 0; index < directLights.size(); ++index)
     {
         const HdSilkLightRecord& light = directLights[index];
@@ -3416,9 +3376,11 @@ HdSilkSceneState::_ResolveShadowTable(
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS;
             continue;
         }
-        if (table.descriptors.size() >= OPENUSD_SILK_MAX_SHADOW_MAPS)
+        const uint32_t mapCount = point ? 6u : 1u;
+        if (admittedLights >= OPENUSD_SILK_MAX_SHADOW_LIGHTS ||
+            table.descriptors.size() + mapCount > OPENUSD_SILK_MAX_SHADOW_MAPS)
         {
-            ++budgetOverflow;
+            budgetOverflow += mapCount;
             continue;
         }
 
@@ -3434,95 +3396,112 @@ HdSilkSceneState::_ResolveShadowTable(
             continue;
         }
 
-        HdSilkShadowDescriptor descriptor;
-        descriptor.lightIndex = static_cast<uint32_t>(index);
-        descriptor.mapIndex =
-            static_cast<uint32_t>(table.descriptors.size());
-        descriptor.resolution = OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION;
-        double texelWorldSize = 0.0;
-        if (distant)
+        std::vector<HdSilkShadowDescriptor> group;
+        group.reserve(mapCount);
+        for (uint32_t face = 0; face < mapCount; ++face)
         {
-            descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC;
-            double eyeDistance = 0.0;
-            BuildDirectionalShadowView(
-                direction,
-                center,
-                radius,
-                descriptor.view,
-                &eyeDistance);
-            BuildOrthographicShadowProjection(
-                radius,
-                eyeDistance,
-                descriptor.projection);
-            texelWorldSize = (2.0 * radius) / static_cast<double>(descriptor.resolution);
-        }
-        else if (spot)
-        {
-            const GfVec3d eye(
-                light.transform[12],
-                light.transform[13],
-                light.transform[14]);
-            double nearPlane = 0.0;
-            double farPlane = 0.0;
-            if (!BuildPerspectiveSpotShadowView(
-                    direction, eye, center, radius, descriptor.view, &nearPlane, &farPlane) ||
-                !BuildPerspectiveSpotShadowProjection(
-                    nearPlane, farPlane, coneHalfAngle, descriptor.projection))
+            HdSilkShadowDescriptor descriptor;
+            descriptor.lightIndex = static_cast<uint32_t>(index);
+            descriptor.mapIndex =
+                static_cast<uint32_t>(table.descriptors.size()) + face;
+            descriptor.resolution = OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION;
+            double texelWorldSize = 0.0;
+            if (distant)
+            {
+                descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC;
+                double eyeDistance = 0.0;
+                BuildDirectionalShadowView(
+                    direction,
+                    center,
+                    radius,
+                    descriptor.view,
+                    &eyeDistance);
+                BuildOrthographicShadowProjection(
+                    radius,
+                    eyeDistance,
+                    descriptor.projection);
+                texelWorldSize = (2.0 * radius) / static_cast<double>(descriptor.resolution);
+            }
+            else if (spot)
+            {
+                const GfVec3d eye(
+                    light.transform[12],
+                    light.transform[13],
+                    light.transform[14]);
+                double nearPlane = 0.0;
+                double farPlane = 0.0;
+                if (!BuildPerspectiveSpotShadowView(
+                        direction, eye, center, radius, descriptor.view, &nearPlane, &farPlane) ||
+                    !BuildPerspectiveSpotShadowProjection(
+                        nearPlane, farPlane, coneHalfAngle, descriptor.projection))
+                {
+                    flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                    continue;
+                }
+                constexpr double pi = 3.14159265358979323846;
+                texelWorldSize = (2.0 * farPlane *
+                    std::tan(static_cast<double>(coneHalfAngle) * (pi / 180.0))) /
+                    static_cast<double>(descriptor.resolution);
+            }
+            else
+            {
+                const GfVec3d eye(
+                    light.transform[12],
+                    light.transform[13],
+                    light.transform[14]);
+                double farPlane = 0.0;
+                double tangent = 0.0;
+                descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE;
+                if (!BuildPointShadowFace(
+                        eye, face, bounds, radius, descriptor.view, descriptor.projection,
+                        &farPlane, &tangent))
+                {
+                    flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                    continue;
+                }
+                texelWorldSize = (2.0 * farPlane * tangent) /
+                    static_cast<double>(descriptor.resolution);
+            }
+            if (!std::isfinite(texelWorldSize) || texelWorldSize <= 0.0)
             {
                 flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
                 continue;
             }
-            constexpr double pi = 3.14159265358979323846;
-            texelWorldSize = (2.0 * farPlane *
-                std::tan(static_cast<double>(coneHalfAngle) * (pi / 180.0))) /
-                static_cast<double>(descriptor.resolution);
-        }
-        else
-        {
-            const GfVec3d eye(
-                light.transform[12],
-                light.transform[13],
-                light.transform[14]);
-            double farPlane = 0.0;
-            double tangent = 0.0;
-            if (!BuildPerspectivePointShadow(
-                    eye, bounds, radius, descriptor.view, descriptor.projection,
-                    &farPlane, &tangent))
+            const double normalBias = 1.5 * texelWorldSize;
+            if (!std::isfinite(normalBias) || normalBias > std::numeric_limits<float>::max())
             {
                 flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
                 continue;
             }
-            texelWorldSize = (2.0 * farPlane * tangent) /
-                static_cast<double>(descriptor.resolution);
-        }
-        if (!std::isfinite(texelWorldSize) || texelWorldSize <= 0.0)
-        {
-            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
-            continue;
-        }
-        const double normalBias = 1.5 * texelWorldSize;
-        if (!std::isfinite(normalBias) || normalBias > std::numeric_limits<float>::max())
-        {
-            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
-            continue;
-        }
-        // The depth bias is expressed in the map's own normalized depth so a
-        // consumer never has to know the world extent it was derived from; the
-        // normal bias stays in world units because the receiver it offsets is.
-        descriptor.depthBias =
-            static_cast<float>(1.5 / static_cast<double>(descriptor.resolution));
-        descriptor.normalBias = static_cast<float>(normalBias);
-        descriptor.pcfRadius = 1.0f;
+            // Cube projection depth is nonlinear; a world-range bias would erase
+            // distant occluders when the emitter is inside the scene bounds.
+            descriptor.depthBias =
+                static_cast<float>(1.5 / static_cast<double>(descriptor.resolution));
+            if (point)
+            {
+                const double nearPlane = std::max(radius / 65536.0, 1e-6);
+                const double farPlane = descriptor.projection[14] /
+                    (descriptor.projection[10] + 1.0);
+                descriptor.depthBias *= static_cast<float>(nearPlane / farPlane);
+            }
+            descriptor.normalBias = static_cast<float>(normalBias);
+            descriptor.pcfRadius = 1.0f;
 
-        for (const HdSilkLinkEntry& entry : links.entries)
-        {
-            if (!entry.shadowMask.Contains(descriptor.lightIndex))
+            for (const HdSilkLinkEntry& entry : links.entries)
             {
-                descriptor.flags |= OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED;
-                break;
+                if (!entry.shadowMask.Contains(descriptor.lightIndex))
+                {
+                    descriptor.flags |= OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED;
+                    break;
+                }
             }
+            group.push_back(descriptor);
         }
-        table.descriptors.push_back(descriptor);
+        if (group.size() == mapCount)
+        {
+            table.descriptors.insert(table.descriptors.end(), group.begin(), group.end());
+            ++admittedLights;
+        }
     }
 
     if (budgetOverflow > 0)

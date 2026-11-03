@@ -788,7 +788,7 @@ public sealed class SilkTransactionalApplyTests
         await Assert.That(scene.Shadows.ResolveSlot(96)).IsEqualTo(-1);
         byte[] restoredGpu = WideTransactionGpu(scene);
         await Assert.That(restoredGpu.SequenceEqual(beforeGpu)).IsTrue();
-        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(restoredGpu.AsSpan(15020)))
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(restoredGpu.AsSpan(16940)))
             .IsEqualTo(1f).Because("the candidate 0x1 authored-direct flag must also roll back");
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(
                 restoredGpu.AsSpan(4320 + (127 * 16) + 12)))
@@ -823,7 +823,7 @@ public sealed class SilkTransactionalApplyTests
         await Assert.That(scene.LightLinks.UnsupportedFeatures)
             .IsEqualTo(SilkLightLinkUnsupportedFeatures.None);
         byte[] acceptedGpu = WideTransactionGpu(scene);
-        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(acceptedGpu.AsSpan(15020)))
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(acceptedGpu.AsSpan(16940)))
             .IsEqualTo(0f);
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(
                 acceptedGpu.AsSpan(4320 + (127 * 16) + 12)))
@@ -910,7 +910,7 @@ public sealed class SilkTransactionalApplyTests
 
     private static byte[] WideTransactionGpu(SilkSceneState scene)
     {
-        var bytes = new byte[17344];
+        var bytes = new byte[19264];
         SilkShadowFrameBinding shadows = SilkShadowFrameBinding.Create(
             scene.Shadows.Descriptors, SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!);
         SilkFrameUniformWriter.Write(

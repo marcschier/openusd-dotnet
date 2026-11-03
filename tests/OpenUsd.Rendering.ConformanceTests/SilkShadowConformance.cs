@@ -36,7 +36,7 @@ namespace OpenUsd.Rendering.ConformanceTests;
 /// cross-backend and needs no GPU.
 /// </para>
 /// </remarks>
-internal static class SilkShadowConformance
+internal static partial class SilkShadowConformance
 {
     private const string Receiver = "/World/Receiver";
     private const string Caster = "/World/Caster";

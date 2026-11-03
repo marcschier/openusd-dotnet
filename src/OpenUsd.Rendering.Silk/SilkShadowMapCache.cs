@@ -561,7 +561,8 @@ internal sealed class SilkShadowMapCache : IDisposable
 
         double nearPlane = source[14] / (source[10] - 1);
         double farPlane = source[14] / (source[10] + 1);
-        double expandedNear = nearPlane - displacementPadding;
+        bool cube = (descriptor.Flags & SilkShadowDescriptorOptions.CubeFace) != 0;
+        double expandedNear = cube ? nearPlane : nearPlane - displacementPadding;
         double expandedFar = farPlane + displacementPadding;
         if (!double.IsFinite(nearPlane) || !double.IsFinite(farPlane) ||
             nearPlane <= 0 || farPlane <= nearPlane || expandedNear <= 0 ||
@@ -572,9 +573,9 @@ internal sealed class SilkShadowMapCache : IDisposable
         }
 
         double expandedHorizontalTangent =
-            ((nearPlane / source[0]) + displacementPadding) / expandedNear;
+            cube ? 1 / source[0] : ((nearPlane / source[0]) + displacementPadding) / expandedNear;
         double expandedVerticalTangent =
-            ((nearPlane / source[5]) + displacementPadding) / expandedNear;
+            cube ? 1 / source[5] : ((nearPlane / source[5]) + displacementPadding) / expandedNear;
         if (!double.IsFinite(expandedHorizontalTangent) || expandedHorizontalTangent <= 0 ||
             !double.IsFinite(expandedVerticalTangent) || expandedVerticalTangent <= 0)
         {
@@ -602,6 +603,7 @@ internal sealed class SilkShadowMapCache : IDisposable
 
         return descriptor with
         {
+            DepthBias = cube ? (float)(descriptor.DepthBias * farPlane / expandedFar) : descriptor.DepthBias,
             NormalBias = normalBias,
             Projection = projection,
         };

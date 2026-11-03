@@ -23,11 +23,9 @@ internal readonly record struct SilkShadowTilePlacement(
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every published map occupies one quadrant of a square atlas sized to twice the
-/// largest published resolution, which covers the whole
-/// <c>OPENUSD_SILK_MAX_SHADOW_MAPS</c> budget of four maps without renegotiating
-/// a size per frame. A map smaller than the largest one occupies the lower-left
-/// corner of its quadrant, so a mixed-resolution table still lays out exactly and
+/// Maps occupy a square grid with at least two columns, sized by the largest
+/// published resolution. The 24-map budget fits in a five-by-five grid.
+/// A smaller map occupies the lower-left corner of its cell, so mixed resolutions lay out exactly and
 /// no map ever samples another map's texels.
 /// </para>
 /// <para>
@@ -90,13 +88,14 @@ internal sealed class SilkShadowAtlasLayout
         // the atlas to the map count -- would re-create the texture whenever a
         // light started or stopped casting, which is exactly the case a retained
         // map exists to survive.
-        uint edge = quadrant * 2;
+        uint columns = Math.Max(2u, (uint)Math.Ceiling(Math.Sqrt(descriptors.Count)));
+        uint edge = quadrant * columns;
         var tiles = new SilkShadowTilePlacement[descriptors.Count];
         for (int index = 0; index < descriptors.Count; index++)
         {
             uint resolution = descriptors[index].Resolution;
-            uint pixelX = (uint)(index % 2) * quadrant;
-            uint pixelY = (uint)(index / 2) * quadrant;
+            uint pixelX = ((uint)index % columns) * quadrant;
+            uint pixelY = ((uint)index / columns) * quadrant;
             tiles[index] = new SilkShadowTilePlacement(
                 pixelX,
                 pixelY,
@@ -158,6 +157,12 @@ internal sealed class SilkShadowFrameBinding
     /// <summary>Gets the map slot a direct light samples, or <c>-1</c>.</summary>
     public int GetSlotForLight(int lightIndex) => _slotsByLight[lightIndex];
 
+    /// <summary>Gets the number of consecutive maps sampled by one light.</summary>
+    public int GetMapCountForLight(int lightIndex) =>
+        _slotsByLight[lightIndex] < 0 ? 0 : _mapCountsByLight[lightIndex];
+
+    private readonly int[] _mapCountsByLight = new int[SilkFrameCommand.MaximumLights];
+
     /// <summary>
     /// Resolves the frame binding of one retained shadow table and atlas layout.
     /// </summary>
@@ -195,12 +200,20 @@ internal sealed class SilkShadowFrameBinding
                 descriptor.NormalBias,
                 descriptor.PcfRadius,
                 layout.TexelSize);
-            slots[(int)descriptor.LightIndex] = index;
+            if (slots[(int)descriptor.LightIndex] < 0)
+            {
+                slots[(int)descriptor.LightIndex] = index;
+            }
         }
-        return new SilkShadowFrameBinding(matrices, tiles, controls, slots)
+        var binding = new SilkShadowFrameBinding(matrices, tiles, controls, slots)
         {
             Count = descriptors.Count,
         };
+        foreach (SilkShadowDescriptor descriptor in descriptors)
+        {
+            binding._mapCountsByLight[(int)descriptor.LightIndex]++;
+        }
+        return binding;
     }
 
     private static int[] CreateEmptySlots()

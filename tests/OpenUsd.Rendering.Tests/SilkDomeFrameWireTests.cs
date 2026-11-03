@@ -33,9 +33,9 @@ public sealed class SilkDomeFrameWireTests
     private const int AmbientOffset = 23080;
     private const int DomeCountOffset = 23096;
     private const int DomeTableOffset = 23112;
-    private const int DomeControlOffset = 15024;
-    private const int DomeAmbientOffset = 15040;
-    private const int DomeEnvironmentOffset = 15168;
+    private const int DomeControlOffset = 16944;
+    private const int DomeAmbientOffset = 16960;
+    private const int DomeEnvironmentOffset = 17088;
 
     [Test]
     public async Task TheDomeTableRoundTripsEveryEntryAtItsOwnOffset()

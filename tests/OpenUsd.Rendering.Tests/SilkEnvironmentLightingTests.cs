@@ -1367,7 +1367,7 @@ public sealed class SilkEnvironmentLightingTests
 
     internal static byte[] ReadFrameConstants(ISilkGraphicsBuffer buffer)
     {
-        byte[] constants = new byte[17344];
+        byte[] constants = new byte[19264];
         buffer.ReadbackForTesting(constants);
         return constants;
     }
@@ -1386,9 +1386,9 @@ public sealed class SilkEnvironmentLightingTests
     {
         byte[] constants = ReadFrameConstants(buffer);
         return (
-            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(15008, 4)),
-            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(15012, 4)),
-            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(15016, 4)));
+            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(16928, 4)),
+            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(16932, 4)),
+            BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(16936, 4)));
     }
 
     /// <summary>
@@ -1397,7 +1397,7 @@ public sealed class SilkEnvironmentLightingTests
     /// </summary>
     internal static float ReadAuthoredSceneLighting(ISilkGraphicsBuffer buffer) =>
         BinaryPrimitives.ReadSingleLittleEndian(
-            ReadFrameConstants(buffer).AsSpan(15020, 4));
+            ReadFrameConstants(buffer).AsSpan(16940, 4));
 
     /// <summary>Reads the packed frame constants verbatim.</summary>
     internal static byte[] ReadFrameBytes(ISilkGraphicsBuffer buffer) =>

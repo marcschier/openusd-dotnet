@@ -30,6 +30,28 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkShadowAtlasRetentionTests
 {
     [Test]
+    public async Task CubeDisplacementExtendsDepthWithoutOpeningGapsBetweenFaces()
+    {
+        SilkShadowDescriptor descriptor = CreatePerspectiveDescriptor(near: 0.001, far: 10) with
+        {
+            Flags = SilkShadowDescriptorOptions.CubeFace,
+            DepthBias = 0.0001f,
+        };
+        SilkShadowDescriptor expanded =
+            SilkShadowMapCache.ExpandPerspectiveDescriptor(descriptor, displacementPadding: 0.5);
+        double near = expanded.Projection[14] / (expanded.Projection[10] - 1);
+        double far = expanded.Projection[14] / (expanded.Projection[10] + 1);
+        await Assert.That(Math.Abs(near - 0.001)).IsLessThan(1e-12);
+        await Assert.That(Math.Abs(far - 10.5)).IsLessThan(1e-10);
+        await Assert.That(expanded.Projection[0]).IsEqualTo(1d);
+        await Assert.That(expanded.Projection[5]).IsEqualTo(1d);
+        await Assert.That(Math.Abs(expanded.DepthBias - 0.0001f * 10 / 10.5f)).IsLessThan(1e-10f);
+        await Assert.That(expanded.NormalBias).IsEqualTo((float)(3 * 10.5 / 1024));
+        await Assert.That(expanded.View.SequenceEqual(descriptor.View)).IsTrue();
+        await Assert.That(descriptor.Projection[0]).IsEqualTo(1d);
+    }
+
+    [Test]
     public async Task PerspectiveDisplacementPaddingExpandsFrustumAndDepthRange()
     {
         SilkShadowDescriptor descriptor = CreatePerspectiveDescriptor(near: 1, far: 10);
@@ -1241,11 +1263,11 @@ public sealed class SilkShadowAtlasRetentionTests
         await Assert.That(fixture.Device.CreatedShadowTextureCount).IsEqualTo(1);
         ISilkGraphicsBuffer frame = fixture.Resources.RequireFrameBuffer(
             fixture.Scene, RenderOutputTransform.Identity, 0, fixture.Cache.Binding, fixture.Cache.BindingRevision);
-        var bytes = new byte[17344];
+        var bytes = new byte[19264];
         frame.ReadbackForTesting(bytes);
-        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(12960 + (127 * 16))))
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(14880 + (127 * 16))))
             .IsEqualTo(-1f);
-        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(12960 + (96 * 16))))
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(14880 + (96 * 16))))
             .IsEqualTo(0f);
 
         fixture.Device.RecordedCasterDraws.Clear();
@@ -1274,7 +1296,7 @@ public sealed class SilkShadowAtlasRetentionTests
         retiredFrame.ReadbackForTesting(bytes);
         for (int index = 0; index < 128; index++)
         {
-            await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(12960 + (index * 16))))
+            await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(14880 + (index * 16))))
                 .IsEqualTo(-1f);
         }
 

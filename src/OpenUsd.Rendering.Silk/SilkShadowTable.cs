@@ -137,7 +137,10 @@ public sealed class SilkShadowTable
         {
             SilkShadowDescriptor descriptor = command.GetDescriptor(index);
             _descriptors.Add(descriptor);
-            _slotsByLight[(int)descriptor.LightIndex] = (int)descriptor.MapIndex;
+            if (_slotsByLight[(int)descriptor.LightIndex] < 0)
+            {
+                _slotsByLight[(int)descriptor.LightIndex] = (int)descriptor.MapIndex;
+            }
         }
 
         LightCount = command.LightCount;

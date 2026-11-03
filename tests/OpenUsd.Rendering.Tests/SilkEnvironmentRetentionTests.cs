@@ -2917,7 +2917,7 @@ public sealed class SilkEnvironmentRetentionTests
         SilkSceneGpuStatistics geometry = resources.Statistics;
         ulong geometryRevision = scene.GeometryRevision;
         ulong resourceRevision = resources.Revision;
-        await Assert.That(frameBuffer.Size).IsEqualTo((nuint)17344);
+        await Assert.That(frameBuffer.Size).IsEqualTo((nuint)19264);
         await Assert.That(geometry.GeometryBuilds).IsEqualTo(1UL);
         await Assert.That(geometry.VertexUploads).IsEqualTo(1UL);
         await Assert.That(geometry.IndexUploads).IsEqualTo(1UL);
@@ -2977,7 +2977,7 @@ public sealed class SilkEnvironmentRetentionTests
         byte[] noAuthored = RetentionFrame(0);
         byte[] noAuthoredExpected = (byte[])reorderedExpected.Clone();
         RetentionFloats(noAuthoredExpected, 220, 0);
-        RetentionFloats(noAuthoredExpected, 15020, 0);
+        RetentionFloats(noAuthoredExpected, 16940, 0);
         for (int light = 0; light < 128; light++)
         {
             RetentionFloats(noAuthoredExpected, 224 + (light * 16), 0, 0, 0, 0);
@@ -2990,7 +2990,7 @@ public sealed class SilkEnvironmentRetentionTests
         byte[] authoredDark = (byte[])noAuthored.Clone();
         BinaryPrimitives.WriteUInt32LittleEndian(authoredDark.AsSpan(540), 0x1u);
         byte[] authoredDarkExpected = (byte[])noAuthoredExpected.Clone();
-        RetentionFloats(authoredDarkExpected, 15020, 1);
+        RetentionFloats(authoredDarkExpected, 16940, 1);
         var allMasks = new SilkLightLinkMasks(UInt128.MaxValue, UInt128.MaxValue, 255);
 
         (string Name, byte[] Frame, byte[]? Links, byte[] Expected, SilkLightLinkMasks Masks, bool Changed)[] edits =
@@ -3022,7 +3022,7 @@ public sealed class SilkEnvironmentRetentionTests
             await Assert.That(RetentionReadback(next).SequenceEqual(edit.Expected))
                 .IsTrue().Because($"the {edit.Name} transition must change exactly its frame bytes");
             await Assert.That(resources.Statistics.BufferWriteBytes - beforeWrite.BufferWriteBytes)
-                .IsEqualTo(edit.Changed ? 17344UL : 0UL);
+                .IsEqualTo(edit.Changed ? 19264UL : 0UL);
             await Assert.That(resources.Statistics.BufferAllocationBytes)
                 .IsEqualTo(beforeWrite.BufferAllocationBytes);
             await Assert.That(scene.Frame.Revision)
@@ -3061,7 +3061,7 @@ public sealed class SilkEnvironmentRetentionTests
         }
         await Assert.That(scene.Frame.Lights[127].Type).IsEqualTo(0u);
         await Assert.That(scene.Frame.LightCount).IsEqualTo(0u);
-        await Assert.That(RetentionVector(RetentionReadback(frameBuffer), 15008).W).IsEqualTo(1f);
+        await Assert.That(RetentionVector(RetentionReadback(frameBuffer), 16928).W).IsEqualTo(1f);
     }
 
     [Test]

@@ -1178,12 +1178,13 @@ typedef enum openusd_silk_ptex_mapping_status
 #define OPENUSD_SILK_MAX_SUBPRIM_IDENTITY_BYTES 67108864u
 
 /// The largest number of shadow maps one page describes. The bound is a memory
-/// bound as much as a wire bound: a consumer allocates one square depth map per
-/// descriptor, so four 2048-square D32 maps is the 64 MiB ceiling this ABI
-/// permits. A scene with more shadow-casting lights than fit publishes the
+/// bound as much as a wire bound: 24 maps occupy a five-by-five atlas, at most
+/// 400 MiB for 2048-square D32 tiles, subject to consumer admission.
+/// A scene with more than four shadow-casting lights publishes the
 /// lowest light indices and sets
 /// OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET.
-#define OPENUSD_SILK_MAX_SHADOW_MAPS 4u
+#define OPENUSD_SILK_MAX_SHADOW_MAPS 24u
+#define OPENUSD_SILK_MAX_SHADOW_LIGHTS 4u
 
 /// The square shadow-map resolutions a descriptor may name. Both bounds are
 /// inclusive and every published value is a power of two, so a consumer can
@@ -1194,20 +1195,24 @@ typedef enum openusd_silk_ptex_mapping_status
 
 /// Descriptor flags. ORTHOGRAPHIC states that the projection has no perspective
 /// divide; it is used for distant lights. A zero-radius sphere spot uses a
-/// perspective projection with no flag. CASTER_LINKED states that at least one
+/// perspective projection with no flag. CUBE_FACE groups six perspective maps
+/// for one point light in world-axis order +X, -X, +Y, -Y, +Z, -Z.
+/// CASTER_LINKED states that at least one
 /// published prim is excluded from this light's caster collection, so a consumer
 /// that ignores the LIGHT_LINK shadow mask renders a knowably different image.
 #define OPENUSD_SILK_SHADOW_FLAG_NONE 0u
 #define OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC 1u
 #define OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED 2u
+#define OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE 4u
 
 /// Authored shadow state hdSilk did not put on the SHADOW command.
 /// LIGHT_TYPE is set when a light has no supported projection: distant lights
 /// use orthographic maps, and zero-radius sphere spots use one perspective map
 /// when their ShapingAPI cone half-angle is in (0, 90) degrees. Wider or
-/// unshaped sphere lights, finite spheres and area lights need other projections
-/// or multiple maps. MAP_BUDGET is set when more lights asked for a map than
-/// OPENUSD_SILK_MAX_SHADOW_MAPS allows. NO_CASTERS is set when a light asked for
+/// unshaped zero-radius lights use six cube faces. Finite spheres and area lights
+/// need emitter-geometry shadow semantics. MAP_BUDGET is set when more lights
+/// asked for maps than OPENUSD_SILK_MAX_SHADOW_LIGHTS allows, or their complete
+/// projection groups exceed OPENUSD_SILK_MAX_SHADOW_MAPS. NO_CASTERS is set when a light asked for
 /// a map but the published geometry has no world extent to derive one from.
 #define OPENUSD_SILK_SHADOW_UNSUPPORTED_NONE 0u
 #define OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE 1u

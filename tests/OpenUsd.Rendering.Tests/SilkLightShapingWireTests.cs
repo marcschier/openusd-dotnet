@@ -22,7 +22,7 @@ public sealed class SilkLightShapingWireTests
     private const int ShapingOffset = DomeSize;
     private const int LightTableOffset = 552;
     private const int LightEntrySize = 176;
-    private const int ShapingUniformOffset = 15296;
+    private const int ShapingUniformOffset = 17216;
 
     [Test]
     public async Task ShapingTableRoundTripsEveryPublishedSlot()
@@ -122,7 +122,7 @@ public sealed class SilkLightShapingWireTests
 
         SilkFrameUniformWriter.Write(frame, constants, false, RenderOutputTransform.Identity, 0);
 
-        await Assert.That(constants.Length).IsEqualTo(17344);
+        await Assert.That(constants.Length).IsEqualTo(19264);
         await Assert.That(ReadVector(constants, 0))
             .IsEqualTo(new Vector4(MathF.Cos(45 * (MathF.PI / 180)), 2, 1, 0));
         await Assert.That(ReadVector(constants, 1))

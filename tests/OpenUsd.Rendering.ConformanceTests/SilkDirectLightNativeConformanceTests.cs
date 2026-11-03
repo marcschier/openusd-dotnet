@@ -25,7 +25,7 @@ public sealed class SilkDirectLightNativeConformanceTests
     private const byte ClearGreen = 32;
     private const uint PageAbi = SilkCommandParser.PageAbiVersion;
     private const uint SessionAbi = 7;
-    private const int FrameBufferSize = 17344;
+    private const int FrameBufferSize = 19264;
     private const string RequiredVariable = "OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED";
     private const string HardwareVariable = "OPENUSD_DIRECT_LIGHT_HARDWARE_REQUIRED";
     private const string PluginVariable = "OPENUSD_TEST_PLUGIN_PATH";

@@ -209,11 +209,11 @@ public sealed class SilkShadowDiagnosticTests
         RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
             entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
         await Assert.That(diagnostic.Message).Contains("sphere");
-        await Assert.That(diagnostic.Message).Contains("cone half-angle");
+        await Assert.That(diagnostic.Message).Contains("six-face perspective projection");
     }
 
     [Test]
-    [Arguments(1u, "covered by one finite perspective map")]
+    [Arguments(1u, "six-face perspective projection")]
     [Arguments(2u, "shadow-map budget")]
     [Arguments(4u, "no world extent")]
     public async Task ARefusedPointShadowReportsItsProjectionReason(uint reason, string expected)
@@ -522,7 +522,7 @@ public sealed class SilkShadowDiagnosticTests
         await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(-1);
         await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
             .DoesNotContain(SilkRenderDiagnosticCodes.ShadowUnsupported);
-        var bytes = new byte[17344];
+        var bytes = new byte[19264];
         emptyFrame.ReadbackForTesting(bytes);
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(220))).IsEqualTo(0f);
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(15020))).IsEqualTo(0f);

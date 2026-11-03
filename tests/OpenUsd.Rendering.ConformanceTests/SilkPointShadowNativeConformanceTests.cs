@@ -72,15 +72,15 @@ public sealed class SilkPointShadowNativeConformanceTests
         await Assert.That(restored.Light.ShadowEnabled).IsEqualTo(1u);
         await Assert.That(retired.Light.ShadowEnabled).IsEqualTo(0u);
         await Assert.That(before.Descriptors.Length).IsEqualTo(0);
-        await Assert.That(shadowed.Descriptors.Length).IsEqualTo(1);
-        await Assert.That(moved.Descriptors.Length).IsEqualTo(1);
-        await Assert.That(restored.Descriptors.Length).IsEqualTo(1);
+        await Assert.That(shadowed.Descriptors.Length).IsEqualTo(6);
+        await Assert.That(moved.Descriptors.Length).IsEqualTo(6);
+        await Assert.That(restored.Descriptors.Length).IsEqualTo(6);
         await Assert.That(retired.Descriptors.Length).IsEqualTo(0);
         await Assert.That(shadowed.Unsupported).IsEqualTo(SilkShadowUnsupportedFeatures.None);
-        SilkShadowDescriptor descriptor = shadowed.Descriptors[0];
+        SilkShadowDescriptor descriptor = shadowed.Descriptors[5];
         await Assert.That(descriptor.LightIndex).IsEqualTo(0u);
-        await Assert.That(descriptor.MapIndex).IsEqualTo(0u);
-        await Assert.That(descriptor.Flags).IsEqualTo(SilkShadowDescriptorOptions.None);
+        await Assert.That(descriptor.MapIndex).IsEqualTo(5u);
+        await Assert.That(descriptor.Flags).IsEqualTo(SilkShadowDescriptorOptions.CubeFace);
         await Assert.That(descriptor.Projection[11]).IsEqualTo(-1.0);
         await Assert.That(Math.Abs(descriptor.View[2])).IsLessThan(1e-12);
         await Assert.That(Math.Abs(descriptor.View[6])).IsLessThan(1e-12);
@@ -105,7 +105,7 @@ public sealed class SilkPointShadowNativeConformanceTests
             return;
         }
 
-        await Assert.That(shadowed.LiveMaps).IsEqualTo(1);
+        await Assert.That(shadowed.LiveMaps).IsEqualTo(6);
         await Assert.That(shadowed.Renders).IsGreaterThan(0ul);
         await Assert.That(shadowed.ShadowDiagnostics.Length).IsEqualTo(0);
         await AssertDarkened(before, shadowed, CenterX, "point shadow center");
@@ -113,14 +113,14 @@ public sealed class SilkPointShadowNativeConformanceTests
         await AssertNear(before, shadowed, ControlX, "unoccluded receiver");
         await AssertNear(before, shadowed, MovedShadowX, "receiver beyond the initial shadow");
 
-        await Assert.That(moved.LiveMaps).IsEqualTo(1);
+        await Assert.That(moved.LiveMaps).IsEqualTo(6);
         await Assert.That(moved.Renders).IsGreaterThan(shadowed.Renders);
         await AssertNear(before, moved, CenterX, "receiver the moved caster left");
         await AssertNear(before, moved, PerspectiveOnlyX, "perspective extension the caster left");
         await AssertNear(before, moved, ControlX, "unoccluded receiver after movement");
         await AssertDarkened(before, moved, MovedShadowX, "moved point shadow");
 
-        await Assert.That(restored.LiveMaps).IsEqualTo(1);
+        await Assert.That(restored.LiveMaps).IsEqualTo(6);
         await Assert.That(restored.Renders).IsGreaterThan(moved.Renders);
         await AssertDarkened(before, restored, CenterX, "restored point shadow center");
         await AssertDarkened(before, restored, PerspectiveOnlyX, "restored perspective extension");

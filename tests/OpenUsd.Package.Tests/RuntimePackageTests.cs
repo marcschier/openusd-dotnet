@@ -1458,6 +1458,7 @@ public sealed partial class RuntimePackageTests
                 "shadow.mask.fragment.reflection.json",
                 "mesh.fragment.dxil",
                 "mesh.fragment.spv",
+                "mesh.fragment.reflection.json",
                 "mesh.fragment.uv.dxil",
                 "mesh.fragment.uv.spv",
                 "mesh.fragment.uv+material.dxil",
@@ -1468,6 +1469,7 @@ public sealed partial class RuntimePackageTests
                 "mesh.fragment.uv+material+normal.spv",
                 "mesh.volume.fragment.dxil",
                 "mesh.volume.fragment.spv",
+                "mesh.volume.fragment.reflection.json",
                 "manifest.json",
             ];
             foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
@@ -1480,6 +1482,25 @@ public sealed partial class RuntimePackageTests
                 buffer.Position = 0;
                 using var assembly = new PEReader(buffer);
                 MetadataReader metadata = assembly.GetMetadataReader();
+                foreach ((string Type, string Field, uint Expected) contract in new[]
+                {
+                    ("SilkShadowCommand", "MaximumMaps", 24u),
+                    ("SilkShadowDescriptorOptions", "CubeFace", 4u),
+                })
+                {
+                    TypeDefinition type = metadata.GetTypeDefinition(metadata.TypeDefinitions.Single(handle =>
+                    {
+                        TypeDefinition definition = metadata.GetTypeDefinition(handle);
+                        return metadata.GetString(definition.Namespace) == "OpenUsd.Rendering.Silk" &&
+                            metadata.GetString(definition.Name) == contract.Type;
+                    }));
+                    FieldDefinition field = metadata.GetFieldDefinition(type.GetFields().Single(handle =>
+                        metadata.GetString(metadata.GetFieldDefinition(handle).Name) == contract.Field));
+                    Constant constant = metadata.GetConstant(field.GetDefaultValue());
+                    BlobReader constantReader = metadata.GetBlobReader(constant.Value);
+                    await Assert.That(constantReader.ReadUInt32()).IsEqualTo(contract.Expected)
+                        .Because($"{framework} must publish the coordinated cube-shadow contract.");
+                }
                 PEMemoryBlock embedded = assembly.GetSectionData(
                     assembly.PEHeaders.CorHeader!.ResourcesDirectory.RelativeVirtualAddress);
                 foreach (string artifact in artifacts)

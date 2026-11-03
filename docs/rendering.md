@@ -2225,6 +2225,11 @@ For a sampled field, the proxy maps the active-index range through Hio's boundin
 local-to-world transform. The target field prim's scene transform is not applied. Unreadable, invalid or degenerate
 fields use the unit-cube uniform-density proxy with a native warning; disabling sampling uses it without a warning.
 A non-finite volume transform rejects the sync. The shader integrates a field-local Z column, not a camera ray.
+The native publisher rejects field roles other than `density` before retaining a density field.
+This includes `temperature`, emission/color and velocity: their shading semantics remain deferred,
+and publishing just the density part of a multi-field volume would silently discard authored data.
+`VolumeRenderingConformanceTests.DeferredFieldRoles.cs` checks named refusal, repeatable failure and
+zero field-budget reservations. These native cases require a rebuilt matching shim before execution.
 
 A device that does not implement `ISilkVolumeTextureGraphicsDevice` never selects the sampled-volume path at all: the
 surface constants report the volume as unsampled and the mesh keeps its authored uniform density, rather than binding
@@ -4077,25 +4082,27 @@ to do while any submission is still registered against it.
 ### hdSilk raster shadows
 
 hdSilk casts raster shadows for authored `UsdLuxDistantLight`s and spot-shaped, zero-radius
-`UsdLuxSphereLight`s. A distant light gets one bounded orthographic map; a sphere light gets one
-perspective map when its ShapingAPI cone angle is greater than 0 and less than 90 degrees. The cone
-angle is the half-angle used by the shading cutoff, so a wider cone cannot fit in one perspective
-projection. The caster geometry is rendered from light space through a depth-only pipeline before
-the colour pass, and each prim the light reaches is shaded against that map. Unshaped point lights,
-wide-cone or finite-radius sphere lights, and rect, disk or cylinder lights remain unsupported rather
-than being approximated.
+`UsdLuxSphereLight`s. A distant light gets one bounded orthographic map; a zero-radius sphere light
+gets one perspective map when its ShapingAPI cone half-angle is greater than 0 and less than 90
+degrees. Unshaped points and wider cones use six 90-degree world-axis projections, including when
+the emitter is inside the caster bounds. Shaping still determines which receivers the light reaches.
+The caster geometry is rendered through a depth-only pipeline before the colour pass. Finite-radius
+sphere lights and rect, disk or cylinder lights still need an emitter-geometry shadow model; the
+producer does not replace them with point lights.
 
 **What travels.** Page ABI v19 adds the `SHADOW` command. It carries up to
-`OPENUSD_SILK_MAX_SHADOW_MAPS` (4) descriptors, each naming its light's index in the FRAME light
+`OPENUSD_SILK_MAX_SHADOW_MAPS` (24) descriptors for at most four shadow lights, each naming its light's index in the FRAME light
 table, its map index, a square power-of-two resolution between 256 and 2048, the row-major
 light-space view and projection, a normalized depth bias, a world-space normal bias, and a PCF radius
 in texels. Distant-light descriptors set `ORTHOGRAPHIC`; spot descriptors leave it clear and carry a
-perspective projection. The matrices use exactly the FRAME camera's conventions — row-major,
+perspective projection. A point light publishes six consecutive `CUBE_FACE` descriptors in
+`+X, -X, +Y, -Y, +Z, -Z` order. Its group has one light index, resolution and flag set; incomplete
+groups, repeated lights outside a group and a fifth shadow light are refused. The matrices use exactly the FRAME camera's conventions — row-major,
 row-vector, OpenGL `[-w, +w]` clip depth — so one consumer-side depth conversion covers the camera
 and every light. hdSilk derives both projections from the world bounds of the published casters,
 cached per record as object-space bounds when the record is published so an unchanged scene never
 re-walks its points. A spot map is published only when the caster bounds lie wholly in front of its
-emitter.
+emitter. Cube faces cover all directions and extend to the farthest axis-aligned caster bound.
 The table is compared and published whole: a page whose descriptors are unchanged publishes no command
 at all, which is how a consumer knows a retained map is still the one those lights and those caster
 bounds produced, and a scene that authors no shadow publishes no command and allocates nothing.
@@ -4132,7 +4139,9 @@ through `SilkGraphicsCapabilities.SupportsRasterShadows`.
 
 **How it is sampled.** Every map lives in one shadow atlas, bound to every mesh pipeline as a single
 sampled texture and sampler; the tile a map occupies is a runtime value in the frame constants rather
-than four more binding slots. The checked mesh fragment offsets the receiver along its **world-space
+than additional binding slots. Four or fewer maps retain the 2-by-2 atlas layout; larger tables use
+a square grid rounded up from the map count. Each light names its first map and map count. A cube
+receiver chooses the face with the greatest positive forward distance before sampling. The checked mesh fragment offsets the receiver along its **world-space
 geometric normal** — derived from the screen-space derivatives of the world position, which applies
 the object-to-world transform's inverse transpose exactly and needs no normal matrix in the pinned
 80-byte instance block — subtracts a slope-scaled depth bias, and filters nine taps at the
@@ -4158,8 +4167,9 @@ tiles or automatically recover a failed fallback. Calling either `RetryFailedTex
 invalidates the map so a repaired opacity image can change its coverage. A material-only edit can
 change whether a caster is solid, masked, invisible, or unsupported without changing its mesh. The
 maximum displacement of prepared casters expands the shadow frustum and depth range before rendering;
-if a perspective near plane would cross the emitter, preparation rejects the projection instead of
-publishing a map that can clip displaced geometry. The
+if a spot near plane would cross the emitter, preparation rejects the projection instead of
+publishing a map that can clip displaced geometry. Cube displacement expands the far range but
+keeps its near plane and 90-degree faces, so neighboring faces do not open angular gaps. The
 device generation it keys on is the combined one every reset a backend reports advances, not the
 picking or selection-outline generation alone: a device lost on an ordinary colour or shadow
 submission drops every image the device held, including this atlas, without either subsystem generation
@@ -4208,6 +4218,12 @@ caster set.
 perspective descriptor on both backends; `hdsilk_direct_lights_probe` pins native spot descriptor
 production and cone boundaries. `SilkShadowAtlasRetentionTests` checks perspective displacement
 frustum expansion and rejects a displacement that crosses the near plane.
+The six-face parser, atlas transport and displacement tests pass in the managed suite.
+`EveryPointCubeFacePreservesWorldLightingUpdatesAndRestoration` adds six rotated analytic receiver
+cases, reversed mesh submission, caster updates and exact restoration. Its backend execution and
+the changed native producer probes remain pending a matching native rebuild and resource admission;
+their presence does not qualify point-shadow pixels. Authored direct BRDF lighting now uses the
+world-space mapped normal and eye together; the unauthored camera headlight retains its old basis.
 `SilkShadowDiagnosticTests` pins the naming in both directions,
 `SilkShadowNormalSpaceSourceContractTests` pins the world space the shadow bias works in — a defect
 the constant depth bias hides from any gate a 64-pixel frame can resolve — and `hdsilk_probe` pins
@@ -4231,9 +4247,9 @@ synchronisation behaviour rather than shading:
   `VulkanSampledDepthBarrierSourceContractTests` instead of being left to a backend that happens to be
   permissive.
 
-What is deliberately not claimed: shadows from unshaped or wide-cone point lights, finite-radius
-sphere lights, rect, disk, cylinder and dome lights, which need a cubemap, wider projection or area
-light model this producer has not derived; more than four simultaneous shadow maps; cascaded or
+What is deliberately not claimed: qualified pixels for the new six-face point path; shadows from finite-radius
+sphere lights, rect, disk, cylinder and dome lights, which need an emitter or environment
+shadow model this producer has not derived; more than four simultaneous shadow lights; cascaded or
 camera-fitted light-space partitions, since the single map is fitted to the whole caster bound rather
 than to the view frustum; shadows from line and point
 topologies, which rasterize at one pixel and would publish a single-texel artefact rather than an
@@ -4735,12 +4751,13 @@ An authored-direct-light flag preserves authored darkness even with zero effecti
 no authored lighting keeps its deterministic camera headlight.
 
 The full native frame is 25416 bytes. It is 23368 bytes without the page ABI 28 shaping table and 23096
-bytes without the dome extension; direct entries remain 176 bytes. The GPU frame is 17344 bytes at
+bytes without the dome extension; direct entries remain 176 bytes. The GPU frame is 19264 bytes at
 existing binding 8, addressed as a raw buffer because D3D12 restricts
 a structured-buffer **element** to 2048 bytes. Checked D3D12, Vulkan and Metal shader sources share
 this layout; no additional slot or per-element P/Invoke is introduced. Light and shadow masks, batch keys,
 surface cache keys, instance inheritance and shadow slots preserve all 128 indices. The separate eight-dome
-profile and four-map distant-shadow budget are unchanged; area-light shadows, dome shadows and previously
+profile and four-light shadow budget are unchanged; the atlas now admits up to 24 maps for six-face
+point groups. Area-light shadows, dome shadows and previously
 unsupported nested category semantics are not made complete by increasing direct-light capacity.
 
 Fragment shaders dynamically read each light and shadow-slot vector directly from that raw

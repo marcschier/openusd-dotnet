@@ -1327,7 +1327,7 @@ internal static class Program
     /// <c>FrameParameters</c> in <c>eng/shaders/sources/mesh.slang</c>. It grew
     /// when per-frame lighting and area-light bases moved <c>eyeToWorld</c>.
     /// </summary>
-    private const int FrameConstantsByteSize = 17344;
+    private const int FrameConstantsByteSize = 19264;
 
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {

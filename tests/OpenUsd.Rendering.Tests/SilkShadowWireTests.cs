@@ -25,6 +25,117 @@ public sealed class SilkShadowWireTests
     private const int DescriptorSize = 288;
 
     [Test]
+    public async Task SixFaceGroupsRetainTheirFirstSlotAcrossReplacementAndRetirement()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateWideShadowFrame(128), 1, 0);
+        Descriptor[] descriptors = Enumerable.Range(0, 24).Select(index => new Descriptor(
+            (uint)(124 + (index / 6)), (uint)index, 256,
+            SilkShadowDescriptorOptions.CubeFace | SilkShadowDescriptorOptions.CasterLinked)).ToArray();
+        byte[] cube = CreateShadow(128, descriptors);
+        _ = scene.Apply(cube, 1, 1);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(24);
+        SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!;
+        SilkShadowFrameBinding binding = SilkShadowFrameBinding.Create(scene.Shadows.Descriptors, layout);
+        await Assert.That(layout.Edge).IsEqualTo(1280u);
+        for (int light = 124; light < 128; light++)
+        {
+            int first = (light - 124) * 6;
+            await Assert.That(scene.Shadows.ResolveSlot(light)).IsEqualTo(first);
+            await Assert.That(binding.GetSlotForLight(light)).IsEqualTo(first);
+            await Assert.That(binding.GetMapCountForLight(light)).IsEqualTo(6);
+        }
+        var occupied = new HashSet<(uint X, uint Y)>();
+        foreach (SilkShadowTilePlacement tile in layout.Tiles)
+        {
+            await Assert.That(occupied.Add((tile.PixelX, tile.PixelY))).IsTrue();
+            await Assert.That(tile.PixelX + tile.Resolution).IsLessThanOrEqualTo(layout.Edge);
+            await Assert.That(tile.PixelY + tile.Resolution).IsLessThanOrEqualTo(layout.Edge);
+        }
+        var constants = new byte[19264];
+        SilkFrameUniformWriter.Write(scene.Frame, constants, false,
+            RenderOutputTransform.Identity, 0, shadows: binding);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(14880 + 127 * 16)))
+            .IsEqualTo(18f);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(14884 + 127 * 16)))
+            .IsEqualTo(6f);
+
+        _ = scene.Apply(CreateShadow(128,
+            [new Descriptor(127, 0, 256, SilkShadowDescriptorOptions.Orthographic)]), 1, 2);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(1);
+        await Assert.That(scene.Shadows.ResolveSlot(124)).IsEqualTo(-1);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(0);
+        _ = scene.Apply(cube, 1, 3);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(24);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(18);
+        _ = scene.Apply(CreateShadow(0, []), 1, 4);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(0);
+        await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(-1);
+    }
+
+    [Test]
+    [Arguments(1)]
+    [Arguments(5)]
+    [Arguments(7)]
+    public async Task PartialOrOverlongCubeGroupsAreRejectedWithoutChangingTheTable(int count)
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateWideShadowFrame(1), 1, 0);
+        byte[] original = CreateShadow(1,
+            [new Descriptor(0, 0, 256, SilkShadowDescriptorOptions.Orthographic)]);
+        _ = scene.Apply(original, 1, 1);
+        ulong revision = scene.Shadows.Revision;
+        Descriptor[] descriptors = Enumerable.Range(0, count).Select(index =>
+            new Descriptor(0, (uint)index, 256, SilkShadowDescriptorOptions.CubeFace)).ToArray();
+        await Assert.That(() => scene.Apply(CreateShadow(1, descriptors), 1, 2))
+            .Throws<InvalidDataException>();
+        await Assert.That(scene.Shadows.Revision).IsEqualTo(revision);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(1);
+        await Assert.That(scene.Shadows.Descriptors[0].Flags)
+            .IsEqualTo(SilkShadowDescriptorOptions.Orthographic);
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(2)]
+    [Arguments(3)]
+    public async Task MismatchedCubeGroupsAreRejected(int changedField)
+    {
+        Descriptor[] descriptors = Enumerable.Range(0, 6).Select(index =>
+            new Descriptor(0, (uint)index, 256, SilkShadowDescriptorOptions.CubeFace)).ToArray();
+        descriptors[3] = changedField switch
+        {
+            0 => descriptors[3] with { LightIndex = 1 },
+            1 => descriptors[3] with { Resolution = 512 },
+            2 => descriptors[3] with { Flags = SilkShadowDescriptorOptions.None },
+            _ => descriptors[3] with
+            {
+                Flags = SilkShadowDescriptorOptions.CubeFace |
+                SilkShadowDescriptorOptions.Orthographic
+            },
+        };
+        await Assert.That(() => ValidateShadow(CreateShadow(2, descriptors)))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task RepeatedNonCubeLightsAndFifthProjectionGroupsAreRejected()
+    {
+        Descriptor[] repeated =
+        [
+            new(0, 0, 256, SilkShadowDescriptorOptions.None),
+            new(0, 1, 256, SilkShadowDescriptorOptions.None),
+        ];
+        await Assert.That(() => ValidateShadow(CreateShadow(1, repeated)))
+            .Throws<InvalidDataException>();
+        Descriptor[] five = Enumerable.Range(0, 5).Select(index =>
+            new Descriptor((uint)index, (uint)index, 256, SilkShadowDescriptorOptions.None)).ToArray();
+        await Assert.That(() => ValidateShadow(CreateShadow(5, five)))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
     public async Task ShadowRoundTripsEveryDescriptorFieldAtItsOwnOffset()
     {
         byte[] page = CreateShadow(
@@ -773,7 +884,7 @@ public sealed class SilkShadowWireTests
     [Arguments(1)]
     [Arguments(4)]
     [Arguments(5)]
-    public async Task ShadowMapBudgetRemainsFourAt128Lights(int mapCount)
+    public async Task ShadowLightBudgetRemainsFourAt128Lights(int mapCount)
     {
         int[] indices = [127, 96, 31, 64, 95];
         Descriptor[] descriptors = new Descriptor[mapCount];
@@ -787,7 +898,7 @@ public sealed class SilkShadowWireTests
         _ = scene.Apply(CreateWideShadowFrame(128), 1, 1);
 
         uint maximumMaps = SilkShadowCommand.MaximumMaps;
-        await Assert.That(maximumMaps).IsEqualTo(4u);
+        await Assert.That(maximumMaps).IsEqualTo(24u);
         await Assert.That(shadow.Length).IsEqualTo(24 + (mapCount * 288));
         if (mapCount == 5)
         {
