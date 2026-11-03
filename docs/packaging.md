@@ -542,14 +542,12 @@ published bytes are the bytes the gates verified. The platform-neutral libraries
 Linux. A `publish` job then downloads every packed set, requires every package from
 `eng/pack-packages.ps1 -ListPublished` to be present, and pushes.
 
-Both jobs depend on `ci`, `shaders`, `native` and `packages`, which together build, verify and
-execute the exact packages that get pushed, with `packages` running the package-only consumer gates
-on all three platforms. They deliberately do not depend on `render`, which covers viewer and
-windowing behaviour that no published package relies on. The release aggregate still requires
-`render` separately, so a render regression turns a release run red rather than being silently
-dropped or treated as package proof.
+Packing depends on `ci`, `shaders`, `native` and `packages`, with `packages` running the
+package-only consumer gates on all three platforms. Publication also depends on the release
+aggregate, which requires successful `ci`, `shaders`, `native`, `performance`, `packages` and
+`render` jobs. A render or performance failure therefore prevents the package push.
 
-Packages flow through two feeds/artifact stores:
+The release uses two package feeds and a retained artifact:
 
 - The GitHub Packages feed at `https://nuget.pkg.github.com/marcschier/index.json`, authenticated
   with the auto-issued `GITHUB_TOKEN`, receives every `.nupkg` from `release.yml`. The push uses
@@ -563,14 +561,20 @@ Packages flow through two feeds/artifact stores:
   `nuget.yml` workflow file, and the `release` environment, plus a `NUGET_USER` secret holding the
   nuget.org username.
 
-`.github/workflows/nuget.yml` remains the manual promotion path for the tagged release bytes. It
-downloads each `.nupkg` from the GitHub feed so the promoted package bytes are exactly the bytes that
-were already released, then downloads the matching `openusd-published-nupkgs` artifact from the
-release run and stages each `.snupkg` beside its `.nupkg`. The nuget.org push intentionally omits
-`--no-symbols`, so `dotnet nuget push` uploads the adjacent symbol packages implicitly.
+`.github/workflows/nuget.yml` remains the manual promotion path for the tagged release bytes.
+It downloads the complete `.nupkg` set from the GitHub feed and the matching
+`openusd-published-nupkgs` release artifact, then stages each selected `.snupkg` beside its
+`.nupkg`. Before requesting a publishing token, `eng/verify-nuget-promotion.py` compares every
+package and symbol SHA-256 with that artifact and checks each nuspec's ID, version and source
+commit. It also requires all six release gates and verifies the repository, resolved tag commit,
+release workflow and successful run attempt. A missing output or mismatch stops promotion.
+The same checks run with `dry_run=true`, without requesting a token or uploading packages.
 
-Both pushes use `--skip-duplicate`, so re-running a partially failed publish is safe. A version
-pushed to nuget.org can be unlisted but never withdrawn or replaced.
+The nuget.org push omits `--no-symbols`, so `dotnet nuget push` uploads adjacent symbol packages.
+Both feeds use `--skip-duplicate`; a retry must reuse the verified inputs rather than rebuild
+different bytes under an existing version. A version pushed to nuget.org can be unlisted but
+never withdrawn or replaced. NuGet repository signing can change the public archive bytes, so
+public-feed verification must account for signatures when comparing package content.
 
 ## Symbol packages for nuget.org
 
@@ -588,15 +592,10 @@ packages. The tagged release artifact `openusd-published-nupkgs` keeps the packe
 provide. For the source-bearing managed packages that produce symbols, consumers can step from a
 NuGet package into the OpenUsd repository sources under a debugger.
 
-`.github/workflows/nuget.yml` now resolves the completed `release.yml` run for the exact tag, or uses
-the manual `release_run_id` input, and fails with a hard error if it cannot find that run. It
-downloads the released `.nupkg` files from GitHub Packages, downloads `openusd-published-nupkgs` from
-the release run, copies each matching `.snupkg` beside its `.nupkg`, and then runs
-`dotnet nuget push` without `--no-symbols` so nuget.org receives the symbols implicitly. The workflow
-throws if the release artifact contains no `.snupkg` files or if any downloaded package lacks its
-matching symbol package; because the current runtime and Viewer projects do not produce symbols, that
-check is the mechanism that will expose an incomplete release artifact rather than silently publishing
-another 404.
+`eng/pack-packages.ps1 -ListSymbolPublished` determines the required symbol subset.
+Runtime and Viewer packages do not require symbols; `OpenUsd.Mcp.Tool` opts into them
+explicitly. Promotion stops if a selected symbol package is absent from the release artifact.
+The byte and source checks described above also apply to every selected symbol package.
 
 A pushed symbol package is served from NuGet's symbol CDN at:
 

@@ -137,6 +137,11 @@ jobs:
             echo "Auto-selected latest published version: ${TARGET}"
           fi
 
+          if [[ ! "${TARGET}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "::error::An exact supported NuGet version is required."
+            exit 1
+          fi
+
           if [ -n "${INPUT_RELEASE_RUN_ID}" ]; then
             release_run_id="${INPUT_RELEASE_RUN_ID}"
             echo "Using requested release workflow run: ${release_run_id}"
@@ -153,6 +158,11 @@ jobs:
               exit 1
             fi
             echo "Using release workflow run: ${release_run_id}"
+          fi
+
+          if [[ ! "${release_run_id}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::A positive release workflow run ID is required."
+            exit 1
           fi
 
           downloaded=0
@@ -330,6 +340,52 @@ jobs:
           $staged = @(Get-ChildItem artifacts -Filter '*.snupkg')
           Write-Host "Staged $($staged.Count) symbol package(s) beside the nupkg files."
 
+      - name: Verify promotion bytes and tagged source
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTION_VERSION: ${{ steps.resolve.outputs.version }}
+          RELEASE_RUN_ID: ${{ steps.resolve.outputs.release-run-id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $run = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:RELEASE_RUN_ID"
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'Could not read the selected release workflow run.'
+          }
+          $run | Set-Content 'release-artifacts/release-run.json'
+          $commit = & gh api "repos/$env:GITHUB_REPOSITORY/commits/v$env:PROMOTION_VERSION" --jq '.sha'
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'Could not resolve the selected release tag to a commit.'
+          }
+          $published = @(& ./eng/pack-packages.ps1 -ListPublished)
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'Could not read the published package inventory.'
+          }
+          $symbols = @(& ./eng/pack-packages.ps1 -ListSymbolPublished)
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'Could not read the symbol package inventory.'
+          }
+          [ordered]@{ packages = $published; symbols = $symbols } |
+            ConvertTo-Json -Depth 3 | Set-Content 'release-artifacts/promotion-inventory.json'
+          python ./eng/verify-nuget-promotion.py `
+            --packages artifacts `
+            --release-packages release-artifacts/nupkg `
+            --evidence release-artifacts/release-gate/release-gate.json `
+            --release-run release-artifacts/release-run.json `
+            --inventory release-artifacts/promotion-inventory.json `
+            --version $env:PROMOTION_VERSION `
+            --run-id $env:RELEASE_RUN_ID `
+            --repository $env:GITHUB_REPOSITORY `
+            --tag-commit $commit
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'NuGet promotion input verification failed.'
+          }
+
       # NuGet login happens right before the push so the short-lived token is fresh.
       - name: NuGet login (OIDC trusted publishing)
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -349,7 +405,7 @@ jobs:
       - name: Dry-run result
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
-          echo "Validated GitHub-feed nupkg downloads and release-artifact snupkg staging."
+          echo "Validated package/symbol bytes against the successful tagged release."
           echo "Skipping NuGet/login and dotnet nuget push because dry_run=true."
 
       - name: Summary
