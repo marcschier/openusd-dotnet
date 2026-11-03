@@ -341,7 +341,7 @@ typedef struct openusd_image_info
 #define OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT_INSPECTION (UINT64_C(1) << 29)
 #define OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT (UINT64_C(1) << 30)
 #define OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT (UINT64_C(1) << 31)
-/* Guarded EXR output API; the initial file-handle implementation is Windows x64 only. */
+/* Bounded EXR output using a borrowed Windows handle or POSIX file descriptor. */
 #define OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT (UINT64_C(1) << 32)
 #define OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS (UINT64_C(1) << 33)
 #define OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS (UINT64_C(1) << 34)
