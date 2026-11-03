@@ -1522,6 +1522,54 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task RenderEvidenceUploadsRequireAnAttemptedConformanceStep()
+    {
+        string root = FindRepositoryRoot();
+        string render = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "render.yml"));
+        string windows = ReadJob(render, "windows-wgl");
+
+        foreach ((string executeName, string uploadName, string id) in new[]
+        {
+            ("Execute native disk output contracts", "Upload native disk output evidence", "windows-disk-output"),
+            (
+                "Execute native Ptex decoder conformance",
+                "Upload native Ptex decoder conformance evidence",
+                "windows-ptex-decoder"),
+            (
+                "Execute native point and mesh preparation conformance",
+                "Upload point and mesh preparation conformance evidence",
+                "windows-point-mesh"),
+        })
+        {
+            string execute = ReadStep(windows, executeName);
+            string upload = ReadStep(windows, uploadName);
+            await Assert.That(execute)
+                .Contains($"id: {id}", StringComparison.Ordinal);
+            Match condition = Regex.Match(
+                upload,
+                @"(?ms)^        if: >-\n(?<condition>.*?)(?=^        uses:)",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(5));
+            await Assert.That(condition.Success).IsTrue();
+            string normalized = Regex.Replace(
+                condition.Groups["condition"].Value,
+                @"\s+",
+                string.Empty,
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(5));
+            string expected = "always()&&steps.native-ready.outputs.ready=='true'&&" +
+                $"(steps.{id}.outcome=='success'||steps.{id}.outcome=='failure'||" +
+                $"steps.{id}.outcome=='cancelled')";
+            await Assert.That(normalized).IsEqualTo(expected)
+                .Because("skipped execution must not create missing-artifact failures");
+            await Assert.That(upload)
+                .Contains("if-no-files-found: error", StringComparison.Ordinal)
+                .Because("an attempted gate must still report missing evidence");
+        }
+    }
+
+    [Test]
     public async Task RenderWorkflowReusesNativeArchivesAndNeverRebuildsOnPush()
     {
         string root = FindRepositoryRoot();

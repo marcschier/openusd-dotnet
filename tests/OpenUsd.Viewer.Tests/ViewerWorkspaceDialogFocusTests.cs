@@ -34,15 +34,21 @@ public sealed class ViewerWorkspaceDialogFocusTests
     public async Task ClosingWorkspaceDialogRestoresOnlyItsOwnedKeyboardFocus(
         string menuName, string closeName, int focusDestination, bool dark)
     {
+        using var diagnostics = ViewerCiDiagnostics.StartIfEnabled(
+            $"workspace-{menuName}-{closeName}-focus-{focusDestination}-dark-{dark}");
         using var files = new ViewerCompletedJobTestFiles();
+        diagnostics?.TrackFixtureRoot(files.Root);
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaEntryPoint));
-        await session.Dispatch(async () =>
+        Func<Task<int>> action = async () =>
         {
+            diagnostics?.TrackUiThread();
             ViewerStartupOptions.Initialize(new ViewerHostOptions { Renderer = "Storm" });
             using var settings = new ViewerSettingsStore(Path.Combine(files.Root, "settings"));
             var main = new MainWindow(new RecentStageStore(Path.Combine(files.Root, "recent")), settings);
             var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            diagnostics?.TrackRoot(main);
+            diagnostics?.TrackClosed(closed.Task);
             main.Closed += (_, _) => closed.TrySetResult();
             Window? other = null;
             try
@@ -99,12 +105,28 @@ public sealed class ViewerWorkspaceDialogFocusTests
             finally
             {
                 other?.Close();
+                diagnostics?.Mark("main-close-requested");
                 main.Close();
+                diagnostics?.Mark("main-close-returned");
                 await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                diagnostics?.Mark("main-closed");
                 ViewerStartupOptions.Initialize([]);
             }
             return 0;
-        }, lifetime.Token).WaitAsync(lifetime.Token);
+        };
+        Task<int> dispatched = diagnostics is null
+            ? session.Dispatch<int>(action, lifetime.Token)
+            : session.Dispatch<int>(() => diagnostics.TrackAction(action()), lifetime.Token);
+        diagnostics?.TrackDispatch(dispatched);
+        try
+        {
+            await dispatched.WaitAsync(lifetime.Token);
+        }
+        catch
+        {
+            diagnostics?.Mark("dispatch-failed");
+            throw;
+        }
     }
 
     private static T Required<T>(Control owner, string name) where T : Control =>

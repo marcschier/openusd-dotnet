@@ -87,6 +87,8 @@ REQUIRED_CHECKED_INPUTS = (
     "eng/run-platform-conformance.ps1",
     "eng/run-managed-tests.ps1",
     "eng/run-windows-native-tests.ps1",
+    "eng/report-validated-checkout.ps1",
+    "eng/test-workflow-checkout-report.ps1",
     "eng/verify-private-shaderc-cache.ps1",
     "eng/viewer-input-readiness.ps1",
     "eng/run-viewer-workflow-tests.ps1",

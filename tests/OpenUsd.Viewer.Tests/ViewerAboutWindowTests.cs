@@ -20,13 +20,17 @@ public sealed class ViewerAboutWindowTests
     [Arguments(460, 280, true)]
     public async Task AboutCompatibilityGuidanceSupportsKeyboardPagingAndModalEscape(int width, int height, bool dark)
     {
+        using var diagnostics = ViewerCiDiagnostics.StartIfEnabled($"about-{width}x{height}-dark-{dark}");
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(SkiaAppEntryPoint));
         await session.Dispatch(async () =>
         {
+            diagnostics?.TrackUiThread();
             var owner = new Window { RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light };
+            diagnostics?.TrackRoot(owner);
             owner.Show();
             var window = new AboutWindow { Width = width, Height = height };
+            diagnostics?.TrackRoot(window);
             Task dialog = window.ShowDialog(owner);
             try
             {

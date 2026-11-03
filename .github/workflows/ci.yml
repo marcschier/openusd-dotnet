@@ -187,6 +187,7 @@ jobs:
           }
           if ($IsWindows) {
             ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release
+            $env:OPENUSD_VIEWER_CI_DIAGNOSTICS = '1'
           }
           ./eng/run-managed-tests.ps1 `
             -Project $projects `

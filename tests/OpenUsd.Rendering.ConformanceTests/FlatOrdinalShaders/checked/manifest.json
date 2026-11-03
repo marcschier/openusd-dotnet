@@ -21,8 +21,8 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "c0a429dd55471bc809adb8c3acbebc274efe396e44211e29f760d4a8ea78bace",
-      "size": 31918
+      "sha256": "a1a768caf18d52fa2d5a6027eecc708e5f804fe9d7fe1f887482c707a2118655",
+      "size": 32004
     },
     {
       "path": "eng/shaders/toolchain.lock.json",

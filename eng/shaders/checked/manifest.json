@@ -35,7 +35,7 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "1f6a70a654bc5fcd8a00a449b36c57f332a289ee6b248b39a1948bbfc27a289b"
+      "sha256": "6dd827bc431fd3bcc3e4ef48229513ec294100a98f340324469568a3f77d78de"
     },
     {
       "path": ".github/workflows/native.yml",
@@ -43,7 +43,7 @@
     },
     {
       "path": ".github/workflows/package.yml",
-      "sha256": "98c5286d7084ac71055202b5c5c348af556706bc83c58fe018f5f90824392bc4"
+      "sha256": "2b53296f1163109bfc2456638c3da2128d923e83fbe145ef3fe7322cbe9da52e"
     },
     {
       "path": ".github/workflows/performance.yml",
@@ -55,7 +55,7 @@
     },
     {
       "path": ".github/workflows/render.yml",
-      "sha256": "20fb65f43069f08da72d415ae4f020e5455658a83e479317eb9c0e214647402c"
+      "sha256": "d0342944da98873ca365e1942fbc95ba3eabc03f0b5e6ef2095e082ae2b9cf50"
     },
     {
       "path": ".github/workflows/shaders.yml",
@@ -63,7 +63,7 @@
     },
     {
       "path": ".github/workflows/viewer-distribution.yml",
-      "sha256": "ee761ad339787a86f876f226981ee6d4edc7a5d4a66802b5a94883c39c30798e"
+      "sha256": "d7cf2c1e1bcc312217de153140558ae29f5a92e0dd347dd3e91d3166f8e54609"
     },
     {
       "path": "LICENSE",
@@ -140,6 +140,10 @@
     {
       "path": "eng/prepare-mesa-wgl-test-runtime.ps1",
       "sha256": "99b1dca80f59220bfad0943d7feabdbebb22c7267f96300fc5d9ed39ad5e329c"
+    },
+    {
+      "path": "eng/report-validated-checkout.ps1",
+      "sha256": "0cecb502af86f260d405a2adc6434d0a067d345003e87e9f763e1a2f935be0b5"
     },
     {
       "path": "eng/run-managed-tests.ps1",
@@ -219,7 +223,7 @@
     },
     {
       "path": "eng/shaders/scripts/shader_model.py",
-      "sha256": "c0a429dd55471bc809adb8c3acbebc274efe396e44211e29f760d4a8ea78bace"
+      "sha256": "a1a768caf18d52fa2d5a6027eecc708e5f804fe9d7fe1f887482c707a2118655"
     },
     {
       "path": "eng/shaders/scripts/verify-artifacts.py",
@@ -370,6 +374,10 @@
       "sha256": "edc55570fcac281d31a4eb25ddb0e680baa0b72de7dfea258ec823ccae72074f"
     },
     {
+      "path": "eng/test-workflow-checkout-report.ps1",
+      "sha256": "ffc7d9eb85d66f9c34961b9d76b342e3c5e3a624cd520056ea252902a87897f8"
+    },
+    {
       "path": "eng/verify-private-shaderc-cache.ps1",
       "sha256": "482bda421a97ccdf0c795d20ee8b39dab201b4feb4fec7c0888e68dcf46fbf93"
     },
@@ -383,7 +391,7 @@
     },
     {
       "path": "eng/wait-openusd-sdk-cache.py",
-      "sha256": "16a1db13eb5c354324fdc68396c25146ce33e2b91b7266f7f65865b6ea91d9e0"
+      "sha256": "05e4883ef08cc0cc9eba127fadc9d27091f0ea5f818b52faf86684884df2d53a"
     },
     {
       "path": "eng/windows-admission-replay.py",

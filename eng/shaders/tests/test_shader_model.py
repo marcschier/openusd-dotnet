@@ -191,6 +191,11 @@ class ShaderModelTests(unittest.TestCase):
                         content,
                     )
 
+    def test_checked_inputs_include_checkout_reporting_scripts(self) -> None:
+        required = shader_model.required_checked_inputs(manifest())
+        self.assertIn("eng/report-validated-checkout.ps1", required)
+        self.assertIn("eng/test-workflow-checkout-report.ps1", required)
+
     def test_rejects_profile_inconsistent_with_locked_shader_model(self) -> None:
         mutated_lock = copy.deepcopy(lock())
         mutated_lock["targets"]["direct3D"]["shaderModel"] = "6.1"

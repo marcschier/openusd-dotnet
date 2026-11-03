@@ -108,16 +108,38 @@ public sealed partial class ViewerCameraBookmarkNativeTests
         await Assert.That(session.CurrentRenderState.Time).IsEqualTo(before.Time);
         await ((CameraBookmarksWindow)manager).CloseAsync();
 
+        Control viewportHost = BookmarkControl<Control>(window, "ViewportHost");
+        StageRenderState beforeResize = session.CurrentRenderState;
+        Rect boundsBeforeResize = window.Bounds;
+        Rect viewportBeforeResize = viewportHost.Bounds;
         double width = window.Width;
         window.Width += 100;
         await WaitBookmarkAsync(() => !orthographic.HasMatchingAspect(session.CurrentRenderState.Viewport), token);
         before = session.CurrentRenderState;
+        Rect boundsBeforeManager = window.Bounds;
+        Rect viewportBeforeManager = viewportHost.Bounds;
         manager = await OpenBookmarkManagerAsync(window, token);
+        StageRenderState managerOpened = session.CurrentRenderState;
+        Rect boundsWithManager = window.Bounds;
+        Rect viewportWithManager = viewportHost.Bounds;
         SelectBookmark(manager, orthographic.Id);
         ClickBookmarkButton(manager, "RecallSavedViewButton");
         await WaitBookmarkOperationAsync(manager, token);
         await Assert.That(BookmarkControl<TextBlock>(manager, "SavedViewsStatus").Text).Contains("aspect");
-        await Assert.That(session.CurrentRenderState.Camera).IsEqualTo(before.Camera);
+        StageRenderState afterRefusal = session.CurrentRenderState;
+        await Assert.That(afterRefusal.Camera).IsEqualTo(before.Camera)
+            .Because(
+                $"a refused view must not change the camera; viewport before resize={beforeResize.Viewport}, " +
+                $"before manager={before.Viewport}, manager opened={managerOpened.Viewport}, " +
+                $"after refusal={afterRefusal.Viewport}; projection M11 before resize=" +
+                $"{beforeResize.Camera.Projection.M11}, before manager={before.Camera.Projection.M11}, " +
+                $"manager opened={managerOpened.Camera.Projection.M11}, " +
+                $"after refusal={afterRefusal.Camera.Projection.M11}; window width before resize={width}, " +
+                $"requested={window.Width}; bounds before resize=" +
+                $"{boundsBeforeResize}, before manager={boundsBeforeManager}, manager opened={boundsWithManager}, " +
+                $"after refusal={window.Bounds}; viewport bounds before resize={viewportBeforeResize}, " +
+                $"before manager={viewportBeforeManager}, manager opened={viewportWithManager}, " +
+                $"after refusal={viewportHost.Bounds}, scaling={TopLevel.GetTopLevel(viewportHost)?.RenderScaling}");
         await Assert.That(session.CurrentRenderState.Time).IsEqualTo(before.Time);
         await ((CameraBookmarksWindow)manager).CloseAsync();
         window.Width = width;
