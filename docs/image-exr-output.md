@@ -1,7 +1,7 @@
 # Bounded raw RGBA16Float EXR output
 
 > Unreleased source API requiring the matching Data ABI 26 Core runtime.
-> Published `0.14.0-alpha` native assets cannot serve this API.
+> Published `0.16.6-alpha` native assets predate this encoder and do not advertise its required capability.
 
 `OpenUsd.Rendering.ExrRgba16FloatWriter` writes one exact, packed RGBA binary16
 little-endian plane to a caller-owned `FileStream`. The standard dependency path is
@@ -29,7 +29,7 @@ Success synchronizes both the native cursor and `FileStream.Position` to EOF.
 ## Exact contract
 
 * Introduced in Data ABI **24**, required capability **`OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT`**,
-  bit **32**. The current runtime is Data ABI **25** with full required mask **`0x3FFFFFFFF`**.
+  bit **32**. The current source uses Data ABI **26** with full required mask **`0x1FFFFFFFFF`**.
 * The capability describes a **guarded API**, not support for arbitrary handles or descriptors.
   Old ABI23, a missing capability, and a missing export must be rejected. It is not
   valid to advertise this required export under ABI23.
@@ -84,7 +84,7 @@ and float32 input remain unsupported, not reinterpreted.
 |---|---|---|---|
 | Windows x64 regular-file profile | Available | Supported | Native, package-only NativeAOT, Hio and SwiftShader |
 | Other Windows handle profiles | Available | Refused before output mutation | Native and managed probes |
-| Linux/macOS little-endian x64/ARM64 regular-file profile | Available | Implemented | Hosted native and package-only execution required; not yet qualified by this change |
+| Linux/macOS x64/ARM64 | Available | Implemented | Hosted native and package proof pending |
 | Other hosts/architectures | Portable declaration | `UNSUPPORTED` without file I/O | No execution asserted |
 
 The Windows profile requires a regular, synchronous, buffered, writable empty HANDLE.
@@ -125,8 +125,8 @@ Dedicated statuses map to typed managed outcomes: invalid input → argument err
 unsupported profile → not-supported error, quota → `RenderOutputQuotaExceededException`,
 cancellation → `OperationCanceledException`, native I/O/codec/allocation failure →
 `IOException`. Native I/O retains the numeric OS cause in a `Win32Exception`
-inner exception (`NativeErrorCode` is `errno` on POSIX). No diagnostic string is parsed. Native allocation failure is not
-misrepresented as a CLR allocation failure.
+inner exception (`NativeErrorCode` is `errno` on POSIX). No diagnostic string is parsed.
+Native allocation failure is not misrepresented as a CLR allocation failure.
 
 ## What is and is not bounded
 

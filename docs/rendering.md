@@ -4091,14 +4091,14 @@ sphere lights and rect, disk or cylinder lights still need an emitter-geometry s
 producer does not replace them with point lights.
 
 **What travels.** Page ABI v19 adds the `SHADOW` command. It carries up to
-`OPENUSD_SILK_MAX_SHADOW_MAPS` (24) descriptors for at most four shadow lights, each naming its light's index in the FRAME light
-table, its map index, a square power-of-two resolution between 256 and 2048, the row-major
+`OPENUSD_SILK_MAX_SHADOW_MAPS` (24) descriptors for up to four shadow lights. Each names its light's index in the
+FRAME light table, map index, square power-of-two resolution between 256 and 2048, the row-major
 light-space view and projection, a normalized depth bias, a world-space normal bias, and a PCF radius
 in texels. Distant-light descriptors set `ORTHOGRAPHIC`; spot descriptors leave it clear and carry a
 perspective projection. A point light publishes six consecutive `CUBE_FACE` descriptors in
 `+X, -X, +Y, -Y, +Z, -Z` order. Its group has one light index, resolution and flag set; incomplete
-groups, repeated lights outside a group and a fifth shadow light are refused. The matrices use exactly the FRAME camera's conventions — row-major,
-row-vector, OpenGL `[-w, +w]` clip depth — so one consumer-side depth conversion covers the camera
+groups, repeated lights outside a group and a fifth shadow light are refused. The matrices use the FRAME camera's
+conventions: row-major, row-vector, OpenGL `[-w, +w]` clip depth. One consumer-side depth conversion covers the camera
 and every light. hdSilk derives both projections from the world bounds of the published casters,
 cached per record as object-space bounds when the record is published so an unchanged scene never
 re-walks its points. A spot map is published only when the caster bounds lie wholly in front of its
@@ -4141,10 +4141,10 @@ through `SilkGraphicsCapabilities.SupportsRasterShadows`.
 sampled texture and sampler; the tile a map occupies is a runtime value in the frame constants rather
 than additional binding slots. Four or fewer maps retain the 2-by-2 atlas layout; larger tables use
 a square grid rounded up from the map count. Each light names its first map and map count. A cube
-receiver chooses the face with the greatest positive forward distance before sampling. The checked mesh fragment offsets the receiver along its **world-space
-geometric normal** — derived from the screen-space derivatives of the world position, which applies
-the object-to-world transform's inverse transpose exactly and needs no normal matrix in the pinned
-80-byte instance block — subtracts a slope-scaled depth bias, and filters nine taps at the
+receiver chooses the face with the greatest positive forward distance before sampling. The checked mesh fragment offsets
+the receiver along its **world-space geometric normal**. Screen-space derivatives of world position produce that normal.
+The object-to-world inverse transpose is applied exactly without a normal matrix in the pinned 80-byte instance block.
+The fragment subtracts a slope-scaled depth bias and filters nine taps at the
 descriptor's PCF radius. The normal's sign is resolved against each light rather than against the
 camera, because a derivative-based normal carries the sign of the triangle's screen winding. The
 caster pass itself rasterizes with the device's own clip-space convention, so every backend stores the

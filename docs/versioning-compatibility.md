@@ -201,8 +201,9 @@ export and capability is preserved, and the hdSilk, Storm and physics contracts 
 
 Data ABI 24 adds `OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT` (`0x100000000`) and the bulk
 `openusd_image_encode_exr_rgba16f_v1` export. Its portable header and guarded capability do
-not imply portable file-handle support: the initial encoder accepts Windows x64 synchronous,
-buffered, writable empty regular files only. Other hosts refuse explicitly. The renderer-neutral
+not imply identical support on every platform: the encoder accepts Windows x64 synchronous,
+buffered, writable empty regular files and Linux/macOS little-endian x64/ARM64 writable empty
+regular-file descriptors. POSIX execution still requires hosted native and package-only proof. The renderer-neutral
 `ExrRgba16FloatWriter` preserves raw binary16 values and stored alpha without color conversion
 or an image-sized copy; encoded extent is bounded, native codec heap is not. See
 [EXR output](image-exr-output.md). Existing 398 Windows export ordinals are preserved by the

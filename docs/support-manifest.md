@@ -187,12 +187,10 @@ NativeAOT and package-only seams execute; other platforms are not claimed.
 
 Data ABI24 guarded bulk RGBA16Float EXR output with version-1 112/40-byte request/result packets and a dedicated
 encoding-status domain. Synchronous caller-owned input and file handle, bounded logical encoded extent, finite half
-validation and cooperative cancellation without per-pixel interop. Windows x64 buffered writable empty regular files and
-Linux/macOS little-endian x64/ARM64 writable empty regular-file descriptors are implemented. The POSIX profile preserves
-fd zero, rejects append/nonblocking/direct I/O, and borrows descriptors without reopening paths. Native codec heap
-is outside the encoded-byte ceiling. Canonical mirror/layout generation, typed mismatch rejection, complete Core codec
-closure and exact-bit clean-feed NativeAOT execution cover Windows. POSIX source support requires the hosted native
-and package-only selectors in [EXR output](image-exr-output.md#required-hosted-execution); no POSIX execution is asserted here.
+validation and cooperative cancellation without per-pixel interop. Windows x64 and Linux/macOS little-endian x64/ARM64
+regular-file profiles are implemented; POSIX execution still requires hosted native and package-only proof. Native codec
+heap is outside the encoded-byte ceiling. Canonical mirror/layout generation, typed mismatch rejection, complete Core
+codec closure and exact-bit clean-feed NativeAOT execution cover Windows. The current source uses Data ABI26.
 
 ### `shared-stage-access`
 
@@ -1222,17 +1220,17 @@ package-only NativeAOT execution are recorded; Metal execution is not claimed.
 
 ### `bounded-exr-output`
 
-Renderer-neutral lossless RGBA16Float EXR encoding through Data ABI24 and capability bit32, with Windows x64
-synchronous buffered writable empty regular files and Linux/macOS little-endian x64/ARM64 regular-file descriptors.
-One borrowed half plane and file handle cross the unchanged version-1 C ABI;
-finite negatives, HDR values, signed zero and stored alpha are preserved without an image-sized copy or color
-conversion. Public writer, shared disk jobs and MCP opt-in EXR resources preserve exact encoded-byte ceilings,
-cancellation/drain, generated names, per-plane hashes and atomic publication. Default PNG/raw HDR behavior is unchanged.
-Viewport writes use origin-zero equal windows and square pixels; authored-product jobs store the full raster as the
-display window, crop/overscan as the data window and pixel aspect within 1/65536..65536. Primaries and alpha association
-remain unspecified by default. Encoded and managed-raster quotas do not bound native codec heap. Independent half-bit
-decoding and actual clean-feed NativeAOT execution cover Windows; POSIX encoding is implemented but still requires
-hosted native and clean-feed NativeAOT execution. Full authored-product semantics are not asserted by this encoder entry.
+Renderer-neutral lossless RGBA16Float EXR encoding through Data ABI24 and capability bit32, with Windows x64 synchronous
+buffered writable empty regular files and Linux/macOS little-endian x64/ARM64 regular-file descriptors implemented. One
+borrowed half plane and file handle cross the C ABI; finite negatives, HDR values, signed zero and stored alpha are
+preserved without an image-sized copy or color conversion. Public writer, shared disk jobs and MCP opt-in EXR resources
+preserve exact encoded-byte ceilings, cancellation/drain, generated names, per-plane hashes and atomic publication.
+Default PNG/raw HDR behavior is unchanged. Viewport writes use origin-zero equal windows and square pixels;
+authored-product jobs store the full raster as the display window, crop/overscan as the data window and pixel aspect
+within 1/65536..65536. Primaries and alpha association remain unspecified by default. Encoded and managed-raster quotas
+do not bound native codec heap. Independent half-bit decoding and clean-feed NativeAOT execution cover Windows; POSIX
+native and package-only execution require hosted proof. Full authored-product semantics are not asserted by this encoder
+entry.
 
 ### `bounded-authored-render-products`
 
