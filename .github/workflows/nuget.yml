@@ -340,6 +340,36 @@ jobs:
           $staged = @(Get-ChildItem artifacts -Filter '*.snupkg')
           Write-Host "Staged $($staged.Count) symbol package(s) beside the nupkg files."
 
+      - name: Check existing nuget.org packages
+        shell: bash
+        env:
+          PROMOTION_VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p public-existing
+          version="${PROMOTION_VERSION,,}"
+          for file in artifacts/*.nupkg artifacts/*.snupkg; do
+            name="$(basename "$file")"
+            extension="${name##*.}"
+            id="$(basename "$file" ".${version}.${extension}")"
+            output="public-existing/${name}"
+            if [ "$extension" = "snupkg" ]; then
+              url="https://globalcdn.nuget.org/symbol-packages/${name}"
+            else
+              url="https://api.nuget.org/v3-flatcontainer/${id}/${version}/${name}"
+            fi
+            if ! status="$(curl -sSL --connect-timeout 15 --max-time 120 \
+                --retry 3 --retry-delay 2 --output "$output" --write-out '%{http_code}' "$url")"; then
+              echo "::error::Could not check the existing public package ${id}."
+              exit 1
+            fi
+            case "$status" in
+              200) echo "Downloaded existing public package ${id}." ;;
+              404) rm -- "$output"; echo "No existing public package ${id}." ;;
+              *) echo "::error::Public package check returned HTTP ${status} for ${id}."; exit 1 ;;
+            esac
+          done
+
       - name: Verify promotion bytes and tagged source
         shell: pwsh
         env:
@@ -380,7 +410,9 @@ jobs:
             --version $env:PROMOTION_VERSION `
             --run-id $env:RELEASE_RUN_ID `
             --repository $env:GITHUB_REPOSITORY `
-            --tag-commit $commit
+            --tag-commit $commit `
+            --public-packages public-existing `
+            --allow-partial-public
           if ($LASTEXITCODE -ne 0)
           {
             throw 'NuGet promotion input verification failed.'

@@ -29,7 +29,7 @@ def _inventory(values, label):
     return result
 
 
-def _packages(directory, version, expected, symbols):
+def _packages(directory, version, expected, symbols, *, allow_partial=False):
     if not directory.is_dir():
         raise ValueError(f"Package directory does not exist: {directory}")
     found = {}
@@ -49,7 +49,7 @@ def _packages(directory, version, expected, symbols):
         found[key] = path
     wanted = {(name, ".nupkg") for name in expected}
     wanted.update((name, ".snupkg") for name in symbols)
-    if set(found) != wanted:
+    if set(found) - wanted or (not allow_partial and set(found) != wanted):
         missing = sorted(wanted - set(found))
         unexpected = sorted(set(found) - wanted)
         raise ValueError(
@@ -61,6 +61,24 @@ def _packages(directory, version, expected, symbols):
 def _sha256(path):
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def _payloads(path):
+    result = {}
+    seen = set()
+    try:
+        with zipfile.ZipFile(path) as archive:
+            for entry in archive.infolist():
+                if entry.filename in seen:
+                    raise ValueError(f"Duplicate package entry in {path.name}: {entry.filename}")
+                seen.add(entry.filename)
+                if entry.is_dir() or entry.filename == ".signature.p7s":
+                    continue
+                with archive.open(entry) as stream:
+                    result[entry.filename] = hashlib.file_digest(stream, "sha256").hexdigest()
+    except (zipfile.BadZipFile, RuntimeError) as error:
+        raise ValueError(f"Invalid package payload in {path.name}: {error}") from error
+    return result
 
 
 def _metadata(path, package_id, version, commit):
@@ -91,7 +109,8 @@ def _metadata(path, package_id, version, commit):
 
 
 def verify_promotion(*, packages, release_packages, evidence, release_run,
-                     inventory, version, run_id, repository, tag_commit):
+                     inventory, version, run_id, repository, tag_commit,
+                     public_packages=None, allow_partial_public=False):
     if any(not isinstance(value, dict) for value in (evidence, release_run, inventory)):
         raise ValueError("Release evidence, run metadata and inventory must be objects.")
     if re.fullmatch(VERSION_PATTERN, version) is None:
@@ -136,8 +155,23 @@ def verify_promotion(*, packages, release_packages, evidence, release_run,
         if _sha256(path) != _sha256(released[key]):
             raise ValueError(f"Promotion bytes differ from the release artifact: {path.name}")
         _metadata(path, key[0], version, tag_commit)
-    return {"version": version, "commit": tag_commit, "runId": run_id,
-            "packages": len(expected), "symbols": len(symbols)}
+    result = {"version": version, "commit": tag_commit, "runId": run_id,
+              "packages": len(expected), "symbols": len(symbols)}
+    if allow_partial_public and public_packages is None:
+        raise ValueError("Partial public verification requires a public package directory.")
+    if public_packages is not None:
+        public = _packages(public_packages, version, expected, symbols,
+                           allow_partial=allow_partial_public)
+        for key, path in sorted(public.items()):
+            if _payloads(path) != _payloads(released[key]):
+                raise ValueError(f"Public package content differs from the release: {path.name}")
+        wanted = {(name, ".nupkg") for name in expected}
+        wanted.update((name, ".snupkg") for name in symbols)
+        result.update(
+            publicPackages=sum(key[1] == ".nupkg" for key in public),
+            publicSymbols=sum(key[1] == ".snupkg" for key in public),
+            publicComplete=set(public) == wanted)
+    return result
 
 
 def main():
@@ -146,6 +180,8 @@ def main():
         parser.add_argument(f"--{name}", type=Path, required=True)
     for name in ("version", "run-id", "repository", "tag-commit"):
         parser.add_argument(f"--{name}", required=True)
+    parser.add_argument("--public-packages", type=Path)
+    parser.add_argument("--allow-partial-public", action="store_true")
     args = parser.parse_args()
     try:
         result = verify_promotion(
@@ -154,7 +190,8 @@ def main():
             release_run=json.loads(args.release_run.read_text(encoding="utf-8-sig")),
             inventory=json.loads(args.inventory.read_text(encoding="utf-8-sig")),
             version=args.version, run_id=args.run_id, repository=args.repository,
-            tag_commit=args.tag_commit)
+            tag_commit=args.tag_commit, public_packages=args.public_packages,
+            allow_partial_public=args.allow_partial_public)
     except (OSError, ValueError) as error:
         print(f"NUGET_PROMOTION_INVALID: {error}", file=sys.stderr)
         return 1

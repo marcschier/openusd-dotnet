@@ -218,12 +218,81 @@ class NuGetPromotionTests(unittest.TestCase):
         self.assertIn("NUGET_PROMOTION_INVALID: Promotion bytes differ", result.stderr)
         self.assertEqual(result.stdout, "")
 
+    def public_packages(self):
+        directory = self.root / "public"
+        directory.mkdir()
+        for path in self.released.iterdir():
+            shutil.copyfile(path, directory / path.name)
+        return directory
+
+    def test_public_payload_identity_ignores_only_root_signature_and_zip_metadata(self):
+        public = self.public_packages()
+        for path in public.iterdir():
+            with zipfile.ZipFile(path, "a") as archive:
+                archive.comment = b"repository-signed archive"
+                archive.writestr(".signature.p7s", b"repository signature container")
+        result = self.verify(public_packages=public)
+        self.assertEqual(result["publicPackages"], 2)
+        self.assertEqual(result["publicSymbols"], 1)
+        self.assertTrue(result["publicComplete"])
+        path = public / f"openusd.{VERSION}.nupkg"
+        with zipfile.ZipFile(path, "a") as archive:
+            archive.writestr("other/.signature.p7s", b"unexpected payload")
+        with self.assertRaisesRegex(ValueError, "Public package content differs"):
+            self.verify(public_packages=public)
+
+    def test_public_payload_changes_and_corrupt_archives_are_rejected(self):
+        public = self.public_packages()
+        for extension in ("nupkg", "snupkg"):
+            with self.subTest(extension=extension):
+                path = public / f"openusd.{VERSION}.{extension}"
+                original = path.read_bytes()
+                self.write_package(path, payload=b"different public package")
+                with self.assertRaisesRegex(ValueError, "Public package content differs"):
+                    self.verify(public_packages=public)
+                path.write_bytes(b"not a package")
+                with self.assertRaisesRegex(ValueError, "Invalid package payload"):
+                    self.verify(public_packages=public)
+                path.write_bytes(original)
+
+    def test_duplicate_public_entries_cannot_hide_behind_signature_handling(self):
+        public = self.public_packages()
+        path = public / f"openusd.{VERSION}.nupkg"
+        with zipfile.ZipFile(path, "a") as archive:
+            archive.writestr(".signature.p7s", b"first")
+            with self.assertWarnsRegex(UserWarning, "Duplicate name"):
+                archive.writestr(".signature.p7s", b"second")
+        with self.assertRaisesRegex(ValueError, "Duplicate package entry"):
+            self.verify(public_packages=public)
+
+    def test_partial_public_preflight_does_not_establish_complete_publication(self):
+        public = self.root / "public"
+        public.mkdir()
+        result = self.verify(public_packages=public, allow_partial_public=True)
+        self.assertEqual(result["publicPackages"], 0)
+        self.assertEqual(result["publicSymbols"], 0)
+        self.assertFalse(result["publicComplete"])
+        with self.assertRaisesRegex(ValueError, "inventory mismatch"):
+            self.verify(public_packages=public)
+        path = self.released / f"openusd.{VERSION}.nupkg"
+        shutil.copyfile(path, public / path.name)
+        result = self.verify(public_packages=public, allow_partial_public=True)
+        self.assertEqual(result["publicPackages"], 1)
+        self.assertFalse(result["publicComplete"])
+        shutil.copyfile(path, public / f"extra.{VERSION}.nupkg")
+        with self.assertRaisesRegex(ValueError, "inventory mismatch"):
+            self.verify(public_packages=public, allow_partial_public=True)
+        with self.assertRaisesRegex(ValueError, "requires a public package directory"):
+            self.verify(allow_partial_public=True)
+
     def test_workflow_verifies_identity_before_requesting_publication_credentials(self):
         workflow = (ROOT / ".github" / "workflows" / "nuget.yml").read_text(encoding="utf-8")
         stage = workflow.index("- name: Stage symbol packages for nuget.org")
+        public = workflow.index("- name: Check existing nuget.org packages")
         verify = workflow.index("- name: Verify promotion bytes and tagged source")
         login = workflow.index("- name: NuGet login (OIDC trusted publishing)")
-        self.assertLess(stage, verify)
+        self.assertLess(stage, public)
+        self.assertLess(public, verify)
         self.assertLess(verify, login)
         block = workflow[verify:login]
         self.assertIn("python ./eng/verify-nuget-promotion.py", block)
@@ -231,6 +300,8 @@ class NuGetPromotionTests(unittest.TestCase):
         self.assertIn("/actions/runs/$env:RELEASE_RUN_ID", block)
         self.assertIn("--tag-commit $commit", block)
         self.assertIn("--release-packages release-artifacts/nupkg", block)
+        self.assertIn("--public-packages public-existing", block)
+        self.assertIn("--allow-partial-public", block)
 
     def test_required_gate_names_match_release_aggregate(self):
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")

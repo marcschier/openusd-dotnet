@@ -574,7 +574,10 @@ The nuget.org push omits `--no-symbols`, so `dotnet nuget push` uploads adjacent
 Both feeds use `--skip-duplicate`; a retry must reuse the verified inputs rather than rebuild
 different bytes under an existing version. A version pushed to nuget.org can be unlisted but
 never withdrawn or replaced. NuGet repository signing can change the public archive bytes, so
-public-feed verification must account for signatures when comparing package content.
+promotion also downloads any existing public packages and compares their payloads with the release,
+excluding only the root repository-signature entry and ZIP metadata. An existing package with
+different content stops the retry before a publishing token is requested. Final public-feed
+verification uses the same content comparison with the complete package set required.
 
 ## Symbol packages for nuget.org
 
