@@ -14,6 +14,7 @@
 #include "openusd_hdsilk.h"
 
 #include "hdsilk_test_hooks.h"
+#include "normal_correspondence_page.h"
 
 #include <algorithm>
 #include <array>
@@ -232,7 +233,8 @@ bool ParseMeshUpsert(
     cursor += static_cast<size_t>(pointOriginCount) * sizeof(uint32_t);
     cursor += static_cast<size_t>(cornerEdgeCount) * sizeof(uint32_t);
 
-    if (cursor != offset + byteSize)
+    if (!HdSilkTestReadNormalCorrespondence(data, offset + byteSize, &cursor, pointCount) ||
+        cursor != offset + byteSize)
     {
         return Fail("MESH_UPSERT byte size did not match its payload");
     }

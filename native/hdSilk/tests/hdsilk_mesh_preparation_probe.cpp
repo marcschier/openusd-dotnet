@@ -17,10 +17,10 @@ void Require(bool value, const char* message)
 void ReservationArithmeticIsExactAndRejectsOverflow()
 {
     HdSilkMeshPreparationPlan plan(4, 2);
-    Require(plan.bytes == 372, "The coarse numeric buffer reservation changed.");
+    Require(plan.bytes == 604, "The coarse reservation must include independent normal correspondence.");
     plan.Attribute(1, 3, true);
     plan.Attribute(4, 2, false);
-    Require(plan.bytes == 596, "The attribute overlap reservation changed.");
+    Require(plan.bytes == 828, "The attribute overlap reservation changed.");
     const auto expectOverflow = [](auto action)
     {
         bool failed = false;
@@ -31,7 +31,7 @@ void ReservationArithmeticIsExactAndRejectsOverflow()
     expectOverflow([] { (void)HdSilkMeshPreparationPlan(1, UINT64_MAX); });
     expectOverflow([] { (void)HdSilkMeshPreparationPlan(UINT64_MAX, 0); });
     expectOverflow([&] { plan.Attribute(UINT64_MAX, 4, false); });
-    Require(plan.bytes == 596, "Failed accounting changed the existing reservation.");
+    Require(plan.bytes == 828, "Failed accounting changed the existing reservation.");
 }
 
 void CurveReservationIncludesSourceAndOverlappingLineBuffers()

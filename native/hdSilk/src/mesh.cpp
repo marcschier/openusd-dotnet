@@ -606,6 +606,79 @@ bool ExpandUniformElements(
 ///
 /// Returns false, leaving the outputs empty, when the authored topology cannot
 /// be walked or its edge count would not fit the wire.
+VtArray<uint32_t> BuildNormalCorners(
+    const HdMeshTopology& topology,
+    const VtArray<uint32_t>& triangles,
+    const VtArray<uint32_t>& faces)
+{
+    VtArray<uint32_t> result;
+    const VtIntArray& counts = topology.GetFaceVertexCounts();
+    const VtIntArray& points = topology.GetFaceVertexIndices();
+    const bool reversed = topology.GetOrientation() == UsdGeomTokens->leftHanded;
+    size_t authoredStart = 0;
+    size_t triangle = 0;
+    result.reserve(triangles.size() * 3);
+    for (size_t face = 0; face < counts.size(); ++face)
+    {
+        const int count = counts[face];
+        if (count < 0 || authoredStart + static_cast<size_t>(count) > points.size())
+        {
+            throw std::invalid_argument("An hdSilk normal polygon has invalid corners.");
+        }
+        if (triangle < faces.size() && faces[triangle] == face && count >= 3)
+        {
+            const size_t triangleCount = static_cast<size_t>(count - 2);
+            if (triangleCount > faces.size() - triangle ||
+                triangles.size() / 3 < triangle + triangleCount)
+            {
+                throw std::invalid_argument("An hdSilk normal polygon has incomplete triangles.");
+            }
+            std::unordered_map<uint32_t, uint32_t> ordinals;
+            ordinals.reserve(static_cast<size_t>(count));
+            for (size_t faceTriangle = triangle; faceTriangle < triangle + triangleCount; ++faceTriangle)
+            {
+                if (faces[faceTriangle] != face)
+                {
+                    throw std::invalid_argument("An hdSilk normal polygon has inconsistent faces.");
+                }
+                for (size_t corner = faceTriangle * 3; corner < faceTriangle * 3 + 3; ++corner)
+                {
+                    if (corner > std::numeric_limits<uint32_t>::max())
+                    {
+                        throw std::length_error("An hdSilk normal corner exceeds its 32-bit index range.");
+                    }
+                    ordinals.emplace(triangles[corner], static_cast<uint32_t>(corner));
+                }
+            }
+            const auto ordinal = [&](int corner)
+            {
+                const int point = points[authoredStart + corner];
+                const auto found = point < 0 ? ordinals.end() : ordinals.find(static_cast<uint32_t>(point));
+                if (found == ordinals.end())
+                {
+                    throw std::invalid_argument("An hdSilk normal polygon differs from its triangulation.");
+                }
+                return found->second;
+            };
+            for (int corner = 0; corner < count; ++corner)
+            {
+                const int previous = (corner + count - 1) % count;
+                const int next = (corner + 1) % count;
+                result.push_back(ordinal(reversed ? next : previous));
+                result.push_back(ordinal(corner));
+                result.push_back(ordinal(reversed ? previous : next));
+            }
+            triangle += triangleCount;
+        }
+        authoredStart += static_cast<size_t>(count);
+    }
+    if (triangle != faces.size())
+    {
+        throw std::invalid_argument("An hdSilk normal polygon table is incomplete.");
+    }
+    return result;
+}
+
 bool BuildAuthoredEdgeTable(
     const HdMeshTopology& topology,
     const VtArray<uint32_t>& triangleIndices,
@@ -2100,6 +2173,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
             _coarseTriangleIndices.clear();
             _requiredPointCount = 0;
             _coarseTriangleSubprims.clear();
+            _coarseNormalCorners.clear();
             _coarseCornerEdges.clear();
             _coarseAuthoredEdgeCount = 0;
             _subdivision.Clear();
@@ -2128,6 +2202,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
             _coarseTriangleIndices.reserve(triangleIndices.size() * 3);
             _requiredPointCount = 0;
             _coarseTriangleSubprims.clear();
+            _coarseNormalCorners.clear();
             _coarseTriangleSubprims.reserve(primitiveParams.size());
             // Authored winding is HdMeshUtil's job, not this delegate's. USD's
             // "orientation" makes rightHanded faces counter-clockwise seen from the
@@ -2170,6 +2245,8 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
                 }
                 _coarseTriangleSubprims.push_back(static_cast<uint32_t>(faceIndex));
             }
+            _coarseNormalCorners = BuildNormalCorners(
+                _topology, _coarseTriangleIndices, _coarseTriangleSubprims);
 
             // The authored-edge table indexes the coarse triangulation, so it is
             // rebuilt exactly when that triangulation is. A topology this delegate
@@ -2412,6 +2489,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         HdSilkSceneState& state = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState();
         state.ShareMeshIndices(&_coarseTriangleIndices);
         state.ShareMeshIndices(&_coarseTriangleSubprims);
+        state.ShareMeshIndices(&_coarseNormalCorners);
         state.ShareMeshIndices(&_coarseCornerEdges);
     }
 
@@ -2518,7 +2596,120 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
             record.indices = triangleIndices;
         }
 
+        const VtArray<uint32_t>& normalCorners = _subdivision.IsRefined()
+            ? _subdivision.GetNormalCorners() : _coarseNormalCorners;
+        if (_attributesRequireExpandedTopology)
+        {
+            record.normalIdentities = _attributePointIndices.empty()
+                ? triangleIndices : _attributePointIndices;
+        }
+        else
+        {
+            record.normalIdentities.resize(emittedPoints.size());
+            for (size_t point = 0; point < emittedPoints.size(); ++point)
+            {
+                record.normalIdentities[point] = static_cast<uint32_t>(point);
+            }
+        }
+        record.normalCorners.reserve(normalCorners.size());
+        for (uint32_t corner : normalCorners)
+        {
+            if (corner >= record.indices.size())
+            {
+                throw std::logic_error("An hdSilk normal corner is outside the emitted topology.");
+            }
+            record.normalCorners.push_back(record.indices[corner]);
+        }
+
         record.triangleSubprims = _EmittedTriangleSubprims();
+        const bool smoothFallback = _topology.GetScheme() == UsdGeomTokens->catmullClark ||
+            _topology.GetScheme() == UsdGeomTokens->loop;
+        const bool hasAuthoredNormals = std::any_of(_attributes.begin(), _attributes.end(),
+            [](const HdSilkMeshAttribute& attribute)
+            {
+                return attribute.semantic == OPENUSD_SILK_ATTRIBUTE_NORMAL &&
+                    attribute.componentCount == 3;
+            });
+        if ((!_subdivision.IsRefined() ? !_topology.GetHoleIndices().empty()
+                : !_subdivision.GetHoleNormalCorners().empty()) &&
+            (smoothFallback || hasAuthoredNormals))
+        {
+            std::vector<uint32_t> canonical(emittedPoints.size(), UINT32_MAX);
+            for (size_t point = 0; point < record.normalIdentities.size(); ++point)
+            {
+                canonical[record.normalIdentities[point]] = static_cast<uint32_t>(point);
+            }
+            const auto resolveNormalPoint = [&](int source)
+            {
+                if (source < 0 || static_cast<size_t>(source) >= emittedPoints.size())
+                {
+                    throw std::invalid_argument("An hdSilk hole normal references a missing point.");
+                }
+                uint32_t& result = canonical[source];
+                if (result == UINT32_MAX)
+                {
+                    result = static_cast<uint32_t>(
+                        record.points.size() / 3 + record.normalExtraPoints.size() / 3);
+                    for (int component = 0; component < 3; ++component)
+                    {
+                        record.normalExtraPoints.push_back(emittedPoints[source][component]);
+                    }
+                }
+                return result;
+            };
+            if (_subdivision.IsRefined())
+            {
+                for (uint32_t source : _subdivision.GetHoleNormalCorners())
+                {
+                    record.normalCorners.push_back(resolveNormalPoint(static_cast<int>(source)));
+                }
+            }
+            else
+            {
+                const VtIntArray& counts = _topology.GetFaceVertexCounts();
+                const VtIntArray& sourceIndices = _topology.GetFaceVertexIndices();
+                const bool reversed = _topology.GetOrientation() == UsdGeomTokens->leftHanded;
+                size_t start = 0;
+                for (size_t face = 0; face < counts.size(); ++face)
+                {
+                    const int count = counts[face];
+                    if (std::binary_search(_topology.GetHoleIndices().begin(), _topology.GetHoleIndices().end(),
+                            static_cast<int>(face)) && count >= 3)
+                    {
+                        for (int corner = 0; corner < count; ++corner)
+                        {
+                            const int previous = (corner + count - 1) % count;
+                            const int next = (corner + 1) % count;
+                            record.normalCorners.push_back(resolveNormalPoint(
+                                sourceIndices[start + (reversed ? next : previous)]));
+                            record.normalCorners.push_back(resolveNormalPoint(sourceIndices[start + corner]));
+                            record.normalCorners.push_back(resolveNormalPoint(
+                                sourceIndices[start + (reversed ? previous : next)]));
+                        }
+                    }
+                    start += static_cast<size_t>(count);
+                }
+            }
+        }
+        if (!smoothFallback && !hasAuthoredNormals)
+        {
+            // Preserve the polygon/bilinear triangle-local fallback. Authored
+            // normals still retain source correspondence for simulated updates.
+            for (size_t point = 0; point < record.normalIdentities.size(); ++point)
+            {
+                record.normalIdentities[point] = static_cast<uint32_t>(point);
+            }
+            record.normalCorners.clear();
+            for (size_t triangle = 0; triangle < record.indices.size(); triangle += 3)
+            {
+                for (size_t corner = 0; corner < 3; ++corner)
+                {
+                    record.normalCorners.push_back(record.indices[triangle + ((corner + 2) % 3)]);
+                    record.normalCorners.push_back(record.indices[triangle + corner]);
+                    record.normalCorners.push_back(record.indices[triangle + ((corner + 1) % 3)]);
+                }
+            }
+        }
         record.attributes = _attributes;
         const HdPrimvarSchema ptexFaceOffset =
             GetTerminalPtexFaceOffsetPrimvar(sceneDelegate, id);

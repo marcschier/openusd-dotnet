@@ -29,7 +29,7 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 33u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 34u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 7u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 #define OPENUSD_SILK_PTEX_DECODE_VERSION 1u
@@ -134,6 +134,26 @@ typedef enum openusd_silk_ptex_mapping_status
 ///        *    * uint8    instancer_path[instancer_path_byte_count]
 ///        *    *          instancer_context[instancer_context_count]
 ///        *    *          ptex_mappings[ptex_mapping_count]
+///        *    4 uint32   normal_identity_count (point_count)
+///        *    4 uint32   normal_corner_count
+///        *    4 uint32   normal_extra_point_count
+///        *    * uint32   normal_identities[normal_identity_count]
+///        *    * uint32   normal_corners[normal_corner_count * 3]
+///        *    * float    normal_extra_points[normal_extra_point_count * 3]
+///
+/// ABI v34 retains normal correspondence independently of optional picking.
+/// Each normal identity names one source vertex in this emitted topology;
+/// distinct vertices never share an identity merely because positions coincide.
+/// Each normal corner is (previous, current, next), indexing emitted points
+/// around an original polygon (a final-level polygon for subdivision).
+/// Coarse smooth adjacency includes hole faces, matching pinned Storm. A
+/// corner can index a normal-only point after the emitted point array; these
+/// points preserve hole neighbors absent from face-varying emitted geometry.
+/// Consumers sum cross(next-current, previous-current).
+/// Copies share this sum only while both identity and current position match.
+/// The complete trailing normal block, including its counts, is absent for
+/// topology without polygon normal correspondence and for lightweight instance
+/// references. Authored normals take precedence. The fixed header is unchanged.
 ///
 /// Each Ptex mapping is 28 bytes: uint32 face_index followed by float
 /// corner_coordinates[6] in triangle-corner order. Status is NOT_REQUESTED

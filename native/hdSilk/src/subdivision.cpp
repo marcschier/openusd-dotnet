@@ -422,6 +422,8 @@ HdSilkMeshSubdivision::Clear()
     _refinedVertexCount = 0;
     _triangleIndices.clear();
     _triangleSubprims.clear();
+    _normalCorners.clear();
+    _holeNormalCorners.clear();
 }
 
 uint64_t
@@ -2047,6 +2049,7 @@ HdSilkMeshSubdivision::Rebuild(
     // HdMeshUtil::ComputeTriangleIndices drops on the unrefined path.
     _triangleIndices.reserve(static_cast<size_t>(refinedFaces) * 6);
     _triangleSubprims.reserve(static_cast<size_t>(refinedFaces) * 2);
+    _normalCorners.reserve(static_cast<size_t>(refinedFaces) * 12);
     for (size_t channel = 0; channel < _impl->faceVaryingCorners.size(); ++channel)
     {
         _impl->faceVaryingCorners[channel].reserve(
@@ -2056,6 +2059,13 @@ HdSilkMeshSubdivision::Rebuild(
     {
         if (last.IsFaceHole(face))
         {
+            const OpenSubdiv::Far::ConstIndexArray hole = last.GetFaceVertices(face);
+            for (int corner = 0; corner < hole.size(); ++corner)
+            {
+                _holeNormalCorners.push_back(static_cast<uint32_t>(hole[(corner + hole.size() - 1) % hole.size()]));
+                _holeNormalCorners.push_back(static_cast<uint32_t>(hole[corner]));
+                _holeNormalCorners.push_back(static_cast<uint32_t>(hole[(corner + 1) % hole.size()]));
+            }
             continue;
         }
         const OpenSubdiv::Far::ConstIndexArray corners =
@@ -2063,6 +2073,18 @@ HdSilkMeshSubdivision::Rebuild(
         if (corners.size() < 3)
         {
             continue;
+        }
+        const uint32_t first = static_cast<uint32_t>(_triangleIndices.size());
+        const auto cornerOrdinal = [first](int corner)
+        {
+            return first + (corner < 2 ? static_cast<uint32_t>(corner)
+                : static_cast<uint32_t>((corner - 2) * 3 + 2));
+        };
+        for (int corner = 0; corner < corners.size(); ++corner)
+        {
+            _normalCorners.push_back(cornerOrdinal((corner + corners.size() - 1) % corners.size()));
+            _normalCorners.push_back(cornerOrdinal(corner));
+            _normalCorners.push_back(cornerOrdinal((corner + 1) % corners.size()));
         }
         for (int corner = 1; corner + 1 < corners.size(); ++corner)
         {

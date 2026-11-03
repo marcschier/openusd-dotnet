@@ -74,7 +74,12 @@ internal static class SilkMeshGeometryBuilder
             indices[i] = checked((uint)ValidateIndex(mesh, meshIndices, pointCount, i));
         }
 
-        if (!useAuthored && mesh.TopologyKind == SilkTopologyKind.TriangleList)
+        if (!useAuthored && mesh.TopologyKind == SilkTopologyKind.TriangleList &&
+            mesh.NormalIdentityArray.Length != 0)
+        {
+            BuildPolygonNormals(mesh, points, indices, normals);
+        }
+        else if (!useAuthored && mesh.TopologyKind == SilkTopologyKind.TriangleList)
         {
             for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
             {
@@ -335,6 +340,104 @@ internal static class SilkMeshGeometryBuilder
         normals[offset] += x;
         normals[offset + 1] += y;
         normals[offset + 2] += z;
+    }
+
+    private static void BuildPolygonNormals(
+        SilkMeshData mesh, ReadOnlySpan<float> points, ReadOnlySpan<uint> indices, double[] normals)
+    {
+        int pointCount = points.Length / 3;
+        ReadOnlySpan<int> identities = mesh.NormalIdentityArray;
+        ReadOnlySpan<int> corners = mesh.NormalCornerArray;
+        if (identities.Length != pointCount || corners.Length % 3 != 0 ||
+            mesh.NormalExtraPointArray.Length % 3 != 0)
+        {
+            throw InvalidMesh(mesh, "normal correspondence counts do not match the emitted topology");
+        }
+        float[]? allNormalPoints = null;
+        if (mesh.NormalExtraPointArray.Length != 0)
+        {
+            allNormalPoints = new float[checked(points.Length + mesh.NormalExtraPointArray.Length)];
+            points.CopyTo(allNormalPoints);
+            mesh.NormalExtraPointArray.CopyTo(allNormalPoints, points.Length);
+        }
+        ReadOnlySpan<float> normalPoints = allNormalPoints is null ? points : allNormalPoints;
+        int normalPointCount = normalPoints.Length / 3;
+        var groups = new Dictionary<(int Identity, float X, float Y, float Z), int>(pointCount);
+        var representatives = new int[pointCount];
+        var hasPolygonCorner = new bool[pointCount];
+        for (int point = 0; point < pointCount; point++)
+        {
+            int offset = point * 3;
+            var key = (identities[point], points[offset], points[offset + 1], points[offset + 2]);
+            if (identities[point] < 0)
+            {
+                throw InvalidMesh(mesh, "normal identity is negative");
+            }
+            if (!groups.TryGetValue(key, out int representative))
+            {
+                representative = point;
+                groups.Add(key, representative);
+            }
+            representatives[point] = representative;
+        }
+        for (int corner = 0; corner < corners.Length; corner += 3)
+        {
+            int previous = corners[corner];
+            int current = corners[corner + 1];
+            int next = corners[corner + 2];
+            if ((uint)previous >= normalPointCount || (uint)current >= normalPointCount ||
+                (uint)next >= normalPointCount)
+            {
+                throw InvalidMesh(mesh, "normal corner references a missing point");
+            }
+            if (current >= pointCount)
+            {
+                continue;
+            }
+            int representative = representatives[current];
+            hasPolygonCorner[representative] = true;
+            AccumulateCorner(normalPoints, normals, representative, current, next, previous);
+        }
+        // A simulated triangle copy can separate from the polygon corner that
+        // originally represented it. Its new position has its own local normal.
+        for (int triangle = 0; triangle < indices.Length; triangle += 3)
+        {
+            for (int corner = 0; corner < 3; corner++)
+            {
+                int current = checked((int)indices[triangle + corner]);
+                int representative = representatives[current];
+                if (!hasPolygonCorner[representative])
+                {
+                    AccumulateCorner(points, normals, representative, current,
+                        checked((int)indices[triangle + ((corner + 1) % 3)]),
+                        checked((int)indices[triangle + ((corner + 2) % 3)]));
+                }
+            }
+        }
+        for (int point = 0; point < pointCount; point++)
+        {
+            int representative = representatives[point] * 3;
+            if (representative != point * 3)
+            {
+                normals.AsSpan(representative, 3).CopyTo(normals.AsSpan(point * 3, 3));
+            }
+        }
+    }
+
+    private static void AccumulateCorner(
+        ReadOnlySpan<float> points, double[] normals, int target, int current, int next, int previous)
+    {
+        int a = current * 3;
+        int b = next * 3;
+        int c = previous * 3;
+        double bx = (double)points[b] - points[a];
+        double by = (double)points[b + 1] - points[a + 1];
+        double bz = (double)points[b + 2] - points[a + 2];
+        double cx = (double)points[c] - points[a];
+        double cy = (double)points[c + 1] - points[a + 1];
+        double cz = (double)points[c + 2] - points[a + 2];
+        Accumulate(normals, target * 3,
+            (by * cz) - (bz * cy), (bz * cx) - (bx * cz), (bx * cy) - (by * cx));
     }
 
     private static InvalidDataException InvalidMesh(SilkMeshData mesh, string detail) =>

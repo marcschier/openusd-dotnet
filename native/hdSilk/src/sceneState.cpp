@@ -596,6 +596,9 @@ HdSilkMeshRecord ApplyDrawMode(const HdSilkMeshRecord& record, uint32_t drawMode
     }
 
     HdSilkMeshRecord result = record;
+    result.normalIdentities.clear();
+    result.normalCorners.clear();
+    result.normalExtraPoints.clear();
     const size_t pointCount = result.points.size() / 3;
     result.materialPath.clear();
     result.attributes.clear();
@@ -995,6 +998,9 @@ struct MeshWireCounts
     uint32_t instancerContextCount;
     uint32_t ptexMappingCount;
     uint32_t ptexMappingStatus;
+    uint32_t normalIdentityCount;
+    uint32_t normalCornerCount;
+    uint32_t normalExtraPointCount;
     size_t payloadSize;
 };
 
@@ -1376,6 +1382,36 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
     const size_t primitiveCount = record.indices.size() / indicesPerPrimitive;
 
     size_t payloadSize = MeshFixedPayloadSize;
+    if ((!record.normalIdentities.empty() &&
+         (record.normalIdentities.size() != pointCount ||
+          record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST)) ||
+        record.normalCorners.size() % 3 != 0 || record.normalExtraPoints.size() % 3 != 0 ||
+        (record.normalIdentities.empty() &&
+         (!record.normalCorners.empty() || !record.normalExtraPoints.empty())))
+    {
+        throw std::invalid_argument("An hdSilk normal correspondence table is malformed.");
+    }
+    for (uint32_t corner : record.normalCorners)
+    {
+        if (corner >= pointCount + record.normalExtraPoints.size() / 3)
+        {
+            throw std::invalid_argument("An hdSilk normal corner references a missing point.");
+        }
+    }
+    for (uint32_t identity : record.normalIdentities)
+    {
+        if (identity > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))
+        {
+            throw std::invalid_argument("An hdSilk normal identity exceeds the supported range.");
+        }
+    }
+    for (float value : record.normalExtraPoints)
+    {
+        if (!std::isfinite(value))
+        {
+            throw std::invalid_argument("An hdSilk normal-only point is not finite.");
+        }
+    }
     payloadSize = CheckedAdd(
         payloadSize, record.path.size(), "mesh payload");
     payloadSize = CheckedAdd(
@@ -1448,6 +1484,19 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
             sizeof(HdSilkPtexMeshTriangle),
             "Ptex mapping"),
         "mesh payload");
+    payloadSize = CheckedAdd(payloadSize,
+        CheckedByteCount(record.normalIdentities.size(), sizeof(uint32_t), "normal identity"),
+        "mesh payload");
+    payloadSize = CheckedAdd(payloadSize,
+        CheckedByteCount(record.normalCorners.size(), sizeof(uint32_t), "normal corner"),
+        "mesh payload");
+    if (!record.normalIdentities.empty())
+    {
+        payloadSize = CheckedAdd(payloadSize, 12, "normal correspondence header");
+    }
+    payloadSize = CheckedAdd(payloadSize,
+        CheckedByteCount(record.normalExtraPoints.size(), sizeof(float), "normal extra point"),
+        "mesh payload");
     if (payloadSize >
         static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 8)
     {
@@ -1468,6 +1517,9 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
             record.instancerContext.size(), "instancer context count"),
         CheckedCount(record.ptexMappings.size(), "Ptex mapping count"),
         record.ptexMappingStatus,
+        CheckedCount(record.normalIdentities.size(), "normal identity count"),
+        CheckedCount(record.normalCorners.size() / 3, "normal corner count"),
+        CheckedCount(record.normalExtraPoints.size() / 3, "normal extra point count"),
         payloadSize};
 }
 
@@ -2134,6 +2186,24 @@ void AppendMeshUpsert(
         }
     }
 
+    if (counts.normalIdentityCount != 0)
+    {
+        AppendU32(payload, counts.normalIdentityCount);
+        AppendU32(payload, counts.normalCornerCount);
+        AppendU32(payload, counts.normalExtraPointCount);
+    }
+    for (uint32_t value : complexRecord.normalIdentities)
+    {
+        AppendU32(payload, value);
+    }
+    for (uint32_t value : complexRecord.normalCorners)
+    {
+        AppendU32(payload, value);
+    }
+    for (float value : complexRecord.normalExtraPoints)
+    {
+        AppendF32(payload, value);
+    }
     payload.Complete();
 }
 

@@ -229,6 +229,9 @@ struct HdSilkMeshRecord
     VtArray<uint32_t> triangleSubprims;
     std::vector<HdSilkPtexMeshTriangle> ptexMappings;
     uint32_t ptexMappingStatus = OPENUSD_SILK_PTEX_MAPPING_STATUS_NOT_REQUESTED;
+    VtArray<uint32_t> normalIdentities;
+    VtArray<uint32_t> normalCorners;
+    std::vector<float> normalExtraPoints;
     // ABI v22 subprim identity. `pointOrigins` is the authored point index of
     // every emitted vertex, and `cornerEdges` is the authored mesh edge index
     // of every emitted primitive corner, both using OPENUSD_SILK_SUBPRIM_NONE
@@ -291,6 +294,9 @@ struct HdSilkMeshRecord
     /// thousand copies of an allocation no instance publishes a byte of.
     void ClearSubprimIdentity()
     {
+        VtArray<uint32_t>().swap(normalIdentities);
+        VtArray<uint32_t>().swap(normalCorners);
+        std::vector<float>().swap(normalExtraPoints);
         VtArray<uint32_t>().swap(pointOrigins);
         VtArray<uint32_t>().swap(cornerEdges);
         authoredPointCount = 0;

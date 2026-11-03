@@ -67,6 +67,11 @@ struct HdSilkMeshPreparationPlan
         bytes = Add(Multiply(Add(points, vertices), 3 * sizeof(float)),
             Multiply(Add(Multiply(corners, 9), Multiply(triangles, 2)), sizeof(uint32_t)));
         bytes = Add(bytes, Add(Multiply(points, sizeof(uint32_t)), points));
+        // Independent source identities and both cached and published polygon
+        // adjacency survive even when picking is refused. Their reservation
+        // also covers the source-to-triangle lookup used during triangulation.
+        bytes = Add(bytes, Multiply(Add(vertices, Multiply(corners, 6)), sizeof(uint32_t)));
+        bytes = Add(bytes, Multiply(points, 4 * sizeof(uint32_t)));
     }
 
     void Attribute(uint64_t elements, uint32_t components, bool constant)

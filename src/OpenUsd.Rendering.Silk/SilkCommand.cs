@@ -607,6 +607,12 @@ public readonly ref struct SilkMeshUpsertCommand
     private readonly int _ptexMappingCount;
     private readonly int _ptexMappingOffset;
     private readonly SilkPtexMappingStatus _ptexMappingStatus;
+    private readonly int _normalIdentityCount;
+    private readonly int _normalCornerCount;
+    private readonly int _normalIdentityOffset;
+    private readonly int _normalCornerOffset;
+    private readonly int _normalExtraPointCount;
+    private readonly int _normalExtraPointOffset;
 
     /// <summary>
     /// The exact ABI v23 ceiling on the number of instancing levels one record
@@ -876,7 +882,69 @@ public readonly ref struct SilkMeshUpsertCommand
                 }
             }
         }
-        contextOffset = mappingEnd;
+        if (mappingEnd == bytes.Length)
+        {
+            _normalIdentityCount = 0;
+            _normalCornerCount = 0;
+            _normalExtraPointCount = 0;
+        }
+        else
+        {
+            if (mappingEnd + 12 > bytes.Length)
+            {
+                throw new InvalidDataException("The mesh normal correspondence header is truncated.");
+            }
+            _normalIdentityCount = ReadCount(bytes, checked((int)mappingEnd), "normal identity");
+            _normalCornerCount = ReadCount(bytes, checked((int)mappingEnd + 4), "normal corner");
+            _normalExtraPointCount = ReadCount(bytes, checked((int)mappingEnd + 8), "normal extra point");
+            if (_normalIdentityCount == 0)
+            {
+                throw new InvalidDataException("An empty mesh normal correspondence block must be omitted.");
+            }
+            mappingEnd += 12;
+        }
+        if ((_normalIdentityCount != 0 &&
+             (_normalIdentityCount != _pointCount ||
+              topologyKind != SilkTopologyKind.TriangleList)) ||
+            (_normalIdentityCount == 0 && _normalCornerCount != 0))
+        {
+            throw new InvalidDataException("The mesh normal correspondence counts are malformed.");
+        }
+        _normalIdentityOffset = checked((int)mappingEnd);
+        long cornerStart = checked(mappingEnd + ((long)_normalIdentityCount * sizeof(uint)));
+        long extraStart = checked(cornerStart + ((long)_normalCornerCount * 3 * sizeof(uint)));
+        long normalEnd = checked(extraStart + ((long)_normalExtraPointCount * 3 * sizeof(float)));
+        if (normalEnd > bytes.Length)
+        {
+            throw new InvalidDataException("The mesh normal correspondence is truncated.");
+        }
+        _normalCornerOffset = checked((int)cornerStart);
+        _normalExtraPointOffset = checked((int)extraStart);
+        for (int identity = 0; identity < _normalIdentityCount; identity++)
+        {
+            if (BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes.Slice(_normalIdentityOffset + (identity * sizeof(uint)), sizeof(uint))) > int.MaxValue)
+            {
+                throw new InvalidDataException("A mesh normal identity exceeds the supported range.");
+            }
+        }
+        for (long offset = cornerStart; offset < extraStart; offset += sizeof(uint))
+        {
+            if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice((int)offset, sizeof(uint))) >=
+                (long)_pointCount + _normalExtraPointCount)
+            {
+                throw new InvalidDataException("A mesh normal corner references a missing point.");
+            }
+        }
+        for (long offset = extraStart; offset < normalEnd; offset += sizeof(float))
+        {
+            if (!float.IsFinite(BinaryPrimitives.ReadSingleLittleEndian(
+                bytes.Slice((int)offset, sizeof(float)))))
+            {
+                throw new InvalidDataException("A mesh normal-only point is not finite.");
+            }
+        }
+        contextOffset = normalEnd;
         if (contextOffset != bytes.Length)
         {
             throw new InvalidDataException(
@@ -1010,6 +1078,38 @@ public readonly ref struct SilkMeshUpsertCommand
 
     /// <summary>Gets the published point-origin entry count, zero when absent.</summary>
     public int PointOriginCount => _pointOriginCount;
+
+    internal int NormalIdentityCount => _normalIdentityCount;
+    internal int NormalCornerCount => _normalCornerCount;
+    internal int NormalExtraPointCount => _normalExtraPointCount;
+
+    internal float GetNormalExtraPointComponent(int point, int component)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(point);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(point, _normalExtraPointCount);
+        ArgumentOutOfRangeException.ThrowIfNegative(component);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(component, 3);
+        return BinaryPrimitives.ReadSingleLittleEndian(
+            _bytes.Slice(_normalExtraPointOffset + (((point * 3) + component) * sizeof(float)), sizeof(float)));
+    }
+
+    internal int GetNormalIdentity(int point)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(point);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(point, _normalIdentityCount);
+        return checked((int)BinaryPrimitives.ReadUInt32LittleEndian(
+            _bytes.Slice(_normalIdentityOffset + (point * sizeof(uint)), sizeof(uint))));
+    }
+
+    internal int GetNormalCorner(int corner, int component)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(corner);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(corner, _normalCornerCount);
+        ArgumentOutOfRangeException.ThrowIfNegative(component);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(component, 3);
+        return checked((int)BinaryPrimitives.ReadUInt32LittleEndian(
+            _bytes.Slice(_normalCornerOffset + (((corner * 3) + component) * sizeof(uint)), sizeof(uint))));
+    }
 
     /// <summary>Gets the published corner-edge entry count, zero when absent.</summary>
     public int CornerEdgeCount => _cornerEdgeCount;

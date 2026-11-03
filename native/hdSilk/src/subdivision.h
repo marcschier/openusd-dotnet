@@ -321,6 +321,10 @@ public:
         return _triangleSubprims;
     }
 
+    // Triples of triangle-corner ordinals around final-level polygon corners.
+    const VtArray<uint32_t>& GetNormalCorners() const { return _normalCorners; }
+    const VtArray<uint32_t>& GetHoleNormalCorners() const { return _holeNormalCorners; }
+
     size_t GetCoarseVertexCount() const { return _coarseVertexCount; }
     size_t GetRefinedVertexCount() const { return _refinedVertexCount; }
 
@@ -398,6 +402,8 @@ public:
 
 private:
     struct _Impl;
+    VtArray<uint32_t> _normalCorners;
+    VtArray<uint32_t> _holeNormalCorners;
 
     /// Interpolates "coarse" through every level into a flat buffer holding all
     /// levels, then copies the last level out. Shared by the vertex and varying

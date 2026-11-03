@@ -10,6 +10,7 @@
 #include "mdlIdentifier.h"
 #include "openusd_dotnet_test_hooks.h"
 #include "sceneState.h"
+#include "normal_correspondence_page.h"
 
 #include "pxr/base/arch/env.h"
 #include "pxr/base/arch/fileSystem.h"
@@ -92,7 +93,7 @@ struct ParsedAttribute
     std::vector<float> values;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 7);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 33);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 34);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128);
 
 using ParsedLightMask = std::array<uint32_t, 4>;
@@ -1216,6 +1217,10 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                               << byteSize << ").\n";
                 }
                 sizesValid = sizesValid && ptexMappingsValid;
+                size_t normalCursor = offset + expectedSize;
+                sizesValid = sizesValid && HdSilkTestReadNormalCorrespondence(
+                    data, offset + byteSize, &normalCursor, pointCount);
+                expectedSize = normalCursor - offset;
                 sizesValid = sizesValid && subprimValid &&
                     expectedSize == byteSize &&
                     ((instancerPathByteCount != 0) == (instanceId != 0)) &&

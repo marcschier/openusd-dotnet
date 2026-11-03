@@ -2290,6 +2290,13 @@ public sealed class SilkMeshData
     private float[] _ptexCoordinates = [];
     private readonly SilkInstancerContextEntry[]? _instancerContext;
     private readonly SilkSubprimTableCache _subprimTables = new();
+    internal int[] NormalIdentityArray { get; init; } = [];
+    internal int[] NormalCornerArray { get; init; } = [];
+    internal float[] NormalExtraPointArray { get; init; } = [];
+
+    internal ulong NormalCorrespondenceBytes =>
+        checked(((ulong)NormalIdentityArray.Length + (ulong)NormalCornerArray.Length +
+            (ulong)NormalExtraPointArray.Length) * sizeof(uint));
 
     /// <summary>Initializes immutable retained mesh data.</summary>
     public SilkMeshData(
@@ -2788,6 +2795,9 @@ public sealed class SilkMeshData
             SubprimUnsupported = SubprimUnsupported,
             PointOriginArray = _pointOrigins,
             CornerEdgeArray = _cornerEdges,
+            NormalIdentityArray = NormalIdentityArray,
+            NormalCornerArray = NormalCornerArray,
+            NormalExtraPointArray = NormalExtraPointArray,
             PtexMappingStatus = PtexMappingStatus,
             PtexFaceIndices = _ptexFaceIndices,
             PtexCoordinates = _ptexCoordinates,
@@ -2909,6 +2919,32 @@ public sealed class SilkMeshData
         }
         cornerEdges = arrays?.Integers.Share(cornerEdges) ?? cornerEdges;
 
+        var normalIdentities = new int[command.NormalIdentityCount];
+        for (int point = 0; point < normalIdentities.Length; point++)
+        {
+            normalIdentities[point] = command.GetNormalIdentity(point);
+        }
+        normalIdentities = arrays?.Integers.Share(normalIdentities) ?? normalIdentities;
+        var normalCorners = new int[checked(command.NormalCornerCount * 3)];
+        for (int corner = 0; corner < command.NormalCornerCount; corner++)
+        {
+            for (int component = 0; component < 3; component++)
+            {
+                normalCorners[(corner * 3) + component] = command.GetNormalCorner(corner, component);
+            }
+        }
+        normalCorners = arrays?.Integers.Share(normalCorners) ?? normalCorners;
+        var normalExtraPoints = new float[checked(command.NormalExtraPointCount * 3)];
+        for (int point = 0; point < command.NormalExtraPointCount; point++)
+        {
+            for (int component = 0; component < 3; component++)
+            {
+                normalExtraPoints[(point * 3) + component] =
+                    command.GetNormalExtraPointComponent(point, component);
+            }
+        }
+        normalExtraPoints = arrays?.Floats.Share(normalExtraPoints) ?? normalExtraPoints;
+
         var ptexFaceIndices = new int[command.PtexMappingCount];
         var ptexCoordinates = new float[checked(command.PtexMappingCount * 6)];
         for (int triangle = 0; triangle < command.PtexMappingCount; triangle++)
@@ -2999,6 +3035,9 @@ public sealed class SilkMeshData
             SubprimUnsupported = command.SubprimUnsupported,
             PointOriginArray = pointOrigins,
             CornerEdgeArray = cornerEdges,
+            NormalIdentityArray = normalIdentities,
+            NormalCornerArray = normalCorners,
+            NormalExtraPointArray = normalExtraPoints,
             PtexMappingStatus = command.PtexMappingStatus,
             PtexFaceIndices = ptexFaceIndices,
             PtexCoordinates = ptexCoordinates,
@@ -3082,6 +3121,9 @@ public sealed class SilkMeshData
             SubprimUnsupported = prototype.SubprimUnsupported,
             PointOriginArray = prototype._pointOrigins,
             CornerEdgeArray = prototype._cornerEdges,
+            NormalIdentityArray = prototype.NormalIdentityArray,
+            NormalCornerArray = prototype.NormalCornerArray,
+            NormalExtraPointArray = prototype.NormalExtraPointArray,
             PtexMappingStatus = prototype.PtexMappingStatus,
             PtexFaceIndices = prototype._ptexFaceIndices,
             PtexCoordinates = prototype._ptexCoordinates,
@@ -11561,7 +11603,7 @@ internal readonly record struct SilkMeshGpuGeometryKey(
             mesh.TopologyKind,
             mesh.TopologyFingerprint,
             HashFloats(mesh.Points.Span),
-            HashFloats(mesh.AuthoredNormals.Span),
+            HashNormalInputs(mesh),
             mesh.DeformationIdentity,
             0,
             uvPrimvar,
@@ -11634,6 +11676,22 @@ internal readonly record struct SilkMeshGpuGeometryKey(
 
     /// <summary>Gets whether the deformation kernel produces this geometry.</summary>
     internal bool IsGpuDeformed => DeformationBindIdentity != 0;
+
+    private static ulong HashNormalInputs(SilkMeshData mesh)
+    {
+        ulong hash = HashFloats(mesh.AuthoredNormals.Span);
+        foreach (int identity in mesh.NormalIdentityArray)
+        {
+            hash = unchecked((hash ^ (uint)identity) * 1099511628211ul);
+        }
+        hash = unchecked((hash ^ (uint)mesh.NormalIdentityArray.Length) * 1099511628211ul);
+        foreach (int corner in mesh.NormalCornerArray)
+        {
+            hash = unchecked((hash ^ (uint)corner) * 1099511628211ul);
+        }
+        hash ^= HashFloats(mesh.NormalExtraPointArray);
+        return hash;
+    }
 
     private static ulong HashFloats(ReadOnlySpan<float> values)
     {

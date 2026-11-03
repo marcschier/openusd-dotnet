@@ -90,7 +90,7 @@ rejected, token values are never reused, and the registry keeps no tombstones.
 
 Authored `UsdRender` execution needs explicit scene-ingestion choices that do
 not silently collapse to viewport defaults. The current public header describes
-session ABI 7 and page ABI 33. Managed creation requires the matching session/page
+session ABI 7 and page ABI 34. Managed creation requires the matching session/page
 version exports; older libraries cannot be mixed with these bindings.
 
 The version-1 request is append-only and request-scoped: one struct carries the
@@ -391,8 +391,25 @@ and every resolved vertex attribute agree bit-for-bit. `src/meshVertexLayout.h` 
 deterministic indexed layout and compacts its attributes without changing triangle order,
 face/edge identity, UV seams or normal discontinuities. Layout-changing primvar edits
 advance the topology revision even when the mesh remains corner-remapped.
-Meshes without published normals retain the existing triangle-local normal fallback;
-this optimization must not introduce smoothing through an implicit normal calculation.
+Page ABI 34 carries normal correspondence after the Ptex mapping block, independently
+of optional picking identity. The block contains three counts, source vertex identities,
+polygon-corner adjacency and any normal-only neighbor positions. Each adjacency triple
+names the previous, current and next point around a polygon. Smooth coarse meshes use
+authored polygon corners; subdivision uses final-level polygon corners, so a fan diagonal
+does not add another face contribution. Coarse smooth adjacency includes hole faces,
+matching the pinned Storm reference, without publishing triangles for those faces.
+Normal-only positions retain neighbors omitted by a face-varying emitted layout.
+
+The managed fallback sums each corner's cross product and shares that sum only between
+copies with the same source identity and exactly equal current positions. Divergent
+simulated copies separate; coincident unrelated source vertices remain separate. A
+triangle copy that separates from its representative polygon corner gets its local
+triangle normal. Authored normals still take precedence. Polygon/bilinear meshes without
+published normals retain their existing emitted-triangle fallback. Simulation, instance
+references and restoration share the immutable correspondence arrays; changing the
+correspondence changes retained geometry identity even when point bytes stay unchanged.
+Malformed counts, indices and nonfinite normal-only positions are refused before scene
+publication. The native mesh reservation includes the retained tables and lookup storage.
 
 The Rprim borrows its emitted triangle and face-identity tables from the control cage or
 the active refiner instead of retaining a second copy. Attribute collections, triangle
@@ -400,7 +417,7 @@ indices and authored face/point/edge identity use native copy-on-write arrays: p
 caches and published records share storage, while edits and presentation changes detach
 only the arrays they write. Read-only traversal, including serialization, must use const
 views so it neither changes earlier records nor duplicates their payloads.
-The wire format and native ABI are unchanged.
+Sharing these buffers does not add another wire representation.
 
 ### Optional mesh preparation admission
 
@@ -421,11 +438,13 @@ reservation.
 
 The metric is **conservative logical buffer reservation bytes**, not actual allocation,
 private memory or RSS. For `P` source points, `T` upper-bound triangles (sum of `max(faceSize-2,0)`),
-`C=3T` and `V=max(P,C)`, the base charge is `12(P+V) + 4(9C+2T+P) + P`.
+`C=3T` and `V=max(P,C)`, the base charge is
+`12(P+V) + 4(9C+2T+P) + P + 4(V+6C+4P)`.
 Each supported attribute adds `4(S+3E)`, where `S` is its source float-component count and
 `E` is `S` for a constant, otherwise `V * componentCount`. This reserves conversion/emission,
-triangulation, remapping/identity flags and overlapping attribute preparations before
-hdSilk builds those arrays. It intentionally does not discount holes, seams or compaction.
+triangulation, cached and published normal correspondence, remapping/identity flags and
+overlapping attribute preparations before hdSilk builds those arrays. It intentionally
+does not discount holes, seams or compaction.
 The charge remains reserved for that mesh generation even after its temporary arrays shrink.
 
 For a supported linear curve, the charge is `12P + 4*max(W,1) + 76S`, where `P` is
