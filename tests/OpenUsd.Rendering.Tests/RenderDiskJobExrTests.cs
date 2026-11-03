@@ -161,12 +161,12 @@ public sealed class RenderDiskJobExrTests
     {
         if (Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching supported-host native runtime.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         if (!ExrRgba16FloatWriter.IsSupported)
         {
-            throw new InvalidOperationException("Required EXR execution needs Windows x64.");
+            throw new InvalidOperationException("Required EXR execution needs a supported regular-file profile.");
         }
     }
 

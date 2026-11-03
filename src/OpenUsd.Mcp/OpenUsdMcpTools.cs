@@ -140,7 +140,7 @@ internal static class OpenUsdMcpDescriptions
         "Optional cameraPath is an absolute UsdGeomCamera path sampled at every time. " +
         "Optional includeDeviceDepth adds real normalized device-depth float32 files, not metric distance. " +
         "Optional includeHdrColor adds actual pre-display RGBA binary16, not tone-mapped pixels. " +
-        "hdrColorFormat is 'raw' by default; 'exr' selects lossless half EXR and requires HDR plus Windows x64. " +
+        "hdrColorFormat is 'raw' by default; 'exr' selects lossless half EXR and requires HDR plus a supported Core encoder. " +
         "Encoded-byte quotas do not bound native EXR codec heap. " +
         "Effects: renders sequentially on the retained capture worker using explicit presentation " +
         "settings; writes generated frame names and a request/hash manifest, never scene-authored " +
@@ -213,7 +213,7 @@ internal static class OpenUsdMcpDescriptions
         "Unsupported variables, named rendering color spaces and unevaluated settings are refused, " +
         "never replaced by beauty. " +
         "Effects: samples the camera in bounded scheduler batches and applies exact admitted scene filters; " +
-        "writes generated raw or supported Windows EXR data planes, a display-companion PNG and manifest atomically. " +
+        "writes generated raw or supported EXR data planes, a display-companion PNG and manifest atomically. " +
         "No source opinions, authored product filename authority or RenderPass commands are used. " +
         "Result bounds: one job descriptor and at most five variable bindings; " +
         "read_sequence_frame exposes selected planes. " +

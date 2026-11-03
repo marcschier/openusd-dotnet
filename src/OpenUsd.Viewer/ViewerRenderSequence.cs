@@ -76,7 +76,7 @@ internal readonly record struct ViewerRenderSequenceOutputOptions(
             }
             if (!ExrRgba16FloatWriter.IsSupported)
             {
-                return "EXR output currently requires the Windows x64 Core encoder.";
+                return "EXR output requires the Windows x64 or Linux/macOS x64/ARM64 Core encoder.";
             }
         }
         if (viewport.Width is < 1 or > 8192 || viewport.Height is < 1 or > 8192)

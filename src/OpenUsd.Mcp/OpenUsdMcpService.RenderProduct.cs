@@ -47,7 +47,7 @@ internal sealed partial class OpenUsdMcpService
         if (format == RenderHdrColorFormat.Exr && !ExrRgba16FloatWriter.IsSupported)
         {
             throw new OpenUsdMcpFailureException(OpenUsdMcpErrorCodes.RenderFailure,
-                "EXR output currently requires Windows x64.");
+                "EXR output requires Windows x64 or Linux/macOS x64/ARM64.");
         }
         var rasterOverrides = new RenderProductOverrides(
             cameraPath: request.CameraPath,

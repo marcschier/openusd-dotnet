@@ -8,7 +8,7 @@ namespace OpenUsd.Rendering;
 
 /// <summary>Writes bounded raw-working RGBA16Float EXR output through the project-owned native C ABI.</summary>
 /// <remarks>
-/// The initial file-handle implementation supports Windows x64 only. Input is exact, tightly packed
+/// The file-handle implementation supports Windows x64 and Linux/macOS x64/ARM64. Input is exact, tightly packed
 /// RGBA binary16 little-endian with finite samples. Negative/HDR values, signed zero and alpha are
 /// preserved without widening, color conversion, exposure, premultiplication or an image-sized copy.
 /// Output has explicit origin-zero equal data/display windows and square pixels. Primaries and
@@ -19,7 +19,9 @@ public static class ExrRgba16FloatWriter
     /// <summary>Gets whether this host matches the implemented file-handle profile.</summary>
     /// <remarks>The matching Data ABI24/capability/export and Core native assets are additionally required.</remarks>
     public static bool IsSupported =>
-        OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.X64 &&
+        ((OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.X64) ||
+        ((OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) &&
+        RuntimeInformation.ProcessArchitecture is Architecture.X64 or Architecture.Arm64)) &&
         BitConverter.IsLittleEndian;
 
     /// <summary>Writes top-down half rows with raw-working primaries and stored alpha both unspecified.</summary>
@@ -95,7 +97,7 @@ public static class ExrRgba16FloatWriter
         if (!IsSupported)
         {
             throw new PlatformNotSupportedException(
-                "The EXR output file-handle profile currently requires Windows x64.");
+                "The EXR output file-handle profile requires Windows x64 or Linux/macOS x64/ARM64.");
         }
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
@@ -169,7 +171,7 @@ public static class ExrRgba16FloatWriter
                 "EXR output would exceed its admitted encoded-byte quota."),
             OpenUsdImageEncodeStatus.Cancelled => throw new OperationCanceledException(cancellationToken),
             OpenUsdImageEncodeStatus.IoError => throw new IOException(
-                $"Native EXR I/O failed with Win32 error {result.Win32Error}.",
+                $"Native EXR I/O failed with OS error {result.Win32Error}.",
                 new Win32Exception((int)result.Win32Error)),
             OpenUsdImageEncodeStatus.OutOfMemory => throw new IOException(
                 "The native EXR codec could not allocate its working storage."),

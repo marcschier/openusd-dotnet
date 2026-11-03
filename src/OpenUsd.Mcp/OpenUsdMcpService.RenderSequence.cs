@@ -32,7 +32,8 @@ internal sealed partial class OpenUsdMcpService
             if (!ExrRgba16FloatWriter.IsSupported)
             {
                 throw new OpenUsdMcpFailureException(
-                    OpenUsdMcpErrorCodes.RenderFailure, "EXR sequence output currently requires Windows x64.");
+                    OpenUsdMcpErrorCodes.RenderFailure,
+                    "EXR sequence output requires Windows x64 or Linux/macOS x64/ARM64.");
             }
         }
         ValidateSequenceRaster(request.Width, request.Height, request.FrameCount,

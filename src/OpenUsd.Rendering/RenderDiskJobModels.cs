@@ -95,7 +95,7 @@ public sealed class RenderDiskJobRequest
 
     /// <summary>Requests display/depth planes and chooses raw binary16 or lossless EXR for optional HDR.</summary>
     /// <remarks>
-    /// EXR requires HDR capture and the supported Windows x64 encoder profile. It does not change
+    /// EXR requires HDR capture and a supported regular-file encoder profile. It does not change
     /// capture admission or perform a color/alpha conversion. Native codec heap is not quota-certified.
     /// </remarks>
     public RenderDiskJobRequest(
@@ -127,7 +127,8 @@ public sealed class RenderDiskJobRequest
             }
             if (!ExrRgba16FloatWriter.IsSupported)
             {
-                throw new PlatformNotSupportedException("EXR job output currently requires Windows x64.");
+                throw new PlatformNotSupportedException(
+                    "EXR job output requires Windows x64 or Linux/macOS x64/ARM64.");
             }
         }
         if (!Path.IsPathFullyQualified(outputDirectory))

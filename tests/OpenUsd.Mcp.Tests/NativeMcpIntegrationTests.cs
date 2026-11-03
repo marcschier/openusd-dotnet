@@ -26,7 +26,7 @@ public sealed partial class NativeMcpIntegrationTests
     {
         if (hdrFormat == "exr" && !OpenUsd.Rendering.ExrRgba16FloatWriter.IsSupported)
         {
-            Skip.Test("EXR output currently requires Windows x64.");
+            Skip.Test("EXR output requires a supported regular-file encoder profile.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         NativeLayout layout = RequireNativeLayout(requireImaging: true);

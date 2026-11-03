@@ -18,7 +18,7 @@ public sealed class ViewerRenderSequenceTests
             .GetAdmissionUnsupportedReason(viewport)).Contains("Choose");
         var exr = new ViewerRenderSequenceOutputOptions(true, true, RenderHdrColorFormat.Exr);
         await Assert.That(exr.GetAdmissionUnsupportedReason(viewport))
-            .Contains(ExrRgba16FloatWriter.IsSupported ? "20 bytes/pixel" : "Windows x64");
+            .Contains(ExrRgba16FloatWriter.IsSupported ? "20 bytes/pixel" : "Core encoder");
         if (ExrRgba16FloatWriter.IsSupported)
         {
             await Assert.That(exr.GetAdmissionUnsupportedReason(new ViewportDimensions(4096, 819))).IsNull();
