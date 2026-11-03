@@ -968,11 +968,6 @@ public sealed partial class VolumeRenderingConformanceTests
                         asset filePath = @{{assetPath.Replace("\\", "/")}}@
                         token fieldName = "smoke"
                     }
-                    def OpenVDBAsset "Temperature"
-                    {
-                        asset filePath = @{{assetPath.Replace("\\", "/")}}@
-                        token fieldName = "smoke"
-                    }
                 }
                 def Xform "Vdb"
                 {
@@ -985,7 +980,6 @@ public sealed partial class VolumeRenderingConformanceTests
                             1: true, 2: false, 3: true
                         }
                         rel field:density = </World/Fields/Density>
-                        rel field:temperature = </World/Fields/Temperature>
                     }
                 }
             }

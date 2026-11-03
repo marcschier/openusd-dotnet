@@ -998,6 +998,17 @@ bool ResolveDensityField(
 {
     static const TfToken densityToken("density");
     const UsdVolVolume::FieldMap fields = volume.GetFieldPaths();
+    for (const auto& field : fields)
+    {
+        if (field.first != densityToken)
+        {
+            throw std::invalid_argument(
+                "hdSilk volume '" + volume.GetPath().GetString() +
+                "' uses unsupported field role '" + field.first.GetString() +
+                "'. Only density fields are supported; temperature, emission/color "
+                "and general multi-field shading semantics are deferred.");
+        }
+    }
     const auto iterator = fields.find(densityToken);
     if (iterator == fields.end())
     {
