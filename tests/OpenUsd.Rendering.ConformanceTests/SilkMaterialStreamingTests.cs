@@ -2310,8 +2310,7 @@ public sealed class SilkMaterialStreamingTests
         float[] positions =
         [
             -0.9f, -0.7f, -0.5f, 0.9f, -0.7f, -0.3f, -0.9f, 0.7f, -0.1f,
-            // Separate the triangles so backend edge ownership cannot affect the pixel reference.
-             0.96f, -0.64f, -0.3f, 0.96f, 0.76f, -0.2f, -0.84f, 0.76f, -0.1f,
+             0.9f, -0.7f, -0.3f, 0.9f, 0.7f, 0.1f, -0.9f, 0.7f, -0.1f,
         ];
         float[] ordinalUvs =
         [
