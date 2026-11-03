@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Text;
 using OpenUsd.Rendering.Silk;
 
@@ -1844,6 +1845,514 @@ public sealed class SilkMaterialStreamingTests
     }
 
     [Test]
+    [MethodDataSource(nameof(CompactOrdinalCases))]
+    public async Task CompactOrdinalsSelectTilesAcrossIndependentUvSets(
+        SilkGraphicsBackend backend, int firstOrdinal, bool perspective)
+    {
+        // This exercises packed UDIM lookup with float ordinals, not Ptex or flat integer transport.
+        SilkUdimTile[] tiles = [new(1001, "A"), new(1002, "B"), new(1009, "C")];
+        using var actual = new Fixture(
+            backend, streaming: true, udimTiles: tiles, constantTiles: true, residencyBytes: 4096);
+        using var reference = new Fixture(
+            backend, streaming: true, udimTiles: tiles, constantTiles: true, residencyBytes: 4096);
+        await Assert.That(actual.Device.Backend).IsEqualTo(backend);
+        await Assert.That(reference.Device.Backend).IsEqualTo(backend);
+        using OpenUsdSilkPage referencePage = CompactOrdinalPage(2, 0, 1, 0, 0.5f, perspective);
+        using OpenUsdSilkPage actualPage =
+            CompactOrdinalPage(2, firstOrdinal, firstOrdinal + 1, firstOrdinal, 0.5f, perspective);
+
+        SilkMeshRenderResult expected = await RenderCompactOrdinal(reference, referencePage);
+        SilkMeshRenderResult rendered = await RenderCompactOrdinal(actual, actualPage);
+        byte[] expectedPixels = reference.ColorBytes();
+        byte[] pixels = actual.ColorBytes();
+        float[] depth = actual.DepthValues();
+        float[] expectedDepth = reference.DepthValues();
+        bool actualTwoTileAtlas = CompactOrdinalHasBothTiles(actual);
+        await Assert.That(expected.DrawCount).IsEqualTo(1);
+        await Assert.That(rendered.DrawCount).IsEqualTo(1);
+        await Assert.That(actualTwoTileAtlas).IsTrue();
+        string fullImageEvidence = "the full RGBA16 images must match within one half-float ULP";
+        if (!CompactOrdinalFramesWithinHalfUlp(pixels, expectedPixels))
+        {
+            using OpenUsdSilkPage firstMaskPage =
+                CompactOrdinalPage(3, 0, 1, 0, 0.5f, perspective, 1, topologyRevision: 2);
+            _ = await RenderCompactOrdinal(reference, firstMaskPage);
+            float[] firstMask = reference.DepthValues();
+            using OpenUsdSilkPage secondMaskPage =
+                CompactOrdinalPage(4, 0, 1, 0, 0.5f, perspective, 2, topologyRevision: 3);
+            _ = await RenderCompactOrdinal(reference, secondMaskPage);
+            float[] secondMask = reference.DepthValues();
+            fullImageEvidence = CompactOrdinalMismatch(expectedPixels, pixels, depth, firstMask, secondMask);
+            fullImageEvidence += CompactOrdinalMatchedResidency(
+                actualTwoTileAtlas, backend, tiles, pixels, depth, firstMask, secondMask, perspective);
+        }
+        await Assert.That(CompactOrdinalFramesWithinHalfUlp(pixels, expectedPixels))
+            .IsTrue().Because(fullImageEvidence);
+        await Assert.That(depth.SequenceEqual(expectedDepth)).IsTrue();
+        await Assert.That(pixels.SequenceEqual(actual.InitialColor)).IsFalse();
+        await Assert.That(depth.Any(static value => value < 1f)).IsTrue();
+        await Assert.That(actual.Decoded).Contains("A");
+        await Assert.That(actual.Decoded).Contains("B");
+        await Assert.That(actual.Decoded.Contains("C")).IsFalse();
+        await Assert.That(reference.Decoded).Contains("A");
+        await Assert.That(reference.Decoded).Contains("B");
+        await Assert.That(reference.Decoded.Contains("C")).IsFalse();
+        await Assert.That(actual.Device.CreatedTextures.Any(static texture =>
+            texture is { Width: 6, Height: 17, Format: SilkTextureFormat.Rgba8Unorm, MipLevelCount: 1 })).IsTrue();
+        await Assert.That(actual.Renderer.Scene.Materials["/A"].GetPrimaryUvPrimvar()).IsEqualTo("ordinal");
+        await Assert.That(actual.Renderer.Scene.Materials["/A"].GetSecondaryUvPrimvar()).IsEqualTo("st");
+        await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries.Any(static entry =>
+            entry.Code is SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable or
+                SilkRenderDiagnosticCodes.TextureAssetNotFound or SilkRenderDiagnosticCodes.TextureFallbackUsed))
+            .IsFalse();
+        await Assert.That(reference.Renderer.GpuResources.Diagnostics.Entries.Any(static entry =>
+            entry.Code is SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable or
+                SilkRenderDiagnosticCodes.TextureAssetNotFound or SilkRenderDiagnosticCodes.TextureFallbackUsed))
+            .IsFalse();
+
+        using OpenUsdSilkPage firstTilePage =
+            CompactOrdinalPage(3, 0, 0, 0, 0.5f, perspective, topologyRevision: 2, retainBothTiles: true);
+        _ = await RenderCompactOrdinal(reference, firstTilePage);
+        byte[] firstTilePixels = reference.ColorBytes();
+        await Assert.That(reference.DepthValues().SequenceEqual(depth)).IsTrue();
+        using OpenUsdSilkPage secondTilePage =
+            CompactOrdinalPage(4, 1, 1, 0, 0.5f, perspective, topologyRevision: 3, retainBothTiles: true);
+        _ = await RenderCompactOrdinal(reference, secondTilePage);
+        byte[] secondTilePixels = reference.ColorBytes();
+        await Assert.That(reference.DepthValues().SequenceEqual(depth)).IsTrue();
+        // Isolated depth masks distinguish the adjacent triangles without depending on screen orientation.
+        using OpenUsdSilkPage firstTrianglePage =
+            CompactOrdinalPage(5, 0, 1, 0, 0.5f, perspective, 1, topologyRevision: 4);
+        _ = await RenderCompactOrdinal(reference, firstTrianglePage);
+        float[] firstTriangleDepth = reference.DepthValues();
+        using OpenUsdSilkPage secondTrianglePage =
+            CompactOrdinalPage(6, 0, 1, 0, 0.5f, perspective, 2, topologyRevision: 5);
+        _ = await RenderCompactOrdinal(reference, secondTrianglePage);
+        float[] secondTriangleDepth = reference.DepthValues();
+
+        using OpenUsdSilkPage swapped =
+            CompactOrdinalPage(3, firstOrdinal + 1, firstOrdinal, firstOrdinal, 0.5f, perspective);
+        using OpenUsdSilkPage swappedReference =
+            CompactOrdinalPage(7, 1, 0, 0, 0.5f, perspective, topologyRevision: 6);
+        _ = await RenderCompactOrdinal(actual, swapped);
+        _ = await RenderCompactOrdinal(reference, swappedReference);
+        byte[] swappedPixels = actual.ColorBytes();
+        await Assert.That(swappedPixels.SequenceEqual(pixels)).IsFalse();
+        await Assert.That(CompactOrdinalFramesWithinHalfUlp(swappedPixels, reference.ColorBytes())).IsTrue();
+        await Assert.That(actual.DepthValues().SequenceEqual(depth)).IsTrue();
+        await Assert.That(reference.DepthValues().SequenceEqual(depth)).IsTrue();
+
+        using OpenUsdSilkPage restored =
+            CompactOrdinalPage(4, firstOrdinal, firstOrdinal + 1, firstOrdinal, 0.5f, perspective);
+        _ = await RenderCompactOrdinal(actual, restored);
+        await Assert.That(actual.ColorBytes().SequenceEqual(pixels)).IsTrue();
+        await Assert.That(actual.DepthValues().SequenceEqual(depth)).IsTrue();
+
+        using OpenUsdSilkPage ordinaryUvEdit =
+            CompactOrdinalPage(5, firstOrdinal, firstOrdinal + 1, firstOrdinal, 1.5f, perspective);
+        using OpenUsdSilkPage ordinaryUvReference =
+            CompactOrdinalPage(8, 0, 1, 0, 1.5f, perspective, topologyRevision: 7);
+        _ = await RenderCompactOrdinal(actual, ordinaryUvEdit);
+        _ = await RenderCompactOrdinal(reference, ordinaryUvReference);
+        byte[] editedPixels = actual.ColorBytes();
+        await Assert.That(editedPixels.SequenceEqual(pixels)).IsFalse();
+        await Assert.That(CompactOrdinalFramesWithinHalfUlp(editedPixels, reference.ColorBytes())).IsTrue();
+        await Assert.That(actual.DepthValues().SequenceEqual(depth)).IsTrue();
+        await Assert.That(reference.DepthValues().SequenceEqual(depth)).IsTrue();
+        using OpenUsdSilkPage editedFirstTilePage =
+            CompactOrdinalPage(9, 0, 0, 0, 1.5f, perspective, topologyRevision: 8, retainBothTiles: true);
+        _ = await RenderCompactOrdinal(reference, editedFirstTilePage);
+        byte[] editedFirstTilePixels = reference.ColorBytes();
+        await Assert.That(reference.DepthValues().SequenceEqual(depth)).IsTrue();
+        using OpenUsdSilkPage editedSecondTilePage =
+            CompactOrdinalPage(10, 1, 1, 0, 1.5f, perspective, topologyRevision: 9, retainBothTiles: true);
+        _ = await RenderCompactOrdinal(reference, editedSecondTilePage);
+        byte[] editedSecondTilePixels = reference.ColorBytes();
+        await Assert.That(reference.DepthValues().SequenceEqual(depth)).IsTrue();
+
+        await AssertCompactOrdinalDirectReference(
+            reference, firstTilePixels, depth, 11, 0, 0.5f, perspective, "A", "A");
+        await AssertCompactOrdinalDirectReference(
+            reference, secondTilePixels, depth, 12, 1, 0.5f, perspective, "B", "A");
+        await AssertCompactOrdinalDirectReference(
+            reference, editedFirstTilePixels, depth, 13, 0, 1.5f, perspective, "A", "B");
+        await AssertCompactOrdinalDirectReference(
+            reference, editedSecondTilePixels, depth, 14, 1, 1.5f, perspective, "B", "B");
+
+        int firstCovered = 0;
+        int secondCovered = 0;
+        int firstEdited = 0;
+        int secondEdited = 0;
+        int firstEditedDistinct = 0;
+        int secondEditedDistinct = 0;
+        bool tileAssignmentsCorrect = true;
+        bool swappedAssignmentsCorrect = true;
+        bool editedAssignmentsCorrect = true;
+        bool finite = depth.All(float.IsFinite) && firstTriangleDepth.All(float.IsFinite) &&
+            secondTriangleDepth.All(float.IsFinite);
+        for (int pixel = 0; pixel < depth.Length; pixel++)
+        {
+            int offset = pixel * 8;
+            for (int component = 0; component < 8; component += sizeof(ushort))
+            {
+                finite &= Half.IsFinite(BitConverter.UInt16BitsToHalf(
+                    BinaryPrimitives.ReadUInt16LittleEndian(pixels.AsSpan(offset + component))));
+            }
+            bool first = firstTriangleDepth[pixel] < 1f && secondTriangleDepth[pixel] >= 1f;
+            bool second = secondTriangleDepth[pixel] < 1f && firstTriangleDepth[pixel] >= 1f;
+            if ((!first && !second) || !CompactOrdinalPixelsDistinct(firstTilePixels, secondTilePixels, offset))
+            {
+                continue;
+            }
+            if (first)
+            {
+                firstCovered++;
+                tileAssignmentsCorrect &= CompactOrdinalPixelWithinHalfUlp(pixels, firstTilePixels, offset);
+                swappedAssignmentsCorrect &= CompactOrdinalPixelWithinHalfUlp(swappedPixels, secondTilePixels, offset);
+                firstEdited += CompactOrdinalPixelsDistinct(editedPixels, pixels, offset) ? 1 : 0;
+                if (CompactOrdinalPixelsDistinct(editedFirstTilePixels, editedSecondTilePixels, offset))
+                {
+                    firstEditedDistinct++;
+                    editedAssignmentsCorrect &=
+                        CompactOrdinalPixelWithinHalfUlp(editedPixels, editedFirstTilePixels, offset);
+                }
+            }
+            else
+            {
+                secondCovered++;
+                tileAssignmentsCorrect &= CompactOrdinalPixelWithinHalfUlp(pixels, secondTilePixels, offset);
+                swappedAssignmentsCorrect &= CompactOrdinalPixelWithinHalfUlp(swappedPixels, firstTilePixels, offset);
+                secondEdited += CompactOrdinalPixelsDistinct(editedPixels, pixels, offset) ? 1 : 0;
+                if (CompactOrdinalPixelsDistinct(editedFirstTilePixels, editedSecondTilePixels, offset))
+                {
+                    secondEditedDistinct++;
+                    editedAssignmentsCorrect &=
+                        CompactOrdinalPixelWithinHalfUlp(editedPixels, editedSecondTilePixels, offset);
+                }
+            }
+        }
+        await Assert.That(finite).IsTrue();
+        await Assert.That(firstCovered).IsGreaterThan(4);
+        await Assert.That(secondCovered).IsGreaterThan(4);
+        string tileAssignmentEvidence = "the tile assignments must match within one half-float ULP";
+        if (!tileAssignmentsCorrect)
+        {
+            byte[] assignmentReference = CompactOrdinalAssignmentReference(
+                pixels, firstTilePixels, secondTilePixels, firstTriangleDepth, secondTriangleDepth, out _, out _);
+            tileAssignmentEvidence = CompactOrdinalMismatch(
+                assignmentReference, pixels, depth, firstTriangleDepth, secondTriangleDepth);
+            tileAssignmentEvidence += CompactOrdinalMatchedResidency(
+                actualTwoTileAtlas, backend, tiles, pixels, depth,
+                firstTriangleDepth, secondTriangleDepth, perspective);
+        }
+        await Assert.That(tileAssignmentsCorrect).IsTrue().Because(tileAssignmentEvidence);
+        await Assert.That(swappedAssignmentsCorrect).IsTrue();
+        await Assert.That(editedAssignmentsCorrect).IsTrue();
+        await Assert.That(firstEdited).IsGreaterThan(0);
+        await Assert.That(secondEdited).IsGreaterThan(0);
+        await Assert.That(firstEditedDistinct).IsGreaterThan(4);
+        await Assert.That(secondEditedDistinct).IsGreaterThan(4);
+
+        using OpenUsdSilkPage restoredUv =
+            CompactOrdinalPage(6, firstOrdinal, firstOrdinal + 1, firstOrdinal, 0.5f, perspective);
+        _ = await RenderCompactOrdinal(actual, restoredUv);
+        await Assert.That(actual.ColorBytes().SequenceEqual(pixels)).IsTrue();
+        await Assert.That(actual.DepthValues().SequenceEqual(depth)).IsTrue();
+        actual.ReleaseResources();
+        reference.ReleaseResources();
+        await actual.AssertReleased();
+        await reference.AssertReleased();
+        Console.WriteLine(
+            $"COMPACT_ORDINAL_CASE backend={backend} first={firstOrdinal} " +
+            $"projection={(perspective ? "perspective" : "orthographic")}");
+    }
+
+    private static async Task<SilkMeshRenderResult> RenderCompactOrdinal(Fixture fixture, OpenUsdSilkPage page)
+    {
+        fixture.Decoded.Clear();
+        fixture.Device.CreatedTextures.Clear();
+        SilkMeshRenderResult result = fixture.Render(page);
+        await Assert.That(CompactOrdinalHasBothTiles(fixture)).IsTrue().Because(
+            $"each render must retain both UDIM tiles for diffuse, roughness, and metallic; " +
+            $"decoded={string.Join(",", fixture.Decoded)}; " +
+            $"textures={string.Join(", ", fixture.Device.CreatedTextures)}");
+        return result;
+    }
+
+    private static async Task AssertCompactOrdinalDirectReference(
+        Fixture reference, byte[] packedPixels, float[] expectedDepth, ulong revision, int ordinal,
+        float ordinaryUv, bool perspective, string diffuseAsset, string scalarAsset)
+    {
+        using OpenUsdSilkPage direct = CompactOrdinalPage(
+            revision, ordinal, ordinal, 0, ordinaryUv, perspective, topologyRevision: revision - 1,
+            diffuseAssetPath: diffuseAsset, scalarAssetPath: scalarAsset);
+        reference.Decoded.Clear();
+        reference.Device.CreatedTextures.Clear();
+        SilkMeshRenderResult result = reference.Render(direct);
+        byte[] directPixels = reference.ColorBytes();
+        await Assert.That(result.DrawCount).IsEqualTo(1);
+        await Assert.That(reference.Decoded).Contains(diffuseAsset);
+        await Assert.That(reference.Decoded).Contains(scalarAsset);
+        await Assert.That(reference.DepthValues().SequenceEqual(expectedDepth)).IsTrue();
+        string comparison = CompactOrdinalMismatch(
+            packedPixels, directPixels, expectedDepth, expectedDepth, expectedDepth);
+        await Assert.That(CompactOrdinalFramesWithinHalfUlp(packedPixels, directPixels)).IsTrue().Because(
+            $"the packed reference must match direct diffuse {diffuseAsset} and scalar {scalarAsset} " +
+            $"within one half-float ULP; {comparison}");
+        await Assert.That(reference.Renderer.GpuResources.Diagnostics.Entries.Any(static entry =>
+            entry.Code is SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable or
+                SilkRenderDiagnosticCodes.TextureAssetNotFound or SilkRenderDiagnosticCodes.TextureFallbackUsed))
+            .IsFalse();
+    }
+
+    private static bool CompactOrdinalFramesWithinHalfUlp(byte[] left, byte[] right)
+    {
+        if (left.Length != right.Length || left.Length % 8 != 0)
+        {
+            return false;
+        }
+        for (int offset = 0; offset < left.Length; offset += 8)
+        {
+            if (!CompactOrdinalPixelWithinHalfUlp(left, right, offset))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool CompactOrdinalPixelWithinHalfUlp(byte[] left, byte[] right, int offset)
+    {
+        for (int component = 0; component < 8; component += sizeof(ushort))
+        {
+            ushort a = BinaryPrimitives.ReadUInt16LittleEndian(left.AsSpan(offset + component));
+            ushort b = BinaryPrimitives.ReadUInt16LittleEndian(right.AsSpan(offset + component));
+            if (!Half.IsFinite(BitConverter.UInt16BitsToHalf(a)) ||
+                !Half.IsFinite(BitConverter.UInt16BitsToHalf(b)) || Math.Abs((int)a - b) > 1)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool CompactOrdinalPixelsDistinct(byte[] left, byte[] right, int offset)
+    {
+        for (int component = 0; component < 8; component += sizeof(ushort))
+        {
+            ushort a = BinaryPrimitives.ReadUInt16LittleEndian(left.AsSpan(offset + component));
+            ushort b = BinaryPrimitives.ReadUInt16LittleEndian(right.AsSpan(offset + component));
+            if (Half.IsFinite(BitConverter.UInt16BitsToHalf(a)) &&
+                Half.IsFinite(BitConverter.UInt16BitsToHalf(b)) && Math.Abs((int)a - b) > 2)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static string CompactOrdinalMismatch(
+        byte[] reference, byte[] actual, float[] depth, float[] firstMask, float[] secondMask)
+    {
+        int mismatches = 0;
+        int frameCovered = 0;
+        int firstCovered = 0;
+        int secondCovered = 0;
+        var samples = new StringBuilder();
+        for (int pixel = 0; pixel < depth.Length; pixel++)
+        {
+            int offset = pixel * 8;
+            if (CompactOrdinalPixelWithinHalfUlp(reference, actual, offset))
+            {
+                continue;
+            }
+            mismatches++;
+            frameCovered += depth[pixel] < 1f ? 1 : 0;
+            firstCovered += firstMask[pixel] < 1f ? 1 : 0;
+            secondCovered += secondMask[pixel] < 1f ? 1 : 0;
+            if (mismatches <= 6)
+            {
+                samples.Append(CultureInfo.InvariantCulture, $" ({pixel % 32},{pixel / 32}) frame={depth[pixel] < 1f}" +
+                    $" firstMask={firstMask[pixel] < 1f} secondMask={secondMask[pixel] < 1f}" +
+                    $" refHalfBits={CompactOrdinalHalfBits(reference, offset)}" +
+                    $" actualHalfBits={CompactOrdinalHalfBits(actual, offset)};");
+            }
+        }
+        return $"mismatchedPixels={mismatches}, frameCovered={frameCovered}, " +
+            $"firstMaskCovered={firstCovered}, secondMaskCovered={secondCovered}; samples:{samples}";
+    }
+
+    private static string CompactOrdinalHalfBits(byte[] pixels, int offset) =>
+        $"[{BinaryPrimitives.ReadUInt16LittleEndian(pixels.AsSpan(offset)):X4}," +
+        $"{BinaryPrimitives.ReadUInt16LittleEndian(pixels.AsSpan(offset + 2)):X4}," +
+        $"{BinaryPrimitives.ReadUInt16LittleEndian(pixels.AsSpan(offset + 4)):X4}," +
+        $"{BinaryPrimitives.ReadUInt16LittleEndian(pixels.AsSpan(offset + 6)):X4}]";
+
+    private static byte[] CompactOrdinalAssignmentReference(
+        byte[] actual, byte[] firstPixels, byte[] secondPixels, float[] firstMask, float[] secondMask,
+        out int firstDistinct, out int secondDistinct, bool requireDistinct = true)
+    {
+        byte[] reference = (byte[])actual.Clone();
+        firstDistinct = 0;
+        secondDistinct = 0;
+        for (int pixel = 0; pixel < firstMask.Length; pixel++)
+        {
+            int offset = pixel * 8;
+            bool first = firstMask[pixel] < 1f && secondMask[pixel] >= 1f;
+            bool second = secondMask[pixel] < 1f && firstMask[pixel] >= 1f;
+            if (!first && !second)
+            {
+                continue;
+            }
+            bool distinct = CompactOrdinalPixelsDistinct(firstPixels, secondPixels, offset);
+            firstDistinct += first && distinct ? 1 : 0;
+            secondDistinct += second && distinct ? 1 : 0;
+            if (requireDistinct && !distinct)
+            {
+                continue;
+            }
+            (first ? firstPixels : secondPixels).AsSpan(offset, 8).CopyTo(reference.AsSpan(offset, 8));
+        }
+        return reference;
+    }
+
+    private static string CompactOrdinalMatchedResidency(
+        bool actualTwoTileAtlas, SilkGraphicsBackend backend, IReadOnlyList<SilkUdimTile> tiles,
+        byte[] pixels, float[] depth, float[] firstMask, float[] secondMask, bool perspective)
+    {
+        (byte[] firstPixels, bool firstDepth, bool firstResident) =
+            CompactOrdinalMatchedReference(backend, tiles, 0, depth, perspective);
+        (byte[] secondPixels, bool secondDepth, bool secondResident) =
+            CompactOrdinalMatchedReference(backend, tiles, 1, depth, perspective);
+        byte[] assigned = CompactOrdinalAssignmentReference(
+            pixels, firstPixels, secondPixels, firstMask, secondMask,
+            out int firstDistinct, out int secondDistinct, requireDistinct: false);
+        bool comparable = actualTwoTileAtlas && firstResident && secondResident && firstDepth && secondDepth &&
+            firstDistinct > 4 && secondDistinct > 4 &&
+            depth.All(float.IsFinite) && firstMask.All(float.IsFinite) && secondMask.All(float.IsFinite) &&
+            CompactOrdinalPixelsFinite(pixels) && CompactOrdinalPixelsFinite(firstPixels) &&
+            CompactOrdinalPixelsFinite(secondPixels);
+        string verdict = !comparable ? "inconclusive" :
+            CompactOrdinalFramesWithinHalfUlp(assigned, pixels)
+                ? "within-one-half-ulp-on-unique-masks" : "different-on-unique-masks";
+        return $" matched-residency={verdict}, decodedA+B+atlas(actual/first/second)=" +
+            $"{actualTwoTileAtlas}/{firstResident}/{secondResident}, " +
+            $"depth(first/second)={firstDepth}/{secondDepth}, " +
+            $"distinct(first/second)={firstDistinct}/{secondDistinct}; " +
+            CompactOrdinalMismatch(assigned, pixels, depth, firstMask, secondMask);
+    }
+
+    private static (byte[] Pixels, bool DepthMatches, bool BothTiles) CompactOrdinalMatchedReference(
+        SilkGraphicsBackend backend, IReadOnlyList<SilkUdimTile> tiles, int ordinal, float[] depth, bool perspective)
+    {
+        // A fresh fixture keeps atlas and decode events specific to this control.
+        using var reference = new Fixture(
+            backend, streaming: true, udimTiles: tiles, constantTiles: true, residencyBytes: 4096);
+        using OpenUsdSilkPage page =
+            CompactOrdinalPage(2, ordinal, ordinal, 0, 0.5f, perspective, retainBothTiles: true);
+        _ = reference.Render(page);
+        return (
+            reference.ColorBytes(),
+            reference.DepthValues().SequenceEqual(depth),
+            CompactOrdinalHasBothTiles(reference));
+    }
+
+    private static bool CompactOrdinalHasBothTiles(Fixture fixture) =>
+        fixture.Decoded.Contains("A") && fixture.Decoded.Contains("B") && !fixture.Decoded.Contains("C") &&
+        fixture.Device.CreatedTextures.Any(static texture =>
+            texture is { Width: 6, Height: 17, Format: SilkTextureFormat.Rgba8Unorm, MipLevelCount: 1 }) &&
+        fixture.Device.CreatedTextures.Count(static texture =>
+            texture is { Width: 6, Height: 8, Format: SilkTextureFormat.R8Unorm, MipLevelCount: 1 }) == 2;
+
+    private static bool CompactOrdinalPixelsFinite(byte[] pixels)
+    {
+        for (int offset = 0; offset < pixels.Length; offset += sizeof(ushort))
+        {
+            if (!Half.IsFinite(BitConverter.UInt16BitsToHalf(
+                BinaryPrimitives.ReadUInt16LittleEndian(pixels.AsSpan(offset)))))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static IEnumerable<(SilkGraphicsBackend, int, bool)> CompactOrdinalCases()
+    {
+        foreach (SilkGraphicsBackend backend in SilkConformanceBackends.Available())
+        {
+            foreach (int firstOrdinal in new[] { 0, 255, 32_767, 65_534 })
+            {
+                yield return (backend, firstOrdinal, false);
+                yield return (backend, firstOrdinal, true);
+            }
+        }
+    }
+
+    private static OpenUsdSilkPage CompactOrdinalPage(
+        ulong revision, int firstOrdinal, int secondOrdinal, int originOrdinal, float ordinaryUv,
+        bool perspective, int triangleMask = 3, ulong topologyRevision = 1, bool retainBothTiles = true,
+        string? diffuseAssetPath = null, string? scalarAssetPath = null)
+    {
+        if ((diffuseAssetPath is null) != (scalarAssetPath is null))
+        {
+            throw new ArgumentException("Direct diffuse and scalar assets must be specified together.");
+        }
+        float first = firstOrdinal;
+        float second = secondOrdinal;
+        uint[] indices = triangleMask switch
+        {
+            1 => [0, 1, 2],
+            2 => [3, 4, 5],
+            3 => [0, 1, 2, 3, 4, 5],
+            _ => throw new ArgumentOutOfRangeException(nameof(triangleMask))
+        };
+        float[] positions =
+        [
+            -0.9f, -0.7f, -0.5f, 0.9f, -0.7f, -0.3f, -0.9f, 0.7f, -0.1f,
+            // Separate the triangles so backend edge ownership cannot affect the pixel reference.
+             0.96f, -0.64f, -0.3f, 0.96f, 0.76f, -0.2f, -0.84f, 0.76f, -0.1f,
+        ];
+        float[] ordinalUvs =
+        [
+            first, 0.2f, first, 0.2f, first, 0.8f,
+            second, 0.2f, second, 0.8f, second, 0.8f,
+        ];
+        float[] ordinaryUvs =
+        [
+            ordinaryUv, 0.5f, ordinaryUv, 0.5f, ordinaryUv, 0.5f,
+            ordinaryUv, 0.5f, ordinaryUv, 0.5f, ordinaryUv, 0.5f,
+        ];
+        if (retainBothTiles)
+        {
+            // The offscreen triangle keeps both tiles resident for both UV sets.
+            positions = [.. positions, 8, -0.7f, -0.5f, 9, -0.7f, -0.3f, 8, 0.7f, -0.1f];
+            ordinalUvs = [.. ordinalUvs, originOrdinal, 0.2f, originOrdinal + 1, 0.2f, originOrdinal, 0.8f];
+            ordinaryUvs = [.. ordinaryUvs, 0.5f, 0.5f, 1.5f, 0.5f, 0.5f, 0.5f];
+            indices = [.. indices, 6, 7, 8];
+        }
+        byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
+            1, "/OrdinalMesh", positions, indices, 0, 0, null, topologyRevision, null, null, null,
+            [
+                ("ordinal", (uint)SilkAttributeSemantic.TexCoord, 2, ordinalUvs),
+                ("st", (uint)SilkAttributeSemantic.TexCoord, 2, ordinaryUvs),
+            ]);
+        byte[] frame = SilkDepthCaptureConformance.CreateFrame(perspective);
+        BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(8), 32);
+        const uint ordinaryUvMask = (1u << (int)SilkMaterialParameter.Roughness) |
+            (1u << (int)SilkMaterialParameter.Metallic);
+        byte[][] commands =
+        [
+            frame,
+            Material('A', false, multipleMaps: true, udim: diffuseAssetPath is null,
+                uvTranslate: 0.5f - originOrdinal, assetPath: scalarAssetPath, diffuseAssetPath: diffuseAssetPath,
+                uvPrimvar: "ordinal", secondaryUvPrimvar: "st", alternateUvMask: ordinaryUvMask),
+            VolumeCommandAuthoring.WithMaterialBinding(mesh, "/A"),
+        ];
+        return new(SilkCommandParser.PageAbiVersion, revision, [.. commands.SelectMany(static item => item)], 3);
+    }
+
+    [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task AMissingSecondSetReportsTheRequestedPrimvar(SilkGraphicsBackend backend)
@@ -2141,6 +2650,8 @@ public sealed class SilkMaterialStreamingTests
         private readonly byte[][]? _normalTexels;
         private readonly string? _failFirstDecodePath;
         private bool _failedConfiguredTexture;
+        private bool _resourcesReleased;
+        private bool _disposed;
 
         internal Fixture(
             SilkGraphicsBackend backend, bool streaming, bool volumeSupport = false,
@@ -2163,38 +2674,79 @@ public sealed class SilkMaterialStreamingTests
             Staging = new(stagingBytes);
             ISilkGraphicsDevice native = SilkDepthCaptureConformance.CreateDevice(backend);
             Device = volumeSupport ? new VolumeDevice(native) : new(native);
-            Device.ConfigureCpuTextureBudget(Cpu);
-            Device.ConfigureTextureBudget(Textures);
-            Device.ConfigureStagingBudget(Staging);
-            Device.ConfigureBufferBudget(Buffers);
-            var lattice = new TestLattice();
-            Renderer = new SilkMeshRenderer(Device,
-                backend == SilkGraphicsBackend.D3D12 ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV,
-                Decode, udimResolver: udimTiles is null ? null : _ => udimTiles,
-                textureResidencyOptions: new(512, residencyBytes, streaming), cpuTextureBudget: Cpu,
-                ownedImageDecoder: (path, linear, budget) =>
+            SilkMeshRenderer? renderer = null;
+            ISilkGraphicsTexture? color = null;
+            ISilkGraphicsTexture? depth = null;
+            try
+            {
+                Device.ConfigureCpuTextureBudget(Cpu);
+                Device.ConfigureTextureBudget(Textures);
+                Device.ConfigureStagingBudget(Staging);
+                Device.ConfigureBufferBudget(Buffers);
+                var lattice = new TestLattice();
+                renderer = new SilkMeshRenderer(Device,
+                    backend switch
+                    {
+                        SilkGraphicsBackend.D3D12 => SilkShaderBinaryFormat.Dxil,
+                        SilkGraphicsBackend.Vulkan => SilkShaderBinaryFormat.SpirV,
+                        SilkGraphicsBackend.Metal => SilkShaderBinaryFormat.MetalLibrary,
+                        _ => throw new ArgumentOutOfRangeException(nameof(backend))
+                    },
+                    Decode, udimResolver: udimTiles is null ? null : _ => udimTiles,
+                    textureResidencyOptions: new(512, residencyBytes, streaming), cpuTextureBudget: Cpu,
+                    ownedImageDecoder: (path, linear, budget) =>
+                    {
+                        IDisposable reservation = budget.Reserve(
+                            checked((ulong)_imageSize * (ulong)_imageHeight *
+                                ((_floatNormals && path == "B") || (_floatDiffuse && path == "A") ? 16ul : 4ul)));
+                        try
+                        {
+                            SilkDecodedImage image = Decode(path, linear);
+                            image.OwnReservation(reservation);
+                            return image;
+                        }
+                        catch
+                        {
+                            reservation.Dispose();
+                            throw;
+                        }
+                    }, displayLattices: new SilkDisplayTransformLatticeCache(Cpu, lattice, identityProvider: lattice));
+                Renderer = renderer;
+                color = Device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(32, 32));
+                Color = color;
+                depth = Device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(32, 32));
+                Depth = depth;
+                using OpenUsdSilkPage warm = Page(1, 0);
+                _ = Render(warm);
+                InitialCpuBytes = Cpu.Usage.ReservedBytes;
+                InitialColor = ColorBytes();
+            }
+            catch
+            {
+                try
                 {
-                    IDisposable reservation = budget.Reserve(
-                        checked((ulong)_imageSize * (ulong)_imageHeight *
-                            ((_floatNormals && path == "B") || (_floatDiffuse && path == "A") ? 16ul : 4ul)));
+                    renderer?.Dispose();
+                }
+                finally
+                {
                     try
                     {
-                        SilkDecodedImage image = Decode(path, linear);
-                        image.OwnReservation(reservation);
-                        return image;
+                        color?.Dispose();
                     }
-                    catch
+                    finally
                     {
-                        reservation.Dispose();
-                        throw;
+                        try
+                        {
+                            depth?.Dispose();
+                        }
+                        finally
+                        {
+                            Device.Dispose();
+                        }
                     }
-                }, displayLattices: new SilkDisplayTransformLatticeCache(Cpu, lattice, identityProvider: lattice));
-            Color = Device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(32, 32));
-            Depth = Device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(32, 32));
-            using OpenUsdSilkPage warm = Page(1, 0);
-            _ = Render(warm);
-            InitialCpuBytes = Cpu.Usage.ReservedBytes;
-            InitialColor = ColorBytes();
+                }
+                throw;
+            }
         }
 
         private sealed class VolumeDevice(ISilkGraphicsDevice inner)
@@ -2295,9 +2847,26 @@ public sealed class SilkMaterialStreamingTests
 
         internal void ReleaseResources()
         {
-            Renderer.Dispose();
-            Color.Dispose();
-            Depth.Dispose();
+            if (_resourcesReleased)
+            {
+                return;
+            }
+            _resourcesReleased = true;
+            try
+            {
+                Renderer.Dispose();
+            }
+            finally
+            {
+                try
+                {
+                    Color.Dispose();
+                }
+                finally
+                {
+                    Depth.Dispose();
+                }
+            }
         }
 
         internal async Task AssertReleased()
@@ -2310,8 +2879,19 @@ public sealed class SilkMaterialStreamingTests
 
         public void Dispose()
         {
-            ReleaseResources();
-            Device.Dispose();
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            try
+            {
+                ReleaseResources();
+            }
+            finally
+            {
+                Device.Dispose();
+            }
         }
     }
 
@@ -2364,7 +2944,8 @@ public sealed class SilkMaterialStreamingTests
         uint alternateUvMask = 0, float alternateUvTranslate = 0, float[]? fallback = null,
         float? opacityThreshold = null, bool diffuseAndOpacity = false,
         SilkTextureChannel opacityChannel = SilkTextureChannel.R, float? opacityScale = null, float? opacityBias = null,
-        bool omitMaps = false, SilkTextureSourceKind sourceKind = SilkTextureSourceKind.Standard)
+        bool omitMaps = false, SilkTextureSourceKind sourceKind = SilkTextureSourceKind.Standard,
+        string? diffuseAssetPath = null)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
@@ -2417,8 +2998,9 @@ public sealed class SilkMaterialStreamingTests
                 normalMap ? SilkMaterialParameter.Normal : SilkMaterialParameter.DiffuseColor];
         for (int map = 0; map < parameters.Length; map++)
         {
-            byte[] asset = Encoding.UTF8.GetBytes(assetPath ?? (normalScalarMaps && map > 2 ? "A" : udim ? "A<UDIM>" :
-                ((char)(normalMap ? 'N' : (assetName ?? name) + map)).ToString()));
+            byte[] asset = Encoding.UTF8.GetBytes((map == 0 ? diffuseAssetPath : null) ?? assetPath ??
+                (normalScalarMaps && map > 2 ? "A" : udim ? "A<UDIM>" :
+                    ((char)(normalMap ? 'N' : (assetName ?? name) + map)).ToString()));
             bool scalar = (scalarParameter is not null &&
                 !(diffuseAndOpacity && parameters[map] == SilkMaterialParameter.DiffuseColor)) ||
                 parameters[map] == SilkMaterialParameter.Opacity ||
