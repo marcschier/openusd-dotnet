@@ -10067,6 +10067,10 @@ public sealed partial class RuntimePackageTests
         string shimRoot = Path.Combine(workRoot, "native", "install", "shim", rid);
         string extension = rid == "linux-x64" ? ".so" : ".dylib";
 
+        foreach (string library in new[] { "OpenEXR", "OpenEXRCore", "Iex", "IlmThread" })
+        {
+            WriteTestFile(Path.Combine(installRoot, "lib", $"lib{library}-3_5{extension}"));
+        }
         WriteTestFile(Path.Combine(installRoot, "lib", $"libImath-3_2{extension}"));
         WriteTestFile(Path.Combine(installRoot, "lib", $"libOpenColorIO{extension}"));
         WriteTestFile(Path.Combine(installRoot, "lib", $"libusd_ms{extension}"));

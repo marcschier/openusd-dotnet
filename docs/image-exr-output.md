@@ -158,7 +158,9 @@ See [rendering](rendering.md#bounded-disk-image-jobs) and [MCP](mcp.md#render_se
 The locked OpenEXR 3.5.2 codec is used; no codec source is copied and no new codec
 is installed. OpenEXR, Iex, IlmThread, Imath and compression dependencies are part of the declared
 Core package closure. NTDLL is a Windows **system** dependency and is not
-redistributed. The EXR addition retained the storage-admission SDK and left
+redistributed. Core packing checks the Linux/macOS OpenEXR, OpenEXRCore, Iex,
+IlmThread and Imath library paths and refuses missing codec assets before creating
+a package. The EXR addition retained the storage-admission SDK and left
 Storm 9, child 8 and hdSilk session/page 5/23 unchanged. Authored-product execution
 separately advances the current hdSilk session interface to 6; page ABI remains 23.
 Native-child AOV capture subsequently advances the child interface to 9 without changing this encoder.

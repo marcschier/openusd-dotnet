@@ -126,11 +126,13 @@
     <_OpenUsdCesiumShimLibrary Include="$(OpenUsdCesiumShimInstallRoot)/bin/openusd_cesium.dll" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'linux-x64'">
+    <_OpenUsdExrCoreDependency Include="$(OpenUsdInstallRoot)/lib/libOpenEXR-3_5.so;$(OpenUsdInstallRoot)/lib/libOpenEXRCore-3_5.so;$(OpenUsdInstallRoot)/lib/libIex-3_5.so;$(OpenUsdInstallRoot)/lib/libIlmThread-3_5.so" />
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so.*" />
     <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.9;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.9.0.0" />
     <_OpenUsdCesiumShimLibrary Include="$(OpenUsdCesiumShimInstallRoot)/lib/libopenusd_cesium.so;$(OpenUsdCesiumShimInstallRoot)/lib/libopenusd_cesium.so.*" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'osx-arm64'">
+    <_OpenUsdExrCoreDependency Include="$(OpenUsdInstallRoot)/lib/libOpenEXR-3_5.dylib;$(OpenUsdInstallRoot)/lib/libOpenEXRCore-3_5.dylib;$(OpenUsdInstallRoot)/lib/libIex-3_5.dylib;$(OpenUsdInstallRoot)/lib/libIlmThread-3_5.dylib" />
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.dylib" />
     <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.dylib;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.dylib;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.dylib" />
     <_OpenUsdCesiumShimLibrary Include="$(OpenUsdCesiumShimInstallRoot)/lib/libopenusd_cesium.dylib" />
@@ -194,7 +196,7 @@
            Text="The Core SDK requires verified runtime-patch provenance before packing. Rebuild the pinned SDK." />
     <Exec Condition="'$(RuntimePackageKind)' == 'Core' and Exists('$(OpenUsdInstallRoot)/.openusd-runtime-patches.json')"
           Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)../../eng/sdk-runtime-patch-metadata.ps1&quot; -Operation Verify -SdkRoot &quot;$(OpenUsdInstallRoot)&quot; -Rid &quot;$(RuntimePackageRid)&quot;" />
-    <Error Condition="'$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'win-x64' and !Exists('%(_OpenUsdExrCoreDependency.Identity)')"
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('%(_OpenUsdExrCoreDependency.Identity)')"
            Text="The Core EXR output dependency is missing: '%(_OpenUsdExrCoreDependency.Identity)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and Exists('$(OpenUsdInstallRoot)/include/pxr/usd/sdf/storageAdmission.h') and !Exists('$(OpenUsdInstallRoot)/.openusd-storage-admission.json')"
            Text="The storage-admission SDK profile requires verified patch/header/binary provenance before packing." />

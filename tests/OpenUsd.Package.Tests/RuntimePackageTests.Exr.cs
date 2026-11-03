@@ -9,6 +9,72 @@ public sealed partial class RuntimePackageTests
     private const string ExrExecutionRequiredVariable = "OPENUSD_EXR_EXECUTION_REQUIRED";
 
     [Test]
+    [Arguments("linux-x64", ".so")]
+    [Arguments("osx-arm64", ".dylib")]
+    public async Task PosixCorePackagesCarryExrCodecClosure(string rid, string extension)
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            (string installRoot, string shimRoot) = CreateSyntheticUnixInstall(workRoot, rid);
+            string packageRoot = Directory.CreateDirectory(Path.Combine(workRoot, "packages")).FullName;
+            PackedPackage package = await PackAsync(
+                repositoryRoot, $"OpenUsd.Runtime.Core.{rid}", installRoot, shimRoot, string.Empty, packageRoot);
+            foreach (string library in new[] { "OpenEXR-3_5", "OpenEXRCore-3_5", "Iex-3_5",
+                "IlmThread-3_5", "Imath-3_2" })
+            {
+                string name = $"lib{library}{extension}";
+                await AssertPackageEntryMatchesFileAsync(
+                    package.Path, $"runtimes/{rid}/native/{name}", Path.Combine(installRoot, "lib", name));
+            }
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("linux-x64", "libOpenEXR-3_5.so")]
+    [Arguments("linux-x64", "libOpenEXRCore-3_5.so")]
+    [Arguments("linux-x64", "libIex-3_5.so")]
+    [Arguments("linux-x64", "libIlmThread-3_5.so")]
+    [Arguments("osx-arm64", "libOpenEXR-3_5.dylib")]
+    [Arguments("osx-arm64", "libOpenEXRCore-3_5.dylib")]
+    [Arguments("osx-arm64", "libIex-3_5.dylib")]
+    [Arguments("osx-arm64", "libIlmThread-3_5.dylib")]
+    public async Task MissingExrCodecDependencyFailsPosixCorePackClearly(string rid, string dependency)
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            (string installRoot, string shimRoot) = CreateSyntheticUnixInstall(workRoot, rid);
+            File.Delete(Path.Combine(installRoot, "lib", dependency));
+            string packageRoot = Directory.CreateDirectory(Path.Combine(workRoot, "packages")).FullName;
+            InvalidOperationException? failure = null;
+            try
+            {
+                _ = await PackAsync(
+                    repositoryRoot, $"OpenUsd.Runtime.Core.{rid}", installRoot, shimRoot, string.Empty, packageRoot);
+            }
+            catch (InvalidOperationException exception)
+            {
+                failure = exception;
+            }
+            await Assert.That(failure).IsNotNull();
+            await Assert.That(failure!.Message).Contains("Core EXR output dependency is missing");
+            await Assert.That(failure.Message).Contains(dependency);
+            await Assert.That(Directory.GetFiles(packageRoot, "*.nupkg").Length).IsEqualTo(0);
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task CorePackagesExecuteBoundedExrFromCleanNativeAotFeed()
     {
         if (Environment.GetEnvironmentVariable(ExrExecutionRequiredVariable) != "1")
