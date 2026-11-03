@@ -172,6 +172,7 @@ jobs:
       ready: ${{ steps.native-ready.outputs.ready }}
     env:
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
+      OPENUSD_EXR_EXECUTION_REQUIRED: '1'
       DEVELOPER_DIR: ${{ matrix.rid == 'osx-arm64' && '/Applications/Xcode_16.4.app/Contents/Developer' || '' }}
       # workflow_call and workflow_dispatch keep building from source; PR misses do too.
       DEFER_ON_NATIVE_CACHE_MISS: >-
