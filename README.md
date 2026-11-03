@@ -13,20 +13,20 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Current distribution:** public source repository and 31 `0.16.6-alpha` packages with pre-1.0
+> **Published baseline:** public source repository and 31 `0.16.6-alpha` packages with pre-1.0
 > APIs. This published baseline includes Vulkan host-readback presentation and rendered-batch
 > acknowledgment for software compositors. The five Cesium IDs became public
 > after being withheld from NuGet.org at `0.5.0-alpha`; the `OpenUsd.Mcp.Tool` .NET tool and four
 > physics IDs were introduced in `0.12.0-alpha`.
 > Package identities and public APIs may still change before 1.0.
 
-The source integrates the published `0.16.6-alpha` history with additional unreleased work.
-Build source packages and configure a local feed using [Pack](docs/packaging.md#pack) to test
-that work; the commands below install the published baseline, not the current source tree.
+The source targets `0.17.0-alpha` and retains the published `0.16.6-alpha` history.
+The commands below require `0.17.0-alpha` packages. Until that version is published, build
+matching packages and configure a local feed using [Pack](docs/packaging.md#pack).
 
 ```shell
-dotnet add package OpenUsd --version 0.16.6-alpha
-dotnet add package OpenUsd.Runtime.Core --version 0.16.6-alpha
+dotnet add package OpenUsd --version 0.17.0-alpha
+dotnet add package OpenUsd.Runtime.Core --version 0.17.0-alpha
 ```
 
 `OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and
