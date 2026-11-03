@@ -52,6 +52,70 @@ $ciWorkflow = Get-Content (Join-Path $repoRoot '.github/workflows/ci.yml') -Raw
 $mcpStep = [regex]::Match(
     $nativeWorkflow, '(?ms)^      - name: Run Windows native MCP integration\r?\n.*?(?=^      - name:|\z)').Value
 Assert-Contains $mcpStep "OPENUSD_EXR_EXECUTION_REQUIRED: '1'" 'Native MCP EXR execution gate'
+
+function Assert-RequiredExrWorkflowGates
+{
+    param([string]$Native, [string]$Package)
+
+    $codecStep = [regex]::Match(
+        $Native, '(?ms)^      - name: Run required POSIX EXR codec probes\r?\n.*?(?=^      - name:|\z)').Value
+    foreach ($required in @(
+        "if: runner.os != 'Windows'",
+        "OPENUSD_EXR_EXECUTION_REQUIRED: '1'",
+        "'native/build/shim/`${{ matrix.rid }}'",
+        "'roundtrip'", "'invalid-input'", "'invalid-handles'", "'quota'",
+        "'cancel'", "'faults'", "'posix-descriptors'",
+        '--show-only=json-v1',
+        'Compare-Object $expected $actual',
+        "-R '^openusd_image_exr_' --no-tests=error --output-on-failure",
+        "throw 'Required POSIX EXR codec probes failed.'"))
+    {
+        Assert-Contains $codecStep $required 'Required POSIX EXR codec gate'
+    }
+
+    $aotStep = [regex]::Match(
+        $Package, '(?ms)^      - name: Execute required current-RID Core EXR NativeAOT\r?\n.*?(?=^      - name:|\z)').Value
+    foreach ($required in @(
+        "if: steps.native-ready.outputs.ready == 'true'",
+        "OPENUSD_EXR_EXECUTION_REQUIRED: '1'",
+        'OPENUSD_PACKAGE_EXECUTION_INSTALL_ROOT:',
+        'OPENUSD_PACKAGE_EXECUTION_SHIM_ROOT:',
+        'artifacts/exr-package-execution/${{ matrix.rid }}',
+        '-Project tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj',
+        '-Framework net10.0 -Configuration Release',
+        '/*/*/RuntimePackageTests/CorePackagesExecuteBoundedExrFromCleanNativeAotFeed',
+        '$passed.Count -ne 1',
+        '[int]$passed[0].Groups[1].Value -ne 1',
+        '$skipped.Count -ne 1',
+        '[int]$skipped[0].Groups[1].Value -ne 0',
+        "throw 'Required Core EXR NativeAOT execution failed.'"))
+    {
+        Assert-Contains $aotStep $required 'Required current-RID Core EXR NativeAOT gate'
+    }
+    if ($codecStep.Contains('continue-on-error:') -or $aotStep.Contains('continue-on-error:'))
+    {
+        throw 'Required EXR gates cannot continue after failure.'
+    }
+    $uploadStep = [regex]::Match(
+        $Package, '(?ms)^      - name: Upload package test results\r?\n.*?(?=^      - name:|\z)').Value
+    Assert-Contains $uploadStep 'if: always()' 'EXR package evidence retention'
+    Assert-Contains $uploadStep 'artifacts/exr-package-execution/${{ matrix.rid }}' 'EXR package evidence retention'
+}
+
+Assert-RequiredExrWorkflowGates $nativeWorkflow $packageWorkflow
+foreach ($mutation in @(
+    @{ Name = 'MissingPosixDescriptorProbe'; Native = $nativeWorkflow.Replace("'posix-descriptors'", "'other-mode'"); Package = $packageWorkflow },
+    @{ Name = 'OptionalExrExecution'; Native = $nativeWorkflow; Package = $packageWorkflow.Replace("OPENUSD_EXR_EXECUTION_REQUIRED: '1'", "OPENUSD_EXR_EXECUTION_REQUIRED: '0'") },
+    @{ Name = 'SkippedAotProof'; Native = $nativeWorkflow; Package = $packageWorkflow.Replace('$skipped.Count -ne 1', '$skipped.Count -lt 0') },
+    @{ Name = 'MissingExrEvidence'; Native = $nativeWorkflow; Package = $packageWorkflow.Replace('artifacts/exr-package-execution/${{ matrix.rid }}', 'artifacts/other-evidence') }))
+{
+    $rejected = $false
+    try { Assert-RequiredExrWorkflowGates $mutation.Native $mutation.Package }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw "Required EXR workflow mutation was accepted: $($mutation.Name)" }
+    Write-Output "PASS $($mutation.Name)"
+}
+
 $diskOutputStep = [regex]::Match(
     $renderWorkflow, '(?ms)^      - name: Execute native disk output contracts\r?\n.*?(?=^      - name:|\z)').Value
 foreach ($required in @(

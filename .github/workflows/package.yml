@@ -172,7 +172,6 @@ jobs:
       ready: ${{ steps.native-ready.outputs.ready }}
     env:
       OPENUSD_PACKAGE_EXECUTION_REQUIRED: 'true'
-      OPENUSD_EXR_EXECUTION_REQUIRED: '1'
       DEVELOPER_DIR: ${{ matrix.rid == 'osx-arm64' && '/Applications/Xcode_16.4.app/Contents/Developer' || '' }}
       # workflow_call and workflow_dispatch keep building from source; PR misses do too.
       DEFER_ON_NATIVE_CACHE_MISS: >-
@@ -624,6 +623,33 @@ jobs:
         env:
           Platform: ''
         run: dotnet build tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj -c Release
+      - name: Execute required current-RID Core EXR NativeAOT
+        if: steps.native-ready.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_EXR_EXECUTION_REQUIRED: '1'
+          OPENUSD_TEST_WORK_ROOT: ${{ github.workspace }}/artifacts/exr-package-execution/${{ matrix.rid }}
+          OPENUSD_PACKAGE_EXECUTION_INSTALL_ROOT: ${{ github.workspace }}/native/install/${{ matrix.rid }}
+          OPENUSD_PACKAGE_EXECUTION_SHIM_ROOT: ${{ github.workspace }}/native/install/shim/${{ matrix.rid }}
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:OPENUSD_TEST_WORK_ROOT | Out-Null
+          $output = @(& ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj `
+            -Framework net10.0 -Configuration Release `
+            -TestArguments @('--treenode-filter',
+              '/*/*/RuntimePackageTests/CorePackagesExecuteBoundedExrFromCleanNativeAotFeed') 2>&1)
+          $exitCode = $LASTEXITCODE
+          $output | Tee-Object -FilePath (Join-Path $env:OPENUSD_TEST_WORK_ROOT 'execution.log')
+          if ($exitCode -ne 0) { throw 'Required Core EXR NativeAOT execution failed.' }
+          $text = $output -join "`n"
+          $passed = [regex]::Matches($text, '(?m)^\s*succeeded:\s*(\d+)\s*$')
+          $skipped = [regex]::Matches($text, '(?m)^\s*skipped:\s*(\d+)\s*$')
+          if ($passed.Count -ne 1 -or [int]$passed[0].Groups[1].Value -ne 1 -or
+              $skipped.Count -ne 1 -or [int]$skipped[0].Groups[1].Value -ne 0)
+          {
+            throw 'The required Core EXR case must execute exactly once without skips.'
+          }
       - name: Verify Metal package staging
         if: runner.os == 'macOS' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -675,6 +701,7 @@ jobs:
           name: ${{ matrix.rid }}-package-test-results
           path: |
             tests/OpenUsd.Package.Tests/bin/Release/net10.0/TestResults
+            artifacts/exr-package-execution/${{ matrix.rid }}
             eng/shaders/out/package-metal-library/metallib-manifest.json
             eng/shaders/out/package-metal-library/mesh.metallib
             eng/shaders/out/package-metal/*.nupkg

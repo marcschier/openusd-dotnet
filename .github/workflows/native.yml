@@ -867,6 +867,27 @@ jobs:
             tests/OpenUsd.Rendering.Tests/TestResults/*-report.html
           if-no-files-found: warn
           retention-days: 14
+      - name: Run required POSIX EXR codec probes
+        if: runner.os != 'Windows'
+        shell: pwsh
+        env:
+          OPENUSD_EXR_EXECUTION_REQUIRED: '1'
+        run: |
+          $buildRoot = 'native/build/shim/${{ matrix.rid }}'
+          $expected = @('roundtrip', 'invalid-input', 'invalid-handles', 'quota',
+            'cancel', 'faults', 'posix-descriptors') |
+              ForEach-Object { "openusd_image_exr_$_" }
+          $discovery = ctest --test-dir $buildRoot -C Release `
+            -R '^openusd_image_exr_' --show-only=json-v1
+          if ($LASTEXITCODE -ne 0) { throw 'EXR probe discovery failed.' }
+          $actual = @((($discovery -join "`n") | ConvertFrom-Json).tests.name)
+          if (@(Compare-Object $expected $actual).Count -ne 0)
+          {
+            throw "Required EXR probe set differs: expected=$expected; actual=$actual"
+          }
+          ctest --test-dir $buildRoot -C Release `
+            -R '^openusd_image_exr_' --no-tests=error --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Required POSIX EXR codec probes failed.' }
       - name: Run Linux native CTest under Xvfb
         if: runner.os == 'Linux'
         run: |
