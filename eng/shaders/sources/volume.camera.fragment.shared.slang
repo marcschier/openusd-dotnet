@@ -295,11 +295,6 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
             intervalEnd = min(intervalEnd, dot(opaqueEye - rayOrigin, rayDirection));
         }
     }
-    if (pixel.x == 18u && pixel.y == 14u &&
-        volumeFields.Load<float>(112u) >= 1e20)
-    {
-        return float4(rayDirection.z, opaqueDepth, intervalStart, intervalEnd);
-    }
     if (intervalEnd <= intervalStart)
     {
         return float4(0.0, 0.0, 0.0, 0.0);
@@ -418,6 +413,16 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
                 }
             }
         }
+    }
+
+    if (pixel.x == 18u && pixel.y == 14u &&
+        volumeFields.Load<float>(112u) >= 1e20)
+    {
+        return float4(
+            entries[0],
+            exits[0],
+            densityScales[0],
+            normalizedDensityIntegrals[0]);
     }
 
     for (uint field = 0u; field < fieldCount; field++)

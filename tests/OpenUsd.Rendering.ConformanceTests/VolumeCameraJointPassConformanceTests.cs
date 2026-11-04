@@ -95,7 +95,7 @@ public sealed class VolumeCameraJointPassConformanceTests
         float[] pixels = ReadPixels(color);
         int probe = checked(((14 * (int)Size + 18) * 4));
         Console.WriteLine(
-            $"[DEBUG-volume-naN] high-tint ray-interval probe: " +
+            $"[DEBUG-volume-naN] high-tint field-prepass probe: " +
             $"{pixels[probe]:R}, {pixels[probe + 1]:R}, " +
             $"{pixels[probe + 2]:R}, {pixels[probe + 3]:R}");
         int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
@@ -1505,7 +1505,7 @@ public sealed class VolumeCameraJointPassConformanceTests
         float[] densePixels = ReadPixels(color);
         int probe = checked(((14 * (int)Size + 18) * 4));
         Console.WriteLine(
-            $"[DEBUG-volume-naN] thin-field ray-interval probe: " +
+            $"[DEBUG-volume-naN] thin-field field-prepass probe: " +
             $"{densePixels[probe]:R}, {densePixels[probe + 1]:R}, " +
             $"{densePixels[probe + 2]:R}, {densePixels[probe + 3]:R}");
         int firstNonFinite = Array.FindIndex(
