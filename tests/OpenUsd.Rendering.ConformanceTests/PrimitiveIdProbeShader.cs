@@ -126,16 +126,17 @@ internal static class PrimitiveIdProbeShader
                 metal);
         }
 
-        string suffix = format switch
+        JsonElement vertexProgram = FindProgram(manifest, "mesh.vertex");
+        string vertexSuffix = format switch
         {
             SilkShaderBinaryFormat.Dxil => "dxil",
             SilkShaderBinaryFormat.SpirV => "spv",
+            SilkShaderBinaryFormat.MetalLibrary => "metal",
             _ => throw new ArgumentOutOfRangeException(nameof(format))
         };
-        JsonElement vertexProgram = FindProgram(manifest, "pick.vertex");
         VerifyArtifact(
-            vertexProgram.GetProperty("artifacts").GetProperty(suffix),
-            $"eng/shaders/checked/pick.vertex.{suffix}",
+            vertexProgram.GetProperty("artifacts").GetProperty(vertexSuffix),
+            $"eng/shaders/checked/mesh.vertex.{vertexSuffix}",
             vertex.Code.Span);
         return new SilkShaderModuleDescriptor(
             SilkShaderStage.Fragment,

@@ -889,7 +889,10 @@ internal static class OffscreenRhiConformance
                 normalProgram,
                 SilkVertexLayoutDescriptor.PositionNormalTexCoord,
                 SilkTextureFormat.Rgba8Unorm,
-                SilkTextureFormat.D32Float));
+                SilkTextureFormat.D32Float)
+            {
+                TopologyKind = SilkTopologyKind.PointList
+            });
         void BindScene(ISilkGraphicsCommandList commands)
         {
             commands.SetGraphicsPipeline(scenePipeline);

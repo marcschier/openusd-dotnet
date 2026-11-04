@@ -1406,9 +1406,10 @@ Clang diagnostic batch preserves eager boolean side effects and exact format typ
 uses C++17-compatible captures, and removes unused internal state without disabling
 strict compilation.
 
-Curated parity byte baselines are measured against the current 128-light frame layout.
-The fixed 17,344-byte frame block is outside the variable-scene headroom calculation:
-only the remaining scene buffers receive the existing 25-percent/256-byte margin.
+Curated parity byte baselines are measured against the current frame layout: 128 direct
+lights and 24 shadow maps. The fixed 19,264-byte frame block is outside the variable-scene
+headroom calculation; only the remaining scene buffers receive the existing
+25-percent/256-byte margin.
 Draw, mesh, geometry/upload counts, texture-byte limits and all pixel tolerances remain
 unchanged. The opt-in `RecordsCuratedResourceFootprintsForBaselineReview` helper records
 new measurements; ordinary performance and parity assertions remain separate required
@@ -1715,8 +1716,8 @@ Four Vulkan self-consistency pairs in `StormSilkParityCaptureDriverTests` gate r
 focused disk diverge from their unshaped counterparts; a rect facing away behind its 90-degree cone
 matches an unlit scene. `DiskLightFaceOnDivergesFromEdgeOnLightOnVulkan` now points the disk at
 the meshes, because the corrected disk emits only from its front face. `SilkLightShapingWireTests`
-covers the page ABI 28 shaping table: round trip, defaults without the table, range and reserved-word
-refusal, unpublished slots and the 17344-byte GPU encoding.
+covers the page ABI 28 shaping table: round trip, defaults without the table, range and
+reserved-word refusal, unpublished slots and the 19,264-byte GPU encoding.
 
 `NativeFrameTintsDirectLightsByColorTemperature` in `SilkDirectLightNativeConformanceTests` authors
 `enableColorTemperature` on each direct-light shape and reads the tinted colour back from both the

@@ -167,7 +167,7 @@ struct FrameParameters
 
 [[vk::binding(8, 0)]]
 // A raw buffer avoids structured-element stride limits: D3D12 caps an element
-// at 2048 bytes, while the bounded frame occupies 17344 bytes.
+// at 2048 bytes, while the bounded frame occupies 19264 bytes.
 ByteAddressBuffer frameParameters : register(t8);
 
 #if FRAGMENT_STAGE && OPENUSD_TARGET_METAL

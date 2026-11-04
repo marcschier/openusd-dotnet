@@ -1538,6 +1538,111 @@ public sealed class SilkTextureResidencyTests
     }
 
     [Test]
+    public async Task RendererShaderDiagnosticsSurviveMaterialChangesUntilTheSameKeyIsReady()
+    {
+        using var device = new RenderPipelineDevice();
+        new SilkGpuBufferBudget(1024 * 1024).ConfigureDevice(device);
+        var compiler = new ControlledMaterialShaderCompiler();
+        using var renderer = new SilkMeshRenderer(
+            device, SilkShaderBinaryFormat.SpirV, materialShaderCompiler: compiler);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(4, 4));
+        const string materialPath = "/World/Materials/Diagnostic";
+        byte[] firstMaterial = CreateMaterialUpsert(materialPath, SilkSurfaceKind.MaterialXProjected, []);
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            Concat(CreateFrameCommand(4, 4), firstMaterial, CreateMeshUpsert("/World/Mesh", materialPath, 7)), 3);
+
+        _ = renderer.ApplyAndRender(first, color, depth);
+        string firstKey = compiler.LastKey ?? throw new InvalidOperationException("The shader was not requested.");
+        IReadOnlyList<RenderDiagnostic> initial = renderer.MaterialShaderDiagnostics;
+        await Assert.That(initial.Count).IsEqualTo(1);
+        await Assert.That(initial[0].Code).IsEqualTo(SilkRenderDiagnosticCodes.MaterialShaderCompilationFailed);
+        await Assert.That(initial[0].Message).Contains(materialPath);
+        await Assert.That(initial[0].Message).Contains(firstKey);
+        await Assert.That(initial[0].Message).Contains(ControlledMaterialShaderCompiler.FailureMessage);
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.MaterialShaderDiagnostics.Count).IsEqualTo(1);
+
+        using var removal = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, CreateMaterialRemove(materialPath), 1);
+        _ = renderer.ApplyAndRender(removal, color, depth);
+        await Assert.That(renderer.Scene.Materials.ContainsKey(materialPath)).IsFalse();
+        await Assert.That(renderer.MaterialShaderDiagnostics.Count).IsEqualTo(1);
+
+        byte[] preview = CreateMaterialUpsert(materialPath, SilkSurfaceKind.PreviewSurface, []);
+        using var previewPage = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, preview, 1);
+        _ = renderer.ApplyAndRender(previewPage, color, depth);
+        await Assert.That(renderer.MaterialShaderDiagnostics.Count).IsEqualTo(1);
+
+        byte[] replacement = CreateMaterialUpsert(materialPath, SilkSurfaceKind.MaterialXProjected, [],
+            [(SilkMaterialParameter.Roughness, [0.27f])]);
+        using var replacementPage = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 4, replacement, 1);
+        _ = renderer.ApplyAndRender(replacementPage, color, depth);
+        string replacementKey = compiler.LastKey ??
+            throw new InvalidOperationException("The replacement shader was not requested.");
+        await Assert.That(replacementKey).IsNotEqualTo(firstKey);
+        await Assert.That(renderer.MaterialShaderDiagnostics.Count).IsEqualTo(2);
+        await Assert.That(renderer.MaterialShaderDiagnostics.Any(diagnostic =>
+            diagnostic.Message.Contains(firstKey, StringComparison.Ordinal))).IsTrue();
+        await Assert.That(renderer.MaterialShaderDiagnostics.Any(diagnostic =>
+            diagnostic.Message.Contains(replacementKey, StringComparison.Ordinal))).IsTrue();
+
+        compiler.Status = SilkMaterialShaderStatus.Ready;
+        using var recovery = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 5, firstMaterial, 1);
+        _ = renderer.ApplyAndRender(recovery, color, depth);
+        await Assert.That(compiler.LastKey).IsEqualTo(firstKey);
+        await Assert.That(renderer.MaterialShaderDiagnostics.Count).IsEqualTo(1);
+        await Assert.That(renderer.MaterialShaderDiagnostics[0].Message).Contains(replacementKey);
+        await Assert.That(initial.Count).IsEqualTo(1);
+        await Assert.That(initial[0].Message).Contains(firstKey);
+    }
+
+    [Test]
+    public async Task RendererShaderDiagnosticsTrackRequestsFromRefusedFramesAndRetry()
+    {
+        using var device = new RenderPipelineDevice();
+        new SilkGpuBufferBudget(1024 * 1024).ConfigureDevice(device);
+        var compiler = new ControlledMaterialShaderCompiler();
+        using var renderer = new SilkMeshRenderer(
+            device, SilkShaderBinaryFormat.SpirV, materialShaderCompiler: compiler);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(4, 4));
+        const string materialPath = "/World/Materials/Diagnostic";
+        byte[] preview = CreateMaterialUpsert(materialPath, SilkSurfaceKind.PreviewSurface, []);
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            Concat(CreateFrameCommand(4, 4), preview, CreateMeshUpsert("/World/Mesh", materialPath, 7)), 3);
+        _ = renderer.ApplyAndRender(first, color, depth);
+        await Assert.That(renderer.MaterialShaderDiagnostics).IsEmpty();
+
+        byte[] projected = CreateMaterialUpsert(materialPath, SilkSurfaceKind.MaterialXProjected, []);
+        using var candidate = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, projected, 1);
+        compiler.OnRequest = () => device.RefuseSubmission = true;
+        InvalidOperationException failure = (await Assert.That(() =>
+        {
+            _ = renderer.ApplyAndRender(candidate, color, depth);
+        }).Throws<InvalidOperationException>())!;
+        await Assert.That(failure.Message).Contains("Injected submission refusal");
+        string key = compiler.LastKey ?? throw new InvalidOperationException("The candidate shader was not requested.");
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
+        await Assert.That(renderer.Scene.Materials[materialPath].SurfaceKind).IsEqualTo(SilkSurfaceKind.PreviewSurface);
+        await Assert.That(renderer.MaterialShaderDiagnostics.Count).IsEqualTo(1);
+        await Assert.That(renderer.MaterialShaderDiagnostics[0].Message).Contains(key);
+        await Assert.That(renderer.MaterialShaderDiagnostics[0].Message)
+            .Contains(ControlledMaterialShaderCompiler.FailureMessage);
+
+        compiler.OnRequest = null;
+        compiler.Status = SilkMaterialShaderStatus.Ready;
+        device.RefuseSubmission = false;
+        _ = renderer.ApplyAndRender(candidate, color, depth);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(2UL);
+        await Assert.That(renderer.Scene.Materials[materialPath].SurfaceKind)
+            .IsEqualTo(SilkSurfaceKind.MaterialXProjected);
+        await Assert.That(compiler.LastKey).IsEqualTo(key);
+        await Assert.That(renderer.MaterialShaderDiagnostics).IsEmpty();
+    }
+
+    [Test]
     [Arguments(float.NaN)]
     [Arguments(float.PositiveInfinity)]
     [Arguments(float.NegativeInfinity)]
@@ -1625,13 +1730,16 @@ public sealed class SilkTextureResidencyTests
             await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(12ul);
             published.ParameterBuffer.Write(new byte[32]);
             scalar[0] = 1;
-            using SilkVolumeCameraPass.Prepared retry =
-                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
-            SilkVolumeCameraPass.ResourceSet corrected = retry.ResourceData ??
-                throw new InvalidOperationException("The corrected atlas must be present.");
-            retry.Commit();
-            await Assert.That(ReferenceEquals(corrected.AtlasTexture, published.AtlasTexture)).IsTrue();
-            await Assert.That(corrected.AtlasDensitySamples.Single().MaximumMagnitude).IsEqualTo(1e30f);
+            SilkVolumeCameraPass.ResourceSet corrected;
+            using (SilkVolumeCameraPass.Prepared retry =
+                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]))
+            {
+                corrected = retry.ResourceData ??
+                    throw new InvalidOperationException("The corrected atlas must be present.");
+                retry.Commit();
+                await Assert.That(ReferenceEquals(corrected.AtlasTexture, published.AtlasTexture)).IsTrue();
+                await Assert.That(corrected.AtlasDensitySamples.Single().MaximumMagnitude).IsEqualTo(1e30f);
+            }
             await Assert.That(published.IsDisposed).IsTrue();
             await Assert.That(corrected.IsDisposed).IsFalse();
             await Assert.That(device.VolumeAllocations).IsEqualTo(1);
@@ -1722,9 +1830,11 @@ public sealed class SilkTextureResidencyTests
             await Assert.That(device.CreatedTextureDescriptors.Count).IsEqualTo(targets);
             published.ParameterBuffer.Write(new byte[32]);
             scalar[0] = 1;
-            using SilkVolumeCameraPass.Prepared retry =
-                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
-            retry.Commit();
+            using (SilkVolumeCameraPass.Prepared retry =
+                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]))
+            {
+                retry.Commit();
+            }
             await Assert.That(published.IsDisposed).IsTrue();
             await Assert.That(device.VolumeAllocations).IsEqualTo(sampled ? 1 : 0);
         }
@@ -1787,11 +1897,14 @@ public sealed class SilkTextureResidencyTests
                 values[component] = previous;
             }
         }
-        using SilkVolumeCameraPass.Prepared retry =
-            pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
-        SilkVolumeCameraPass.ResourceSet corrected = retry.ResourceData ??
-            throw new InvalidOperationException("The corrected camera pass must be present.");
-        retry.Commit();
+        SilkVolumeCameraPass.ResourceSet corrected;
+        using (SilkVolumeCameraPass.Prepared retry =
+            pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]))
+        {
+            corrected = retry.ResourceData ??
+                throw new InvalidOperationException("The corrected camera pass must be present.");
+            retry.Commit();
+        }
         await Assert.That(published.IsDisposed).IsTrue();
         await Assert.That(corrected.IsDisposed).IsFalse();
         await Assert.That(device.VolumeAllocations).IsEqualTo(0);
@@ -1944,11 +2057,14 @@ public sealed class SilkTextureResidencyTests
             await Assert.That(published.IsDisposed).IsFalse();
             // Exercise the retained upload buffer, not only an ownership flag.
             published.ParameterBuffer.Write(new byte[32]);
-            using SilkVolumeCameraPass.Prepared retry =
-                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
-            SilkVolumeCameraPass.ResourceSet corrected = retry.ResourceData ??
-                throw new InvalidOperationException("The corrected camera pass must be present.");
-            retry.Commit();
+            SilkVolumeCameraPass.ResourceSet corrected;
+            using (SilkVolumeCameraPass.Prepared retry =
+                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]))
+            {
+                corrected = retry.ResourceData ??
+                    throw new InvalidOperationException("The corrected camera pass must be present.");
+                retry.Commit();
+            }
             await Assert.That(published.IsDisposed).IsTrue();
             await Assert.That(corrected.IsDisposed).IsFalse();
             await Assert.That(device.VolumeAllocations).IsEqualTo(0);
@@ -2937,6 +3053,29 @@ public sealed class SilkTextureResidencyTests
             {
                 throw new InvalidOperationException("Refused camera workloads must not upload an atlas.");
             }
+        }
+    }
+
+    private sealed class ControlledMaterialShaderCompiler : ISilkMaterialShaderCompiler
+    {
+        internal const string FailureMessage = "Injected material compilation failure.";
+
+        internal SilkMaterialShaderStatus Status { get; set; } = SilkMaterialShaderStatus.Failed;
+        internal string? LastKey { get; private set; }
+        internal Action? OnRequest { get; set; }
+
+        public SilkMaterialShaderRequest GetOrQueue(SilkMaterialShaderKey key)
+        {
+            LastKey = key.CacheHash;
+            OnRequest?.Invoke();
+            return new SilkMaterialShaderRequest(
+                Status,
+                SilkMaterialShaderCompilerService.CreateCheckedPlaceholder(key.Format, key.CacheHash),
+                Status == SilkMaterialShaderStatus.Failed ? new InvalidOperationException(FailureMessage) : null);
+        }
+
+        public void Dispose()
+        {
         }
     }
 

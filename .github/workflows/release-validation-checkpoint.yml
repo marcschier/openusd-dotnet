@@ -105,6 +105,42 @@ jobs:
           }
           Copy-Item -LiteralPath $reportPath -Destination (
             Join-Path (Split-Path $reportPath) 'shader-diagnostic-fixture.json')
+      - name: Run renderer shader lifecycle tests
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-capture-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 2 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkTextureResidencyTests/RendererShaderDiagnostics*')
+          $reportPath = 'tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.Tests-linux-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The renderer shader lifecycle report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkTextureResidencyTests'
+          } | ForEach-Object { $_.tests })
+          $expected = @(
+            'RendererShaderDiagnosticsSurviveMaterialChangesUntilTheSameKeyIsReady',
+            'RendererShaderDiagnosticsTrackRequestsFromRefusedFramesAndRetry'
+          )
+          foreach ($method in $expected) {
+            if (@($cases | Where-Object {
+              $_.methodName -ceq $method -and $_.status -ceq 'passed'
+            }).Count -ne 1) {
+              throw "The renderer shader lifecycle test '$method' did not pass exactly once."
+            }
+          }
+          if ($report.summary.total -ne 2 -or $report.summary.passed -ne 2 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0) {
+            throw 'Both renderer shader lifecycle tests must pass without skips.'
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'shader-diagnostic-lifecycle.json')
       - name: Upload capture evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -806,7 +806,7 @@ struct KernelContext_0
                 float _S143 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S124 + 60U)>>2]);
                 float3 _S144 = (((float4(rayDirection_0, 0.0f)) * (matrix<float,int(4),int(4)> (_S129, _S134, _S139, float4(_S140, _S141, _S142, _S143))))).xyz;
                 float _S145 = as_type<float>((&kernelContext_0)->volumeFields_0[(fieldOffsets_0[field_3] + 112U)>>2]);
-                float _S146 = fieldOpticalDepth_0[field_3] * (max(0.0f, _S145) * (length(_S144) * _S123) / densityIntegrals_0[field_3]);
+                float _S146 = fieldOpticalDepth_0[field_3] * (max(0.0f, _S145) / densityIntegrals_0[field_3] * (length(_S144) * _S123));
                 fieldDepths_0[field_3] = _S146;
                 sum_0 = sum_0 + _S146;
                 field_3 = field_3 + 1U;

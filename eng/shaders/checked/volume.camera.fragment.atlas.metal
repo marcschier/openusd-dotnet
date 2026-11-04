@@ -877,7 +877,7 @@ struct KernelContext_0
                     term_0 = _S179;
                     break;
                 }
-                float _S189 = fieldOpticalDepth_0[field_3] * (term_0 * (length(_S168) * _S145) / densityIntegrals_0[field_3]);
+                float _S189 = fieldOpticalDepth_0[field_3] * (term_0 / densityIntegrals_0[field_3] * (length(_S168) * _S145));
                 fieldDepths_0[field_3] = _S189;
                 sum_0 = sum_0 + _S189;
                 field_3 = field_3 + 1U;

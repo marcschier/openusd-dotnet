@@ -100,7 +100,10 @@ public sealed class VolumeCameraJointPassConformanceTests
             : 1 - Math.Exp(-depthIntegral);
         double expected = tint * absorbed;
         await Assert.That(pixels.All(float.IsFinite)).IsTrue();
-        await Assert.That(Math.Abs((pixels[center] / expected) - 1)).IsLessThan(0.01);
+        await Assert.That(Math.Abs((pixels[center] / expected) - 1)).IsLessThan(0.01)
+            .Because(
+                $"Density {density:R} (sampled: {sampled}) produced red {pixels[center]:R}; " +
+                $"expected {expected:R}.");
         await Assert.That(pixels[center + 1]).IsEqualTo(0f);
         await Assert.That(pixels[center + 2]).IsEqualTo(0f);
     }

@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Buffers.Binary;
 using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Rendering.ConformanceTests;
@@ -64,7 +65,15 @@ public sealed partial class VolumeRenderingConformanceTests
             0.8,   0,    0, 0,
               0,   0,  0.5, 1,
         ];
+        byte[] camera = CreatePerspectiveCameraFrame();
+        BinaryPrimitives.WriteDoubleLittleEndian(
+            camera.AsSpan(16 + (10 * sizeof(double))),
+            -1);
+        BinaryPrimitives.WriteDoubleLittleEndian(
+            camera.AsSpan(16 + (14 * sizeof(double))),
+            -1.5);
         var frame = new SilkFrameState();
+        frame.Update(new SilkFrameCommand(camera));
         using OpenUsdSilkPage originalPage = CreateIndependentFieldPage(
             original, transform, frame, "8,8,8");
         using OpenUsdSilkPage rotatedPage = CreateIndependentFieldPage(
@@ -94,11 +103,11 @@ public sealed partial class VolumeRenderingConformanceTests
         RequireFieldBoundsBackend(backend);
         string directory = Path.Combine(StageDirectory, $"near-plane-{Guid.NewGuid():N}");
         string clippedDense = VolumeCommandAuthoring.WriteDensityGrid(
-            directory, "clipped-dense", 8, 8, 8, (_, _, z) => z < 3 ? 1 : 0.25f);
+            directory, "clipped-dense", 8, 8, 8, (_, _, z) => z >= 6 ? 1 : 0.25f);
         string clippedEmpty = VolumeCommandAuthoring.WriteDensityGrid(
-            directory, "clipped-empty", 8, 8, 8, (_, _, z) => z < 3 ? 0 : 0.25f);
+            directory, "clipped-empty", 8, 8, 8, (_, _, z) => z >= 6 ? 0 : 0.25f);
         string visibleDense = VolumeCommandAuthoring.WriteDensityGrid(
-            directory, "visible-dense", 8, 8, 8, (_, _, z) => z < 3 ? 0 : 0.75f);
+            directory, "visible-dense", 8, 8, 8, (_, _, z) => z < 4 ? 0.75f : 0);
         double[] transform =
         [
             1, 0,  0, 0,
@@ -107,6 +116,7 @@ public sealed partial class VolumeRenderingConformanceTests
             0, 0, -1, 1,
         ];
         var frame = new SilkFrameState();
+        frame.Update(new SilkFrameCommand(CreateOrthographicCameraFrame(1, 2)));
         using OpenUsdSilkPage densePage = CreateIndependentFieldPage(
             clippedDense, transform, frame, "8,8,8");
         using OpenUsdSilkPage emptyPage = CreateIndependentFieldPage(
@@ -126,8 +136,54 @@ public sealed partial class VolumeRenderingConformanceTests
 
         ImageDelta clippedChange = ImageDelta.Compare(dense, empty);
         await Assert.That(clippedChange.MaximumChannelDelta).IsLessThanOrEqualTo(2)
-            .Because("density behind the near plane must not contribute to the image.");
+            .Because("density closer than the camera's near distance must not contribute to the image.");
         await Assert.That(clippedChange.MeanChannelDelta).IsLessThanOrEqualTo(0.25)
             .Because("both fields have the same visible density.");
+    }
+
+    private static byte[] CreatePerspectiveCameraFrame()
+    {
+        const double near = 0.1;
+        const double far = 11;
+        byte[] frame = SilkMeshRendererConformance.CreateFrameCommand(
+            Width,
+            Height,
+            SilkMeshRendererConformance.Identity());
+        double[] projection =
+        [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, -(far + near) / (far - near), -1,
+            0, 0, -(2 * far * near) / (far - near), 0,
+        ];
+        WriteProjection(frame, projection);
+        return frame;
+    }
+
+    private static byte[] CreateOrthographicCameraFrame(double near, double far)
+    {
+        byte[] frame = SilkMeshRendererConformance.CreateFrameCommand(
+            Width,
+            Height,
+            SilkMeshRendererConformance.Identity());
+        double[] projection =
+        [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, -2 / (far - near), 0,
+            0, 0, -(far + near) / (far - near), 1,
+        ];
+        WriteProjection(frame, projection);
+        return frame;
+    }
+
+    private static void WriteProjection(byte[] frame, double[] projection)
+    {
+        for (int index = 0; index < projection.Length; index++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(
+                frame.AsSpan(144 + (index * sizeof(double))),
+                projection[index]);
+        }
     }
 }

@@ -332,9 +332,9 @@ public sealed class BackendShaderRegisterConformanceTests
         string volumeReflection = Path.Combine(checkedRoot, "mesh.volume.fragment.reflection.json");
 
         // Five fragment permutations and three vertex permutations expand from the
-        // manifest, plus the sampled-volume program. A glob that silently matched
-        // fewer files would make the loop below vacuous.
-        await Assert.That(meshReflections.Length).IsEqualTo(9);
+        // manifest, plus the sampled-volume vertex and fragment programs. A glob that
+        // silently matched fewer files would make the loop below vacuous.
+        await Assert.That(meshReflections.Length).IsEqualTo(10);
         await Assert.That(meshReflections).Contains(volumeReflection);
 
         var declaringPrograms = new List<string>();
@@ -360,7 +360,7 @@ public sealed class BackendShaderRegisterConformanceTests
             // Every mesh fragment, volume or not, still reads the shared surface and
             // frame blocks, so this also proves the enumeration found real reflections
             // rather than empty documents.
-            if (Path.GetFileName(reflection).StartsWith("mesh.vertex", StringComparison.Ordinal))
+            if (Path.GetFileName(reflection).Contains(".vertex.", StringComparison.Ordinal))
             {
                 await Assert.That(resources.ContainsKey("frameParameters")).IsTrue();
             }

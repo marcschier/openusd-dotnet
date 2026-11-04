@@ -29,21 +29,15 @@ public sealed class SilkPrimitiveIdTransportConformanceTests
             SilkGraphicsBackend.Metal => SilkShaderBinaryFormat.MetalLibrary,
             _ => throw new ArgumentOutOfRangeException(nameof(backend))
         };
-        SilkShaderModuleDescriptor vertexDescriptor = SilkCheckedShaderAssets.LoadPickVertex(format);
+        SilkShaderModuleDescriptor vertexDescriptor = SilkCheckedShaderAssets.LoadMeshVertex(format);
         SilkShaderModuleDescriptor fragmentDescriptor = PrimitiveIdProbeShader.Load(format, vertexDescriptor);
 
         using ProbeDevice owner = ProbeDevice.Create(backend);
         ISilkGraphicsDevice device = owner.Device;
         using ISilkGraphicsShaderModule vertex = device.CreateShaderModule(vertexDescriptor);
         using ISilkGraphicsShaderModule fragment = device.CreateShaderModule(fragmentDescriptor);
-        SilkBindingLayoutDescriptor layoutDescriptor = SilkBindingLayoutDescriptor.SceneParameters with
-        {
-            MaterialSlots =
-            [
-                new(0, 6, SilkBindingKind.StorageBuffer, 0, SilkShaderStageVisibility.Vertex)
-            ]
-        };
-        using ISilkGraphicsBindingLayout layout = device.CreateBindingLayout(layoutDescriptor);
+        using ISilkGraphicsBindingLayout layout = device.CreateBindingLayout(
+            SilkBindingLayoutDescriptor.SceneParameters);
         using ISilkGraphicsShaderProgram program = device.CreateShaderProgram(
             new SilkShaderProgramDescriptor(vertex, fragment, layout));
         using ISilkGraphicsPipeline pipeline = device.CreateGraphicsPipeline(
@@ -108,16 +102,27 @@ public sealed class SilkPrimitiveIdTransportConformanceTests
             0, 0, 0, 1,
             1, 1, 1, 1
         ]));
+        byte[] frameData = new byte[SilkFrameUniformWriter.ByteSize];
+        SilkFrameUniformWriter.Write(
+            new SilkFrameState(),
+            frameData,
+            flipClipSpaceY: false,
+            outputTransform: RenderOutputTransform.Identity,
+            exposure: 0);
+        using ISilkGraphicsBuffer frame = device.CreateBuffer(
+            checked((nuint)frameData.Length),
+            SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        frame.Write(frameData);
 
-        byte[] baseline = Render(device, pipeline, color, depth, vertices, indices, uniforms, indexData);
+        byte[] baseline = Render(device, pipeline, color, depth, vertices, indices, uniforms, frame, indexData);
         SetTriangle(indexData, boundary - 1, 9);
         SetTriangle(indexData, boundary, 6);
-        byte[] swapped = Render(device, pipeline, color, depth, vertices, indices, uniforms, indexData);
+        byte[] swapped = Render(device, pipeline, color, depth, vertices, indices, uniforms, frame, indexData);
         SetTriangle(indexData, boundary - 1, 6);
         SetTriangle(indexData, boundary, 0);
-        byte[] omitted = Render(device, pipeline, color, depth, vertices, indices, uniforms, indexData);
+        byte[] omitted = Render(device, pipeline, color, depth, vertices, indices, uniforms, frame, indexData);
         SetTriangle(indexData, boundary, 9);
-        byte[] restored = Render(device, pipeline, color, depth, vertices, indices, uniforms, indexData);
+        byte[] restored = Render(device, pipeline, color, depth, vertices, indices, uniforms, frame, indexData);
 
         uint id = checked((uint)boundary);
         await AssertImagePixels(baseline, backend, boundary, "baseline", 0, id - 1, id, id + 1);
@@ -185,6 +190,7 @@ public sealed class SilkPrimitiveIdTransportConformanceTests
         ISilkGraphicsBuffer vertices,
         ISilkGraphicsBuffer indices,
         ISilkGraphicsBuffer uniforms,
+        ISilkGraphicsBuffer frame,
         uint[] indexData)
     {
         indices.Write(MemoryMarshal.AsBytes(indexData.AsSpan()));
@@ -199,6 +205,7 @@ public sealed class SilkPrimitiveIdTransportConformanceTests
         commands.SetIndexBuffer(indices);
         commands.SetUniformBuffer(0, 0, uniforms);
         commands.SetStorageBuffer(0, 6, uniforms);
+        commands.SetStorageBuffer(0, 8, frame);
         commands.DrawIndexed(checked((uint)indexData.Length));
         commands.EndRendering();
         using ISilkGraphicsSubmission submission = device.Submit(commands);

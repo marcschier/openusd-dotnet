@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 2,
+  "programs": [
+    "primitive-id.fragment"
+  ],
+  "toolchain": {
+    "slangVersion": "2026.19",
+    "slangCommit": "0fb6b7587a94fa33d88141ec9930766eedc6f59a",
+    "spirvToolsCommit": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+    "shaderModel": "6.0",
+    "vulkanVersion": "1.2",
+    "spirvVersion": "1.5",
+    "metalVersion": "2.4"
+  },
+  "inputs": [
+    {
+      "path": "eng/shaders/scripts/normalize-reflection.py",
+      "sha256": "684cd3dcf0e39d0634cbd6c9b254b0a43b57da7edbf610b720c2691c86e62a47",
+      "size": 19761
+    },
+    {
+      "path": "eng/shaders/scripts/shader_model.py",
+      "sha256": "9e14962d61d5304fa243ae2e13c65e8cc97f87c5f1f1a06f72c5fe3a592f8e70",
+      "size": 32247
+    },
+    {
+      "path": "eng/shaders/toolchain.lock.json",
+      "sha256": "bf01cd837d2c9dbbc7d2713771dae3be24b882991eaaec8f6c88e53cd8ed7fd7",
+      "size": 2459
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/build_primitive_id_shader.py",
+      "sha256": "57e0f43856f8f37dba692a0d208680a6a9deabfab4eb7ebe07c2036da07729be",
+      "size": 10246
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/primitive-id.fragment.slang",
+      "sha256": "b9b03789b51bf159b47002c5312622f4e58c9384e1ab07bbbf981ea5118ba6ae",
+      "size": 481
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/primitive-id.manifest.json",
+      "sha256": "0f98298b6e06dcac871f165c9a5134f6048623efb30b23a3468b40f0485dac28",
+      "size": 594
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/checked/primitive-id.fragment.dxil",
+      "sha256": "d71b56088dfbd540f38c42c7a883c65da4c050d60bb0e00c46eb981633854e4c",
+      "size": 3148
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/checked/primitive-id.fragment.dxil-reflection.json",
+      "sha256": "1bea0a9a1a07173d321b240c0c2a30e25d3388b9e468682b08f74cc823146031",
+      "size": 3888
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/checked/primitive-id.fragment.metal",
+      "sha256": "a708774313fd3eedb11f91e1db40e224e67017c150c862385a1cde3cf6684b69",
+      "size": 518
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/checked/primitive-id.fragment.reflection.json",
+      "sha256": "4434653482438a4859f61c8d801838689aa4d44da594587bcf81802af1682847",
+      "size": 1223
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/checked/primitive-id.fragment.spirv-reflection.json",
+      "sha256": "6e2722c6c9c89c670bcfa9cfd186c0670bf4e54c56ea07b922b6f94f9e450437",
+      "size": 3917
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/checked/primitive-id.fragment.spv",
+      "sha256": "bbc58ed178ad08dc68844ef3bdc7270a45031401b02147fe850f7bfaebcfa7b6",
+      "size": 848
+    }
+  ]
+}

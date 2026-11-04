@@ -117,34 +117,35 @@ public sealed class D3D12DeviceTests
         await Assert.That(plan.RootSignatureDwordCost).IsLessThanOrEqualTo(64u);
         // The eleven material slots, the independent detail normal, the material's single
         // two-image composite image, the one shadow atlas every mesh permutation
-        // samples, the two prefiltered environment maps, and the split-sum BRDF
-        // table, plus two private normal value tables without additional samplers.
+        // samples, four peeled shadow-transmission textures, the two prefiltered
+        // environment maps, and the split-sum BRDF table, plus two private normal
+        // value tables without additional samplers.
         // Every extra is a universal slot rather than one per material
         // input precisely so this stays bounded -- a per-input composite, a
         // per-map shadow texture or a per-dome environment would multiply both
         // counts.
-        await Assert.That(plan.SampledTextureCount).IsEqualTo(21u);
+        await Assert.That(plan.SampledTextureCount).IsEqualTo(25u);
         await Assert.That(plan.GetDescriptorOffset(
             0, SilkBindingLayoutDescriptor.EmissiveValuesTextureBinding, SilkBindingKind.SampledTexture))
-            .IsEqualTo(20u);
+            .IsEqualTo(24u);
         await Assert.That(plan.GetDescriptorOffset(
             0, SilkBindingLayoutDescriptor.DiffuseValuesTextureBinding, SilkBindingKind.SampledTexture))
-            .IsEqualTo(19u);
+            .IsEqualTo(23u);
         await Assert.That(plan.SamplerCount).IsEqualTo(16u);
         await Assert.That(plan.GetDescriptorOffset(
             0, SilkBindingLayoutDescriptor.NormalValuesTextureBinding, SilkBindingKind.SampledTexture))
-            .IsEqualTo(17u);
+            .IsEqualTo(21u);
         await Assert.That(plan.GetDescriptorOffset(
             0, SilkBindingLayoutDescriptor.DetailNormalValuesTextureBinding, SilkBindingKind.SampledTexture))
-            .IsEqualTo(18u);
+            .IsEqualTo(22u);
         await Assert.That(plan.GetDescriptorOffset(
             0, SilkBindingLayoutDescriptor.DetailNormalTextureBinding, SilkBindingKind.SampledTexture))
-            .IsEqualTo(16u);
+            .IsEqualTo(20u);
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.CompositeTextureBinding,
             SilkBindingKind.SampledTexture)).IsEqualTo(11u);
-        // Appending detail after the shared resources preserves existing offsets.
+        // The detail and value tables follow the expanded shared texture block.
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.MetallicTextureBinding,

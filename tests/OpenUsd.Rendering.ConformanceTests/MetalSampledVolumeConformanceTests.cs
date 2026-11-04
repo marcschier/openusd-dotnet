@@ -107,8 +107,9 @@ public sealed class MetalSampledVolumeConformanceTests
         string volumeSource = Path.Combine(checkedRoot, "mesh.volume.fragment.metal");
 
         // Five fragment permutations, three vertex permutations, and the sampled-volume
-        // program. A glob that matched fewer files would make the loop vacuous.
-        await Assert.That(metalSources.Length).IsEqualTo(9);
+        // vertex and fragment programs. A glob that matched fewer files would make the
+        // loop vacuous.
+        await Assert.That(metalSources.Length).IsEqualTo(10);
         await Assert.That(metalSources).Contains(volumeSource);
 
         var declaringPrograms = new List<string>();

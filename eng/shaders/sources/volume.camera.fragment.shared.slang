@@ -433,9 +433,9 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
                 float3 objectPosition = objectOrigin + (objectDirection * distance);
                 float density = DensityAt(fieldOffsets[field], objectPosition);
                 float localStepLength = length(objectDirection) * stepLength;
-                float localDensity = density * localStepLength;
-                fieldDepths[field] = fieldOpticalDepth[field] *
-                    (localDensity / densityIntegrals[field]);
+                float densityFraction = density / densityIntegrals[field];
+                float stepFraction = densityFraction * localStepLength;
+                fieldDepths[field] = fieldOpticalDepth[field] * stepFraction;
                 opticalDepth += fieldDepths[field];
             }
             if (opticalDepth > 0.0)

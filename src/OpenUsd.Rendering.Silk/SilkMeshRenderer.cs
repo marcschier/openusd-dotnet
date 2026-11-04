@@ -130,7 +130,7 @@ public sealed partial class SilkMeshRenderer :
     private readonly SilkDisplayTransformPass _displayTransform;
     private int _deformationDispatches;
     private readonly SilkProjectedMaterialShaderGenerator _materialShaderGenerator;
-    private readonly SilkMaterialShaderCompilerService _materialShaderCompiler;
+    private readonly ISilkMaterialShaderCompiler _materialShaderCompiler;
     // Keyed by cache hash; bounded so a scene full of failing materials cannot grow the
     // snapshot without limit. Guarded by its own lock because the property is read
     // from capture paths that do not hold _gate.
@@ -323,7 +323,8 @@ public sealed partial class SilkMeshRenderer :
         SilkCpuTextureBudget? cpuTextureBudget = null,
         Func<string, bool, SilkCpuTextureBudget, SilkDecodedImage>? ownedImageDecoder = null,
         SilkDisplayTransformLatticeCache? displayLattices = null,
-        Func<string, SilkImageDescription>? imageDescriber = null)
+        Func<string, SilkImageDescription>? imageDescriber = null,
+        ISilkMaterialShaderCompiler? materialShaderCompiler = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         if (textureResidencyOptions?.StreamMaterialTextures == true &&
@@ -385,7 +386,8 @@ public sealed partial class SilkMeshRenderer :
         _shadowMaps = new SilkShadowMapCache(device, _pipelineCache);
         _displayTransform = new SilkDisplayTransformPass(device, shaderFormat, displayLattices);
         _materialShaderGenerator = new SilkProjectedMaterialShaderGenerator();
-        _materialShaderCompiler = new SilkMaterialShaderCompilerService(_materialShaderGenerator);
+        _materialShaderCompiler =
+            materialShaderCompiler ?? new SilkMaterialShaderCompilerService(_materialShaderGenerator);
         if (pickPipeline is not null)
         {
             _pickPipelines[(
@@ -573,7 +575,8 @@ public sealed partial class SilkMeshRenderer :
     /// </summary>
     /// <remarks>
     /// An entry disappears once the same cache key is observed as ready. Changing or
-    /// removing a material does not by itself clear an earlier entry.
+    /// removing a material does not by itself clear an earlier entry. Requests are observed
+    /// during frame preparation, so diagnostics can change even if the frame is not published.
     /// </remarks>
     public IReadOnlyList<RenderDiagnostic> MaterialShaderDiagnostics
     {
@@ -2464,8 +2467,8 @@ public sealed partial class SilkMeshRenderer :
             _materialShaderFailures.Add(key.CacheHash, new RenderDiagnostic(
                 RenderDiagnosticSeverity.Warning,
                 SilkRenderDiagnosticCodes.MaterialShaderCompilationFailed,
-                $"Material '{materialPath}' (shader cache key {key.CacheHash}) failed to compile and draws " +
-                $"with the checked placeholder: {reason}"));
+                $"Material '{materialPath}' (shader cache key {key.CacheHash}) failed to compile; draws for " +
+                $"this shader use the checked placeholder: {reason}"));
         }
     }
 

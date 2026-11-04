@@ -106,11 +106,14 @@ applies exposure before alpha blending, so this check can refuse a final
 composite that would fit. These checks do not prove that density integrals, tint
 accumulation or exposure remain finite for all admitted inputs.
 
-Both fragments use precise floating-point mode and multiply the field-local ray
-speed by the sample step before multiplying by density. This avoids the
-overflowing intermediate reproduced for a thin, high-density field on Vulkan
-SwiftShader. Tests inspect that grouping in checked SPIR-V and generated Metal
-source; the Metal shader still requires execution on macOS.
+Both fragments use precise floating-point mode. The density-integral pass forms
+the field-local step before multiplying by density, avoiding the overflowing
+intermediate reproduced for a thin, high-density field on Vulkan SwiftShader.
+The per-step optical-depth pass divides sampled density by the line integral
+before applying the field-local step and field optical depth, so density is not
+multiplied by the step length before normalization. D3D12 and Vulkan pass the
+high-tint cases. The latest hosted Metal run failed those cases at densities
+`1e-37`, `1e-20`, and `1e30`; the updated source has not yet been rerun on Metal.
 
 Source preflight refuses a volume material with additional non-density textures,
 duplicate density entries, or a composited density texture before publication.
