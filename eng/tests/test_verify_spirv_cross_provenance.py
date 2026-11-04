@@ -129,6 +129,20 @@ class SpirvCrossProvenanceTests(unittest.TestCase):
                 f"160000 commit {PROVENANCE.PRODUCER_SOURCE_COMMIT}\t"
                 f"{PROVENANCE.GITLINK_PATH}"
             )
+        if root == self.producer and arguments == (
+                "ls-tree", PROVENANCE.PACKAGE_SOURCE_COMMIT, "--", PROVENANCE.GITLINK_PATH):
+            return (
+                f"160000 commit {PROVENANCE.PACKAGE_SOURCE_GITLINK}\t"
+                f"{PROVENANCE.GITLINK_PATH}"
+            )
+        if root == self.producer and arguments == ("cat-file", "-p", PROVENANCE.PRODUCER_BINARY_COMMIT):
+            return f"tree {'b' * 40}\nparent {PROVENANCE.PRODUCER_COMMIT}\n\nGenerated binaries"
+        if root == self.producer and arguments[:3] == (
+                "ls-tree", PROVENANCE.PRODUCER_BINARY_COMMIT, "--"):
+            path = arguments[3]
+            target = next(value for value in self.targets.values()
+                          if path == f"src/Native/{PROVENANCE.PACKAGE_ID}/{value['package']}")
+            return f"100755 blob {target['gitBlob']}\t{path}"
         raise AssertionError(f"Unexpected git call: {root}, {arguments}")
 
     def fake_process(self, arguments, **options):
@@ -229,6 +243,25 @@ class SpirvCrossProvenanceTests(unittest.TestCase):
                     return self.fake_git(root, *args)
                 self.git_mock.side_effect = altered
                 with self.assertRaisesRegex(ValueError, "pinned commit|not clean|gitlink"):
+                    self.verify()
+                self.assertFalse(self.build_commands)
+
+    def test_binary_handoff_requires_parent_package_gitlink_and_matching_asset(self):
+        for mode in ("package-gitlink", "binary-parent", "binary-asset"):
+            with self.subTest(mode=mode):
+                def altered(root, *args):
+                    if (mode == "package-gitlink" and root == self.producer
+                            and args[:2] == ("ls-tree", PROVENANCE.PACKAGE_SOURCE_COMMIT)):
+                        return f"160000 commit {'0' * 40}\t{PROVENANCE.GITLINK_PATH}"
+                    if (mode == "binary-parent" and root == self.producer
+                            and args[:2] == ("cat-file", "-p")):
+                        return f"tree {'b' * 40}\nparent {'0' * 40}\n\nGenerated binaries"
+                    if (mode == "binary-asset" and root == self.producer
+                            and args[:2] == ("ls-tree", PROVENANCE.PRODUCER_BINARY_COMMIT)):
+                        return f"100755 blob {'0' * 40}\t{args[3]}"
+                    return self.fake_git(root, *args)
+                self.git_mock.side_effect = altered
+                with self.assertRaisesRegex(ValueError, "gitlink|produced directly|binary commit"):
                     self.verify()
                 self.assertFalse(self.build_commands)
 

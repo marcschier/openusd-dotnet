@@ -48,6 +48,11 @@ jobs:
           ref: d8e3e2b141b8c8a167b2e3984736a6baacff316c
           path: .provenance/spirv-cross
           persist-credentials: false
+      - name: Fetch the binary and package source commits
+        run: |
+          git -C .provenance/silk-producer fetch --no-tags --depth=1 origin \
+            6305f138f92df6132e566072b62a3d8f41fba9aa \
+            94605142f7b7bd6e69c9201e8e721d245c69eb7e
       - name: Rebuild and compare the selected package asset
         shell: bash
         env:

@@ -74,12 +74,24 @@ def verify_checkout(root, expected_commit, label):
         raise ValueError(f"{label} checkout is not clean.")
 
 
-def verify_source_checkouts(producer, source):
+def verify_source_checkouts(producer, source, rid):
     verify_checkout(producer, PRODUCER_COMMIT, "Silk.NET producer")
     verify_checkout(source, PRODUCER_SOURCE_COMMIT, "SPIRV-Cross source")
     entry = git(producer, "ls-tree", "HEAD", "--", GITLINK_PATH)
     if entry != f"160000 commit {PRODUCER_SOURCE_COMMIT}\t{GITLINK_PATH}":
         raise ValueError("The producer's SPIRV-Cross gitlink does not match its source checkout.")
+    package_entry = git(producer, "ls-tree", PACKAGE_SOURCE_COMMIT, "--", GITLINK_PATH)
+    if package_entry != f"160000 commit {PACKAGE_SOURCE_GITLINK}\t{GITLINK_PATH}":
+        raise ValueError("The package commit's SPIRV-Cross gitlink does not match the recorded pin.")
+    binary_header = git(producer, "cat-file", "-p", PRODUCER_BINARY_COMMIT).split("\n\n", 1)[0]
+    parents = [line.removeprefix("parent ") for line in binary_header.splitlines()
+               if line.startswith("parent ")]
+    if parents != [PRODUCER_COMMIT]:
+        raise ValueError("The binary commit was not produced directly from the pinned producer.")
+    asset_path = f"src/Native/{PACKAGE_ID}/{TARGETS[rid]['package']}"
+    asset_entry = git(producer, "ls-tree", PRODUCER_BINARY_COMMIT, "--", asset_path)
+    if asset_entry != f"100755 blob {TARGETS[rid]['gitBlob']}\t{asset_path}":
+        raise ValueError(f"The {rid} package asset does not match the producer binary commit.")
 
 
 def verify_project(root, expected_commit):
@@ -229,7 +241,7 @@ def verify(*, project, project_commit, producer, source, package, zig_archive,
     if receipt.exists() or receipt.is_symlink():
         raise ValueError("The provenance receipt already exists.")
     verify_project(project, project_commit)
-    verify_source_checkouts(producer, source)
+    verify_source_checkouts(producer, source, rid)
     package_hash = verify_package(package, rid)
     recipe = get_recipe(producer)
     verify_zig(zig_archive, zig)
