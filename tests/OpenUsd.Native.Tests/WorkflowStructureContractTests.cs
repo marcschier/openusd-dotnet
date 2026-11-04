@@ -121,10 +121,18 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(run).Contains("Assert-MetalVolumeReproReport");
         await Assert.That(run).Contains("$reportTime -lt $started");
         await Assert.That(evidence).Contains("if: always()");
-        await Assert.That(consumer.IndexOf("      - name: Validate Metal payload identity", StringComparison.Ordinal))
-            .IsLessThan(consumer.IndexOf("      - name: Download source-bound Metal payload", StringComparison.Ordinal));
-        await Assert.That(consumer.IndexOf("      - name: Verify and unpack Metal payload", StringComparison.Ordinal))
-            .IsLessThan(consumer.IndexOf("      - name: Run targeted Metal volume reproduction", StringComparison.Ordinal));
+        await Assert.That(consumer.IndexOf(
+            "      - name: Validate Metal payload identity",
+            StringComparison.Ordinal))
+            .IsLessThan(consumer.IndexOf(
+                "      - name: Download source-bound Metal payload",
+                StringComparison.Ordinal));
+        await Assert.That(consumer.IndexOf(
+            "      - name: Verify and unpack Metal payload",
+            StringComparison.Ordinal))
+            .IsLessThan(consumer.IndexOf(
+                "      - name: Run targeted Metal volume reproduction",
+                StringComparison.Ordinal));
     }
 
     [Test]

@@ -325,7 +325,9 @@ public sealed class McpToolPackageTests
         try
         {
             await process.StandardInput.WriteLineAsync(
-                """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"packaged-consumer","version":"1.0"}}}""");
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{" +
+                "\"protocolVersion\":\"2025-03-26\",\"capabilities\":{}," +
+                "\"clientInfo\":{\"name\":\"packaged-consumer\",\"version\":\"1.0\"}}}");
             await process.StandardInput.FlushAsync();
             JsonElement initialized = await ReadProtocolResponseAsync(
                 process, standardError, 1, timeout.Token);

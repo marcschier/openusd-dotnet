@@ -53,7 +53,8 @@ public sealed partial class RuntimePackageTests
                 await File.WriteAllTextAsync(Path.Combine(consumerRoot, "Directory.Build.props"), "<Project />");
                 await File.WriteAllTextAsync(
                     Path.Combine(consumerRoot, "Directory.Packages.props"),
-                    "<Project><PropertyGroup><ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally></PropertyGroup></Project>");
+                    "<Project><PropertyGroup><ManagePackageVersionsCentrally>false" +
+                    "</ManagePackageVersionsCentrally></PropertyGroup></Project>");
                 File.Copy(
                     Path.Combine(repositoryRoot, "global.json"),
                     Path.Combine(consumerRoot, "global.json"));
