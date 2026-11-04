@@ -62,7 +62,7 @@ Common server configuration:
 | `OPENUSD_MCP_VIEWER_ROOT` | Optional root containing a compatible Viewer bundle. |
 | `OPENUSD_MCP_VIEWER_PATH` | Optional path to the Viewer executable. |
 | `OPENUSD_DXC_PATH` | Optional path to `dxc.exe` for generated D3D12 MaterialX shaders. |
-| `OPENUSD_SILK_SHADER_CACHE_DIR` | Optional absolute directory for the default shader cache and D3D12 compiler scratch. |
+| `OPENUSD_SILK_SHADER_CACHE_DIR` | Optional absolute directory for default shader caching and D3D12 compiler scratch. |
 | `OPENUSD_SILK_MESH_RESERVATION_BYTES` | Optional logical coarse-mesh reservation ceiling; requires the page ceiling. |
 | `OPENUSD_SILK_MAX_PAGE_BYTES` | Optional positive `Int32` serialized-page byte ceiling; requires the mesh ceiling. |
 | `OPENUSD_SILK_GPU_BUFFER_BYTES` | Optional shared logical RHI buffer payload ceiling; independent of native limits. |

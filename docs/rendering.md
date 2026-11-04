@@ -2356,8 +2356,8 @@ The check runs before preparing replacement volume and output resources; refusal
 image. Zero-opacity fields and disabled scene materials bypass this tint/exposure check. The Windows camera gate
 exercises uniform and sampled fields on retained and staged pages, including refusal, preserved state and corrected
 retry. It also compares overlapping equal-tint fields at tint `2e38` and densities from `1e-37` through `1e30` with
-independent composite references. Managed tests cover the exact float boundary; the gate does not prove that other admitted tint,
-exposure or integration arithmetic remains finite.
+independent composite references. Managed tests cover the exact float boundary; the gate does not prove that other
+admitted tint, exposure or integration arithmetic remains finite.
 
 Both volume fragments use precise floating-point mode and form the field-local step length before multiplying by
 density. This avoids an overflowing intermediate reproduced with a thin, high-density field on Vulkan SwiftShader.
