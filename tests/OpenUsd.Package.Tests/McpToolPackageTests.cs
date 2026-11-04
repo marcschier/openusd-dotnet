@@ -74,6 +74,8 @@ public sealed class McpToolPackageTests
                      "OPENUSD_PLUGIN_PATH",
                      "LD_LIBRARY_PATH",
                      "DYLD_LIBRARY_PATH",
+                     "spirv-cross.dll",
+                     "OPENUSD_DXC_PATH",
                      "OPENUSD_SILK_SHADER_CACHE_DIR",
                      "OPENUSD_SILK_MATERIAL_SHADER_COMPILATION_FAILED",
                      "eng/run-mcp.ps1",
