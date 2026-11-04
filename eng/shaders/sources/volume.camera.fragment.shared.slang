@@ -234,8 +234,7 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     }
 
     uint2 pixel = uint2(input.position.xy);
-    bool diagnosticPixel = pixel.x == 16u && pixel.y == 16u &&
-        volumeFields.Load<float>(112u) >= 1e20;
+    bool diagnosticPixel = pixel.x == 16u && pixel.y == 16u;
     bool yPointsDown = frameShape.w != 0u;
     float2 pixelCoordinate = (float2(pixel) + 0.5) /
         float2(frameShape.yz);
@@ -439,10 +438,10 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     if (diagnosticPixel)
     {
         return float4(
+            volumeFields.Load<float>(fieldOffsets[0] + 112u),
             densityScales[0],
             normalizedDensityIntegrals[0],
-            fieldOpticalDepth[0],
-            totalFieldOpticalDepth);
+            fieldOpticalDepth[0]);
     }
 
     if (totalFieldOpticalDepth <= SmallOpticalDepthThreshold)
