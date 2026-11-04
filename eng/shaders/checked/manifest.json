@@ -351,7 +351,7 @@
     },
     {
       "path": "eng/shaders/sources/volume.camera.fragment.shared.slang",
-      "sha256": "063dd7f71e3609da6d2df6d62241f8942eca2c1a03883e713c33928fa865b19d"
+      "sha256": "e2010fff037092d758d4b888b7eb02ef3704696b98a9949aaf59731f7dd663af"
     },
     {
       "path": "eng/shaders/sources/volume.camera.fragment.uniform.slang",
@@ -487,7 +487,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneState.cs",
-      "sha256": "a48d8529df1236d59d345fe174a6f951a4fdc53348eed581cec0863088abedd7"
+      "sha256": "7742264d7936b4733a0d918196adb15bacbd2d981a324c6e16097be18a7611e0"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSurfaceUniformWriter.cs",
@@ -8650,18 +8650,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.dxil",
-          "sha256": "6c6b834bd972cf44a1cc797e3c09f3c4123bd336c9a47e956c87c400a52d1c1f",
-          "size": 13860
+          "sha256": "a26cb655555c8e8f71a2dae4cc049fbe37b6dfba2ca42baa0a012fe49a937402",
+          "size": 14532
         },
         "spv": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.spv",
-          "sha256": "45e8528513fc025104b4f354415ae75cd6c6c3c99f536b289cc2caeaa06ac3b8",
-          "size": 28408
+          "sha256": "0756d0ae5b05ecea1e9793f1bd06b3bae28ad23c09f182bb04dc7c535f6e0256",
+          "size": 31352
         },
         "metal": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.metal",
-          "sha256": "11ef0c6f2456c687a29132efddad5cbfa688e79b845a91617eb190c94183eb79",
-          "size": 33586
+          "sha256": "e84452f921c2d4882648e21cbe5dea99515d2741b28c713e03fabb89407a0cef",
+          "size": 38814
         },
         "reflection.json": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.reflection.json",
@@ -8876,18 +8876,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.dxil",
-          "sha256": "89a33ebd963f30a8542e1afc2c5ce3d625d46f599911ae72fbfb120a741d56c8",
-          "size": 15748
+          "sha256": "db1dea70149d6c5b487aab1720e0a998261995a4d35b6087906c5c413ed9372d",
+          "size": 16460
         },
         "spv": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.spv",
-          "sha256": "19b3551556b583bb46ce7b9055e829bccbaa8819cd0effe73ff6ba1dce677386",
-          "size": 31904
+          "sha256": "af4020d81bea666e12dc8b31fd84b8b40297e87ad616438b584e8a8b462a5bf8",
+          "size": 34848
         },
         "metal": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.metal",
-          "sha256": "d711ffd4220b1ef8d94320314191751287c4eea1ed4967f4a6b7e38204a54d93",
-          "size": 38835
+          "sha256": "93a22194df2a896b857f5f81611ced9a86e039539553b7198a19e09a885b4986",
+          "size": 44215
         },
         "reflection.json": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.reflection.json",

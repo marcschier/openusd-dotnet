@@ -35,10 +35,10 @@ struct KernelContext_0
     uint field_0;
     uint stepCount_0;
     uint step_0;
-    float sum_0;
-    float3 accumulatedColor_0;
+    float power_0;
     float term_0;
-    uint field_1;
+    float sum_0;
+    uint order_0;
     thread KernelContext_0 kernelContext_0;
     (&kernelContext_0)->VolumeCameraParameters_0 = VolumeCameraParameters_1;
     (&kernelContext_0)->frameParameters_0 = frameParameters_1;
@@ -207,25 +207,26 @@ struct KernelContext_0
     }
     thread array<float, int(8)> entries_0;
     thread array<float, int(8)> exits_0;
-    thread array<float, int(8)> densityIntegrals_0;
+    thread array<float, int(8)> densityScales_0;
+    thread array<float, int(8)> normalizedDensityIntegrals_0;
     thread array<float, int(8)> fieldOpticalDepth_0;
     thread array<float3, int(8)> fieldTint_0;
     thread array<bool, int(8)> fieldEnabled_0;
     thread array<uint, int(8)> fieldOffsets_0;
     thread array<float, int(16)> events_0;
-    uint field_2 = 0U;
+    uint field_1 = 0U;
     uint eventCount_0 = 0U;
     for(;;)
     {
-        if(field_2 < _S4)
+        if(field_1 < _S4)
         {
         }
         else
         {
             break;
         }
-        uint _S47 = field_2 * 128U;
-        fieldOffsets_0[field_2] = _S47;
+        uint _S47 = field_1 * 128U;
+        fieldOffsets_0[field_1] = _S47;
         float _S48 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S47)>>2]);
         float _S49 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S47 + 4U)>>2]);
         float _S50 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S47 + 8U)>>2]);
@@ -301,40 +302,41 @@ struct KernelContext_0
         }
         if(hasActiveField_0)
         {
-            entries_0[field_2] = max(intervalStart_0, intervalStart_1);
-            exits_0[field_2] = min(intervalEnd_0, intervalEnd_1);
+            entries_0[field_1] = max(intervalStart_0, intervalStart_1);
+            exits_0[field_1] = min(intervalEnd_0, intervalEnd_1);
         }
         else
         {
-            entries_0[field_2] = 1.0f;
-            exits_0[field_2] = 0.0f;
+            entries_0[field_1] = 1.0f;
+            exits_0[field_1] = 0.0f;
         }
         uint _S73 = _S47 + 96U;
         float _S74 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S73)>>2]);
         float _S75 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S73 + 4U)>>2]);
         float _S76 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S73 + 8U)>>2]);
         float _S77 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S73 + 12U)>>2]);
-        fieldTint_0[field_2] = max(float3(_S74, _S75, _S76), float3(0.0f, 0.0f, 0.0f));
+        fieldTint_0[field_1] = max(float3(_S74, _S75, _S76), float3(0.0f, 0.0f, 0.0f));
         if((saturate(_S77)) > 0.0f)
         {
-            _S1 = (exits_0[field_2]) > entries_0[field_2];
+            _S1 = (exits_0[field_1]) > entries_0[field_1];
         }
         else
         {
             _S1 = false;
         }
-        fieldEnabled_0[field_2] = _S1;
-        densityIntegrals_0[field_2] = 0.0f;
-        fieldOpticalDepth_0[field_2] = 0.0f;
+        fieldEnabled_0[field_1] = _S1;
+        densityScales_0[field_1] = 0.0f;
+        normalizedDensityIntegrals_0[field_1] = 0.0f;
+        fieldOpticalDepth_0[field_1] = 0.0f;
         if(_S1)
         {
             uint eventCount_1 = eventCount_0 + 1U;
-            events_0[eventCount_0] = entries_0[field_2];
+            events_0[eventCount_0] = entries_0[field_1];
             uint _S78 = eventCount_1 + 1U;
-            events_0[eventCount_1] = exits_0[field_2];
+            events_0[eventCount_1] = exits_0[field_1];
             eventCount_0 = _S78;
         }
-        field_2 = field_2 + 1U;
+        field_1 = field_1 + 1U;
     }
     axis_0 = 1U;
     for(;;)
@@ -396,21 +398,21 @@ struct KernelContext_0
         array<uint, int(8)> _S86 = fieldOffsets_0;
         for(;;)
         {
-            field_2 = 0U;
+            field_1 = 0U;
             stepCount_0 = 0U;
             hasActiveField_0 = false;
             for(;;)
             {
-                if(field_2 < _S4)
+                if(field_1 < _S4)
                 {
                 }
                 else
                 {
                     break;
                 }
-                if(_S85[field_2])
+                if(_S85[field_1])
                 {
-                    _S1 = (_S83[field_2]) <= _S81;
+                    _S1 = (_S83[field_1]) <= _S81;
                 }
                 else
                 {
@@ -418,7 +420,7 @@ struct KernelContext_0
                 }
                 if(_S1)
                 {
-                    _S3 = (_S84[field_2]) >= _S82;
+                    _S3 = (_S84[field_1]) >= _S82;
                 }
                 else
                 {
@@ -426,12 +428,12 @@ struct KernelContext_0
                 }
                 if(_S3)
                 {
-                    uint _S87 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S86[field_2] + 92U)>>2]);
+                    uint _S87 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S86[field_1] + 92U)>>2]);
                     uint stepCount_1 = stepCount_0 + 2U * _S87;
                     hasActiveField_0 = true;
                     stepCount_0 = stepCount_1;
                 }
-                field_2 = field_2 + 1U;
+                field_1 = field_1 + 1U;
             }
             if(hasActiveField_0)
             {
@@ -546,113 +548,158 @@ struct KernelContext_0
                     intervalStart_0 = _S122;
                     break;
                 }
-                densityIntegrals_0[field_0] = densityIntegrals_0[field_0] + intervalStart_0 * localStepLength_0;
+                if(intervalStart_0 > densityScales_0[field_0])
+                {
+                    float previousScale_0 = densityScales_0[field_0];
+                    if((densityScales_0[field_0]) > 0.0f)
+                    {
+                        normalizedDensityIntegrals_0[field_0] = normalizedDensityIntegrals_0[field_0] * (previousScale_0 / intervalStart_0);
+                    }
+                    densityScales_0[field_0] = intervalStart_0;
+                    normalizedDensityIntegrals_0[field_0] = normalizedDensityIntegrals_0[field_0] + localStepLength_0;
+                }
+                else
+                {
+                    if((densityScales_0[field_0]) > 0.0f)
+                    {
+                        normalizedDensityIntegrals_0[field_0] = normalizedDensityIntegrals_0[field_0] + intervalStart_0 / densityScales_0[field_0] * localStepLength_0;
+                    }
+                }
                 field_0 = field_0 + 1U;
             }
             step_0 = step_0 + 1U;
         }
         cursor_0 = _S80;
     }
-    field_2 = 0U;
+    field_1 = 0U;
     for(;;)
     {
-        if(field_2 < _S4)
+        if(field_1 < _S4)
         {
         }
         else
         {
             break;
         }
-        float _S132 = as_type<float>((&kernelContext_0)->volumeFields_0[(fieldOffsets_0[field_2] + 108U)>>2]);
-        if(fieldEnabled_0[field_2])
+        float _S132 = as_type<float>((&kernelContext_0)->volumeFields_0[(fieldOffsets_0[field_1] + 108U)>>2]);
+        if(fieldEnabled_0[field_1])
         {
-            float _S133 = densityIntegrals_0[field_2];
+            float _S133 = densityScales_0[field_1];
+            float _S134 = normalizedDensityIntegrals_0[field_1];
             for(;;)
             {
-                float _S134 = max(0.0f, _S133);
-                float boundedOpacity_0 = saturate(_S132);
-                if(boundedOpacity_0 <= 0.0f)
+                float _S135 = max(0.0f, _S133);
+                float _S136 = max(0.0f, _S134);
+                if(_S135 <= 0.0f)
                 {
                     hasActiveField_0 = true;
                 }
                 else
                 {
-                    hasActiveField_0 = _S134 <= 0.0f;
+                    hasActiveField_0 = _S136 <= 0.0f;
                 }
                 if(hasActiveField_0)
                 {
                     intervalStart_0 = 0.0f;
                     break;
                 }
-                if(boundedOpacity_0 >= 1.0f)
+                if(_S135 >= (2.12676466649080537e+37f / _S136))
                 {
-                    intervalStart_0 = _S134;
-                    break;
+                    intervalStart_0 = 2.12676466649080537e+37f;
+                }
+                else
+                {
+                    intervalStart_0 = _S135 * _S136;
                 }
                 for(;;)
                 {
-                    float _S135 = max(_S134, 0.0f);
-                    if(_S135 >= 0.125f)
+                    float _S137 = max(0.0f, intervalStart_0);
+                    float boundedOpacity_0 = saturate(_S132);
+                    if(boundedOpacity_0 <= 0.0f)
                     {
-                        intervalStart_0 = 1.0f - exp(- _S135);
+                        _S1 = true;
+                    }
+                    else
+                    {
+                        _S1 = _S137 <= 0.0f;
+                    }
+                    if(_S1)
+                    {
+                        intervalEnd_0 = 0.0f;
                         break;
                     }
-                    field_0 = 2U;
-                    intervalEnd_0 = _S135;
-                    sum_0 = _S135;
-                    for(;;)
+                    if(boundedOpacity_0 >= 1.0f)
                     {
-                        if(field_0 <= 8U)
-                        {
-                        }
-                        else
-                        {
-                            break;
-                        }
-                        float term_1 = intervalEnd_0 * (_S135 / float(field_0));
-                        if((field_0 & 1U) != 0U)
-                        {
-                            intervalStart_0 = term_1;
-                        }
-                        else
-                        {
-                            intervalStart_0 = - term_1;
-                        }
-                        float sum_1 = sum_0 + intervalStart_0;
-                        field_0 = field_0 + 1U;
-                        intervalEnd_0 = term_1;
-                        sum_0 = sum_1;
-                    }
-                    intervalStart_0 = sum_0;
-                    break;
-                }
-                float removedFraction_0 = boundedOpacity_0 * intervalStart_0;
-                for(;;)
-                {
-                    if(removedFraction_0 >= 0.125f)
-                    {
-                        intervalEnd_0 = - log(1.0f - removedFraction_0);
+                        intervalEnd_0 = _S137;
                         break;
                     }
-                    field_0 = 2U;
-                    intervalEnd_0 = removedFraction_0;
-                    sum_0 = removedFraction_0;
                     for(;;)
                     {
-                        if(field_0 <= 8U)
+                        float _S138 = max(_S137, 0.0f);
+                        if(_S138 >= 0.125f)
                         {
-                        }
-                        else
-                        {
+                            intervalEnd_0 = 1.0f - exp(- _S138);
                             break;
                         }
-                        float power_0 = intervalEnd_0 * removedFraction_0;
-                        float sum_2 = sum_0 + power_0 / float(field_0);
-                        field_0 = field_0 + 1U;
-                        intervalEnd_0 = power_0;
-                        sum_0 = sum_2;
+                        order_0 = 2U;
+                        term_0 = _S138;
+                        sum_0 = _S138;
+                        for(;;)
+                        {
+                            if(order_0 <= 8U)
+                            {
+                            }
+                            else
+                            {
+                                break;
+                            }
+                            float term_1 = term_0 * (_S138 / float(order_0));
+                            if((order_0 & 1U) != 0U)
+                            {
+                                intervalEnd_0 = term_1;
+                            }
+                            else
+                            {
+                                intervalEnd_0 = - term_1;
+                            }
+                            float sum_1 = sum_0 + intervalEnd_0;
+                            order_0 = order_0 + 1U;
+                            term_0 = term_1;
+                            sum_0 = sum_1;
+                        }
+                        intervalEnd_0 = sum_0;
+                        break;
                     }
-                    intervalEnd_0 = sum_0;
+                    float removedFraction_0 = boundedOpacity_0 * intervalEnd_0;
+                    for(;;)
+                    {
+                        if(removedFraction_0 >= 0.125f)
+                        {
+                            power_0 = - log(1.0f - removedFraction_0);
+                            break;
+                        }
+                        order_0 = 2U;
+                        power_0 = removedFraction_0;
+                        sum_0 = removedFraction_0;
+                        for(;;)
+                        {
+                            if(order_0 <= 8U)
+                            {
+                            }
+                            else
+                            {
+                                break;
+                            }
+                            float power_1 = power_0 * removedFraction_0;
+                            float sum_2 = sum_0 + power_1 / float(order_0);
+                            order_0 = order_0 + 1U;
+                            power_0 = power_1;
+                            sum_0 = sum_2;
+                        }
+                        power_0 = sum_0;
+                        break;
+                    }
+                    intervalEnd_0 = power_0;
                     break;
                 }
                 intervalStart_0 = intervalEnd_0;
@@ -663,93 +710,126 @@ struct KernelContext_0
         {
             intervalStart_0 = 0.0f;
         }
-        fieldOpticalDepth_0[field_2] = intervalStart_0;
-        field_2 = field_2 + 1U;
+        fieldOpticalDepth_0[field_1] = intervalStart_0;
+        field_1 = field_1 + 1U;
     }
-    float3 _S136 = float3(0.0f, 0.0f, 0.0f);
-    cursor_0 = 0U;
+    float3 _S139 = float3(0.0f, 0.0f, 0.0f);
+    field_1 = 0U;
     intervalStart_0 = 0.0f;
-    float3 accumulatedColor_1 = _S136;
+    float3 integratedTintedOpticalDepth_0 = _S139;
     for(;;)
     {
-        uint _S137 = cursor_0 + 1U;
-        if(_S137 < eventCount_0)
+        if(field_1 < _S4)
         {
         }
         else
         {
             break;
         }
-        float _S138 = max(events_0[cursor_0], intervalStart_1);
-        float _S139 = min(events_0[_S137], intervalEnd_1);
-        if(_S139 <= _S138)
+        float totalFieldOpticalDepth_0 = intervalStart_0 + fieldOpticalDepth_0[field_1];
+        float3 integratedTintedOpticalDepth_1 = integratedTintedOpticalDepth_0 + fieldTint_0[field_1] * float3(fieldOpticalDepth_0[field_1]) ;
+        field_1 = field_1 + 1U;
+        intervalStart_0 = totalFieldOpticalDepth_0;
+        integratedTintedOpticalDepth_0 = integratedTintedOpticalDepth_1;
+    }
+    float3 outputColor_0;
+    float3 accumulatedColor_0;
+    if(intervalStart_0 <= 0.00100000004749745f)
+    {
+        if(intervalStart_0 <= 0.0f)
         {
-            intervalEnd_0 = intervalStart_0;
-            accumulatedColor_0 = accumulatedColor_1;
-            cursor_0 = _S137;
-            intervalStart_0 = intervalEnd_0;
-            accumulatedColor_1 = accumulatedColor_0;
-            continue;
+            pixelOutput_0 _S140 = { float4(0.0f, 0.0f, 0.0f, 0.0f) };
+            return _S140;
         }
-        thread array<bool, int(8)> active_0;
-        field_2 = 0U;
         for(;;)
         {
-            if(field_2 < _S4)
+            float _S141 = max(intervalStart_0, 0.0f);
+            if(_S141 >= 0.125f)
             {
-            }
-            else
-            {
+                intervalStart_1 = 1.0f - exp(- _S141);
                 break;
             }
-            if(fieldEnabled_0[field_2])
-            {
-                hasActiveField_0 = (densityIntegrals_0[field_2]) > 0.0f;
-            }
-            else
-            {
-                hasActiveField_0 = false;
-            }
-            if(hasActiveField_0)
-            {
-                _S1 = (entries_0[field_2]) <= _S138;
-            }
-            else
-            {
-                _S1 = false;
-            }
-            if(_S1)
-            {
-                _S3 = (exits_0[field_2]) >= _S139;
-            }
-            else
-            {
-                _S3 = false;
-            }
-            active_0[field_2] = _S3;
-            field_2 = field_2 + 1U;
-        }
-        array<float, int(8)> _S140 = entries_0;
-        array<float, int(8)> _S141 = exits_0;
-        array<bool, int(8)> _S142 = fieldEnabled_0;
-        array<uint, int(8)> _S143 = fieldOffsets_0;
-        for(;;)
-        {
-            field_0 = 0U;
-            stepCount_0 = 0U;
-            hasActiveField_0 = false;
+            order_0 = 2U;
+            term_0 = _S141;
+            sum_0 = _S141;
             for(;;)
             {
-                if(field_0 < _S4)
+                if(order_0 <= 8U)
                 {
                 }
                 else
                 {
                     break;
                 }
-                if(_S142[field_0])
+                float term_2 = term_0 * (_S141 / float(order_0));
+                if((order_0 & 1U) != 0U)
                 {
-                    _S1 = (_S140[field_0]) <= _S138;
+                    intervalStart_1 = term_2;
+                }
+                else
+                {
+                    intervalStart_1 = - term_2;
+                }
+                float sum_3 = sum_0 + intervalStart_1;
+                order_0 = order_0 + 1U;
+                term_0 = term_2;
+                sum_0 = sum_3;
+            }
+            intervalStart_1 = sum_0;
+            break;
+        }
+        float3 _S142 = integratedTintedOpticalDepth_0 * float3((intervalStart_1 / intervalStart_0)) ;
+        power_0 = intervalStart_0;
+        accumulatedColor_0 = _S142;
+    }
+    else
+    {
+        cursor_0 = 0U;
+        intervalEnd_0 = 0.0f;
+        outputColor_0 = _S139;
+        for(;;)
+        {
+            uint _S143 = cursor_0 + 1U;
+            if(_S143 < eventCount_0)
+            {
+            }
+            else
+            {
+                break;
+            }
+            float _S144 = max(events_0[cursor_0], intervalStart_1);
+            float _S145 = min(events_0[_S143], intervalEnd_1);
+            if(_S145 <= _S144)
+            {
+                power_0 = intervalEnd_0;
+                accumulatedColor_0 = outputColor_0;
+                cursor_0 = _S143;
+                intervalEnd_0 = power_0;
+                outputColor_0 = accumulatedColor_0;
+                continue;
+            }
+            thread array<bool, int(8)> active_0;
+            field_1 = 0U;
+            for(;;)
+            {
+                if(field_1 < _S4)
+                {
+                }
+                else
+                {
+                    break;
+                }
+                if(fieldEnabled_0[field_1])
+                {
+                    hasActiveField_0 = (normalizedDensityIntegrals_0[field_1]) > 0.0f;
+                }
+                else
+                {
+                    hasActiveField_0 = false;
+                }
+                if(hasActiveField_0)
+                {
+                    _S1 = (entries_0[field_1]) <= _S144;
                 }
                 else
                 {
@@ -757,253 +837,292 @@ struct KernelContext_0
                 }
                 if(_S1)
                 {
-                    _S3 = (_S141[field_0]) >= _S139;
+                    _S3 = (exits_0[field_1]) >= _S145;
                 }
                 else
                 {
                     _S3 = false;
                 }
-                if(_S3)
-                {
-                    uint _S144 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S143[field_0] + 92U)>>2]);
-                    uint stepCount_2 = stepCount_0 + 2U * _S144;
-                    hasActiveField_0 = true;
-                    stepCount_0 = stepCount_2;
-                }
-                field_0 = field_0 + 1U;
+                active_0[field_1] = _S3;
+                field_1 = field_1 + 1U;
             }
-            if(hasActiveField_0)
-            {
-                planeIndex_0 = max(1U, stepCount_0);
-            }
-            else
-            {
-                planeIndex_0 = 0U;
-            }
-            break;
-        }
-        if(planeIndex_0 == 0U)
-        {
-            intervalEnd_0 = intervalStart_0;
-            accumulatedColor_0 = accumulatedColor_1;
-            cursor_0 = _S137;
-            intervalStart_0 = intervalEnd_0;
-            accumulatedColor_1 = accumulatedColor_0;
-            continue;
-        }
-        float _S145 = (_S139 - _S138) / float(planeIndex_0);
-        step_0 = 0U;
-        intervalEnd_0 = intervalStart_0;
-        accumulatedColor_0 = accumulatedColor_1;
-        for(;;)
-        {
-            if(step_0 < planeIndex_0)
-            {
-            }
-            else
-            {
-                break;
-            }
-            float _S146 = _S138 + (float(step_0) + 0.5f) * _S145;
-            thread array<float, int(8)> fieldDepths_0;
-            uint field_3 = 0U;
-            sum_0 = 0.0f;
+            array<float, int(8)> _S146 = entries_0;
+            array<float, int(8)> _S147 = exits_0;
+            array<bool, int(8)> _S148 = fieldEnabled_0;
+            array<uint, int(8)> _S149 = fieldOffsets_0;
             for(;;)
             {
-                if(field_3 < _S4)
-                {
-                }
-                else
-                {
-                    break;
-                }
-                fieldDepths_0[field_3] = 0.0f;
-                if(!active_0[field_3])
-                {
-                    field_3 = field_3 + 1U;
-                    continue;
-                }
-                uint _S147 = fieldOffsets_0[field_3];
-                float _S148 = as_type<float>((&kernelContext_0)->volumeFields_0[(fieldOffsets_0[field_3])>>2]);
-                float _S149 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 4U)>>2]);
-                float _S150 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 8U)>>2]);
-                float _S151 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 12U)>>2]);
-                float4 _S152 = float4(_S148, _S149, _S150, _S151);
-                float _S153 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 16U)>>2]);
-                float _S154 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 20U)>>2]);
-                float _S155 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 24U)>>2]);
-                float _S156 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 28U)>>2]);
-                float4 _S157 = float4(_S153, _S154, _S155, _S156);
-                float _S158 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 32U)>>2]);
-                float _S159 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 36U)>>2]);
-                float _S160 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 40U)>>2]);
-                float _S161 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 44U)>>2]);
-                float4 _S162 = float4(_S158, _S159, _S160, _S161);
-                float _S163 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 48U)>>2]);
-                float _S164 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 52U)>>2]);
-                float _S165 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 56U)>>2]);
-                float _S166 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S147 + 60U)>>2]);
-                matrix<float,int(4),int(4)>  _S167 = matrix<float,int(4),int(4)> (_S152, _S157, _S162, float4(_S163, _S164, _S165, _S166));
-                float3 _S168 = (((float4(rayDirection_0, 0.0f)) * (_S167))).xyz;
-                float3 objectPosition_1 = (((float4(rayOrigin_0, 1.0f)) * (_S167))).xyz + _S168 * float3(_S146) ;
-                uint _S169 = fieldOffsets_0[field_3];
+                field_0 = 0U;
+                stepCount_0 = 0U;
+                hasActiveField_0 = false;
                 for(;;)
                 {
-                    uint _S170 = _S169 + 80U;
-                    uint _S171 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S170)>>2]);
-                    uint _S172 = _S170 + 4U;
-                    uint _S173 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S172)>>2]);
-                    uint _S174 = _S170 + 8U;
-                    uint _S175 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S174)>>2]);
-                    uint _S176 = _S170 + 12U;
-                    uint _S177 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S176)>>2]);
-                    float _S178 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S169 + 112U)>>2]);
-                    float _S179 = max(0.0f, _S178);
-                    if((_S175 & 1U) != 0U)
-                    {
-                        float3 localCoordinate_1 = saturate(objectPosition_1 + float3(0.5f, 0.5f, 0.5f));
-                        uint _S180 = _S169 + 64U;
-                        uint _S181 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S180)>>2]);
-                        uint _S182 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S180 + 4U)>>2]);
-                        uint _S183 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S180 + 8U)>>2]);
-                        uint _S184 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S180 + 12U)>>2]);
-                        uint _S185 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S170)>>2]);
-                        uint _S186 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S172)>>2]);
-                        uint _S187 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S174)>>2]);
-                        uint _S188 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S176)>>2]);
-                        term_0 = max(0.0f, (((&kernelContext_0)->densityAtlas_0).sample(((&kernelContext_0)->densitySampler_0), ((float3(uint3(_S181, _S182, _S183)) + localCoordinate_1 * float3(float(_S185), float(_S186), float(_S184))) / float3((&kernelContext_0)->VolumeCameraParameters_0->atlasShape_0.xyz)), level((0.0f))).x)) * _S179;
-                        break;
-                    }
-                    term_0 = _S179;
-                    break;
-                }
-                float _S189 = fieldOpticalDepth_0[field_3] * (term_0 / densityIntegrals_0[field_3] * (length(_S168) * _S145));
-                fieldDepths_0[field_3] = _S189;
-                sum_0 = sum_0 + _S189;
-                field_3 = field_3 + 1U;
-            }
-            if(sum_0 > 0.0f)
-            {
-                float transmittance_0 = exp(- intervalEnd_0);
-                for(;;)
-                {
-                    float _S190 = max(sum_0, 0.0f);
-                    if(_S190 >= 0.125f)
-                    {
-                        term_0 = 1.0f - exp(- _S190);
-                        break;
-                    }
-                    field_1 = 2U;
-                    term_0 = _S190;
-                    float sum_3 = _S190;
-                    for(;;)
-                    {
-                        if(field_1 <= 8U)
-                        {
-                        }
-                        else
-                        {
-                            break;
-                        }
-                        float term_2 = term_0 * (_S190 / float(field_1));
-                        float _S191;
-                        if((field_1 & 1U) != 0U)
-                        {
-                            _S191 = term_2;
-                        }
-                        else
-                        {
-                            _S191 = - term_2;
-                        }
-                        float sum_4 = sum_3 + _S191;
-                        field_1 = field_1 + 1U;
-                        term_0 = term_2;
-                        sum_3 = sum_4;
-                    }
-                    term_0 = sum_3;
-                    break;
-                }
-                field_1 = 0U;
-                float3 source_0 = _S136;
-                for(;;)
-                {
-                    if(field_1 < _S4)
+                    if(field_0 < _S4)
                     {
                     }
                     else
                     {
                         break;
                     }
-                    if((fieldDepths_0[field_1]) > 0.0f)
+                    if(_S148[field_0])
                     {
-                        source_0 = source_0 + fieldTint_0[field_1] * float3((fieldDepths_0[field_1] / sum_0)) ;
+                        _S1 = (_S146[field_0]) <= _S144;
                     }
-                    field_1 = field_1 + 1U;
+                    else
+                    {
+                        _S1 = false;
+                    }
+                    if(_S1)
+                    {
+                        _S3 = (_S147[field_0]) >= _S145;
+                    }
+                    else
+                    {
+                        _S3 = false;
+                    }
+                    if(_S3)
+                    {
+                        uint _S150 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S149[field_0] + 92U)>>2]);
+                        uint stepCount_2 = stepCount_0 + 2U * _S150;
+                        hasActiveField_0 = true;
+                        stepCount_0 = stepCount_2;
+                    }
+                    field_0 = field_0 + 1U;
                 }
-                float3 accumulatedColor_2 = accumulatedColor_0 + float3((transmittance_0 * term_0))  * source_0;
-                intervalEnd_0 = intervalEnd_0 + sum_0;
-                accumulatedColor_0 = accumulatedColor_2;
+                if(hasActiveField_0)
+                {
+                    planeIndex_0 = max(1U, stepCount_0);
+                }
+                else
+                {
+                    planeIndex_0 = 0U;
+                }
+                break;
             }
-            step_0 = step_0 + 1U;
+            if(planeIndex_0 == 0U)
+            {
+                power_0 = intervalEnd_0;
+                accumulatedColor_0 = outputColor_0;
+                cursor_0 = _S143;
+                intervalEnd_0 = power_0;
+                outputColor_0 = accumulatedColor_0;
+                continue;
+            }
+            float _S151 = (_S145 - _S144) / float(planeIndex_0);
+            step_0 = 0U;
+            power_0 = intervalEnd_0;
+            accumulatedColor_0 = outputColor_0;
+            for(;;)
+            {
+                if(step_0 < planeIndex_0)
+                {
+                }
+                else
+                {
+                    break;
+                }
+                float _S152 = _S144 + (float(step_0) + 0.5f) * _S151;
+                thread array<float, int(8)> fieldDepths_0;
+                uint field_2 = 0U;
+                float opticalDepth_0 = 0.0f;
+                for(;;)
+                {
+                    if(field_2 < _S4)
+                    {
+                    }
+                    else
+                    {
+                        break;
+                    }
+                    fieldDepths_0[field_2] = 0.0f;
+                    if(!active_0[field_2])
+                    {
+                        field_2 = field_2 + 1U;
+                        continue;
+                    }
+                    uint _S153 = fieldOffsets_0[field_2];
+                    float _S154 = as_type<float>((&kernelContext_0)->volumeFields_0[(fieldOffsets_0[field_2])>>2]);
+                    float _S155 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 4U)>>2]);
+                    float _S156 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 8U)>>2]);
+                    float _S157 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 12U)>>2]);
+                    float4 _S158 = float4(_S154, _S155, _S156, _S157);
+                    float _S159 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 16U)>>2]);
+                    float _S160 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 20U)>>2]);
+                    float _S161 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 24U)>>2]);
+                    float _S162 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 28U)>>2]);
+                    float4 _S163 = float4(_S159, _S160, _S161, _S162);
+                    float _S164 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 32U)>>2]);
+                    float _S165 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 36U)>>2]);
+                    float _S166 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 40U)>>2]);
+                    float _S167 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 44U)>>2]);
+                    float4 _S168 = float4(_S164, _S165, _S166, _S167);
+                    float _S169 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 48U)>>2]);
+                    float _S170 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 52U)>>2]);
+                    float _S171 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 56U)>>2]);
+                    float _S172 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S153 + 60U)>>2]);
+                    matrix<float,int(4),int(4)>  _S173 = matrix<float,int(4),int(4)> (_S158, _S163, _S168, float4(_S169, _S170, _S171, _S172));
+                    float3 _S174 = (((float4(rayDirection_0, 0.0f)) * (_S173))).xyz;
+                    float3 objectPosition_1 = (((float4(rayOrigin_0, 1.0f)) * (_S173))).xyz + _S174 * float3(_S152) ;
+                    uint _S175 = fieldOffsets_0[field_2];
+                    for(;;)
+                    {
+                        uint _S176 = _S175 + 80U;
+                        uint _S177 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S176)>>2]);
+                        uint _S178 = _S176 + 4U;
+                        uint _S179 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S178)>>2]);
+                        uint _S180 = _S176 + 8U;
+                        uint _S181 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S180)>>2]);
+                        uint _S182 = _S176 + 12U;
+                        uint _S183 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S182)>>2]);
+                        float _S184 = as_type<float>((&kernelContext_0)->volumeFields_0[(_S175 + 112U)>>2]);
+                        float _S185 = max(0.0f, _S184);
+                        if((_S181 & 1U) != 0U)
+                        {
+                            float3 localCoordinate_1 = saturate(objectPosition_1 + float3(0.5f, 0.5f, 0.5f));
+                            uint _S186 = _S175 + 64U;
+                            uint _S187 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S186)>>2]);
+                            uint _S188 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S186 + 4U)>>2]);
+                            uint _S189 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S186 + 8U)>>2]);
+                            uint _S190 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S186 + 12U)>>2]);
+                            uint _S191 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S176)>>2]);
+                            uint _S192 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S178)>>2]);
+                            uint _S193 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S180)>>2]);
+                            uint _S194 = as_type<uint>((&kernelContext_0)->volumeFields_0[(_S182)>>2]);
+                            intervalStart_0 = max(0.0f, (((&kernelContext_0)->densityAtlas_0).sample(((&kernelContext_0)->densitySampler_0), ((float3(uint3(_S187, _S188, _S189)) + localCoordinate_1 * float3(float(_S191), float(_S192), float(_S190))) / float3((&kernelContext_0)->VolumeCameraParameters_0->atlasShape_0.xyz)), level((0.0f))).x)) * _S185;
+                            break;
+                        }
+                        intervalStart_0 = _S185;
+                        break;
+                    }
+                    float _S195 = fieldOpticalDepth_0[field_2] * (intervalStart_0 / densityScales_0[field_2] * (length(_S174) * _S151) / normalizedDensityIntegrals_0[field_2]);
+                    fieldDepths_0[field_2] = _S195;
+                    opticalDepth_0 = opticalDepth_0 + _S195;
+                    field_2 = field_2 + 1U;
+                }
+                if(opticalDepth_0 > 0.0f)
+                {
+                    float transmittance_0 = exp(- power_0);
+                    for(;;)
+                    {
+                        float _S196 = max(opticalDepth_0, 0.0f);
+                        if(_S196 >= 0.125f)
+                        {
+                            intervalStart_0 = 1.0f - exp(- _S196);
+                            break;
+                        }
+                        order_0 = 2U;
+                        term_0 = _S196;
+                        sum_0 = _S196;
+                        for(;;)
+                        {
+                            if(order_0 <= 8U)
+                            {
+                            }
+                            else
+                            {
+                                break;
+                            }
+                            float term_3 = term_0 * (_S196 / float(order_0));
+                            if((order_0 & 1U) != 0U)
+                            {
+                                intervalStart_0 = term_3;
+                            }
+                            else
+                            {
+                                intervalStart_0 = - term_3;
+                            }
+                            float sum_4 = sum_0 + intervalStart_0;
+                            order_0 = order_0 + 1U;
+                            term_0 = term_3;
+                            sum_0 = sum_4;
+                        }
+                        intervalStart_0 = sum_0;
+                        break;
+                    }
+                    order_0 = 0U;
+                    float3 source_0 = _S139;
+                    for(;;)
+                    {
+                        if(order_0 < _S4)
+                        {
+                        }
+                        else
+                        {
+                            break;
+                        }
+                        if((fieldDepths_0[order_0]) > 0.0f)
+                        {
+                            source_0 = source_0 + fieldTint_0[order_0] * float3((fieldDepths_0[order_0] / opticalDepth_0)) ;
+                        }
+                        order_0 = order_0 + 1U;
+                    }
+                    float3 accumulatedColor_1 = accumulatedColor_0 + float3((transmittance_0 * intervalStart_0))  * source_0;
+                    power_0 = power_0 + opticalDepth_0;
+                    accumulatedColor_0 = accumulatedColor_1;
+                }
+                step_0 = step_0 + 1U;
+            }
+            cursor_0 = _S143;
+            intervalEnd_0 = power_0;
+            outputColor_0 = accumulatedColor_0;
         }
-        cursor_0 = _S137;
-        intervalStart_0 = intervalEnd_0;
-        accumulatedColor_1 = accumulatedColor_0;
+        power_0 = intervalEnd_0;
+        accumulatedColor_0 = outputColor_0;
     }
-    if(intervalStart_0 <= 0.0f)
+    if(power_0 <= 0.0f)
     {
-        pixelOutput_0 _S192 = { float4(0.0f, 0.0f, 0.0f, 0.0f) };
-        return _S192;
+        pixelOutput_0 _S197 = { float4(0.0f, 0.0f, 0.0f, 0.0f) };
+        return _S197;
     }
     for(;;)
     {
-        float _S193 = max(intervalStart_0, 0.0f);
-        if(_S193 >= 0.125f)
+        float _S198 = max(power_0, 0.0f);
+        if(_S198 >= 0.125f)
         {
-            intervalStart_1 = 1.0f - exp(- _S193);
+            intervalStart_1 = 1.0f - exp(- _S198);
             break;
         }
-        field_0 = 2U;
-        intervalEnd_0 = _S193;
-        sum_0 = _S193;
+        order_0 = 2U;
+        term_0 = _S198;
+        sum_0 = _S198;
         for(;;)
         {
-            if(field_0 <= 8U)
+            if(order_0 <= 8U)
             {
             }
             else
             {
                 break;
             }
-            float term_3 = intervalEnd_0 * (_S193 / float(field_0));
-            if((field_0 & 1U) != 0U)
+            float term_4 = term_0 * (_S198 / float(order_0));
+            if((order_0 & 1U) != 0U)
             {
-                intervalStart_1 = term_3;
+                intervalStart_1 = term_4;
             }
             else
             {
-                intervalStart_1 = - term_3;
+                intervalStart_1 = - term_4;
             }
             float sum_5 = sum_0 + intervalStart_1;
-            field_0 = field_0 + 1U;
-            intervalEnd_0 = term_3;
+            order_0 = order_0 + 1U;
+            term_0 = term_4;
             sum_0 = sum_5;
         }
         intervalStart_1 = sum_0;
         break;
     }
-    float3 outputColor_0 = accumulatedColor_1 / float3(intervalStart_1) ;
-    uint _S194 = as_type<uint>((&kernelContext_0)->frameParameters_0[(72U)>>2]);
-    float3 outputColor_1 = outputColor_0 * float3(exp2((as_type<float>((_S194))))) ;
-    uint _S195 = as_type<uint>((&kernelContext_0)->frameParameters_0[(68U)>>2]);
-    if(_S195 == 1U)
+    float3 outputColor_1 = accumulatedColor_0 / float3(intervalStart_1) ;
+    uint _S199 = as_type<uint>((&kernelContext_0)->frameParameters_0[(72U)>>2]);
+    float3 outputColor_2 = outputColor_1 * float3(exp2((as_type<float>((_S199))))) ;
+    uint _S200 = as_type<uint>((&kernelContext_0)->frameParameters_0[(68U)>>2]);
+    if(_S200 == 1U)
     {
-        accumulatedColor_0 = outputColor_1 / (float3(1.0f)  + max(outputColor_1, _S136));
+        outputColor_0 = outputColor_2 / (float3(1.0f)  + max(outputColor_2, _S139));
     }
     else
     {
-        accumulatedColor_0 = outputColor_1;
+        outputColor_0 = outputColor_2;
     }
-    pixelOutput_0 _S196 = { float4(accumulatedColor_0, intervalStart_1) };
-    return _S196;
+    pixelOutput_0 _S201 = { float4(outputColor_0, intervalStart_1) };
+    return _S201;
 }

@@ -8,6 +8,10 @@ static const uint MaximumFields = 8u;
 static const uint MaximumEvents = MaximumFields * 2u;
 static const uint FieldTableOffset = 0u;
 static const uint FieldStride = 128u;
+// Reserve headroom for summing optical depth from all eight fields.
+static const float MaximumFieldOpticalDepth = 3.402823466e38 / 16.0;
+// Ignoring sample order below this depth keeps relative color error near 0.1%.
+static const float SmallOpticalDepthThreshold = 0.001;
 
 [[vk::binding(0, 0)]]
 cbuffer VolumeCameraParameters : register(b0)
@@ -100,6 +104,26 @@ float IsolatedFieldOpticalDepth(float densityIntegral, float opacity)
     float removedFraction =
         boundedOpacity * OneMinusExpNegative(nonnegativeDensityIntegral);
     return NegativeLogOneMinus(removedFraction);
+}
+
+[ForceInline]
+float ScaledIsolatedFieldOpticalDepth(
+    float densityScale,
+    float normalizedDensityIntegral,
+    float opacity)
+{
+    float nonnegativeDensityScale = max(0.0, densityScale);
+    float nonnegativeNormalizedIntegral = max(0.0, normalizedDensityIntegral);
+    if (nonnegativeDensityScale <= 0.0 || nonnegativeNormalizedIntegral <= 0.0)
+    {
+        return 0.0;
+    }
+
+    float densityIntegral = nonnegativeDensityScale >=
+        MaximumFieldOpticalDepth / nonnegativeNormalizedIntegral
+        ? MaximumFieldOpticalDepth
+        : nonnegativeDensityScale * nonnegativeNormalizedIntegral;
+    return IsolatedFieldOpticalDepth(densityIntegral, opacity);
 }
 
 [ForceInline]
@@ -278,7 +302,8 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
 
     float entries[MaximumFields];
     float exits[MaximumFields];
-    float densityIntegrals[MaximumFields];
+    float densityScales[MaximumFields];
+    float normalizedDensityIntegrals[MaximumFields];
     float fieldOpticalDepth[MaximumFields];
     float3 fieldTint[MaximumFields];
     bool fieldEnabled[MaximumFields];
@@ -309,7 +334,8 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
         float opacity = saturate(tintOpacity.a);
         fieldEnabled[field] =
             opacity > 0.0 && exits[field] > entries[field];
-        densityIntegrals[field] = 0.0;
+        densityScales[field] = 0.0;
+        normalizedDensityIntegrals[field] = 0.0;
         fieldOpticalDepth[field] = 0.0;
         if (fieldEnabled[field])
         {
@@ -369,7 +395,22 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
                 float3 objectPosition = fieldOrigin + (fieldDirection * distance);
                 // Form the field-local step before density so a thin field cannot overflow the intermediate product.
                 float localStepLength = length(fieldDirection) * stepLength;
-                densityIntegrals[field] += DensityAt(fieldOffsets[field], objectPosition) * localStepLength;
+                float density = DensityAt(fieldOffsets[field], objectPosition);
+                if (density > densityScales[field])
+                {
+                    float previousScale = densityScales[field];
+                    if (previousScale > 0.0)
+                    {
+                        normalizedDensityIntegrals[field] *= previousScale / density;
+                    }
+                    densityScales[field] = density;
+                    normalizedDensityIntegrals[field] += localStepLength;
+                }
+                else if (densityScales[field] > 0.0)
+                {
+                    normalizedDensityIntegrals[field] +=
+                        (density / densityScales[field]) * localStepLength;
+                }
             }
         }
     }
@@ -378,80 +419,106 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     {
         float opacity = volumeFields.Load<float>(fieldOffsets[field] + 108u);
         fieldOpticalDepth[field] = fieldEnabled[field]
-            ? IsolatedFieldOpticalDepth(densityIntegrals[field], opacity)
+            ? ScaledIsolatedFieldOpticalDepth(
+                densityScales[field],
+                normalizedDensityIntegrals[field],
+                opacity)
             : 0.0;
     }
 
     float3 accumulatedColor = float3(0.0, 0.0, 0.0);
     float accumulatedOpticalDepth = 0.0;
-    for (uint eventIndex = 0u; eventIndex + 1u < eventCount; eventIndex++)
+    float totalFieldOpticalDepth = 0.0;
+    float3 integratedTintedOpticalDepth = float3(0.0, 0.0, 0.0);
+    for (uint field = 0u; field < fieldCount; field++)
     {
-        float segmentStart = max(events[eventIndex], intervalStart);
-        float segmentEnd = min(events[eventIndex + 1u], intervalEnd);
-        if (segmentEnd <= segmentStart)
-        {
-            continue;
-        }
+        totalFieldOpticalDepth += fieldOpticalDepth[field];
+        integratedTintedOpticalDepth += fieldTint[field] * fieldOpticalDepth[field];
+    }
 
-        bool active[MaximumFields];
-        for (uint field = 0u; field < fieldCount; field++)
+    if (totalFieldOpticalDepth <= SmallOpticalDepthThreshold)
+    {
+        if (totalFieldOpticalDepth <= 0.0)
         {
-            active[field] = fieldEnabled[field] &&
-                densityIntegrals[field] > 0.0 &&
-                entries[field] <= segmentStart &&
-                exits[field] >= segmentEnd;
+            return float4(0.0, 0.0, 0.0, 0.0);
         }
-        uint stepCount = SegmentStepCount(
-            fieldCount,
-            segmentStart,
-            segmentEnd,
-            entries,
-            exits,
-            fieldEnabled,
-            fieldOffsets);
-        if (stepCount == 0u)
+        float outputOpacity = OneMinusExpNegative(totalFieldOpticalDepth);
+        accumulatedColor =
+            integratedTintedOpticalDepth * (outputOpacity / totalFieldOpticalDepth);
+        accumulatedOpticalDepth = totalFieldOpticalDepth;
+    }
+    else
+    {
+        for (uint eventIndex = 0u; eventIndex + 1u < eventCount; eventIndex++)
         {
-            continue;
-        }
+            float segmentStart = max(events[eventIndex], intervalStart);
+            float segmentEnd = min(events[eventIndex + 1u], intervalEnd);
+            if (segmentEnd <= segmentStart)
+            {
+                continue;
+            }
 
-        float stepLength = (segmentEnd - segmentStart) / stepCount;
-        for (uint step = 0u; step < stepCount; step++)
-        {
-            float distance = SegmentSampleDistance(segmentStart, stepLength, step);
-            float opticalDepth = 0.0;
-            float fieldDepths[MaximumFields];
+            bool active[MaximumFields];
             for (uint field = 0u; field < fieldCount; field++)
             {
-                fieldDepths[field] = 0.0;
-                if (!active[field])
-                {
-                    continue;
-                }
-                float4x4 eyeToObject = volumeFields.Load<float4x4>(fieldOffsets[field]);
-                float3 objectOrigin = ToObjectPoint(eyeToObject, rayOrigin);
-                float3 objectDirection = ToObjectDirection(eyeToObject, rayDirection);
-                float3 objectPosition = objectOrigin + (objectDirection * distance);
-                float density = DensityAt(fieldOffsets[field], objectPosition);
-                float localStepLength = length(objectDirection) * stepLength;
-                float densityFraction = density / densityIntegrals[field];
-                float stepFraction = densityFraction * localStepLength;
-                fieldDepths[field] = fieldOpticalDepth[field] * stepFraction;
-                opticalDepth += fieldDepths[field];
+                active[field] = fieldEnabled[field] &&
+                    normalizedDensityIntegrals[field] > 0.0 &&
+                    entries[field] <= segmentStart &&
+                    exits[field] >= segmentEnd;
             }
-            if (opticalDepth > 0.0)
+            uint stepCount = SegmentStepCount(
+                fieldCount,
+                segmentStart,
+                segmentEnd,
+                entries,
+                exits,
+                fieldEnabled,
+                fieldOffsets);
+            if (stepCount == 0u)
             {
-                float transmittance = exp(-accumulatedOpticalDepth);
-                float alpha = OneMinusExpNegative(opticalDepth);
-                float3 source = float3(0.0, 0.0, 0.0);
+                continue;
+            }
+
+            float stepLength = (segmentEnd - segmentStart) / stepCount;
+            for (uint step = 0u; step < stepCount; step++)
+            {
+                float distance = SegmentSampleDistance(segmentStart, stepLength, step);
+                float opticalDepth = 0.0;
+                float fieldDepths[MaximumFields];
                 for (uint field = 0u; field < fieldCount; field++)
                 {
-                    if (fieldDepths[field] > 0.0)
+                    fieldDepths[field] = 0.0;
+                    if (!active[field])
                     {
-                        source += fieldTint[field] * (fieldDepths[field] / opticalDepth);
+                        continue;
                     }
+                    float4x4 eyeToObject = volumeFields.Load<float4x4>(fieldOffsets[field]);
+                    float3 objectOrigin = ToObjectPoint(eyeToObject, rayOrigin);
+                    float3 objectDirection = ToObjectDirection(eyeToObject, rayDirection);
+                    float3 objectPosition = objectOrigin + (objectDirection * distance);
+                    float density = DensityAt(fieldOffsets[field], objectPosition);
+                    float localStepLength = length(objectDirection) * stepLength;
+                    float densityFraction = density / densityScales[field];
+                    float stepFraction =
+                        (densityFraction * localStepLength) / normalizedDensityIntegrals[field];
+                    fieldDepths[field] = fieldOpticalDepth[field] * stepFraction;
+                    opticalDepth += fieldDepths[field];
                 }
-                accumulatedColor += transmittance * alpha * source;
-                accumulatedOpticalDepth += opticalDepth;
+                if (opticalDepth > 0.0)
+                {
+                    float transmittance = exp(-accumulatedOpticalDepth);
+                    float alpha = OneMinusExpNegative(opticalDepth);
+                    float3 source = float3(0.0, 0.0, 0.0);
+                    for (uint field = 0u; field < fieldCount; field++)
+                    {
+                        if (fieldDepths[field] > 0.0)
+                        {
+                            source += fieldTint[field] * (fieldDepths[field] / opticalDepth);
+                        }
+                    }
+                    accumulatedColor += transmittance * alpha * source;
+                    accumulatedOpticalDepth += opticalDepth;
+                }
             }
         }
     }

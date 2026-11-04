@@ -96,24 +96,33 @@ the sample maxima and subnormal-sample flag with its CPU reservation and checks
 them against the current scale, opacity and workload before reuse. For fields
 that can contribute, admission refuses subnormal density scales, opacities or
 samples. It also refuses a unit-ray optical depth below the smallest normal float
-times the maximum steps in a segment. This rejects the reproduced black output
-for very small density and opacity, but does not establish a lower bound for
-shorter clipped rays or interpolated samples. Admission also refuses a non-finite
-exposure or tint, an exposure scale above `float.MaxValue`, or a nonnegative tint/scale product above
-that limit. When a display transform is requested, it uses the larger of 1 and
-`2^exposure` because rendering can fall back to the direct path. The shader
-applies exposure before alpha blending, so this check can refuse a final
-composite that would fit. These checks do not prove that density integrals, tint
-accumulation or exposure remain finite for all admitted inputs.
+times the maximum steps in a segment. This bound does not establish a lower
+bound for shorter clipped rays or interpolated samples. Admission also refuses
+a non-finite exposure or tint, an exposure scale above `float.MaxValue`, or a
+nonnegative tint/scale product above that limit. When a display transform is
+requested, it uses the larger of 1 and `2^exposure` because rendering can fall
+back to the direct path. The shader applies exposure before alpha blending, so
+this check can refuse a final composite that would fit. The ray, local-step,
+tint and exposure arithmetic still lacks a finite-domain proof for every
+admitted input.
 
-Both fragments use precise floating-point mode. The density-integral pass forms
-the field-local step before multiplying by density, avoiding the overflowing
-intermediate reproduced for a thin, high-density field on Vulkan SwiftShader.
-The per-step optical-depth pass divides sampled density by the line integral
-before applying the field-local step and field optical depth, so density is not
-multiplied by the step length before normalization. D3D12 and Vulkan pass the
-high-tint cases. The latest hosted Metal run failed those cases at densities
-`1e-37`, `1e-20`, and `1e30`; the updated source has not yet been rerun on Metal.
+Both fragments use precise floating-point mode. For each ray and field, the
+density pass tracks the maximum sampled density and integrates local step
+lengths weighted by density divided by that maximum. It derives field optical
+depth from the normalized integral, so a large raw density is not multiplied by
+a thin local step before normalization. The shader caps a field's optical depth
+at `float.MaxValue / 16`, leaving room to sum all eight fields without
+overflow; the cap exceeds the maximum expected under the current density-product
+bound and a unit-box chord.
+
+When total field optical depth is at most `0.001`, the shader derives color from
+the integrated tint weights instead of accumulating per-step alpha. The
+per-step depths can be subnormal even when the complete ray produces a visible
+color on Metal. This path omits within-ray ordering only in the range where the
+relative color difference is below `0.101%` for nonnegative tint. The previous
+hosted Metal run failed the thin-field and high-tint cases at densities
+`1e-37`, `1e-20`, and `1e30`; D3D12 and Vulkan passed their high-tint cases.
+The scaled integration change has not yet run on Metal.
 
 Source preflight refuses a volume material with additional non-density textures,
 duplicate density entries, or a composited density texture before publication.
