@@ -1,0 +1,116 @@
+name: release validation checkpoint
+
+on:
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/release-validation-checkpoint.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-validation-checkpoint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  capture-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Build capture tests
+        shell: pwsh
+        run: |
+          dotnet restore tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -p:TargetFramework=net10.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -c Debug -f net10.0 --no-restore `
+            -p:OpenUsdRequireMetalShaderLibrary=false -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run capture diagnostics tests
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-capture-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 3 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkFrameCaptureDiagnosticsTests/*')
+          $reportPath = 'tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.Tests-linux-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The capture diagnostics report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkFrameCaptureDiagnosticsTests'
+          } | ForEach-Object { $_.tests })
+          $recovery = @($cases | Where-Object {
+            $_.methodName -ceq 'RetainedCapturePublishesShaderFailureAndKeepsItsSnapshotAfterRecovery' -and
+              $_.status -ceq 'passed'
+          })
+          $display = @($cases | Where-Object {
+            $_.methodName -ceq 'DisplayCapturePreservesShaderAndDisplayFailuresUntilTheirSeparateRecovery' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 3 -or $report.summary.passed -ne 3 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $recovery.Count -ne 2 -or $display.Count -ne 1) {
+            throw 'All three named capture diagnostics cases must pass without skips.'
+          }
+      - name: Upload capture evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: capture-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/
+          if-no-files-found: warn
+
+  shader-receipts:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: eng/shaders/.cache/downloads
+          key: shaders-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('eng/shaders/toolchain.lock.json') }}
+      - name: Generate and verify checked shaders
+        shell: pwsh
+        run: |
+          ./eng/shaders/update-checked.ps1
+          ./eng/shaders/verify-checked.ps1
+          python tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/build_flat_ordinal_shader.py build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/build_flat_ordinal_shader.py verify
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git --no-pager diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git --no-pager diff --stat -- eng/shaders/checked tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked
+          git rev-parse HEAD
+      - name: Upload verified shader receipts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shader-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            eng/shaders/checked/
+            tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/
+          if-no-files-found: error
