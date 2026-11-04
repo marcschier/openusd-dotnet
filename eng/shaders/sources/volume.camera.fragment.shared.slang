@@ -436,6 +436,15 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
         totalFieldOpticalDepth += fieldOpticalDepth[field];
     }
 
+    if (diagnosticPixel)
+    {
+        return float4(
+            densityScales[0],
+            normalizedDensityIntegrals[0],
+            fieldOpticalDepth[0],
+            totalFieldOpticalDepth);
+    }
+
     if (totalFieldOpticalDepth <= SmallOpticalDepthThreshold)
     {
         if (totalFieldOpticalDepth <= 0.0)
