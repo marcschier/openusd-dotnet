@@ -133,6 +133,7 @@ jobs:
         run: |
           $cases = @(
             @{ Class = 'RuntimePackageTests'; Method = 'SilkPackageCarriesCheckedShadowAndMeshShadersForEveryFramework' },
+            @{ Class = 'RuntimePackageTests'; Method = 'SilkPackageDeclaresSpirvCrossNativeRuntimeDependencyForEveryFramework' },
             @{ Class = 'RuntimePackageTests'; Method = 'SilkPackageGeneratedD3D12MaterialUsesPackagedSpirvCrossAndExternalDxc' },
             @{ Class = 'McpToolPackageTests'; Method = 'McpToolPackageMetadataDocumentsExternalNativeRuntime' },
             @{ Class = 'McpToolPackageTests'; Method = 'PackedMcpToolIsInstallableManagedOnlyPackage' }

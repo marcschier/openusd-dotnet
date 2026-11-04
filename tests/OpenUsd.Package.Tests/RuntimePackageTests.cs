@@ -1448,11 +1448,6 @@ public sealed partial class RuntimePackageTests
                 ]);
             await Assert.That(result.ExitCode).IsEqualTo(0).Because(result.Output);
             using ZipArchive package = ZipFile.OpenRead(FindPackage(packageRoot, "OpenUsd.Rendering.Silk"));
-            using Stream nuspecStream = package.Entries.Single(entry =>
-                entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal)).Open();
-            XDocument nuspec = XDocument.Load(nuspecStream);
-            XNamespace ns = nuspec.Root!.Name.Namespace;
-            string crossVersion = ReadCentralPackageVersion(repositoryRoot, "Silk.NET.SPIRV.Cross.Native");
             string[] artifacts =
             [
                 "shadow.mask.vertex.dxil",
@@ -1506,40 +1501,6 @@ public sealed partial class RuntimePackageTests
             ];
             foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
             {
-                XElement[] groups = nuspec
-                    .Descendants(ns + "group")
-                    .Where(group => group.Attribute("targetFramework")?.Value == framework)
-                    .ToArray();
-                await Assert.That(groups.Length).IsEqualTo(1).Because(framework);
-                XElement[] crossDependencies = groups[0]
-                    .Elements(ns + "dependency")
-                    .Where(dependency => string.Equals(
-                        dependency.Attribute("id")?.Value,
-                        "Silk.NET.SPIRV.Cross.Native",
-                        StringComparison.OrdinalIgnoreCase))
-                    .ToArray();
-                await Assert.That(crossDependencies.Length).IsEqualTo(1).Because(framework);
-                XElement crossDependency = crossDependencies[0];
-                await Assert.That(crossDependency.Attribute("version")?.Value.Trim('[', ']'))
-                    .IsEqualTo(crossVersion).Because(framework);
-                string[] excludedAssets = SplitDependencyAssets(crossDependency.Attribute("exclude")?.Value);
-                await Assert.That(excludedAssets.Contains("All", StringComparer.OrdinalIgnoreCase))
-                    .IsFalse().Because(framework);
-                await Assert.That(excludedAssets.Contains("Runtime", StringComparer.OrdinalIgnoreCase))
-                    .IsFalse().Because(framework);
-                await Assert.That(excludedAssets.Contains("Native", StringComparer.OrdinalIgnoreCase))
-                    .IsFalse().Because(framework);
-                if (crossDependency.Attribute("include") is { } include)
-                {
-                    string[] includedAssets = SplitDependencyAssets(include.Value);
-                    await Assert.That(includedAssets.Contains("All", StringComparer.OrdinalIgnoreCase) ||
-                        includedAssets.Contains("Runtime", StringComparer.OrdinalIgnoreCase))
-                        .IsTrue().Because(framework);
-                    await Assert.That(includedAssets.Contains("All", StringComparer.OrdinalIgnoreCase) ||
-                        includedAssets.Contains("Native", StringComparer.OrdinalIgnoreCase))
-                        .IsTrue().Because(framework);
-                }
-
                 ZipArchiveEntry entry = package.GetEntry($"lib/{framework}/OpenUsd.Rendering.Silk.dll") ??
                     throw new InvalidDataException($"The package is missing the {framework} Silk assembly.");
                 using Stream source = entry.Open();

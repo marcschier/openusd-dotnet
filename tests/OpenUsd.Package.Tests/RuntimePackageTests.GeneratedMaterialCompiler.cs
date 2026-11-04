@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -9,6 +10,66 @@ namespace OpenUsd.Package.Tests;
 
 public sealed partial class RuntimePackageTests
 {
+    [Test]
+    public async Task SilkPackageDeclaresSpirvCrossNativeRuntimeDependencyForEveryFramework()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            PackedPackage packed = await PackManagedPackageAsync(
+                repositoryRoot, "OpenUsd.Rendering.Silk", packageRoot);
+            using ZipArchive package = ZipFile.OpenRead(packed.Path);
+            using Stream nuspecStream = package.Entries.Single(entry =>
+                entry.FullName.EndsWith(".nuspec", StringComparison.Ordinal)).Open();
+            XDocument nuspec = XDocument.Load(nuspecStream);
+            XNamespace ns = nuspec.Root!.Name.Namespace;
+            string crossVersion = ReadCentralPackageVersion(repositoryRoot, "Silk.NET.SPIRV.Cross.Native");
+            foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
+            {
+                XElement[] groups = nuspec
+                    .Descendants(ns + "group")
+                    .Where(group => group.Attribute("targetFramework")?.Value == framework)
+                    .ToArray();
+                await Assert.That(groups.Length).IsEqualTo(1).Because(framework);
+                XElement[] crossDependencies = groups[0]
+                    .Elements(ns + "dependency")
+                    .Where(dependency => string.Equals(
+                        dependency.Attribute("id")?.Value,
+                        "Silk.NET.SPIRV.Cross.Native",
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                await Assert.That(crossDependencies.Length).IsEqualTo(1).Because(framework);
+                XElement crossDependency = crossDependencies[0];
+                await Assert.That(crossDependency.Attribute("version")?.Value.Trim('[', ']'))
+                    .IsEqualTo(crossVersion).Because(framework);
+                string[] excludedAssets = SplitDependencyAssets(crossDependency.Attribute("exclude")?.Value);
+                await Assert.That(excludedAssets.Contains("All", StringComparer.OrdinalIgnoreCase))
+                    .IsFalse().Because(framework);
+                await Assert.That(excludedAssets.Contains("Runtime", StringComparer.OrdinalIgnoreCase))
+                    .IsFalse().Because(framework);
+                await Assert.That(excludedAssets.Contains("Native", StringComparer.OrdinalIgnoreCase))
+                    .IsFalse().Because(framework);
+                if (crossDependency.Attribute("include") is { } include)
+                {
+                    string[] includedAssets = SplitDependencyAssets(include.Value);
+                    await Assert.That(includedAssets.Contains("All", StringComparer.OrdinalIgnoreCase) ||
+                        includedAssets.Contains("Runtime", StringComparer.OrdinalIgnoreCase))
+                        .IsTrue().Because(framework);
+                    await Assert.That(includedAssets.Contains("All", StringComparer.OrdinalIgnoreCase) ||
+                        includedAssets.Contains("Native", StringComparer.OrdinalIgnoreCase))
+                        .IsTrue().Because(framework);
+                }
+            }
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
     [Test]
     public async Task SilkPackageGeneratedD3D12MaterialUsesPackagedSpirvCrossAndExternalDxc()
     {
