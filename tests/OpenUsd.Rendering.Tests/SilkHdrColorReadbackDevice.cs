@@ -102,9 +102,14 @@ internal sealed class SilkHdrColorReadbackDevice : ISilkGraphicsDevice
         public override void ReadbackForTesting(Span<byte> destination)
         {
             _ = ValidateReadback(destination.Length);
+            if (Format == SilkTextureFormat.Rgba8Unorm)
+            {
+                destination.Fill(0x20);
+                return;
+            }
             if (Format != SilkTextureFormat.Rgba16Float)
             {
-                throw new NotSupportedException("Only the HDR readback boundary is supplied by this device.");
+                throw new NotSupportedException("Only color readback boundaries are supplied by this device.");
             }
             for (int offset = 0; offset < destination.Length; offset += 8)
             {

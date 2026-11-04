@@ -43,8 +43,7 @@ public static partial class SilkFrameCapture
         {
             SilkFrameCaptureResult result = _result ??
                 throw new InvalidOperationException("The frame capture did not finish before publication.");
-            RenderDiagnosticsState diagnostics = settings.DisplayTransform is not null
-                ? MergeDisplayTransformDiagnostics(renderer) : renderer.GpuResources.Diagnostics;
+            RenderDiagnosticsState diagnostics = MergeRendererDiagnostics(renderer);
             return result.WithCompletion(
                 result.RenderResult with { Statistics = renderer.GpuResources.Statistics },
                 OpenUsdSilkPage.WithPreparationDiagnostics(diagnostics, usage, pageLimit));
