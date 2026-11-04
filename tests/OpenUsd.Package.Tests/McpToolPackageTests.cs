@@ -239,10 +239,11 @@ public sealed class McpToolPackageTests
             await Assert.That(list.ExitCode).IsEqualTo(0).Because(list.Output);
             await Assert.That(list.Output).Contains(PackageId.ToLowerInvariant());
             await Assert.That(list.Output).Contains(expectedVersion);
-            await Assert.That(File.Exists(Path.Combine(
-                    installedRoot,
-                    OperatingSystem.IsWindows() ? "openusd-mcp.exe" : "openusd-mcp")))
-                .IsTrue();
+            string executable = Path.Combine(
+                installedRoot,
+                OperatingSystem.IsWindows() ? "openusd-mcp.exe" : "openusd-mcp");
+            await Assert.That(File.Exists(executable)).IsTrue();
+            await AssertInstalledToolProtocolAsync(executable, testRoot);
         }
         finally
         {
@@ -252,6 +253,168 @@ public sealed class McpToolPackageTests
             }
             Directory.Delete(testRoot, recursive: true);
         }
+    }
+
+    private static async Task AssertInstalledToolProtocolAsync(string executable, string testRoot)
+    {
+        string source = Path.Combine(testRoot, "source");
+        string output = Path.Combine(testRoot, "output");
+        string temporary = Path.Combine(testRoot, "temp");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(output);
+        Directory.CreateDirectory(temporary);
+
+        using Process process = new()
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = executable,
+                WorkingDirectory = testRoot,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            },
+        };
+        foreach (string name in process.StartInfo.Environment.Keys
+                     .Where(name => name.StartsWith("OPENUSD_", StringComparison.OrdinalIgnoreCase))
+                     .ToArray())
+        {
+            process.StartInfo.Environment.Remove(name);
+        }
+        foreach (string name in new[]
+                 {
+                     "DOTNET_ADDITIONAL_DEPS",
+                     "DOTNET_SHARED_STORE",
+                     "DOTNET_STARTUP_HOOKS",
+                     "PXR_PLUGINPATH_NAME",
+                     "LD_LIBRARY_PATH",
+                     "LD_PRELOAD",
+                     "DYLD_LIBRARY_PATH",
+                 })
+        {
+            process.StartInfo.Environment.Remove(name);
+        }
+        var searchDirectories = new List<string> { Path.GetDirectoryName(executable)! };
+        if (OperatingSystem.IsWindows())
+        {
+            searchDirectories.Add(Environment.GetFolderPath(Environment.SpecialFolder.System));
+            searchDirectories.Add(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+        }
+        else
+        {
+            searchDirectories.Add("/usr/bin");
+            searchDirectories.Add("/bin");
+        }
+        process.StartInfo.Environment["PATH"] = string.Join(
+            Path.PathSeparator,
+            searchDirectories.Where(path => !string.IsNullOrWhiteSpace(path)));
+        process.StartInfo.Environment["OPENUSD_MCP_SOURCE_ROOT"] = source;
+        process.StartInfo.Environment["OPENUSD_MCP_OUTPUT_ROOT"] = output;
+        process.StartInfo.Environment["OPENUSD_SILK_SHADER_CACHE_DIR"] = Path.Combine(testRoot, "shader-cache");
+        process.StartInfo.Environment["TEMP"] = temporary;
+        process.StartInfo.Environment["TMP"] = temporary;
+        process.StartInfo.Environment["TMPDIR"] = temporary;
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("The installed MCP tool did not start.");
+        }
+
+        Task<string> standardError = process.StandardError.ReadToEndAsync();
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(90));
+        try
+        {
+            await process.StandardInput.WriteLineAsync(
+                """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"packaged-consumer","version":"1.0"}}}""");
+            await process.StandardInput.FlushAsync();
+            JsonElement initialized = await ReadProtocolResponseAsync(
+                process, standardError, 1, timeout.Token);
+            await Assert.That(initialized.TryGetProperty("error", out _)).IsFalse()
+                .Because(initialized.ToString());
+            JsonElement initialization = initialized.GetProperty("result");
+            await Assert.That(initialization.GetProperty("protocolVersion").GetString())
+                .IsEqualTo("2025-03-26");
+            await Assert.That(string.IsNullOrWhiteSpace(
+                    initialization.GetProperty("serverInfo").GetProperty("name").GetString()))
+                .IsFalse();
+
+            await process.StandardInput.WriteLineAsync(
+                """{"jsonrpc":"2.0","method":"notifications/initialized"}""");
+            await process.StandardInput.WriteLineAsync(
+                """{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""");
+            await process.StandardInput.FlushAsync();
+            JsonElement listed = await ReadProtocolResponseAsync(
+                process, standardError, 2, timeout.Token);
+            await Assert.That(listed.TryGetProperty("error", out _)).IsFalse()
+                .Because(listed.ToString());
+            string?[] tools = listed.GetProperty("result").GetProperty("tools")
+                .EnumerateArray()
+                .Select(tool => tool.GetProperty("name").GetString())
+                .ToArray();
+            await Assert.That(tools.Length).IsEqualTo(18);
+            await Assert.That(tools).Contains("render_physics_sequence");
+            await Assert.That(tools).Contains("list_sequence_jobs");
+
+            process.StandardInput.Close();
+            await process.WaitForExitAsync(timeout.Token);
+            await Assert.That(process.ExitCode).IsEqualTo(0).Because(await standardError);
+        }
+        catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
+        {
+            throw new TimeoutException("The installed MCP tool did not complete its stdio handshake.", exception);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException) when (process.HasExited)
+                {
+                }
+                await process.WaitForExitAsync();
+            }
+        }
+    }
+
+    private static async Task<JsonElement> ReadProtocolResponseAsync(
+        Process process,
+        Task<string> standardError,
+        int expectedId,
+        CancellationToken cancellationToken)
+    {
+        for (int count = 0; count < 16; count++)
+        {
+            string? line = await process.StandardOutput.ReadLineAsync(cancellationToken);
+            if (line is null)
+            {
+                await process.WaitForExitAsync(cancellationToken);
+                throw new InvalidDataException(
+                    $"The installed MCP tool exited with code {process.ExitCode} before responding." +
+                    $"{Environment.NewLine}{await standardError}");
+            }
+            using JsonDocument document = JsonDocument.Parse(line);
+            JsonElement message = document.RootElement;
+            if (message.GetProperty("jsonrpc").GetString() != "2.0")
+            {
+                throw new InvalidDataException("The installed MCP tool emitted an invalid JSON-RPC message.");
+            }
+            if (message.TryGetProperty("id", out JsonElement id))
+            {
+                if (id.ValueKind != JsonValueKind.Number || id.GetInt32() != expectedId)
+                {
+                    throw new InvalidDataException("The installed MCP tool emitted an unexpected JSON-RPC response.");
+                }
+                return message.Clone();
+            }
+            if (!message.TryGetProperty("method", out _))
+            {
+                throw new InvalidDataException("The installed MCP tool emitted an invalid JSON-RPC notification.");
+            }
+        }
+        throw new InvalidDataException("The installed MCP tool emitted too many notifications before its response.");
     }
 
     private static async Task AssertToolSettingsAsync(ZipArchive package)
