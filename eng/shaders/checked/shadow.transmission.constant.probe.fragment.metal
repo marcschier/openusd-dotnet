@@ -2,9 +2,9 @@
 #include <metal_math>
 #include <metal_texture>
 using namespace metal;
-struct ShadowMaskedVertexOutput_0
+struct pixelOutput_0
 {
-    float4 position_0;
+    float4 output_0 [[color(0)]];
 };
 
 struct SurfaceParameters_natural_0
@@ -36,39 +36,26 @@ struct KernelContext_0
     texture2d<float, access::sample> previousShadowLayer_0;
 };
 
-float SampleShadowOpacity_0(const ShadowMaskedVertexOutput_0 thread* input_0, KernelContext_0 thread* kernelContext_0)
+[[fragment]] pixelOutput_0 shadowTransmissionConstantProbeFragmentMain(float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], texture2d<float, access::sample> previousShadowLayer_1 [[texture(24)]])
 {
-    return saturate((float4((kernelContext_0->surfaceParameters_0+int(0))->diffuseOpacity_0) ).w);
-}
-
-struct pixelOutput_0
-{
-    float4 output_0 [[color(0)]];
-};
-
-[[fragment]] pixelOutput_0 shadowTransmissionConstantProbeFragmentMain(float4 position_1 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], texture2d<float, access::sample> previousShadowLayer_1 [[texture(24)]])
-{
-    thread KernelContext_0 kernelContext_1;
-    (&kernelContext_1)->surfaceParameters_0 = surfaceParameters_1;
-    (&kernelContext_1)->previousShadowLayer_0 = previousShadowLayer_1;
-    thread ShadowMaskedVertexOutput_0 _S1;
-    (&_S1)->position_0 = position_1;
-    float _S2 = SampleShadowOpacity_0(&_S1, &kernelContext_1);
-    int3 _S3 = int3(int2(position_1.xy), int(0));
-    float nearestDepth_0 = (((&kernelContext_1)->previousShadowLayer_0).read(vec<uint,2>(((_S3)).xy), uint(((_S3)).z))).x;
-    bool _S4;
-    if((saturate(_S2)) <= 0.0f)
+    thread KernelContext_0 kernelContext_0;
+    (&kernelContext_0)->surfaceParameters_0 = surfaceParameters_1;
+    (&kernelContext_0)->previousShadowLayer_0 = previousShadowLayer_1;
+    int3 _S1 = int3(int2(position_0.xy), int(0));
+    float nearestDepth_0 = ((previousShadowLayer_1).read(vec<uint,2>(((_S1)).xy), uint(((_S1)).z))).x;
+    bool _S2;
+    if((saturate(saturate((float4((surfaceParameters_1+int(0))->diffuseOpacity_0) ).w))) <= 0.0f)
     {
-        _S4 = true;
+        _S2 = true;
     }
     else
     {
-        _S4 = (position_1.z) != nearestDepth_0;
+        _S2 = (position_0.z) != nearestDepth_0;
     }
-    if(_S4)
+    if(_S2)
     {
         discard_fragment();
     }
-    pixelOutput_0 _S5 = { float4(0.0f, 0.0f, 0.0f, 0.5f) };
-    return _S5;
+    pixelOutput_0 _S3 = { float4(0.0f, 0.0f, 0.0f, 0.5f) };
+    return _S3;
 }

@@ -2,9 +2,9 @@
 #include <metal_math>
 #include <metal_texture>
 using namespace metal;
-struct ShadowMaskedVertexOutput_0
+struct pixelOutput_0
 {
-    float4 position_0;
+    float4 output_0 [[color(0)]];
 };
 
 struct SurfaceParameters_natural_0
@@ -30,33 +30,13 @@ struct SurfaceParameters_natural_0
     packed_float4 alternateUvTransformRow1_0;
 };
 
-struct KernelContext_0
+[[fragment]] pixelOutput_0 shadowTransmissionConstantFirstFragmentMain(float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_0 [[buffer(7)]])
 {
-    SurfaceParameters_natural_0 device* surfaceParameters_0;
-};
-
-float SampleShadowOpacity_0(const ShadowMaskedVertexOutput_0 thread* input_0, KernelContext_0 thread* kernelContext_0)
-{
-    return saturate((float4((kernelContext_0->surfaceParameters_0+int(0))->diffuseOpacity_0) ).w);
-}
-
-struct pixelOutput_0
-{
-    float4 output_0 [[color(0)]];
-};
-
-[[fragment]] pixelOutput_0 shadowTransmissionConstantFirstFragmentMain(float4 position_1 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]])
-{
-    thread KernelContext_0 kernelContext_1;
-    (&kernelContext_1)->surfaceParameters_0 = surfaceParameters_1;
-    thread ShadowMaskedVertexOutput_0 _S1;
-    (&_S1)->position_0 = position_1;
-    float _S2 = SampleShadowOpacity_0(&_S1, &kernelContext_1);
-    float opacity_0 = saturate(_S2);
+    float opacity_0 = saturate(saturate((float4((surfaceParameters_0+int(0))->diffuseOpacity_0) ).w));
     if(opacity_0 <= 0.0f)
     {
         discard_fragment();
     }
-    pixelOutput_0 _S3 = { float4(position_1.z, 1.0f - opacity_0, 0.0f, 1.0f) };
-    return _S3;
+    pixelOutput_0 _S1 = { float4(position_0.z, 1.0f - opacity_0, 0.0f, 1.0f) };
+    return _S1;
 }
