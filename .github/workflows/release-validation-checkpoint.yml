@@ -187,11 +187,129 @@ jobs:
               $cases.Count -ne 3) {
             throw 'All three primitive transport cases must pass without skips.'
           }
+          foreach ($boundary in @(255, 32767, 65535)) {
+            $name = "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, $boundary)"
+            if (@($cases | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+              throw "The Vulkan primitive transport case '$name' did not pass exactly once."
+            }
+          }
       - name: Upload primitive transport evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: primitive-transport-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/
+          if-no-files-found: warn
+
+  d3d12-probes:
+    needs: shader-receipts
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      TEMP: 'D:\temp'
+      TMP: 'D:\temp'
+      DOTNET_CLI_HOME: 'D:\temp\dotnet-home'
+      NUGET_PACKAGES: 'D:\temp\nuget\'
+      OPENUSD_TEST_WORK_ROOT: 'D:\temp\openusd-tests'
+      OPENUSD_SILK_SHADER_CACHE_DIR: 'D:\temp\openusd-probe-shaders'
+    steps:
+      - name: Prepare temporary directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: shader-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Build D3D12 conformance tests
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet restore $project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build $project -c Debug -f net10.0 --no-restore `
+            -p:OpenUsdRequireMetalShaderLibrary=false -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run WARP primitive transport
+        shell: pwsh
+        env:
+          OPENUSD_PRIMITIVE_PROBE_BACKEND: D3D12
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 3 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkPrimitiveIdTransportConformanceTests/*')
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The D3D12 primitive transport report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkPrimitiveIdTransportConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.methodName -ceq 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 3 -or $report.summary.passed -ne 3 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $cases.Count -ne 3) {
+            throw 'All three WARP primitive transport cases must pass without skips.'
+          }
+          foreach ($boundary in @(255, 32767, 65535)) {
+            $name = "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, $boundary)"
+            if (@($cases | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+              throw "The D3D12 primitive transport case '$name' did not pass exactly once."
+            }
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'primitive-d3d12.json')
+      - name: Run WARP retirement retry cases
+        shell: pwsh
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 11 `
+            -TestArguments @('--treenode-filter', '/*/*/D3D12PendingRetirementTests/*')
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The D3D12 retirement report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'D3D12PendingRetirementTests'
+          } | ForEach-Object { $_.tests } | Where-Object { $_.status -ceq 'passed' })
+          $expected = @{
+            RemovalClassificationAgreesAcrossRetirementPaths = 6
+            MultipleFailedRecordsStayOwnedWhileSuccessfulRecordsAreNeverRetried = 1
+            FailedRetainedRecordKeepsNativeOwnerAndRejectsNewWorkUntilDisposeRetry = 2
+            NonterminalWaitFailureKeepsRecordsUntouchedAndAllowsNewWorkBeforeRetry = 1
+            ConcurrentAndReentrantDisposeReturnWhileFailedRecordRemainsOwnedForLaterRetry = 1
+          }
+          foreach ($method in $expected.Keys) {
+            if (@($cases | Where-Object { $_.methodName -ceq $method }).Count -ne $expected[$method]) {
+              throw "The D3D12 retirement test '$method' did not pass its expected cases."
+            }
+          }
+          if ($report.summary.total -ne 11 -or $report.summary.passed -ne 11 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $cases.Count -ne 11) {
+            throw 'All eleven D3D12 retirement cases must pass without skips.'
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'd3d12-retirement.json')
+      - name: Upload D3D12 evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: d3d12-probes-${{ github.run_id }}-${{ github.run_attempt }}
           path: tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/
           if-no-files-found: warn
 
@@ -265,3 +383,55 @@ jobs:
         run: |
           ./eng/shaders/prepare-metal-library.ps1 `
             -OutputRoot eng/shaders/out/release-validation-metal
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Build Metal primitive transport
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet restore $project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build $project -c Debug -f net10.0 --no-restore `
+            -p:OpenUsdRequireMetalShaderLibrary=true -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run Metal primitive transport
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-primitive-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 3 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkPrimitiveIdTransportConformanceTests/*')
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The Metal primitive transport report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkPrimitiveIdTransportConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.methodName -ceq 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 3 -or $report.summary.passed -ne 3 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $cases.Count -ne 3) {
+            throw 'All three Metal primitive transport cases must pass without skips.'
+          }
+          foreach ($boundary in @(255, 32767, 65535)) {
+            $name = "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Metal, $boundary)"
+            if (@($cases | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+              throw "The Metal primitive transport case '$name' did not pass exactly once."
+            }
+          }
+      - name: Upload Metal primitive transport evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: primitive-metal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/
+          if-no-files-found: warn

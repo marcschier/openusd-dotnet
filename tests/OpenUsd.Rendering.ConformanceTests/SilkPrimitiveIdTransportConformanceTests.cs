@@ -142,6 +142,24 @@ public sealed class SilkPrimitiveIdTransportConformanceTests
                     ? [SilkGraphicsBackend.Metal]
                     : throw new InvalidOperationException(
                         "The primitive-ID conformance probe requires Windows, Linux, or macOS.");
+        string? selected = Environment.GetEnvironmentVariable("OPENUSD_PRIMITIVE_PROBE_BACKEND");
+        if (selected is not null)
+        {
+            SilkGraphicsBackend requested = selected switch
+            {
+                "D3D12" => SilkGraphicsBackend.D3D12,
+                "Vulkan" => SilkGraphicsBackend.Vulkan,
+                "Metal" => SilkGraphicsBackend.Metal,
+                _ => throw new InvalidOperationException(
+                    $"Unknown primitive-ID probe backend '{selected}'.")
+            };
+            if (!backends.Contains(requested))
+            {
+                throw new InvalidOperationException(
+                    $"The primitive-ID probe backend '{selected}' is unavailable on this operating system.");
+            }
+            backends = [requested];
+        }
         foreach (SilkGraphicsBackend backend in backends)
         {
             foreach (int boundary in new[] { 255, 32_767, 65_535 })
