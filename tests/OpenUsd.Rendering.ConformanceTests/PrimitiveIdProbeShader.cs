@@ -10,8 +10,8 @@ namespace OpenUsd.Rendering.ConformanceTests;
 
 internal static class PrimitiveIdProbeShader
 {
-    private const string ProgramName = "conformance.primitiveid.fragment";
-    private const string SourcePath = "eng/shaders/sources/conformance.primitiveid.fragment.slang";
+    private const string ProgramName = "primitive-id.fragment";
+    private const string ProbeDirectory = "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders";
     private const string EntryPoint = "primitiveIdProbeFragmentMain";
 
     internal static SilkShaderModuleDescriptor Load(
@@ -38,23 +38,61 @@ internal static class PrimitiveIdProbeShader
             manifest,
             "eng/shaders/shader-manifest.json",
             Path.Combine(repository, "eng", "shaders", "shader-manifest.json"));
-        ValidateInput(
-            manifest,
-            SourcePath,
-            Path.Combine(repository, "eng", "shaders", "sources", $"{ProgramName}.slang"));
-
-        JsonElement program = FindProgram(manifest, ProgramName);
-        if (program.GetProperty("source").GetString() != SourcePath ||
+        string probeDirectory = Path.Combine(
+            repository, "tests", "OpenUsd.Rendering.ConformanceTests", "PrimitiveIdShaders");
+        string probeChecked = Path.Combine(probeDirectory, "checked");
+        using JsonDocument receiptDocument = JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(probeChecked, "manifest.json")));
+        JsonElement receipt = receiptDocument.RootElement;
+        if (receipt.GetProperty("schemaVersion").GetInt32() != 2 ||
+            receipt.GetProperty("programs").GetArrayLength() != 1 ||
+            receipt.GetProperty("programs")[0].GetString() != ProgramName ||
+            receipt.GetProperty("inputs").GetArrayLength() != 6 ||
+            receipt.GetProperty("artifacts").GetArrayLength() != 6)
+        {
+            throw new InvalidDataException("The test-only primitive-ID shader receipt is invalid.");
+        }
+        foreach (string name in new[]
+        {
+            $"{ProgramName}.slang", "primitive-id.manifest.json", "build_primitive_id_shader.py"
+        })
+        {
+            ValidateInput(receipt, $"{ProbeDirectory}/{name}", Path.Combine(probeDirectory, name));
+        }
+        foreach (string name in new[] { "toolchain.lock.json", "scripts/normalize-reflection.py", "scripts/shader_model.py" })
+        {
+            ValidateInput(receipt, $"eng/shaders/{name}",
+                Path.Combine(repository, "eng", "shaders", name.Replace('/', Path.DirectorySeparatorChar)));
+        }
+        using JsonDocument contractDocument = JsonDocument.Parse(
+            File.ReadAllBytes(Path.Combine(probeDirectory, "primitive-id.manifest.json")));
+        JsonElement contract = contractDocument.RootElement;
+        JsonElement program = FindProgram(contract, ProgramName);
+        if (contract.GetProperty("schemaVersion").GetInt32() != 1 ||
+            contract.GetProperty("matrixLayout").GetString() != "row-major" ||
+            contract.GetProperty("programs").GetArrayLength() != 1 ||
+            !JsonElement.DeepEquals(contract.GetProperty("toolchain"), receipt.GetProperty("toolchain")) ||
+            program.GetProperty("source").GetString() != $"{ProgramName}.slang" ||
             program.GetProperty("entryPoint").GetString() != EntryPoint ||
             program.GetProperty("stage").GetString() != "fragment" ||
             program.GetProperty("profile").GetString() != "ps_6_0" ||
-            program.GetProperty("resourceContract").GetArrayLength() != 0)
+            program.GetProperty("resources").GetArrayLength() != 0)
         {
             throw new InvalidDataException(
-                "The checked primitive-ID fragment does not match the resource-free probe contract.");
+                "The test-only primitive-ID fragment does not match the resource-free probe contract.");
         }
 
-        byte[] reflectionBytes = ReadArtifact(checkedDirectory, program, "reflection.json");
+        byte[] dxil = ReadProbeArtifact(receipt, probeChecked, "dxil");
+        byte[] spirv = ReadProbeArtifact(receipt, probeChecked, "spv");
+        byte[] metal = ReadProbeArtifact(receipt, probeChecked, "metal");
+        byte[] reflectionBytes = ReadProbeArtifact(receipt, probeChecked, "reflection.json");
+        _ = ReadProbeArtifact(receipt, probeChecked, "dxil-reflection.json");
+        _ = ReadProbeArtifact(receipt, probeChecked, "spirv-reflection.json");
+        if (!dxil.AsSpan().StartsWith("DXBC"u8))
+        {
+            throw new InvalidDataException("The test-only primitive-ID DXIL container is invalid.");
+        }
+        ValidateSpirvPrimitiveInput(spirv);
         using JsonDocument reflectionDocument = JsonDocument.Parse(reflectionBytes);
         JsonElement reflection = reflectionDocument.RootElement;
         JsonElement[] primitiveInputs = reflection.GetProperty("stageInputs").EnumerateArray()
@@ -74,17 +112,18 @@ internal static class PrimitiveIdProbeShader
 
         if (format == SilkShaderBinaryFormat.MetalLibrary)
         {
-            string metalSource = Encoding.UTF8.GetString(ReadArtifact(checkedDirectory, program, "metal"));
-            if (!metalSource.Contains("[[primitive_id]]", StringComparison.Ordinal))
+            string metalSource = Encoding.UTF8.GetString(metal);
+            if (!metalSource.Contains("[[primitive_id]]", StringComparison.Ordinal) ||
+                !metalSource.Contains("[[host_name(\"main\")]]", StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
-                    "The checked Metal fragment does not declare the primitive_id system input.");
+                    "The test-only Metal fragment lacks its primitive_id input or host entry.");
             }
             return new SilkShaderModuleDescriptor(
                 SilkShaderStage.Fragment,
                 format,
-                EntryPoint,
-                vertex.Code);
+                "main",
+                metal);
         }
 
         string suffix = format switch
@@ -98,16 +137,11 @@ internal static class PrimitiveIdProbeShader
             vertexProgram.GetProperty("artifacts").GetProperty(suffix),
             $"eng/shaders/checked/pick.vertex.{suffix}",
             vertex.Code.Span);
-        byte[] code = ReadArtifact(checkedDirectory, program, suffix);
-        if (format == SilkShaderBinaryFormat.SpirV)
-        {
-            ValidateSpirvPrimitiveInput(code);
-        }
         return new SilkShaderModuleDescriptor(
             SilkShaderStage.Fragment,
             format,
-            format == SilkShaderBinaryFormat.SpirV ? "main" : EntryPoint,
-            code);
+            EntryPoint,
+            format == SilkShaderBinaryFormat.SpirV ? spirv : dxil);
     }
 
     private static string FindRepository()
@@ -150,16 +184,19 @@ internal static class PrimitiveIdProbeShader
         VerifyHash(matches[0], File.ReadAllBytes(localPath), path);
     }
 
-    private static byte[] ReadArtifact(string directory, JsonElement program, string suffix)
+    private static byte[] ReadProbeArtifact(JsonElement receipt, string directory, string suffix)
     {
-        string name = program.GetProperty("name").GetString() ??
-            throw new InvalidDataException("A checked shader program has no name.");
-        string fileName = $"{name}.{suffix}";
+        string fileName = $"{ProgramName}.{suffix}";
+        string expectedPath = $"{ProbeDirectory}/checked/{fileName}";
+        JsonElement[] matches = receipt.GetProperty("artifacts").EnumerateArray()
+            .Where(artifact => artifact.GetProperty("path").GetString() == expectedPath)
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            throw new InvalidDataException($"The test-only shader artifact '{expectedPath}' is missing or duplicated.");
+        }
         byte[] bytes = File.ReadAllBytes(Path.Combine(directory, fileName));
-        VerifyArtifact(
-            program.GetProperty("artifacts").GetProperty(suffix),
-            $"eng/shaders/checked/{fileName}",
-            bytes);
+        VerifyArtifact(matches[0], expectedPath, bytes);
         return bytes;
     }
 
@@ -180,7 +217,8 @@ internal static class PrimitiveIdProbeShader
     private static void VerifyHash(JsonElement record, ReadOnlySpan<byte> bytes, string path)
     {
         string hash = Convert.ToHexString(SHA256.HashData(bytes));
-        if (!string.Equals(record.GetProperty("sha256").GetString(), hash, StringComparison.OrdinalIgnoreCase))
+        if ((record.TryGetProperty("size", out JsonElement size) && size.GetInt64() != bytes.Length) ||
+            !string.Equals(record.GetProperty("sha256").GetString(), hash, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException($"The checked shader input or artifact '{path}' has a stale hash.");
         }

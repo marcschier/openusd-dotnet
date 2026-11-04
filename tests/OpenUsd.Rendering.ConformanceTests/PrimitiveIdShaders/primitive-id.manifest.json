@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "matrixLayout": "row-major",
+  "toolchain": {
+    "slangVersion": "2026.19",
+    "slangCommit": "0fb6b7587a94fa33d88141ec9930766eedc6f59a",
+    "spirvToolsCommit": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+    "shaderModel": "6.0",
+    "vulkanVersion": "1.2",
+    "spirvVersion": "1.5",
+    "metalVersion": "2.4"
+  },
+  "programs": [
+    {
+      "name": "primitive-id.fragment",
+      "source": "primitive-id.fragment.slang",
+      "entryPoint": "primitiveIdProbeFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resources": []
+    }
+  ]
+}
