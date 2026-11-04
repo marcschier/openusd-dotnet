@@ -75,6 +75,59 @@ public sealed class WorkflowStructureContractTests
     }
 
     [Test]
+    public async Task MetalVolumeReproductionUsesTheSourceBoundPayloadAndExactCases()
+    {
+        string root = FindRepositoryRoot();
+        string workflow = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "release-validation-checkpoint.yml"));
+        string producer = ReadJob(workflow, "metal-link");
+        string build = ReadStep(producer, "Build source-bound Metal volume payload");
+        string upload = ReadStep(producer, "Upload source-bound Metal volume payload");
+        await Assert.That(producer)
+            .Contains("volume_payload_artifact_id: ${{ steps.volume_payload.outputs.artifact-id }}");
+        await Assert.That(build).Contains("dotnet build $project -c Release -f net10.0 --no-restore");
+        await Assert.That(build).Contains("$head -cne $env:EXPECTED_HEAD");
+        await Assert.That(build).Contains("$libraryHash -cne $sourceLibraryHash");
+        await Assert.That(build).Contains("shaderReceiptArtifactId = $env:SHADER_RECEIPT_ARTIFACT_ID");
+        await Assert.That(build).Contains("archiveSha256 = ");
+        await Assert.That(build).Contains("assemblySha256 = ");
+        await Assert.That(build).Contains("metalLibrarySha256 = ");
+        await Assert.That(upload).Contains("id: volume_payload");
+        await Assert.That(upload).Contains("if-no-files-found: error");
+
+        string consumer = ReadJob(workflow, "metal-volume-repro");
+        string guard = ReadStep(consumer, "Validate Metal payload identity");
+        string download = ReadStep(consumer, "Download source-bound Metal payload");
+        string verify = ReadStep(consumer, "Verify and unpack Metal payload");
+        string run = ReadStep(consumer, "Run targeted Metal volume reproduction");
+        string evidence = ReadStep(consumer, "Upload targeted Metal volume report");
+        await Assert.That(consumer).Contains("needs: [shader-receipts, metal-link]");
+        await Assert.That(consumer).Contains("ref: ${{ github.event.pull_request.head.sha }}");
+        await Assert.That(guard).Contains("-notmatch '^[1-9][0-9]*$'");
+        await Assert.That(download)
+            .Contains("artifact-ids: ${{ needs.metal-link.outputs.volume_payload_artifact_id }}");
+        await Assert.That(download).Contains("github-token: ${{ github.token }}");
+        await Assert.That(download).Contains("run-id: ${{ github.run_id }}");
+        await Assert.That(verify).Contains("$receipt.sourceHead -cne $head");
+        await Assert.That(verify).Contains("$receipt.runId -cne [string]$env:GITHUB_RUN_ID");
+        await Assert.That(verify)
+            .Contains("$receipt.shaderReceiptArtifactId -cne $env:SHADER_RECEIPT_ARTIFACT_ID");
+        await Assert.That(verify).Contains("$receipt.archiveSha256 -cne ");
+        await Assert.That(verify).Contains("$receipt.assemblySha256 -cne ");
+        await Assert.That(verify).Contains("$receipt.metalLibrarySha256 -cne ");
+        await Assert.That(run).Contains("-MinimumExpectedTests 10");
+        await Assert.That(run).Contains(
+            "/*/*/VolumeCameraJointPassConformanceTests/OverlappingHighFiniteTintsMatchTheIndependentComposite");
+        await Assert.That(run).Contains("Assert-MetalVolumeReproReport");
+        await Assert.That(run).Contains("$reportTime -lt $started");
+        await Assert.That(evidence).Contains("if: always()");
+        await Assert.That(consumer.IndexOf("      - name: Validate Metal payload identity", StringComparison.Ordinal))
+            .IsLessThan(consumer.IndexOf("      - name: Download source-bound Metal payload", StringComparison.Ordinal));
+        await Assert.That(consumer.IndexOf("      - name: Verify and unpack Metal payload", StringComparison.Ordinal))
+            .IsLessThan(consumer.IndexOf("      - name: Run targeted Metal volume reproduction", StringComparison.Ordinal));
+    }
+
+    [Test]
     public async Task TransmissionGateRequiresExactBackendIdentitiesAndRetainsExecutionReceipts()
     {
         string root = FindRepositoryRoot();

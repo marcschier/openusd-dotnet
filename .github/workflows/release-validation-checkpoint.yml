@@ -516,6 +516,8 @@ jobs:
     needs: shader-receipts
     runs-on: macos-15
     timeout-minutes: 30
+    outputs:
+      volume_payload_artifact_id: ${{ steps.volume_payload.outputs.artifact-id }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
@@ -523,6 +525,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+      - name: Test Metal volume report validation
+        shell: pwsh
+        run: ./eng/test-metal-volume-repro-report.ps1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
@@ -559,6 +564,54 @@ jobs:
           dotnet build $project -c Debug -f net10.0 --no-restore `
             -p:OpenUsdRequireMetalShaderLibrary=true -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build source-bound Metal volume payload
+        shell: pwsh
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0 --no-restore `
+            -p:OpenUsdRequireMetalShaderLibrary=true -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $head = (git rev-parse --verify HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:EXPECTED_HEAD) {
+            throw 'The Metal payload was not built from the requested source revision.'
+          }
+          $output = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0'
+          $assembly = Join-Path $output 'OpenUsd.Rendering.ConformanceTests.dll'
+          $library = Join-Path $output 'mesh.metallib'
+          $libraryHash = (Get-FileHash -LiteralPath $library -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sourceLibraryHash = (Get-FileHash -LiteralPath 'eng/shaders/checked/mesh.metallib' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($libraryHash -cne $sourceLibraryHash) {
+            throw 'The built output does not contain the validated Metal library.'
+          }
+          $oldReport = Join-Path $output 'TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
+          if (Test-Path -LiteralPath $oldReport) {
+            throw 'The Metal payload contains an existing test report.'
+          }
+          $destination = 'artifacts/metal-volume-payload'
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          $archive = Join-Path $destination 'payload.tar.gz'
+          tar -czf $archive -C $output .
+          if ($LASTEXITCODE -ne 0) { throw 'Could not archive the Metal test payload.' }
+          [pscustomobject]@{
+            schemaVersion = 1
+            sourceHead = $head
+            runId = [string]$env:GITHUB_RUN_ID
+            shaderReceiptArtifactId = $env:SHADER_RECEIPT_ARTIFACT_ID
+            archiveSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            assemblySha256 = (Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash.ToLowerInvariant()
+            metalLibrarySha256 = $libraryHash
+          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $destination 'receipt.json')
+      - name: Upload source-bound Metal volume payload
+        id: volume_payload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: metal-volume-payload-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/metal-volume-payload/
+          if-no-files-found: error
+          retention-days: 14
       - name: Run Metal primitive transport
         shell: pwsh
         env:
@@ -599,3 +652,105 @@ jobs:
           name: primitive-metal-${{ github.run_id }}-${{ github.run_attempt }}
           path: tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/
           if-no-files-found: warn
+
+  metal-volume-repro:
+    needs: [shader-receipts, metal-link]
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-volume-repro-shaders
+      OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-volume-repro-tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Validate Metal payload identity
+        shell: pwsh
+        env:
+          METAL_PAYLOAD_ARTIFACT_ID: ${{ needs.metal-link.outputs.volume_payload_artifact_id }}
+        run: |
+          if ($env:METAL_PAYLOAD_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The source-bound Metal payload artifact ID is missing or invalid.'
+          }
+      - name: Download source-bound Metal payload
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.metal-link.outputs.volume_payload_artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          path: artifacts/metal-volume-payload
+      - name: Verify and unpack Metal payload
+        shell: pwsh
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          $source = 'artifacts/metal-volume-payload'
+          $archive = Join-Path $source 'payload.tar.gz'
+          $receipt = Get-Content -LiteralPath (Join-Path $source 'receipt.json') -Raw | ConvertFrom-Json
+          $head = (git rev-parse --verify HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:EXPECTED_HEAD -or
+              $receipt.schemaVersion -ne 1 -or $receipt.sourceHead -cne $head -or
+              $receipt.runId -cne [string]$env:GITHUB_RUN_ID -or
+              $receipt.shaderReceiptArtifactId -cne $env:SHADER_RECEIPT_ARTIFACT_ID -or
+              $receipt.archiveSha256 -cne (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw 'The Metal payload receipt does not match this source revision and workflow run.'
+          }
+          $output = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          tar -xzf $archive -C $output
+          if ($LASTEXITCODE -ne 0) { throw 'Could not unpack the Metal test payload.' }
+          $assembly = Join-Path $output 'OpenUsd.Rendering.ConformanceTests.dll'
+          $library = Join-Path $output 'mesh.metallib'
+          if ($receipt.assemblySha256 -cne (Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash.ToLowerInvariant() -or
+              $receipt.metalLibrarySha256 -cne (Get-FileHash -LiteralPath $library -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw 'The unpacked test assembly or Metal library does not match the payload receipt.'
+          }
+      - name: Run targeted Metal volume reproduction
+        shell: pwsh
+        run: |
+          . ./eng/metal-volume-repro-report.ps1
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
+          if (Test-Path -LiteralPath $reportPath) {
+            throw 'The targeted Metal execution requires a fresh report.'
+          }
+          $started = [DateTime]::UtcNow
+          $executionFailure = $null
+          try {
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 10 `
+              -TestArguments @('--treenode-filter', '/*/*/VolumeCameraJointPassConformanceTests/OverlappingHighFiniteTintsMatchTheIndependentComposite')
+          }
+          catch {
+            $executionFailure = $_
+          }
+          $finished = [DateTime]::UtcNow
+          Write-Host "[metal-volume-repro] execution_ms=$([long]($finished - $started).TotalMilliseconds)"
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw "The targeted Metal report is missing. Execution: $executionFailure"
+          }
+          $reportTime = (Get-Item -LiteralPath $reportPath).LastWriteTimeUtc
+          if ($reportTime -lt $started -or $reportTime -gt $finished) {
+            throw 'The targeted Metal report was not written during this execution.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $result = Assert-MetalVolumeReproReport -Report $report -StartedUtc $started -FinishedUtc $finished
+          if ($null -ne $executionFailure) {
+            throw "The Metal test runner failed despite a passing report: $executionFailure"
+          }
+          Write-Host "[metal-volume-repro] passed=$($result.passed) skipped=$($result.skipped)"
+      - name: Upload targeted Metal volume report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: metal-volume-repro-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/*.tunit-report.json
+          if-no-files-found: warn
+          retention-days: 14
