@@ -555,6 +555,163 @@ jobs:
           path: tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/
           if-no-files-found: warn
 
+  windows-conformance-repro:
+    needs: shader-receipts
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      TEMP: 'D:\temp'
+      TMP: 'D:\temp'
+      DOTNET_CLI_HOME: 'D:\temp\dotnet-home'
+      NUGET_PACKAGES: 'D:\temp\nuget\'
+      OPENUSD_TEST_WORK_ROOT: 'D:\temp\openusd-tests'
+      OPENUSD_SILK_SHADER_CACHE_DIR: 'D:\temp\openusd-conformance-shaders'
+    steps:
+      - name: Prepare temporary directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Validate shader receipt identity
+        shell: pwsh
+        env:
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          if ($env:SHADER_RECEIPT_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The verified shader receipt artifact ID is missing or invalid.'
+          }
+      - name: Download verified shader receipts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          path: .
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Build Windows conformance reproducers
+        shell: pwsh
+        run: |
+          $projects = @(
+            'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj',
+            'tests/OpenUsd.RhiProbe/OpenUsd.RhiProbe.csproj'
+          )
+          foreach ($project in $projects) {
+            dotnet restore $project
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            dotnet build $project -c Release -f net10.0 --no-restore `
+              -p:OpenUsdRequireMetalShaderLibrary=false -warnaserror
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Reproduce Windows conformance cases
+        shell: pwsh
+        run: |
+          $cases = @(
+            @{
+              Class = 'D3D12DeviceTests'
+              Method = 'WarpReleasesEverySubmissionResourceAfterProvenDeviceRemoval'
+              Names = @('WarpReleasesEverySubmissionResourceAfterProvenDeviceRemoval')
+            },
+            @{
+              Class = 'SilkMaterialStreamingTests'
+              Method = 'VolumePixelsReleaseAfterTheirUploadAndRenderTheDensityGrid'
+              Names = @(
+                'VolumePixelsReleaseAfterTheirUploadAndRenderTheDensityGrid(D3D12)',
+                'VolumePixelsReleaseAfterTheirUploadAndRenderTheDensityGrid(Vulkan)'
+              )
+            },
+            @{
+              Class = 'SilkMaterialStreamingTests'
+              Method = 'UnsupportedPtexNormalUsesDefaultPixelsUntilImageReplacementAndRestoration'
+              Names = @(
+                'UnsupportedPtexNormalUsesDefaultPixelsUntilImageReplacementAndRestoration(D3D12)',
+                'UnsupportedPtexNormalUsesDefaultPixelsUntilImageReplacementAndRestoration(Vulkan)'
+              )
+            },
+            @{
+              Class = 'SilkShadowAdmissionTests'
+              Method = 'TexturedCutoffCastsRetainedAndUpdatedShadows'
+              Names = @(
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(D3D12, False, False)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(D3D12, True, False)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(D3D12, True, True)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(Vulkan, False, False)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(Vulkan, True, False)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(Vulkan, True, True)'
+              )
+            },
+            @{
+              Class = 'SilkPrimitiveIdTransportConformanceTests'
+              Method = 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex'
+              Names = @(
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 255)',
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 32767)',
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 65535)',
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, 255)',
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, 32767)',
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, 65535)'
+              )
+            }
+          )
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
+          $evidence = 'artifacts/windows-conformance-repro'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $failures = [System.Collections.Generic.List[string]]::new()
+          foreach ($case in $cases) {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Remove-Item -LiteralPath $reportPath
+            }
+            try {
+              ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release `
+                -MinimumExpectedTests $case.Names.Count `
+                -TestArguments @('--treenode-filter', "/*/*/$($case.Class)/$($case.Method)")
+            }
+            catch {
+              $failures.Add("$($case.Method) runner failed: $($_.Exception.Message)")
+            }
+            if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+              $failures.Add("$($case.Method) report is missing.")
+              continue
+            }
+            Copy-Item -LiteralPath $reportPath -Destination (
+              Join-Path $evidence "$($case.Method).tunit-report.json")
+            $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+            $results = @($report.groups | Where-Object {
+              $_.className -ceq $case.Class
+            } | ForEach-Object { $_.tests } | Where-Object {
+              $_.methodName -ceq $case.Method
+            })
+            foreach ($name in $case.Names) {
+              if (@($results | Where-Object {
+                $_.displayName -ceq $name -and $_.status -ceq 'passed'
+              }).Count -ne 1) {
+                $failures.Add("The case '$name' did not pass exactly once.")
+              }
+            }
+            if ($report.summary.total -ne $case.Names.Count -or
+                $report.summary.passed -ne $case.Names.Count -or
+                $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+                $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+                $results.Count -ne $case.Names.Count) {
+              $failures.Add("$($case.Method) did not pass all expected cases without skips.")
+            }
+          }
+          if ($failures.Count -ne 0) {
+            throw ($failures -join [Environment]::NewLine)
+          }
+      - name: Upload Windows conformance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-conformance-repro-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/windows-conformance-repro/*.tunit-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
   shader-receipts:
     runs-on: windows-latest
     timeout-minutes: 90
