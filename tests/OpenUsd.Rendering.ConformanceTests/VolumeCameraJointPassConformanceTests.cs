@@ -99,7 +99,12 @@ public sealed class VolumeCameraJointPassConformanceTests
             ? depthIntegral * (1 - depthIntegral / 2)
             : 1 - Math.Exp(-depthIntegral);
         double expected = tint * absorbed;
-        await Assert.That(pixels.All(float.IsFinite)).IsTrue();
+        int firstNonFinite = Array.FindIndex(pixels, static component => !float.IsFinite(component));
+        string nonFiniteDescription = firstNonFinite < 0
+            ? "No non-finite pixel components."
+            : $"Component {firstNonFinite} (pixel {firstNonFinite / 4}, channel {firstNonFinite % 4}) " +
+              $"was {pixels[firstNonFinite]:R}.";
+        await Assert.That(pixels.All(float.IsFinite)).IsTrue().Because(nonFiniteDescription);
         await Assert.That(Math.Abs((pixels[center] / expected) - 1)).IsLessThan(0.01)
             .Because(
                 $"Density {density:R} (sampled: {sampled}) produced red {pixels[center]:R}; " +
@@ -1493,7 +1498,14 @@ public sealed class VolumeCameraJointPassConformanceTests
             Material(MaterialA, density, [1, 0, 0], grid, sampled, false, "2,2,2", opacity));
         _ = renderer.ApplyAndRender(dense, color, depth);
         float[] densePixels = ReadPixels(color);
-        await Assert.That(densePixels.All(float.IsFinite)).IsTrue();
+        int firstNonFinite = Array.FindIndex(
+            densePixels,
+            static component => !float.IsFinite(component));
+        string nonFiniteDescription = firstNonFinite < 0
+            ? "No non-finite pixel components."
+            : $"Component {firstNonFinite} (pixel {firstNonFinite / 4}, channel {firstNonFinite % 4}) " +
+              $"was {densePixels[firstNonFinite]:R}.";
+        await Assert.That(densePixels.All(float.IsFinite)).IsTrue().Because(nonFiniteDescription);
         await Assert.That(MathF.Abs(densePixels[center] - opacity)).IsLessThan(0.01f);
         await Assert.That(densePixels[center + 1]).IsEqualTo(0f);
         await Assert.That(densePixels[center + 2]).IsEqualTo(0f);
