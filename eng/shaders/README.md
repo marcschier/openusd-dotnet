@@ -123,12 +123,12 @@ density-volume shadow transport is a separate limitation.
 
 All four sources, including the shared include, are provenance inputs in
 `shader_model.py`; its changes also require regenerating and verifying the
-`FlatOrdinalShaders` checked receipt. The checked shader payload and receipt
-were regenerated and verified on Windows. The 114-case camera gate passed on
-D3D12 WARP and Vulkan SwiftShader, including snapshot rollback, admission and
-retirement cases. The macOS metallib gate, Linux and Metal
-camera execution, and the native producer-to-renderer chain remain to be
-qualified.
+`FlatOrdinalShaders` checked receipt. An earlier Windows run regenerated and
+verified the checked shader payload and receipt. Its 114-case camera gate
+passed on D3D12 WARP and Vulkan SwiftShader, including snapshot rollback,
+admission and retirement cases. These results do not qualify later source
+changes. The macOS metallib gate, Linux and Metal camera execution, and the
+native producer-to-renderer chain remain to be qualified.
 
 The earlier sampled density volume retains a separate single-permutation mesh family:
 `mesh.volume.vertex` supplies camera-ray and volume-local transform data, while

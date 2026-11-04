@@ -25,8 +25,9 @@ public static class SilkRenderDiagnosticCodes
 
     /// <summary>A runtime material shader failed to compile and the checked placeholder is drawn instead.</summary>
     /// <remarks>
-    /// The compiler keeps the failure for the life of the process, so the
-    /// placeholder stays in use until the material changes or the process restarts.
+    /// A failed key remains in the compiler's memory cache until eviction or disposal.
+    /// Requests for that key keep the checked placeholder while the failure is cached;
+    /// a later request after eviction can queue compilation again.
     /// </remarks>
     public const string MaterialShaderCompilationFailed = "OPENUSD_SILK_MATERIAL_SHADER_COMPILATION_FAILED";
 

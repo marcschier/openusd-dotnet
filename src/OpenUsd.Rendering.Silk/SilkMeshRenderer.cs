@@ -572,8 +572,8 @@ public sealed partial class SilkMeshRenderer :
     /// by cache key and bounded to 32 entries plus one capacity entry.
     /// </summary>
     /// <remarks>
-    /// The renderer draws the checked placeholder for each listed material. An entry
-    /// disappears once the same cache key compiles successfully.
+    /// An entry disappears once the same cache key is observed as ready. Changing or
+    /// removing a material does not by itself clear an earlier entry.
     /// </remarks>
     public IReadOnlyList<RenderDiagnostic> MaterialShaderDiagnostics
     {

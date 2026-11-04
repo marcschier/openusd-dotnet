@@ -487,10 +487,12 @@ an atomic file version against a simultaneous same-length in-place writer. Ptex'
 internal cache and codec allocations are not covered by these managed limits.
 For supported mapped surface inputs, the renderer uses the snapshot to build a face
 atlas and derives texture coordinates for each triangle corner without changing retained
-mesh topology. A retained input with an unusable mapping or source format uses its published
-fallback and reports a diagnostic. Unsupported material inputs are not sampled; native
-translation rejects Ptex displacement and leaves the material undisplaced. Admission failures
-propagate instead of selecting a fallback.
+mesh topology. Each material can sample at most one Ptex surface input. Additional inputs use
+their authored texture fallback and report `OPENUSD_SILK_TEXTURE_PTEX_UNSUPPORTED`. A retained
+input with an unusable mapping or source format uses its published fallback and reports a
+diagnostic. Unsupported material inputs are not sampled; native translation rejects Ptex
+displacement and leaves the material undisplaced. Admission failures propagate instead of
+selecting a fallback.
 Backend pixel and lifecycle qualification of this path remains pending.
 
 Image ownership transfers to the retained cache; cache disposal returns its logical
@@ -2260,10 +2262,10 @@ the depth distribution within each field and cannot compose intersecting fields 
 combines extinction and tint-weighted source contributions along the ray before compositing over the scene. The
 project-owned native C ABI remains renderer-neutral and does not expose backend 3D textures.
 
-The joint path has local Windows software-backend evidence, but broader qualification remains. The checked shader
-pipeline and `FlatOrdinalShaders` receipt were regenerated and verified: 41 programs and 166 checked files. The
-114-case camera gate passed on both D3D12 WARP and Vulkan SwiftShader. Linux, Metal and the native producer-to-renderer
-chain remain to be qualified. Vulkan and D3D12 implement
+The joint path has local Windows software-backend evidence from an earlier source snapshot. In that run, the checked
+shader pipeline and `FlatOrdinalShaders` receipt were regenerated and verified: 41 programs and 166 checked files.
+The 114-case camera gate passed on both D3D12 WARP and Vulkan SwiftShader. Those results do not qualify later source
+changes. Linux, Metal and the native producer-to-renderer chain remain to be qualified. Vulkan and D3D12 implement
 `ISilkVolumeTextureGraphicsDevice` and `ISilkVolumeTextureCommandList`, and D3D12 repacks each depth slice to the
 pitch reported by `GetCopyableFootprints`. Metal uses an `MTLTextureType.Type3D` `R32Float` texture and a single
 `MTLBlitCommandEncoder` buffer copy. The historical checked `mesh.volume.fragment.metal` binds texture index 9 and
@@ -3863,8 +3865,9 @@ compilation fails, the mesh renderer keeps drawing the checked shader and record
 exception. Frame captures append these entries to the scene diagnostics they return, so MCP, the Viewer and disk jobs
 see the failure without reading the renderer directly. The renderer keeps at most 32 entries and then adds one
 `OPENUSD_SILK_DIAGNOSTIC_CAPACITY_EXCEEDED` entry. A later successful compile for the same cache key removes its entry.
-The compiler keeps a failed key for the life of the process, so the entry stays until the material changes or the
-process restarts.
+The compiler retains a failed key in its memory cache until eviction or disposal; a request after eviction can queue
+compilation again. Changing or removing a material does not by itself remove its earlier diagnostic, and the capacity
+warning remains set once reached.
 
 `OpenUsd.Rendering.Silk` depends on the `Silk.NET.SPIRV.Cross.Native` package, which supplies `spirv-cross` for each
 runtime identifier under the standard `runtimes/<rid>/native` layout. Only the D3D12 compiler loads it, but a consumer
