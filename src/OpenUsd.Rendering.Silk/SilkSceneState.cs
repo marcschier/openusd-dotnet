@@ -4644,9 +4644,11 @@ public sealed partial class SilkSceneGpuResources : IDisposable
                     RenderDiagnosticSeverity.Warning,
                     $"Prim '{path}' casts no shadow because its material requires unsupported " +
                     "density-volume shadow transport or non-PreviewSurface or Ptex opacity shadow coverage. " +
-                    "The shadow pass cannot integrate volume density or sample Ptex opacity; those casters are excluded " +
+                    "The shadow pass cannot integrate volume density or sample Ptex opacity; " +
+                    "those casters are excluded " +
                     "rather than approximated as opaque. PreviewSurface standard-texture opacity cutoffs and bounded " +
-                    "continuous-opacity layers use the material-aware caster programs. The exclusion does not suppress " +
+                    "continuous-opacity layers use the material-aware caster programs. " +
+                    "The exclusion does not suppress " +
                     "rendering of the prim.");
             }
             _shadowCasterDiagnosticRevision = revision;

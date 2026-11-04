@@ -2100,8 +2100,10 @@ public sealed class SilkTextureResidencyTests
         await Assert.That(result.DrawCount).IsGreaterThan(0);
         await Assert.That(device.RecordedPipelineStates.Count).IsGreaterThan(0);
         await Assert.That(device.ShaderEntryPoints).DoesNotContain("volumeVertexMain");
-        await Assert.That(device.BoundTextureSlots).DoesNotContain(SilkBindingLayoutDescriptor.VolumeDensityTextureBinding);
-        await Assert.That(device.BoundTextureSlots).DoesNotContain(SilkBindingLayoutDescriptor.VolumeOpaqueDepthTextureBinding);
+        await Assert.That(device.BoundTextureSlots)
+            .DoesNotContain(SilkBindingLayoutDescriptor.VolumeDensityTextureBinding);
+        await Assert.That(device.BoundTextureSlots)
+            .DoesNotContain(SilkBindingLayoutDescriptor.VolumeOpaqueDepthTextureBinding);
         await Assert.That(device.VolumeAllocations).IsEqualTo(0);
         await Assert.That(device.CreatedTextureDescriptors.Any(descriptor =>
             descriptor.Width == 4 && descriptor.Height == 4 &&

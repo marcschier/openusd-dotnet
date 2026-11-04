@@ -9,7 +9,8 @@ public sealed class SilkGpuBufferBudgetTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task FailedFinalResourceLeaseReleaseCanRetryThroughEitherOwnerWithoutReturningCreditEarly(bool retryResource)
+    public async Task FailedFinalResourceLeaseReleaseCanRetryThroughEitherOwnerWithoutReturningCreditEarly(
+        bool retryResource)
     {
         var budget = new SilkGpuBufferBudget(64);
         var device = new BudgetDevice();

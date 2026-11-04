@@ -75,7 +75,8 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(guard).Contains("'TransformedRectEmitterShadowsMatchFiveRayReference'");
         await Assert.That(guard).Contains("$expectedCount = 4");
         await Assert.That(guard).Contains("$expectedCount = 30");
-        await Assert.That(guard).Contains("$expectedStatus = if ($contract.Skips.Contains($name)) { 'skipped' } else { 'passed' }");
+        await Assert.That(guard).Contains(
+            "$expectedStatus = if ($contract.Skips.Contains($name)) { 'skipped' } else { 'passed' }");
         await Assert.That(guard).Contains("$LogPassedCount -ne $contract.Passed");
         await Assert.That(guard).Contains("$summary.skipped -ne $contract.Skips.Count");
         await Assert.That(guard).Contains("$test.methodName -cne $expectedMethod");
@@ -145,10 +146,30 @@ public sealed class WorkflowStructureContractTests
         int end = producer.IndexOf("[Test]", start, StringComparison.Ordinal);
         await Assert.That(end).IsGreaterThan(start);
         string gate = producer[start..end];
-        const string literalCase = """await Run\("(?<id>[^"]+)"\s*,""";
-        const string clipLoop = """foreach\s*\(string plane in new\[\]\s*\{(?<planes>[^}]+)\}\)\s*\{\s*await Run\(\$"scene-clip-\{plane\}",\s*\(\) => SceneClipPlanesBoundTheIntegratedChord\(plane\)\);\s*\}""";
-        MatchCollection declarations = Regex.Matches(gate, $"{literalCase}|{clipLoop}");
-        await Assert.That(declarations.Count).IsEqualTo(Regex.Count(gate, @"await Run\("));
+        const string invocation = @"\bawait\s+run\s*\(";
+        const string literalCase = """await\s+run\s*\(\s*"(?<id>[^"]+)"\s*,""";
+        const string clipLoop =
+            """foreach\s*\(string plane in new\[\]\s*\{(?<planes>[^}]+)\}\)\s*\{\s*""" +
+            """await\s+run\s*\(\s*\$"scene-clip-\{plane\}",\s*""" +
+            """\(\) => SceneClipPlanesBoundTheIntegratedChord\(plane\)\);\s*\}""";
+        const string retirementLoop =
+            """foreach\s*\(\(string id,\s*VolumeCameraJointPassConformanceTests\.VolumeCleanupFailure failure\)\s*""" +
+            """in new\[\]\s*\{\s*(?<retirementRows>(?:\("[^"]+",\s*""" +
+            """VolumeCameraJointPassConformanceTests\.VolumeCleanupFailure\.\w+\),\s*)+)\}\)\s*\{\s*""" +
+            """await\s+run\s*\(\s*\$"joint-direct-retirement-\{id\}",\s*\(\) =>\s*[^;]+;\s*""" +
+            """foreach\s*\(bool staged in new\[\]\s*\{\s*""" +
+            """(?<retirementStages>(?:false|true)(?:\s*,\s*(?:false|true))*)\s*\}\)\s*\{\s*""" +
+            """string frame = staged \? "staged" : "retained";\s*""" +
+            """await\s+run\s*\(\s*\$"joint-retirement-\{id\}-\{frame\}",\s*\(\) =>\s*[^;]+;\s*\}\s*\}""";
+        const string snapshotLoop =
+            """foreach\s*\(bool staged in new\[\]\s*\{\s*""" +
+            """(?<snapshotStages>(?:false|true)(?:\s*,\s*(?:false|true))*)\s*\}\)\s*\{\s*""" +
+            """string frame = staged \? "staged" : "retained";\s*""" +
+            """(?:await\s+run\s*\(\s*\$"(?<snapshotCase>joint-[^"]+)-\{frame\}",\s*\(\) =>\s*[^;]+;\s*)+\}""";
+        MatchCollection declarations = Regex.Matches(
+            gate, $"{literalCase}|{clipLoop}|{retirementLoop}|{snapshotLoop}");
+        int parsedCalls = declarations.Sum(declaration => Regex.Count(declaration.Value, invocation));
+        await Assert.That(parsedCalls).IsEqualTo(Regex.Count(gate, invocation));
         var producedCases = new List<string>();
         foreach (Match declaration in declarations)
         {
@@ -156,12 +177,47 @@ public sealed class WorkflowStructureContractTests
             {
                 producedCases.Add(declaration.Groups["id"].Value);
             }
-            else
+            else if (declaration.Groups["planes"].Success)
             {
                 producedCases.AddRange(Regex.Matches(declaration.Groups["planes"].Value, "\"(?<plane>[^\"]+)\"")
                     .Select(match => $"scene-clip-{match.Groups["plane"].Value}"));
             }
+            else if (declaration.Groups["retirementRows"].Success)
+            {
+                await Assert.That(Regex.Count(declaration.Value, invocation)).IsEqualTo(2);
+                MatchCollection rows = Regex.Matches(
+                    declaration.Groups["retirementRows"].Value, """\("(?<id>[^"]+)",\s*""");
+                foreach (Match row in rows)
+                {
+                    string id = row.Groups["id"].Value;
+                    producedCases.Add($"joint-direct-retirement-{id}");
+                    foreach (string frame in frames(declaration.Groups["retirementStages"].Value))
+                    {
+                        producedCases.Add($"joint-retirement-{id}-{frame}");
+                    }
+                }
+            }
+            else if (declaration.Groups["snapshotStages"].Success)
+            {
+                CaptureCollection cases = declaration.Groups["snapshotCase"].Captures;
+                await Assert.That(Regex.Count(declaration.Value, invocation)).IsEqualTo(cases.Count);
+                foreach (string frame in frames(declaration.Groups["snapshotStages"].Value))
+                {
+                    foreach (Capture item in cases)
+                    {
+                        producedCases.Add($"{item.Value}-{frame}");
+                    }
+                }
+            }
+            else
+            {
+                throw new InvalidDataException("Unrecognized camera receipt declaration.");
+            }
         }
+
+        static string[] frames(string values) => Regex.Matches(values, @"\b(?:false|true)\b")
+            .Select(match => match.Value == "true" ? "staged" : "retained").ToArray();
+
         string[] produced = producedCases.ToArray();
         string[] expected =
         [
@@ -185,10 +241,39 @@ public sealed class WorkflowStructureContractTests
             "joint-unsupported-uniform-map", "joint-unsupported-zero-opacity-map", "joint-unsupported-sampled-map",
             "joint-unsupported-density-duplicate", "joint-unsupported-density-composite",
             "joint-dense-unequal-tint-uniform", "joint-dense-unequal-tint-atlas", "joint-workload-refusal-retry",
-            "joint-nonfinite-density-scalar", "joint-nonfinite-density-grid"
+            "joint-nonfinite-density-scalar", "joint-nonfinite-density-grid",
+            "joint-finite-density-scalar", "joint-finite-density-grid",
+            "joint-thin-density-scalar-translucent", "joint-thin-density-scalar-opaque",
+            "joint-thin-density-grid-translucent", "joint-thin-density-grid-opaque",
+            "joint-tint-exposure-scalar-retained", "joint-tint-exposure-scalar-staged",
+            "joint-tint-exposure-grid-retained", "joint-tint-exposure-grid-staged",
+            "joint-tint-exposure-zero-opacity", "joint-tint-exposure-material-disabled",
+            "joint-high-tint-overlap-scalar", "joint-high-tint-overlap-dense-scalar",
+            "joint-high-tint-overlap-grid", "joint-high-tint-overlap-dense-grid",
+            "joint-high-tint-overlap-1e-37-scalar", "joint-high-tint-overlap-1e-20-scalar",
+            "joint-high-tint-overlap-1e-8-scalar", "joint-high-tint-overlap-1e-37-grid",
+            "joint-high-tint-overlap-1e-20-grid", "joint-high-tint-overlap-1e-8-grid",
+            "joint-signal-subnormal-scale-scalar", "joint-signal-step-underflow-scalar",
+            "joint-signal-opacity-product-scalar", "joint-signal-subnormal-scale-grid",
+            "joint-signal-step-underflow-grid", "joint-signal-opacity-product-grid",
+            "joint-signal-subnormal-sample-grid", "joint-signal-zero-opacity", "joint-signal-material-disabled",
+            "joint-signal-retained-resize-scalar", "joint-signal-retained-resize-grid",
+            "joint-output-allocation-retained", "joint-output-frame-submission-retained",
+            "joint-output-publication-retained", "joint-output-allocation-staged",
+            "joint-output-frame-submission-staged", "joint-output-publication-staged",
+            "joint-direct-retirement-none", "joint-retirement-none-retained", "joint-retirement-none-staged",
+            "joint-direct-retirement-depth", "joint-retirement-depth-retained", "joint-retirement-depth-staged",
+            "joint-direct-retirement-resources", "joint-retirement-resources-retained",
+            "joint-retirement-resources-staged", "joint-direct-retirement-both",
+            "joint-retirement-both-retained", "joint-retirement-both-staged",
+            "joint-failed-frame-cleanup-retained", "joint-snapshot-rollback-retained",
+            "joint-snapshot-budget-refusal-retained", "joint-snapshot-budget-exact-retained",
+            "joint-failed-frame-cleanup-staged", "joint-snapshot-rollback-staged",
+            "joint-snapshot-budget-refusal-staged", "joint-snapshot-budget-exact-staged",
+            "joint-snapshot-budget-reuse", "joint-renderer-disposal-retry"
         ];
         await Assert.That(string.Join('\n', produced)).IsEqualTo(string.Join('\n', expected));
-        await Assert.That(produced.Distinct(StringComparer.Ordinal).Count()).IsEqualTo(53);
+        await Assert.That(produced.Distinct(StringComparer.Ordinal).Count()).IsEqualTo(114);
         foreach ((string file, string variable) in new[]
         {
             ("assert-volume-camera-evidence.ps1", "expectedCases"),

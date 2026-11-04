@@ -303,7 +303,8 @@ public sealed class SilkSubprimIdentityTests
 
         await Assert.That(table.Revision).IsEqualTo(revision);
         await Assert.That(table.AllocatedRangeCount).IsEqualTo(allocated);
-        await Assert.That(table.TryGetRange(ordinary.Path, 0, SilkPickSubprimKind.Point, out SilkPickTokenRange restored))
+        await Assert.That(table.TryGetRange(
+            ordinary.Path, 0, SilkPickSubprimKind.Point, out SilkPickTokenRange restored))
             .IsTrue();
         await Assert.That(restored).IsEqualTo(original);
         await Assert.That(table.TryResolve(original.FirstToken, out _)).IsTrue();

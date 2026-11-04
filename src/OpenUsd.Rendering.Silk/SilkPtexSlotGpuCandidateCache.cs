@@ -23,7 +23,8 @@ internal sealed class SilkPtexSlotGpuCandidateCache : IDisposable
     {
         if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
         {
-            throw new InvalidOperationException("Ptex candidate cache operations must be serialized and cannot reenter.");
+            throw new InvalidOperationException(
+                "Ptex candidate cache operations must be serialized and cannot reenter.");
         }
         return new Operation(this);
     }
@@ -359,12 +360,15 @@ internal sealed class SilkPtexSlotGpuCandidateCache : IDisposable
                     IDisposable wordsReservation = cleanup.Own(budget.Reserve(checked((ulong)count * sizeof(uint))));
                     var words = new uint[count];
                     lease.CopyShaderWords(words);
-                    lookup = CreateBuffer(device, MemoryMarshal.AsBytes(words.AsSpan()), SilkBufferUsage.Storage, cleanup);
+                    lookup = CreateBuffer(
+                        device, MemoryMarshal.AsBytes(words.AsSpan()), SilkBufferUsage.Storage, cleanup);
                     cleanup.Release(wordsReservation);
                     cleanup.Release(lease);
                 }
-                vertices = CreateBuffer(device, MemoryMarshal.AsBytes(geometry.Vertices.AsSpan()), SilkBufferUsage.Vertex, cleanup);
-                indices = CreateBuffer(device, MemoryMarshal.AsBytes(geometry.Indices.AsSpan()), SilkBufferUsage.Index, cleanup);
+                vertices = CreateBuffer(
+                    device, MemoryMarshal.AsBytes(geometry.Vertices.AsSpan()), SilkBufferUsage.Vertex, cleanup);
+                indices = CreateBuffer(
+                    device, MemoryMarshal.AsBytes(geometry.Indices.AsSpan()), SilkBufferUsage.Index, cleanup);
                 ISilkGraphicsCommandList upload = cleanup.Own(device.CreateCommandList(), beforePayload: true);
                 {
                     for (int slot = 0; slot < textures.Length; slot++)
@@ -380,7 +384,8 @@ internal sealed class SilkPtexSlotGpuCandidateCache : IDisposable
                         }
                         else
                         {
-                            IDisposable pixelsReservation = cleanup.Own(budget.Reserve(checked((ulong)atlas.Pixels.Length)));
+                            IDisposable pixelsReservation = cleanup.Own(
+                                budget.Reserve(checked((ulong)atlas.Pixels.Length)));
                             byte[] pixels = atlas.Pixels.ToArray();
                             SilkSceneGpuResources.PreparePtexMaterialPixels(pixels, values[slot]);
                             upload.UploadTexture(textures[slot], pixels);

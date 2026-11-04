@@ -327,7 +327,8 @@ public sealed partial class StormSilkParityCaptureDriverTests
                 await Assert.That(baseline.FaceIndices.SequenceEqual(shifted.FaceIndices)).IsFalse();
                 await Assert.That(restored.FaceIndices.SequenceEqual(baseline.FaceIndices)).IsTrue();
                 await Assert.That(baseline.Unsupported || shifted.Unsupported || restored.Unsupported).IsFalse();
-                await Assert.That(baseline.MissingCoordinates || shifted.MissingCoordinates || restored.MissingCoordinates)
+                await Assert.That(
+                    baseline.MissingCoordinates || shifted.MissingCoordinates || restored.MissingCoordinates)
                     .IsFalse();
                 await Assert.That(restored.Image.Rgba.Span.SequenceEqual(baseline.Image.Rgba.Span)).IsTrue();
 

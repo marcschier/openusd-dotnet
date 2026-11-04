@@ -47,7 +47,8 @@ public sealed class VulkanSampledDepthBarrierSourceContractTests
             "case SilkGraphicsCommandKind.CopyRenderTarget:",
             "case SilkGraphicsCommandKind.UploadTexture:");
         await Assert.That(copy).Contains("GetCurrentLayout(finalLayouts, copySource), ImageLayout.TransferSrcOptimal");
-        await Assert.That(copy).Contains("GetCurrentLayout(finalLayouts, copyDestination), ImageLayout.TransferDstOptimal");
+        await Assert.That(copy)
+            .Contains("GetCurrentLayout(finalLayouts, copyDestination), ImageLayout.TransferDstOptimal");
         await Assert.That(copy).Contains("copySource.AspectMask");
         await Assert.That(copy).Contains("copyDestination.AspectMask");
         await Assert.That(copy).Contains("finalLayouts[copySource] = ImageLayout.TransferSrcOptimal;");

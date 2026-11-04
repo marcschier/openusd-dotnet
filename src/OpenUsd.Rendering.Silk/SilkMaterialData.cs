@@ -70,7 +70,9 @@ public sealed class SilkMaterialTexture
     public SilkMaterialParameter Parameter { get; }
 
     /// <summary>Gets the texture source kind, independently of its asset name.</summary>
-    /// <remarks>A Ptex source is sampled through a face-indexed atlas when its mesh mapping and material input are supported.</remarks>
+    /// <remarks>
+    /// A Ptex source is sampled through a face-indexed atlas when its mesh mapping and material input are supported.
+    /// </remarks>
     public SilkTextureSourceKind SourceKind { get; }
 
     /// <summary>

@@ -2074,7 +2074,8 @@ public sealed class VolumeCameraJointPassConformanceTests
                         .Throws<InvalidDataException>())!;
                     await Assert.That(gpuRefusal.InnerException)
                         .IsTypeOf<SilkGpuTextureBudgetExceededException>();
-                    await Assert.That(((SilkGpuTextureBudgetExceededException)gpuRefusal.InnerException!).RequestedBytes)
+                    await Assert.That(
+                        ((SilkGpuTextureBudgetExceededException)gpuRefusal.InnerException!).RequestedBytes)
                         .IsEqualTo(4000UL);
                     break;
                 case VolumeCameraFailure.AtlasSubmission:

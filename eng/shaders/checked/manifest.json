@@ -455,7 +455,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk.Metal/MetalSilkGraphicsDevice.Pipeline.cs",
-      "sha256": "2f3ea0d1a349f0118d726da6b72b8c1ba62623f1a976bf5e3e31bf6682c52f62"
+      "sha256": "c0df3ab1086b78a2393617f54dcc97c5f2c919b757adbb3c8d0a1cdba8400bf6"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk.Metal/MetalSilkGraphicsDevice.cs",
@@ -487,11 +487,11 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneState.cs",
-      "sha256": "7742264d7936b4733a0d918196adb15bacbd2d981a324c6e16097be18a7611e0"
+      "sha256": "43f23c152289fdae1b9df6ef6c7312afbe2e14f4fdf6f4c760c97947766f2fdd"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSurfaceUniformWriter.cs",
-      "sha256": "5045007b4e2b68b7142418560717327da159814e9072817f60ca12f6e674d5a9"
+      "sha256": "de8cb8406d43c5a3a5ca32bf62c33d440e61fcd3da114bb076e03336a298eaf8"
     },
     {
       "path": "src/OpenUsd.Viewer.App/app.manifest",

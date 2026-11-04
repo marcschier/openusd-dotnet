@@ -61,7 +61,8 @@ public sealed class D3D12PendingRetirementTests
             await Assert.That(aggregate.InnerExceptions[1]).IsSameReferenceAs(last.Failure);
             await Assert.That(device.RetainedResourceCountForTesting).IsEqualTo(2);
             await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(16ul);
-            await Assert.That(device.TeardownReleaseCountsForTesting).IsEqualTo(default(D3D12DeviceTeardownReleaseCounts));
+            await Assert.That(device.TeardownReleaseCountsForTesting)
+                .IsEqualTo(default(D3D12DeviceTeardownReleaseCounts));
             first.Refuse = false;
             InvalidOperationException? repeated = await Assert.That(device.Dispose).Throws<InvalidOperationException>();
             await Assert.That(repeated).IsSameReferenceAs(last.Failure);
@@ -226,7 +227,8 @@ public sealed class D3D12PendingRetirementTests
             await Assert.That(reservation.Attempts).IsEqualTo(0);
             await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(8ul);
             await Assert.That(device.RetainedResourceCountForTesting).IsEqualTo(1);
-            await Assert.That(device.TeardownReleaseCountsForTesting).IsEqualTo(default(D3D12DeviceTeardownReleaseCounts));
+            await Assert.That(device.TeardownReleaseCountsForTesting)
+                .IsEqualTo(default(D3D12DeviceTeardownReleaseCounts));
             using (ISilkGraphicsCommandList commands = device.CreateCommandList())
             {
                 await Assert.That(commands).IsNotNull();

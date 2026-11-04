@@ -143,7 +143,8 @@ internal class SilkGpuPublicationDevice(ISilkGraphicsDevice inner)
             if (GpuTextureBudget is not null || texture is not SilkGraphicsTextureBase concrete)
             {
                 texture.Dispose();
-                throw new InvalidOperationException("Texture disposal injection requires an unbudgeted native texture.");
+                throw new InvalidOperationException(
+                    "Texture disposal injection requires an unbudgeted native texture.");
             }
             concrete.OwnTextureReservation(new CleanupFailureTextureReservation(this, descriptor));
         }

@@ -281,7 +281,9 @@ public sealed class SilkBackendRetirementOwnershipTests
             Skip.Test("The managed Metal owner seam is macOS-only; callbacks do not invoke Metal.");
             return;
         }
-        RetireSteps retire = compute ? MetalSilkComputePipeline.RetireOwnedNativeSteps : MetalSilkGraphicsPipeline.RetireOwnedNativeSteps;
+        RetireSteps retire = compute
+            ? MetalSilkComputePipeline.RetireOwnedNativeSteps
+            : MetalSilkGraphicsPipeline.RetireOwnedNativeSteps;
         int count = compute ? 5 : 8;
         var attempts = new int[count];
         var releases = new int[count];
@@ -319,7 +321,8 @@ public sealed class SilkBackendRetirementOwnershipTests
     [Arguments(SilkGraphicsBackend.Vulkan, true)]
     [Arguments(SilkGraphicsBackend.Metal, false)]
     [Arguments(SilkGraphicsBackend.Metal, true)]
-    public async Task ShaderProgramOwnerRetainsFailedAndUnvisitedRealBaseLeases(SilkGraphicsBackend backend, bool compute)
+    public async Task ShaderProgramOwnerRetainsFailedAndUnvisitedRealBaseLeases(
+        SilkGraphicsBackend backend, bool compute)
     {
         if (!RequirePlatform(backend))
         { return; }
@@ -458,15 +461,21 @@ public sealed class SilkBackendRetirementOwnershipTests
     {
         if (backend == SilkGraphicsBackend.D3D12 && OperatingSystem.IsWindows())
         {
-            return compute ? D3D12SilkComputeShaderProgram.RetireOwnedLeases : D3D12SilkGraphicsShaderProgram.RetireOwnedLeases;
+            return compute
+                ? D3D12SilkComputeShaderProgram.RetireOwnedLeases
+                : D3D12SilkGraphicsShaderProgram.RetireOwnedLeases;
         }
         if (backend == SilkGraphicsBackend.Metal && OperatingSystem.IsMacOS())
         {
-            return compute ? MetalSilkComputeShaderProgram.RetireOwnedLeases : MetalSilkGraphicsShaderProgram.RetireOwnedLeases;
+            return compute
+                ? MetalSilkComputeShaderProgram.RetireOwnedLeases
+                : MetalSilkGraphicsShaderProgram.RetireOwnedLeases;
         }
         if (backend == SilkGraphicsBackend.Vulkan)
         {
-            return compute ? VulkanSilkComputeShaderProgram.RetireOwnedLeases : VulkanSilkGraphicsShaderProgram.RetireOwnedLeases;
+            return compute
+                ? VulkanSilkComputeShaderProgram.RetireOwnedLeases
+                : VulkanSilkGraphicsShaderProgram.RetireOwnedLeases;
         }
         throw new PlatformNotSupportedException("The selected backend retirement seam is unavailable on this host.");
     }
@@ -485,7 +494,9 @@ public sealed class SilkBackendRetirementOwnershipTests
         if (backend == SilkGraphicsBackend.Vulkan)
         {
             bool releasing = false;
-            VulkanUploadResource[]? uploads = reservations.Select(reservation => new VulkanUploadResource(default, default, reservation)).ToArray();
+            VulkanUploadResource[]? uploads = reservations
+                .Select(reservation => new VulkanUploadResource(default, default, reservation))
+                .ToArray();
             VulkanDrawSubmissionResource[]? draws = [default];
             VulkanComputeSubmissionResource[]? computes = [default];
             return new(

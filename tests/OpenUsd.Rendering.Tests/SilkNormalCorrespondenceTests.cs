@@ -698,7 +698,8 @@ public sealed class SilkNormalCorrespondenceTests
             (mesh.TriangleLocalNormalFallback ? 0x80000000u : 0u);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), countAndMode);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor + 4), (uint)(mesh.NormalCornerArray.Length / 3));
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor + 8), (uint)(mesh.NormalExtraPointArray.Length / 3));
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(cursor + 8), (uint)(mesh.NormalExtraPointArray.Length / 3));
         cursor += 12;
         foreach (int value in mesh.NormalIdentityArray.Concat(mesh.NormalCornerArray))
         {

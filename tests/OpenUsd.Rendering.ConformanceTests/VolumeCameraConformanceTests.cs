@@ -70,7 +70,8 @@ public sealed class VolumeCameraConformanceTests
             }
             await run("analytic-slab-511-side", () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(511, 90));
             await run("analytic-slab-512-side", () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(512, 90));
-            await run("analytic-slab-512-oblique", () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(512, 45));
+            await run("analytic-slab-512-oblique",
+                () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(512, 45));
             await run("large-scale-inside", () => LargeScaleInsideRayMatchesFieldLocalAnalyticReference(1e9, false));
             await run("large-scale-threshold", () => LargeScaleInsideRayMatchesFieldLocalAnalyticReference(1e6, false));
             await run("parallel-outside", () => LargeScaleInsideRayMatchesFieldLocalAnalyticReference(1e9, true));
@@ -89,9 +90,11 @@ public sealed class VolumeCameraConformanceTests
             await run("camera-micro-outside", () => EyeSpaceRayMatchesIndependentLocalChord(0, 1e-6, 1, false, false));
             await run("camera-micro-inside", () => EyeSpaceRayMatchesIndependentLocalChord(0, 1e-6, 1, true, false));
             await run("camera-micro-clipped", () => EyeSpaceRayMatchesIndependentLocalChord(0, 1e-6, 1, false, true));
-            await run("perspective-near-small", () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(0.01, 1000, 0.25));
+            await run("perspective-near-small",
+                () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(0.01, 1000, 0.25));
             await run("perspective-near-one", () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(1, 11, 0));
-            await run("perspective-near-two-asymmetric", () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(2, 100, 0.25));
+            await run("perspective-near-two-asymmetric",
+                () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(2, 100, 0.25));
             await run("oblique-off-center-clip", ObliqueProjectionClipsAtThePixelLocalNearPlane);
             await run("perspective-finite-large-far", () => HomogeneousFarPlaneMatchesIndependentOpticalLength(false));
             await run("perspective-infinite-far", () => HomogeneousFarPlaneMatchesIndependentOpticalLength(true));
@@ -553,7 +556,8 @@ public sealed class VolumeCameraConformanceTests
     [Arguments(0.01, 1000.0, 0.25)]
     [Arguments(1.0, 11.0, 0.0)]
     [Arguments(2.0, 100.0, 0.25)]
-    public async Task PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(double near, double far, double horizontalOffset)
+    public async Task PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(
+        double near, double far, double horizontalOffset)
     {
         const int x = 60;
         const int y = 48;

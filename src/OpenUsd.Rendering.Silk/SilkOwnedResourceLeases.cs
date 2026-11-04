@@ -10,7 +10,8 @@ internal static class SilkOwnedResourceLeases
         resource = null;
     }
 
-    internal static void Dispose<T>(ref T?[]? resources, ref bool releasing, bool reverse = false) where T : class, IDisposable
+    internal static void Dispose<T>(ref T?[]? resources, ref bool releasing, bool reverse = false)
+        where T : class, IDisposable
     {
         T?[]? current = resources;
         if (current is null)

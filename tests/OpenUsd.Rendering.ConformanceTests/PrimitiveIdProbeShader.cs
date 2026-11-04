@@ -59,7 +59,12 @@ internal static class PrimitiveIdProbeShader
         {
             ValidateInput(receipt, $"{ProbeDirectory}/{name}", Path.Combine(probeDirectory, name));
         }
-        foreach (string name in new[] { "toolchain.lock.json", "scripts/normalize-reflection.py", "scripts/shader_model.py" })
+        foreach (string name in new[]
+        {
+            "toolchain.lock.json",
+            "scripts/normalize-reflection.py",
+            "scripts/shader_model.py"
+        })
         {
             ValidateInput(receipt, $"eng/shaders/{name}",
                 Path.Combine(repository, "eng", "shaders", name.Replace('/', Path.DirectorySeparatorChar)));

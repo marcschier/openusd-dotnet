@@ -140,7 +140,8 @@ internal static class OpenUsdMcpDescriptions
         "Optional cameraPath is an absolute UsdGeomCamera path sampled at every time. " +
         "Optional includeDeviceDepth adds real normalized device-depth float32 files, not metric distance. " +
         "Optional includeHdrColor adds actual pre-display RGBA binary16, not tone-mapped pixels. " +
-        "hdrColorFormat is 'raw' by default; 'exr' selects lossless half EXR and requires HDR plus a supported Core encoder. " +
+        "hdrColorFormat is 'raw' by default; 'exr' selects lossless half EXR and requires HDR plus a " +
+        "supported Core encoder. " +
         "Encoded-byte quotas do not bound native EXR codec heap. " +
         "Effects: renders sequentially on the retained capture worker using explicit presentation " +
         "settings; writes generated frame names and a request/hash manifest, never scene-authored " +

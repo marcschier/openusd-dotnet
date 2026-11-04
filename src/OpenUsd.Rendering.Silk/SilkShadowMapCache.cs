@@ -1316,7 +1316,8 @@ internal sealed class SilkShadowMapCache : IDisposable
         bool useSceneMaterials = true) =>
         IsPotentialCaster(scene, resource, mesh, lightIndex) &&
         ClassifyOpacity(scene, mesh, useSceneMaterials) is
-            SilkShadowOpacityCoverage.Solid or SilkShadowOpacityCoverage.Masked or SilkShadowOpacityCoverage.Transmissive;
+            SilkShadowOpacityCoverage.Solid or SilkShadowOpacityCoverage.Masked or
+                SilkShadowOpacityCoverage.Transmissive;
 
     private static bool RequiresTransmission(SilkSceneState scene, bool useSceneMaterials)
     {

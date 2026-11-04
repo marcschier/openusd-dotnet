@@ -14,7 +14,8 @@ public sealed class SilkShadowTransmissionTests
     {
         using var device = new SilkShadowAtlasRetentionTests.ShadowDevice(SilkGraphicsBackend.D3D12);
         ulong pending = SilkShadowTransmissionWorkspace.PeakBytes(0, 256, true, true);
-        ulong retained = checked((ulong)((long)(SilkShadowTransmissionWorkspace.DefaultMaximumBytes - pending) + delta));
+        ulong retained = checked(
+            (ulong)((long)(SilkShadowTransmissionWorkspace.DefaultMaximumBytes - pending) + delta));
         if (delta > 0)
         {
             await Assert.That(() => SilkShadowTransmissionWorkspace.Validate(device, retained, 256, true, true))

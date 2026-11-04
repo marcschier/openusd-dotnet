@@ -358,17 +358,24 @@ internal static class SilkSurfaceUniformWriter
             material.GetRenderableSurfaceTexture(SilkMaterialParameter.DiffuseColor), SilkShaderFeatures.BaseColorMap);
         addBorderBit(material.GetRenderableSurfaceTexture(SilkMaterialParameter.Normal), SilkShaderFeatures.NormalMap);
         addBorderBit(
-            material.GetRenderableSurfaceTexture(SilkMaterialParameter.DetailNormal), SilkShaderFeatures.DetailNormalMap);
+            material.GetRenderableSurfaceTexture(SilkMaterialParameter.DetailNormal),
+            SilkShaderFeatures.DetailNormalMap);
         addBorderBit(
-            material.GetRenderableSurfaceTexture(SilkMaterialParameter.Roughness), SilkShaderFeatures.RoughnessMetallicMap);
+            material.GetRenderableSurfaceTexture(SilkMaterialParameter.Roughness),
+            SilkShaderFeatures.RoughnessMetallicMap);
         addBorderBit(
             material.GetRenderableSurfaceTexture(SilkMaterialParameter.EmissiveColor), SilkShaderFeatures.EmissiveMap);
-        addBorderBit(material.GetRenderableSurfaceTexture(SilkMaterialParameter.Metallic), SilkShaderFeatures.MetallicMap);
-        addBorderBit(material.GetRenderableSurfaceTexture(SilkMaterialParameter.Opacity), SilkShaderFeatures.OpacityMap);
-        addBorderBit(material.GetRenderableSurfaceTexture(SilkMaterialParameter.Occlusion), SilkShaderFeatures.OcclusionMap);
         addBorderBit(
-            material.GetRenderableSurfaceTexture(SilkMaterialParameter.SpecularColor), SilkShaderFeatures.SpecularColorMap);
-        addBorderBit(material.GetRenderableSurfaceTexture(SilkMaterialParameter.Clearcoat), SilkShaderFeatures.ClearcoatMap);
+            material.GetRenderableSurfaceTexture(SilkMaterialParameter.Metallic), SilkShaderFeatures.MetallicMap);
+        addBorderBit(
+            material.GetRenderableSurfaceTexture(SilkMaterialParameter.Opacity), SilkShaderFeatures.OpacityMap);
+        addBorderBit(
+            material.GetRenderableSurfaceTexture(SilkMaterialParameter.Occlusion), SilkShaderFeatures.OcclusionMap);
+        addBorderBit(
+            material.GetRenderableSurfaceTexture(SilkMaterialParameter.SpecularColor),
+            SilkShaderFeatures.SpecularColorMap);
+        addBorderBit(
+            material.GetRenderableSurfaceTexture(SilkMaterialParameter.Clearcoat), SilkShaderFeatures.ClearcoatMap);
         addBorderBit(
             material.GetRenderableSurfaceTexture(SilkMaterialParameter.ClearcoatRoughness),
             SilkShaderFeatures.ClearcoatRoughnessMap);

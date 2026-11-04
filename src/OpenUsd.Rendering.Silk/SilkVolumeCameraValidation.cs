@@ -272,7 +272,8 @@ internal static class SilkVolumeCameraValidation
         {
             throw new InvalidDataException(
                 $"The two-pass density camera workload requires {positions} positions per phase, " +
-                $"exceeding the {MaximumCompositorStepsPerPixel} ceiling. Reduce active fields or grid axes and retry.");
+                $"exceeding the {MaximumCompositorStepsPerPixel} ceiling. " +
+                "Reduce active fields or grid axes and retry.");
         }
     }
 
@@ -465,7 +466,8 @@ internal static class SilkVolumeCameraValidation
                         {
                             throw Refusal(
                                 volumeDescription,
-                                "a finite clip boundary becomes infinite when the projection is narrowed to shader float");
+                                "a finite clip boundary becomes infinite when the projection is narrowed " +
+                                "to shader float");
                         }
                         for (int component = 0; component < 3; component++)
                         {
@@ -523,7 +525,8 @@ internal static class SilkVolumeCameraValidation
         {
             throw Refusal(
                 volumeDescription,
-                "only part of the far boundary is infinite; use a finite boundary or a conventional infinite far plane");
+                "only part of the far boundary is infinite; use a finite boundary or a conventional " +
+                "infinite far plane");
         }
         double maximumEyeCoordinate = Math.Max(
             BoundEndpointCoordinates(floatClipToEye, 0, homogeneousDirection: false, volumeDescription),

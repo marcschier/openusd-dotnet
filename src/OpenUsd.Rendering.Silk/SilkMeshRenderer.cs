@@ -1200,14 +1200,16 @@ public sealed partial class SilkMeshRenderer :
         {
             throw new SilkVolumeTransformException(exception);
         }
-        bool prepareOutput = output is null && !preparedPage && SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device);
+        bool prepareOutput = output is null && !preparedPage &&
+            SilkMeshGpuGeometryResource.UsesInstanceAdmission(_device);
         if (prepareOutput && PhysicsDeformations?.HasBatch == true)
         {
             using var retainedPage = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, Scene.Revision, [], 0);
             return RenderPage(retainedPage, displayTarget, depthTarget, options, pickBinding, captureRequest,
                 out hdrColor, renderSelectionOutline, retained: true, completion: completion);
         }
-        using SilkPhysicsTransformOverrides.PreparedState? overrideState = !preparedPage && !physicsTransformsPrepared &&
+        using SilkPhysicsTransformOverrides.PreparedState? overrideState = !preparedPage &&
+            !physicsTransformsPrepared &&
             PhysicsOverrides is { HasStaged: true } pendingOverrides ? pendingOverrides.PrepareState() : null;
         if (!preparedPage && !physicsTransformsPrepared)
         {
@@ -1403,7 +1405,8 @@ public sealed partial class SilkMeshRenderer :
             GpuResources.UploadEnvironment(commands);
             if (!outsideSingle)
             {
-                PrepareMaterialTextures(commands, singleMesh, resolveMaterialFeatures(singleMesh.Mesh), options.UseSceneMaterials);
+                PrepareMaterialTextures(
+                    commands, singleMesh, resolveMaterialFeatures(singleMesh.Mesh), options.UseSceneMaterials);
             }
         }
 

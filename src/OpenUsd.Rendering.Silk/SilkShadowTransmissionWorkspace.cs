@@ -39,7 +39,8 @@ internal static class SilkShadowTransmissionWorkspace
                 $"{DefaultMaximumBytes} bytes when any CPU-texture, GPU-texture or GPU-staging budget is absent. " +
                 "Reduce authored shadow resolution or map count, retire unused shadows, or configure all three " +
                 "budgets before device allocation. Configured budgets remain in force. The previously published " +
-                "atlas is unchanged. This limit does not measure whole-process memory, driver overhead or device memory.");
+                "atlas is unchanged. This limit does not measure whole-process memory, driver overhead or " +
+                "device memory.");
         }
     }
 }

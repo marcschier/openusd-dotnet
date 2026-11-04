@@ -163,7 +163,8 @@ internal sealed class SilkPtexSlotCandidateCache : IDisposable
                     SilkMaterialParameter.VolumeDensity)
                 {
                     throw new NotSupportedException(
-                        $"The Ptex candidate has no qualified normal, displacement or shadow contract for {source.Parameter}.");
+                        "The Ptex candidate has no qualified normal, displacement or shadow contract " +
+                        $"for {source.Parameter}.");
                 }
             }
             cornerCertificate?.Validate(mesh, ordinaryGeometry, budget);

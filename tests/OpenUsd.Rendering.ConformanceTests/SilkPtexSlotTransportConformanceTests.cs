@@ -52,7 +52,8 @@ public sealed class SilkPtexSlotTransportConformanceTests
         {
             byte[] patched = VulkanSilkGraphicsDevice.PatchSlangDrawIndexLowering(vertexCode.Code.Span);
             await Assert.That(HasDrawParametersCapability(patched)).IsFalse()
-                .Because("the zero-base Ptex draws must not require SwiftShader's unsupported DrawParameters capability");
+                .Because("the zero-base Ptex draws must not require SwiftShader's " +
+                    "unsupported DrawParameters capability");
         }
         using ISilkGraphicsDevice device = CreateDevice(backend);
         using ISilkGraphicsShaderModule vertex = device.CreateShaderModule(vertexCode);
@@ -182,9 +183,12 @@ public sealed class SilkPtexSlotTransportConformanceTests
             }
         }
         uint[] indices = [0, 1, 2, 3, 4, 5];
-        using ISilkGraphicsBuffer vertexBuffer = Buffer(device, MemoryMarshal.AsBytes(vertices.AsSpan()), SilkBufferUsage.Vertex);
-        using ISilkGraphicsBuffer indexBuffer = Buffer(device, MemoryMarshal.AsBytes(indices.AsSpan()), SilkBufferUsage.Index);
-        using ISilkGraphicsBuffer lookup = Buffer(device, MemoryMarshal.AsBytes(words.AsSpan()), SilkBufferUsage.Storage);
+        using ISilkGraphicsBuffer vertexBuffer = Buffer(
+            device, MemoryMarshal.AsBytes(vertices.AsSpan()), SilkBufferUsage.Vertex);
+        using ISilkGraphicsBuffer indexBuffer = Buffer(
+            device, MemoryMarshal.AsBytes(indices.AsSpan()), SilkBufferUsage.Index);
+        using ISilkGraphicsBuffer lookup = Buffer(
+            device, MemoryMarshal.AsBytes(words.AsSpan()), SilkBufferUsage.Storage);
         byte[] render(bool releaseLookupOwnerBeforeWait = false, uint? declaredLookupBytes = null)
         {
             ISilkGraphicsBuffer boundLookup = releaseLookupOwnerBeforeWait
@@ -204,7 +208,8 @@ public sealed class SilkPtexSlotTransportConformanceTests
                     instances[instance * 20 + 16] = BitConverter.UInt32BitsToSingle(lookupBytes);
                 }
                 using ISilkGraphicsBuffer instanceBuffer = Buffer(
-                    device, MemoryMarshal.AsBytes(instances.AsSpan()), SilkBufferUsage.Storage | SilkBufferUsage.Uniform);
+                    device, MemoryMarshal.AsBytes(instances.AsSpan()),
+                    SilkBufferUsage.Storage | SilkBufferUsage.Uniform);
                 ISilkGraphicsSubmission submitted;
                 using (ISilkGraphicsCommandList commands = device.CreateCommandList())
                 {

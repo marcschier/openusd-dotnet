@@ -23,7 +23,8 @@ internal static class SilkPtexCandidateBinding
                 slot.Binding == MetalBuffer) ||
             (slot.Kind == SilkBindingKind.StorageBuffer && slot.Binding == HlslRegister)))
         {
-            throw new InvalidDataException("The candidate lookup binding or backend buffer register is already occupied.");
+            throw new InvalidDataException(
+                "The candidate lookup binding or backend buffer register is already occupied.");
         }
         SilkBindingLayoutDescriptor result = descriptor with { MaterialSlots = [.. slots, Slot] };
         result.Validate();

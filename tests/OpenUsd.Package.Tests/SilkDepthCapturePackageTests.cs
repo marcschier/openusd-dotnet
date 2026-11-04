@@ -59,7 +59,8 @@ public sealed class SilkDepthCapturePackageTests
                 [
                     "session,width,height,renderSettings,depthOptions,timeCode,camera,cancellationToken",
                     "session,width,height,renderSettings,ocioProcessor,depthOptions,timeCode,camera,cancellationToken",
-                    "session,width,height,renderSettings,ingestionOptions,depthOptions,timeCode,camera,cancellationToken"
+                    "session,width,height,renderSettings,ingestionOptions,depthOptions," +
+                    "timeCode,camera,cancellationToken"
                 ]);
             await Assert.That(PublicMethods(metadata, FindType(metadata, "SilkDepthCaptureOptions")))
                 .IsEquivalentTo(

@@ -1004,7 +1004,8 @@ public sealed class SilkMaterialCommandTests
         SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
         await Assert.That(ReadSingle(constants, 0)).IsEqualTo(0.18f);
         await Assert.That((uint)ReadSingle(constants, 128))
-            .IsEqualTo((uint)(SilkShaderFeatures.BaseColorMap | SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv));
+            .IsEqualTo((uint)(SilkShaderFeatures.BaseColorMap |
+                SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv));
 
         using var device = new TextureGraphicsDevice();
         var gpuBudget = new SilkGpuTextureBudget(64);
@@ -6463,7 +6464,8 @@ public sealed class SilkMaterialCommandTests
         SilkSceneGpuResources.PreparePtexMaterialPixels(pixels, texture);
         await Assert.That(pixels.SequenceEqual(expected)).IsTrue();
         await Assert.That(SilkSceneGpuResources.PtexMaterialSampler.MinFilter).IsEqualTo(SilkSamplerFilter.Linear);
-        await Assert.That(SilkSceneGpuResources.PtexMaterialSampler.AddressU).IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
+        await Assert.That(SilkSceneGpuResources.PtexMaterialSampler.AddressU)
+            .IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
     }
 
     [Test]

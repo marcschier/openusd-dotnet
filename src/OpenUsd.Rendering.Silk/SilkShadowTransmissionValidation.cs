@@ -39,7 +39,8 @@ internal static class SilkShadowTransmissionValidation
                 {
                     string reason = overflow
                         ? "ShadowTransmissionLayerOverflow: more than four positive-opacity intersections"
-                        : "ShadowTransmissionEqualDepth: multiple positive-opacity intersections at the same raster depth";
+                        : "ShadowTransmissionEqualDepth: multiple positive-opacity intersections " +
+                            "at the same raster depth";
                     throw new InvalidDataException(
                         $"{reason} at light {lightIndex}, layer {layer}, atlas pixel ({x}, {y}). " +
                         "The candidate shadow atlas was refused; the previous atlas remains published.");

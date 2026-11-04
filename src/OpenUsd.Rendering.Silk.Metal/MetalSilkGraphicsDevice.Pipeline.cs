@@ -116,14 +116,16 @@ public sealed partial class MetalSilkGraphicsDevice
             if (vertexFunction.NativePtr == 0)
             {
                 throw new InvalidOperationException(
-                    $"The Metal vertex shader library is missing entry point '{program.Vertex.Descriptor.EntryPoint}'.");
+                    "The Metal vertex shader library is missing entry point " +
+                    $"'{program.Vertex.Descriptor.EntryPoint}'.");
             }
             fragmentLibrary = LoadGraphicsLibrary(program.Fragment.Descriptor);
             fragmentFunction = fragmentLibrary.NewFunction(program.Fragment.Descriptor.EntryPoint);
             if (fragmentFunction.NativePtr == 0)
             {
                 throw new InvalidOperationException(
-                    $"The Metal fragment shader library is missing entry point '{program.Fragment.Descriptor.EntryPoint}'.");
+                    "The Metal fragment shader library is missing entry point " +
+                    $"'{program.Fragment.Descriptor.EntryPoint}'.");
             }
 
             var vertexDescriptor = new MTLVertexDescriptor();

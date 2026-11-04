@@ -19,7 +19,8 @@ public sealed partial class SilkSceneGpuResources
         if (texture.SourceKind != SilkTextureSourceKind.Ptex ||
             texture.CompositeOperator != SilkCompositeOperator.None || texture.LuminanceMix.W != 0)
         {
-            throw new NotSupportedException("Ptex material preprocessing requires a direct source without luminance mixing.");
+            throw new NotSupportedException(
+                "Ptex material preprocessing requires a direct source without luminance mixing.");
         }
         if (texture.Scale.Count != 4 || texture.Bias.Count != 4)
         {
