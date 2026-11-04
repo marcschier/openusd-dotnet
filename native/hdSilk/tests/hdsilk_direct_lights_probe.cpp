@@ -3572,6 +3572,12 @@ void VerifyPointInsideBoundsPublishesSixFaces()
     }
 }
 
+void RequirePointBoundsInside(
+    const std::vector<ShadowView>& shadows,
+    const std::array<double, 3>& minimum,
+    const std::array<double, 3>& maximum,
+    const std::string& label);
+
 void VerifyFiniteAreaEmitterSamplesPublishAndUpdatePerspectiveGroups()
 {
     struct EmitterCase
@@ -3761,7 +3767,7 @@ void VerifyFiniteAreaEmitterSamplesPreserveAuthoredTransform()
             {2e-15, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
              0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0},
             {{{0.0, 0.0, 0.0}, {4e-15, 3.0, 0.0}, {4e-15, -3.0, 0.0},
-              {-4e-15, 3.0, 0.0}, {-4e-15, -3.0, 0.0}}}};
+              {-4e-15, 3.0, 0.0}, {-4e-15, -3.0, 0.0}}}}};
 
     for (const TransformCase& row : cases)
     {

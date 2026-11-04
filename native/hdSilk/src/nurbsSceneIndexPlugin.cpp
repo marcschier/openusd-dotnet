@@ -959,7 +959,7 @@ private:
 class _NurbsAttributeDataSource final : public HdSampledDataSource
 {
 public:
-    HD_DECLARE_DATASOURCE(_NurbsAttributeDataSource);
+    HD_DECLARE_DATASOURCE(_NurbsAttributeDataSource)
 
     VtValue GetValue(HdSampledDataSource::Time time) override
     {
