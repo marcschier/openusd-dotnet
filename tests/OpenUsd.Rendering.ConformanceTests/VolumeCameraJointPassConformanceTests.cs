@@ -89,8 +89,8 @@ public sealed class VolumeCameraJointPassConformanceTests
             Frame(SilkMeshRendererConformance.Identity()),
             Material(MaterialA, density, [tint, 0, 0], grid, sampled, false, "2,2,2"),
             Material(MaterialB, density, [tint, 0, 0], grid, sampled, false, "2,2,2"),
-            Mesh(MeshA, MaterialA, -1, 1, 1),
-            Mesh(MeshB, MaterialB, -1, 1, 2));
+            Mesh(MeshA, MaterialA, -1, 1, 1, 0.0625, 0.0625),
+            Mesh(MeshB, MaterialB, -1, 1, 2, 0.0625, 0.0625));
         _ = renderer.ApplyAndRender(page, color, depth);
         float[] pixels = ReadPixels(color);
         int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
@@ -1486,7 +1486,7 @@ public sealed class VolumeCameraJointPassConformanceTests
             1,
             frame,
             Material(MaterialA, 1, [1, 0, 0], grid, sampled, false, "2,2,2", opacity),
-            Mesh(MeshA, MaterialA, 0, 1e-10, 1));
+            Mesh(MeshA, MaterialA, 0, 1e-10, 1, 0.0625, 0.0625));
         _ = renderer.ApplyAndRender(initial, color, depth);
         float[] ordinaryPixels = ReadPixels(color);
         int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
@@ -2438,9 +2438,18 @@ public sealed class VolumeCameraJointPassConformanceTests
         return command;
     }
 
-    private static byte[] Mesh(string path, string material, double z, double scale, ulong id)
+    private static byte[] Mesh(
+        string path,
+        string material,
+        double z,
+        double scale,
+        ulong id,
+        double x = 0,
+        double y = 0)
     {
         double[] transform = SilkMeshRendererConformance.Identity();
+        transform[12] = x;
+        transform[13] = y;
         transform[10] = scale;
         transform[14] = z;
         return VolumeCommandAuthoring.WithTransform(
