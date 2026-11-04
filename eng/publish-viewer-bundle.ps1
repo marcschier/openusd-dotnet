@@ -239,6 +239,12 @@ foreach ($requiredPath in @(
 
 Assert-NoNativeInstallReference
 
+if (-not $NoArchive)
+{
+    & (Join-Path $PSScriptRoot 'assert-viewer-compiler-redistribution.ps1') `
+        -BundleRoot $layoutRoot
+}
+
 & (Join-Path $PSScriptRoot 'sign-viewer-bundle.ps1') `
     -Rid $Rid `
     -BundleRoot $layoutRoot `

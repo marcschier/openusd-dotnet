@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/release-validation-checkpoint.yml'
       - 'Directory.Packages.props'
+      - 'eng/assert-viewer-compiler-redistribution.ps1'
+      - 'eng/publish-viewer-bundle.ps1'
+      - 'eng/test-viewer-compiler-redistribution.ps1'
       - 'eng/verify-spirv-cross-provenance.py'
       - 'eng/tests/test_verify_spirv_cross_provenance.py'
 
@@ -18,6 +21,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  viewer-compiler-redistribution-guard:
+    name: Viewer compiler redistribution guard
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Test compiler redistribution guard
+        shell: pwsh
+        run: ./eng/test-viewer-compiler-redistribution.ps1
+
   spirv-cross-source-provenance:
     name: SPIRV-Cross source reproduction (${{ matrix.rid }})
     runs-on: ubuntu-24.04

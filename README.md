@@ -447,6 +447,11 @@ Remaining rendering and workflow subsets are recorded in the
 Delivery work also includes signing/notarization credentials, durable Viewer downloads, and
 GPU-equipped runners for the two Vulkan composition gates.
 
+`eng/publish-viewer-bundle.ps1` currently stops archive creation if the layout contains a
+SPIRV-Cross binary; source reproduction and an independent redistribution review remain open. It
+also stops if the layout contains DXC binaries, which are supplied externally. `-NoArchive`
+produces a local layout without approving it for distribution.
+
 The `0.14.0-alpha` [release run 33931868184](https://github.com/marcschier/openusd-dotnet/actions/runs/33931868184)
 at `f33ba56`, attempt 1, passed the installed Viewer bundle smokes on `win-x64`, `linux-x64`, and
 `osx-arm64`. This supersedes the earlier macOS dispatcher failure. The same run produced executed
