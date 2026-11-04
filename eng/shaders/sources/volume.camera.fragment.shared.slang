@@ -446,6 +446,16 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
         integratedTintedOpticalDepth += fieldTint[field] * fieldOpticalDepth[field];
     }
 
+    if (pixel.x == 19u && pixel.y == 14u &&
+        volumeFields.Load<float>(112u) >= 1e20)
+    {
+        return float4(
+            fieldOpticalDepth[0],
+            totalFieldOpticalDepth,
+            integratedTintedOpticalDepth.r,
+            normalizedDensityIntegrals[0]);
+    }
+
     if (totalFieldOpticalDepth <= SmallOpticalDepthThreshold)
     {
         if (totalFieldOpticalDepth <= 0.0)
@@ -543,6 +553,15 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     if (frameParameters.Load<uint>(68u) == 1u)
     {
         outputColor /= 1.0 + max(outputColor, float3(0.0, 0.0, 0.0));
+    }
+    if (pixel.x == 20u && pixel.y == 14u &&
+        volumeFields.Load<float>(112u) >= 1e20)
+    {
+        return float4(
+            accumulatedOpticalDepth,
+            outputOpacity,
+            accumulatedColor.r,
+            outputColor.r);
     }
     return float4(outputColor, outputOpacity);
 }

@@ -351,7 +351,7 @@
     },
     {
       "path": "eng/shaders/sources/volume.camera.fragment.shared.slang",
-      "sha256": "4b83bfaa5c99b81bd3a545dd571f693f5351a69e4ecca927d7117a688cf777ab"
+      "sha256": "13dbab83dce3f056e82c51256aecf163a63923b01a7c798d6461ef834a2dd639"
     },
     {
       "path": "eng/shaders/sources/volume.camera.fragment.uniform.slang",
@@ -8650,18 +8650,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.dxil",
-          "sha256": "cde3f6c4e7915fc648e061b4b73fe1350c408fc69919f0cf152321f16c71a506",
-          "size": 14692
+          "sha256": "c8bf681a1e253a21ee2a2e7a95b5c8d42544fbd88fb336c74342e0be9a5e25af",
+          "size": 14916
         },
         "spv": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.spv",
-          "sha256": "869df92352447c6673dc98d84fc006273b68c2bad82beb02d23dd6f3c821c910",
-          "size": 31952
+          "sha256": "e2771db6c41b3f37bb593207586e72a452be1ff35d32f13af57a9ce0f9326026",
+          "size": 32892
         },
         "metal": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.metal",
-          "sha256": "0706876b4c5ff764af007ae47d42d7b386a1814111d382b50aed9ac3f955e26e",
-          "size": 39386
+          "sha256": "4dd0c0d42ed05eb05108c59990297e1c1f8ca9310866620feb35d4a58cd0d1e5",
+          "size": 40533
         },
         "reflection.json": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.reflection.json",
@@ -8876,18 +8876,18 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.dxil",
-          "sha256": "8d372575df4f1f9185e86bae7821348419385e110ec6f8e5ccf94c6a5c0c603f",
-          "size": 16628
+          "sha256": "64d7d5dc6c31725c049f9d6ad6a931541d90b3e64fea1b5c72c4e1fdda881e4b",
+          "size": 16852
         },
         "spv": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.spv",
-          "sha256": "7bb7d70f4656a62f4e34f39a4e7f63912bab7cd22714d62bde46157161a78160",
-          "size": 35448
+          "sha256": "8712b452a0fbabb7d945671a554c330e21f83b1f3433e478eddc7ef79fa94e58",
+          "size": 36388
         },
         "metal": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.metal",
-          "sha256": "437e4f79fe4c37e5e77ceef98dbf73a052328c4b96707841e6cd3fb69d283549",
-          "size": 44787
+          "sha256": "2228d5187ab2128e6735e2240f08435f9d05e8e6d15d7e984b8c0040615218e7",
+          "size": 45934
         },
         "reflection.json": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.reflection.json",
