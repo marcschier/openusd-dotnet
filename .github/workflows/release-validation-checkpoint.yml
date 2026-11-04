@@ -5,6 +5,9 @@ on:
     branches: [ master, main ]
     paths:
       - '.github/workflows/release-validation-checkpoint.yml'
+      - 'Directory.Packages.props'
+      - 'eng/verify-spirv-cross-provenance.py'
+      - 'eng/tests/test_verify_spirv_cross_provenance.py'
 
 permissions:
   actions: read
@@ -15,6 +18,72 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  spirv-cross-source-provenance:
+    name: SPIRV-Cross source reproduction (${{ matrix.rid }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, linux-x64, osx-arm64]
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Test compiler provenance verifier
+        run: python -m unittest -v eng.tests.test_verify_spirv_cross_provenance
+      - name: Check out the actual Silk.NET binary producer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: dotnet/Silk.NET
+          ref: d01d143952ce161c151f771d02d5457d13235f0a
+          path: .provenance/silk-producer
+          persist-credentials: false
+      - name: Check out the producer's SPIRV-Cross revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: KhronosGroup/SPIRV-Cross
+          ref: d8e3e2b141b8c8a167b2e3984736a6baacff316c
+          path: .provenance/spirv-cross
+          persist-credentials: false
+      - name: Rebuild and compare the selected package asset
+        shell: bash
+        env:
+          EXPECTED_PROJECT_COMMIT: ${{ github.event.pull_request.head.sha }}
+          TARGET_RID: ${{ matrix.rid }}
+        run: |
+          set -euo pipefail
+          zig_archive="$RUNNER_TEMP/zig-x86_64-linux-0.15.2.tar.xz"
+          package="$RUNNER_TEMP/silk.net.spirv.cross.native.2.23.0.nupkg"
+          curl --fail --location --retry 3 \
+            https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz \
+            --output "$zig_archive"
+          echo "02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  $zig_archive" | sha256sum --check
+          tar -xf "$zig_archive" -C "$RUNNER_TEMP"
+          curl --fail --location --retry 3 \
+            https://api.nuget.org/v3-flatcontainer/silk.net.spirv.cross.native/2.23.0/silk.net.spirv.cross.native.2.23.0.nupkg \
+            --output "$package"
+          python ./eng/verify-spirv-cross-provenance.py \
+            --project "$GITHUB_WORKSPACE" \
+            --project-commit "$EXPECTED_PROJECT_COMMIT" \
+            --producer "$GITHUB_WORKSPACE/.provenance/silk-producer" \
+            --source "$GITHUB_WORKSPACE/.provenance/spirv-cross" \
+            --package "$package" \
+            --zig-archive "$zig_archive" \
+            --zig "$RUNNER_TEMP/zig-x86_64-linux-0.15.2/zig" \
+            --rid "$TARGET_RID" \
+            --receipt "$GITHUB_WORKSPACE/artifacts/spirv-cross-provenance/$TARGET_RID.json"
+      - name: Upload compiler provenance receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spirv-cross-provenance-${{ matrix.rid }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/spirv-cross-provenance/${{ matrix.rid }}.json
+          if-no-files-found: warn
+          retention-days: 14
+
   package-compiler-consumer:
     name: Packaged D3D12 compiler consumer
     runs-on: windows-latest
