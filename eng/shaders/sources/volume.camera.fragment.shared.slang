@@ -295,6 +295,11 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
             intervalEnd = min(intervalEnd, dot(opaqueEye - rayOrigin, rayDirection));
         }
     }
+    if (pixel.x == 18u && pixel.y == 14u &&
+        volumeFields.Load<float>(112u) >= 1e20)
+    {
+        return float4(rayDirection.z, opaqueDepth, intervalStart, intervalEnd);
+    }
     if (intervalEnd <= intervalStart)
     {
         return float4(0.0, 0.0, 0.0, 0.0);
@@ -533,14 +538,6 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     if (frameParameters.Load<uint>(68u) == 1u)
     {
         outputColor /= 1.0 + max(outputColor, float3(0.0, 0.0, 0.0));
-    }
-    if (pixel.x == 18u && pixel.y == 14u && densityScales[0] >= 1e20)
-    {
-        return float4(
-            normalizedDensityIntegrals[0],
-            fieldOpticalDepth[0],
-            accumulatedOpticalDepth,
-            accumulatedColor.r);
     }
     return float4(outputColor, outputOpacity);
 }
