@@ -34,6 +34,7 @@ struct ShadowMaskedVertexOutput
 #endif
 };
 
+[ForceInline]
 float SampleShadowOpacity(ShadowMaskedVertexOutput input)
 {
     SurfaceParameters surface = surfaceParameters[0];
