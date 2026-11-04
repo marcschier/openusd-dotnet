@@ -71,7 +71,7 @@
     },
     {
       "path": "NOTICE",
-      "sha256": "10d2c78d7c0e8cf0e891b9504fcb8f4da5deaf0a74dca5646943e8aac387c08b"
+      "sha256": "c2d6b758b5f94c4e05b0b16abda996f872595f6c408cdf4485aa17e70c9f2fba"
     },
     {
       "path": "eng/build-cesium-shim.ps1",
