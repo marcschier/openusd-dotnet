@@ -234,6 +234,8 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     }
 
     uint2 pixel = uint2(input.position.xy);
+    bool diagnosticPixel = pixel.x == 16u && pixel.y == 16u &&
+        volumeFields.Load<float>(112u) >= 1e20;
     bool yPointsDown = frameShape.w != 0u;
     float2 pixelCoordinate = (float2(pixel) + 0.5) /
         float2(frameShape.yz);
@@ -415,16 +417,6 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
         }
     }
 
-    if (pixel.x == 18u && pixel.y == 14u &&
-        volumeFields.Load<float>(112u) >= 1e20)
-    {
-        return float4(
-            entries[0],
-            exits[0],
-            densityScales[0],
-            normalizedDensityIntegrals[0]);
-    }
-
     for (uint field = 0u; field < fieldCount; field++)
     {
         float opacity = volumeFields.Load<float>(fieldOffsets[field] + 108u);
@@ -546,6 +538,14 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     if (frameParameters.Load<uint>(68u) == 1u)
     {
         outputColor /= 1.0 + max(outputColor, float3(0.0, 0.0, 0.0));
+    }
+    if (diagnosticPixel)
+    {
+        return float4(
+            accumulatedOpticalDepth,
+            accumulatedColor.r,
+            outputOpacity,
+            outputColor.r);
     }
     return float4(outputColor, outputOpacity);
 }
