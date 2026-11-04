@@ -123,8 +123,8 @@ public sealed class McpToolPackageTests
     {
         string root = FindRepositoryRoot();
         string testRoot = Path.Combine(
-            root,
-            "artifacts",
+            Environment.GetEnvironmentVariable("OPENUSD_TEST_WORK_ROOT") ??
+                Path.Combine(root, "artifacts"),
             "mcp-tool-package-tests",
             Guid.NewGuid().ToString("N"));
         string packageRoot = Path.Combine(testRoot, "packages");
