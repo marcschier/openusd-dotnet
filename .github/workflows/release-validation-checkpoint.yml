@@ -11,6 +11,7 @@ on:
       - 'eng/test-viewer-compiler-redistribution.ps1'
       - 'eng/verify-nuget-promotion.py'
       - 'eng/verify-spirv-cross-provenance.py'
+      - 'eng/tests/test_release_validation_checkpoint.py'
       - 'eng/tests/test_verify_nuget_promotion.py'
       - 'eng/tests/test_verify_spirv_cross_provenance.py'
 
@@ -51,7 +52,7 @@ jobs:
       - name: Test compiler provenance verifier
         run: >-
           python -m unittest -v eng.tests.test_verify_spirv_cross_provenance
-          eng.tests.test_verify_nuget_promotion
+          eng.tests.test_verify_nuget_promotion eng.tests.test_release_validation_checkpoint
       - name: Check out the actual Silk.NET binary producer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -909,8 +910,6 @@ jobs:
     timeout-minutes: 15
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-      OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-volume-repro-shaders
-      OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-volume-repro-tests
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -964,6 +963,9 @@ jobs:
           }
       - name: Run targeted Metal volume reproduction
         shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-volume-repro-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-volume-repro-tests
         run: |
           . ./eng/metal-volume-repro-report.ps1
           $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
