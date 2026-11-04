@@ -439,25 +439,9 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     float3 accumulatedColor = float3(0.0, 0.0, 0.0);
     float accumulatedOpticalDepth = 0.0;
     float totalFieldOpticalDepth = 0.0;
-    float3 integratedTintedOpticalDepth = float3(0.0, 0.0, 0.0);
-    bool diagnosticPixel = pixel.x == 20u && pixel.y == 14u &&
-        volumeFields.Load<float>(112u) >= 1e20;
-    float diagnosticStage = 0.0;
-    float3 diagnosticValues = float3(0.0, 0.0, 0.0);
     for (uint field = 0u; field < fieldCount; field++)
     {
         totalFieldOpticalDepth += fieldOpticalDepth[field];
-        integratedTintedOpticalDepth += fieldTint[field] * fieldOpticalDepth[field];
-    }
-
-    if (pixel.x == 19u && pixel.y == 14u &&
-        volumeFields.Load<float>(112u) >= 1e20)
-    {
-        return float4(
-            fieldOpticalDepth[0],
-            totalFieldOpticalDepth,
-            integratedTintedOpticalDepth.r,
-            normalizedDensityIntegrals[0]);
     }
 
     if (totalFieldOpticalDepth <= SmallOpticalDepthThreshold)
@@ -465,6 +449,11 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
         if (totalFieldOpticalDepth <= 0.0)
         {
             return float4(0.0, 0.0, 0.0, 0.0);
+        }
+        float3 integratedTintedOpticalDepth = float3(0.0, 0.0, 0.0);
+        for (uint field = 0u; field < fieldCount; field++)
+        {
+            integratedTintedOpticalDepth += fieldTint[field] * fieldOpticalDepth[field];
         }
         float outputOpacity = OneMinusExpNegative(totalFieldOpticalDepth);
         accumulatedColor =
@@ -527,17 +516,6 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
                         (densityFraction * localStepLength) / normalizedDensityIntegrals[field];
                     fieldDepths[field] = fieldOpticalDepth[field] * stepFraction;
                     opticalDepth += fieldDepths[field];
-                    if (diagnosticPixel && diagnosticStage == 0.0 &&
-                        (!isfinite(localStepLength) || !isfinite(densityFraction) ||
-                         !isfinite(stepFraction) || !isfinite(fieldDepths[field]) ||
-                         !isfinite(opticalDepth)))
-                    {
-                        diagnosticStage = 1.0;
-                        diagnosticValues = float3(
-                            localStepLength,
-                            stepFraction,
-                            fieldDepths[field]);
-                    }
                 }
                 if (opticalDepth > 0.0)
                 {
@@ -553,18 +531,6 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
                     }
                     accumulatedColor += transmittance * alpha * source;
                     accumulatedOpticalDepth += opticalDepth;
-                    if (diagnosticPixel && diagnosticStage == 0.0 &&
-                        (!isfinite(opticalDepth) || !isfinite(transmittance) ||
-                         !isfinite(alpha) || !isfinite(source.r) ||
-                         !isfinite(accumulatedOpticalDepth) ||
-                         !isfinite(accumulatedColor.r)))
-                    {
-                        diagnosticStage = 2.0;
-                        diagnosticValues = float3(
-                            opticalDepth,
-                            source.r,
-                            accumulatedOpticalDepth);
-                    }
                 }
             }
         }
@@ -580,12 +546,6 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     if (frameParameters.Load<uint>(68u) == 1u)
     {
         outputColor /= 1.0 + max(outputColor, float3(0.0, 0.0, 0.0));
-    }
-    if (diagnosticPixel)
-    {
-        return diagnosticStage == 0.0
-            ? float4(0.0, accumulatedOpticalDepth, accumulatedColor.r, outputColor.r)
-            : float4(diagnosticStage, diagnosticValues);
     }
     return float4(outputColor, outputOpacity);
 }

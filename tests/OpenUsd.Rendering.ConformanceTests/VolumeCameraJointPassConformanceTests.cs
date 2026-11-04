@@ -89,11 +89,10 @@ public sealed class VolumeCameraJointPassConformanceTests
             Frame(SilkMeshRendererConformance.Identity()),
             Material(MaterialA, density, [tint, 0, 0], grid, sampled, false, "2,2,2"),
             Material(MaterialB, density, [tint, 0, 0], grid, sampled, false, "2,2,2"),
-            Mesh(MeshA, MaterialA, -1, 1, 1, 0.0625, 0.0625),
-            Mesh(MeshB, MaterialB, -1, 1, 2, 0.0625, 0.0625));
+            Mesh(MeshA, MaterialA, -1, 1, 1),
+            Mesh(MeshB, MaterialB, -1, 1, 2));
         _ = renderer.ApplyAndRender(page, color, depth);
         float[] pixels = ReadPixels(color);
-        LogVolumeDiagnostics("high-tint", pixels);
         int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
         double depthIntegral = 2 * (double)density;
         double absorbed = depthIntegral < 1e-4
@@ -1487,7 +1486,7 @@ public sealed class VolumeCameraJointPassConformanceTests
             1,
             frame,
             Material(MaterialA, 1, [1, 0, 0], grid, sampled, false, "2,2,2", opacity),
-            Mesh(MeshA, MaterialA, 0, 1e-10, 1, 0.0625, 0.0625));
+            Mesh(MeshA, MaterialA, 0, 1e-10, 1));
         _ = renderer.ApplyAndRender(initial, color, depth);
         float[] ordinaryPixels = ReadPixels(color);
         int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
@@ -1499,7 +1498,6 @@ public sealed class VolumeCameraJointPassConformanceTests
             Material(MaterialA, density, [1, 0, 0], grid, sampled, false, "2,2,2", opacity));
         _ = renderer.ApplyAndRender(dense, color, depth);
         float[] densePixels = ReadPixels(color);
-        LogVolumeDiagnostics("thin-field", densePixels);
         int firstNonFinite = Array.FindIndex(
             densePixels,
             static component => !float.IsFinite(component));
@@ -2440,18 +2438,9 @@ public sealed class VolumeCameraJointPassConformanceTests
         return command;
     }
 
-    private static byte[] Mesh(
-        string path,
-        string material,
-        double z,
-        double scale,
-        ulong id,
-        double x = 0,
-        double y = 0)
+    private static byte[] Mesh(string path, string material, double z, double scale, ulong id)
     {
         double[] transform = SilkMeshRendererConformance.Identity();
-        transform[12] = x;
-        transform[13] = y;
         transform[10] = scale;
         transform[14] = z;
         return VolumeCommandAuthoring.WithTransform(
@@ -2460,18 +2449,6 @@ public sealed class VolumeCameraJointPassConformanceTests
                 material,
                 id: id),
             transform);
-    }
-
-    private static void LogVolumeDiagnostics(string scenario, float[] pixels)
-    {
-        foreach (int x in new[] { 18, 19, 20 })
-        {
-            int probe = checked(((14 * (int)Size + x) * 4));
-            Console.WriteLine(
-                $"[DEBUG-volume-naN] {scenario} pixel ({x}, 14): " +
-                $"{pixels[probe]:R}, {pixels[probe + 1]:R}, " +
-                $"{pixels[probe + 2]:R}, {pixels[probe + 3]:R}");
-        }
     }
 
     private static byte[] Frame(double[] view, double far = 4)
