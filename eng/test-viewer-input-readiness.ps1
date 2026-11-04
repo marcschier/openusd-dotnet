@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 # Copyright (c) marcschier. Licensed under the MIT License.
 [CmdletBinding()]
-param()
+param([switch]$SkipProcessExitCheck)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -275,6 +275,7 @@ Assert-Rejected 'FailedPackEvidenceIsRejectedImmediately' @{
 foreach ($mode in @('job-error', 'artifact-error'))
 {
     Reset-MetadataMock $mode
+    $previousExitCode = $global:LASTEXITCODE
     $message = $null
     try
     {
@@ -282,6 +283,7 @@ foreach ($mode in @('job-error', 'artifact-error'))
             -MaxAttempts 3 -RetryDelaySeconds 0 | Out-Null
     }
     catch { $message = $_.Exception.Message }
+    finally { $global:LASTEXITCODE = $previousExitCode }
     $expected = if ($mode -eq 'job-error') { 'pack-job evidence' } else { 'input-artifact evidence' }
     if ($null -eq $message -or !$message.Contains($expected, [StringComparison]::Ordinal))
     {
@@ -290,4 +292,18 @@ foreach ($mode in @('job-error', 'artifact-error'))
     Write-Output "PASS MetadataApiFailure_$mode"
 }
 
-Write-Output 'Viewer input readiness tests passed: 16 cases.'
+if (!$SkipProcessExitCheck)
+{
+    $scriptPath = $PSCommandPath.Replace("'", "''")
+    $command = "`$ErrorActionPreference = 'Stop'; & '$scriptPath' -SkipProcessExitCheck; " +
+        'if (Test-Path variable:\LASTEXITCODE) { exit $LASTEXITCODE }'
+    $output = & ([Environment]::ProcessPath) -NoLogo -NoProfile -NonInteractive -Command $command 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0)
+    {
+        throw "The GitHub Actions PowerShell wrapper exited $exitCode after the readiness tests.`n$($output -join "`n")"
+    }
+    Write-Output 'PASS GitHubActionsRunnerExitCode'
+}
+
+Write-Output 'Viewer input readiness tests passed.'
