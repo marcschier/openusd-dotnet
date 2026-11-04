@@ -38,6 +38,43 @@ namespace OpenUsd.Native.Tests;
 public sealed class WorkflowStructureContractTests
 {
     [Test]
+    public async Task ReleaseCheckpointConsumersUseTheProducingAttemptReceipt()
+    {
+        string root = FindRepositoryRoot();
+        string workflow = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "release-validation-checkpoint.yml"));
+        string producer = ReadJob(workflow, "shader-receipts");
+        string upload = ReadStep(producer, "Upload verified shader receipts");
+        await Assert.That(workflow).Contains("  actions: read");
+        await Assert.That(producer)
+            .Contains("artifact_id: ${{ steps.shader_receipt.outputs.artifact-id }}");
+        await Assert.That(upload).Contains("id: shader_receipt");
+        await Assert.That(upload)
+            .Contains("name: shader-receipts-${{ github.run_id }}-${{ github.run_attempt }}");
+        await Assert.That(upload).Contains("if-no-files-found: error");
+
+        foreach (string jobName in new[] { "primitive-transport", "d3d12-probes", "metal-link" })
+        {
+            string job = ReadJob(workflow, jobName);
+            string guard = ReadStep(job, "Validate shader receipt identity");
+            string download = ReadStep(job, "Download verified shader receipts");
+            await Assert.That(job).Contains("needs: shader-receipts");
+            await Assert.That(guard)
+                .Contains("SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}");
+            await Assert.That(guard).Contains("-notmatch '^[1-9][0-9]*$'");
+            await Assert.That(guard).Contains("throw ");
+            await Assert.That(download)
+                .Contains("artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}");
+            await Assert.That(download).Contains("github-token: ${{ github.token }}");
+            await Assert.That(download).Contains("run-id: ${{ github.run_id }}");
+            await Assert.That(download).Contains("merge-multiple: true");
+            await Assert.That(download).DoesNotContain("name: shader-receipts-");
+            await Assert.That(job.IndexOf("      - name: Validate shader receipt identity", StringComparison.Ordinal))
+                .IsLessThan(job.IndexOf("      - name: Download verified shader receipts", StringComparison.Ordinal));
+        }
+    }
+
+    [Test]
     public async Task TransmissionGateRequiresExactBackendIdentitiesAndRetainsExecutionReceipts()
     {
         string root = FindRepositoryRoot();

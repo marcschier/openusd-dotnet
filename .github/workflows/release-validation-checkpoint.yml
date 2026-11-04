@@ -7,6 +7,7 @@ on:
       - '.github/workflows/release-validation-checkpoint.yml'
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -246,9 +247,21 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - name: Validate shader receipt identity
+        shell: pwsh
+        env:
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          if ($env:SHADER_RECEIPT_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The verified shader receipt artifact ID is missing or invalid.'
+          }
+      - name: Download verified shader receipts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: shader-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
           path: .
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -344,9 +357,21 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - name: Validate shader receipt identity
+        shell: pwsh
+        env:
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          if ($env:SHADER_RECEIPT_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The verified shader receipt artifact ID is missing or invalid.'
+          }
+      - name: Download verified shader receipts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: shader-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
           path: .
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -440,6 +465,8 @@ jobs:
   shader-receipts:
     runs-on: windows-latest
     timeout-minutes: 90
+    outputs:
+      artifact_id: ${{ steps.shader_receipt.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -475,6 +502,7 @@ jobs:
           git --no-pager diff --stat -- eng/shaders/checked tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked
           git rev-parse HEAD
       - name: Upload verified shader receipts
+        id: shader_receipt
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shader-receipts-${{ github.run_id }}-${{ github.run_attempt }}
@@ -498,9 +526,21 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - name: Validate shader receipt identity
+        shell: pwsh
+        env:
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          if ($env:SHADER_RECEIPT_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The verified shader receipt artifact ID is missing or invalid.'
+          }
+      - name: Download verified shader receipts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: shader-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
           path: .
       - name: Prepare and validate the combined Metal library
         shell: pwsh
