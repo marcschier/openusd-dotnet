@@ -208,6 +208,108 @@ public sealed class SilkSubprimIdentityTests
         await Assert.That(face.SubprimIndex).IsEqualTo(0);
     }
 
+    [Test]
+    public async Task DerivedCornerPickTokensRetainEveryDisplacedComponentCopy()
+    {
+        SilkMeshData mesh = CreateQuad(
+            triangleLocal: true,
+            indicesOverride: [0, 1, 2, 1, 0, 3],
+            cornerEdgeOverride: [0, 1, -1, 0, 2, 3]);
+        var table = new SilkPickIdentityTable();
+        _ = table.Upsert(mesh);
+
+        await Assert.That(table.TryGetRange(
+            mesh.Path, 0, SilkPickSubprimKind.Edge, out SilkPickTokenRange edges)).IsTrue();
+        await Assert.That(table.TryGetRange(
+            mesh.Path, 0, SilkPickSubprimKind.Point, out SilkPickTokenRange points)).IsTrue();
+        int[] expectedEdges = [0, 0, 1, 2, 3];
+        int[] expectedPoints = [0, 1, 2, 1, 0, 3];
+        await Assert.That(edges.TokenCount).IsEqualTo((uint)expectedEdges.Length);
+        await Assert.That(points.TokenCount).IsEqualTo((uint)expectedPoints.Length);
+        for (int index = 0; index < expectedEdges.Length; index++)
+        {
+            await Assert.That(table.TryResolve(edges.FirstToken + (uint)index, out SilkPickIdentity edge)).IsTrue();
+            await Assert.That(edge.SubprimIndex).IsEqualTo(expectedEdges[index]);
+        }
+        for (int index = 0; index < expectedPoints.Length; index++)
+        {
+            await Assert.That(table.TryResolve(points.FirstToken + (uint)index, out SilkPickIdentity point)).IsTrue();
+            await Assert.That(point.SubprimIndex).IsEqualTo(expectedPoints[index]);
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CornerPickIndicesMatchTokenOrderWithOrWithoutExpansion(bool derivedVertices)
+    {
+        SilkMeshData mesh = CreateQuad(
+            triangleLocal: true,
+            indicesOverride: [0, 1, 2, 1, 0, 3],
+            cornerEdgeOverride: [0, 1, -1, 0, 2, 3]);
+        await Assert.That(SilkSubprimPickGeometry.TryResolveCornerEdges(
+            mesh, derivedVertices, out int[] edges, out uint[] lines)).IsTrue();
+        await Assert.That(SilkSubprimPickGeometry.TryResolveCornerPoints(
+            mesh, derivedVertices, out int[] points, out uint[] vertices)).IsTrue();
+        await Assert.That(edges.SequenceEqual(new int[] { 0, 0, 1, 2, 3 })).IsTrue();
+        await Assert.That(points.SequenceEqual(new int[] { 0, 1, 2, 1, 0, 3 })).IsTrue();
+        await Assert.That(lines.SequenceEqual(derivedVertices
+            ? new uint[] { 0, 1, 3, 4, 1, 2, 4, 5, 5, 3 }
+            : new uint[] { 0, 1, 1, 0, 1, 2, 0, 3, 3, 1 })).IsTrue();
+        await Assert.That(vertices.SequenceEqual(derivedVertices
+            ? new uint[] { 0, 1, 2, 3, 4, 5 }
+            : new uint[] { 0, 1, 2, 1, 0, 3 })).IsTrue();
+    }
+
+    [Test]
+    public async Task ChangingCornerEligibilityRotatesPickTokensWithoutChangingTopology()
+    {
+        SilkMeshData ordinary = CreateQuad();
+        SilkMeshData eligible = CreateQuad(triangleLocal: true);
+        var table = new SilkPickIdentityTable();
+        _ = table.Upsert(ordinary);
+        _ = table.TryGetRange(ordinary.Path, 0, SilkPickSubprimKind.Point, out SilkPickTokenRange original);
+        ulong before = table.Revision;
+
+        _ = table.Upsert(eligible);
+        _ = table.TryGetRange(eligible.Path, 0, SilkPickSubprimKind.Point, out SilkPickTokenRange expanded);
+        await Assert.That(expanded.TokenCount).IsEqualTo(6u);
+        await Assert.That(table.Revision).IsGreaterThan(before);
+        await Assert.That(table.TryResolve(original.FirstToken, out _)).IsFalse();
+
+        _ = table.Upsert(ordinary);
+        _ = table.TryGetRange(ordinary.Path, 0, SilkPickSubprimKind.Point, out SilkPickTokenRange restored);
+        await Assert.That(restored.TokenCount).IsEqualTo(4u);
+        await Assert.That(table.TryResolve(expanded.FirstToken, out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task RollingBackCornerEligibilityRestoresPreviousPickRanges()
+    {
+        SilkMeshData ordinary = CreateQuad();
+        SilkMeshData eligible = CreateQuad(triangleLocal: true);
+        var table = new SilkPickIdentityTable();
+        _ = table.Upsert(ordinary);
+        _ = table.TryGetRange(ordinary.Path, 0, SilkPickSubprimKind.Point, out SilkPickTokenRange original);
+        ulong revision = table.Revision;
+        ulong allocated = table.AllocatedRangeCount;
+
+        table.BeginTransaction();
+        _ = table.Upsert(eligible);
+        _ = table.TryGetRange(eligible.Path, 0, SilkPickSubprimKind.Point, out SilkPickTokenRange replacement);
+        await Assert.That(table.TryResolve(original.FirstToken, out _)).IsFalse();
+        await Assert.That(table.TryResolve(replacement.FirstToken, out _)).IsTrue();
+        table.RollbackTransaction();
+
+        await Assert.That(table.Revision).IsEqualTo(revision);
+        await Assert.That(table.AllocatedRangeCount).IsEqualTo(allocated);
+        await Assert.That(table.TryGetRange(ordinary.Path, 0, SilkPickSubprimKind.Point, out SilkPickTokenRange restored))
+            .IsTrue();
+        await Assert.That(restored).IsEqualTo(original);
+        await Assert.That(table.TryResolve(original.FirstToken, out _)).IsTrue();
+        await Assert.That(table.TryResolve(replacement.FirstToken, out _)).IsFalse();
+    }
+
     /// <summary>
     /// A record that refuses a target allocates no token range for it, so no
     /// GPU token can ever resolve to an identity the record does not have.
@@ -314,6 +416,48 @@ public sealed class SilkSubprimIdentityTests
         await Assert.That(identity.InstanceIndex).IsEqualTo(3);
         await Assert.That(identity.SubprimIndex).IsEqualTo(1);
         await Assert.That(identity.SubprimKind).IsEqualTo(SilkPickSubprimKind.Edge);
+    }
+
+    [Test]
+    public async Task LightweightInstancesShareDerivedCornerPickTables()
+    {
+        byte[] prototypeBytes = SilkSelectionOutlineTests.CreateSubprimQuadCommand(
+            triangleLocal: true, sharedEdge: true);
+        byte[] instancer = Encoding.UTF8.GetBytes("/Instancer");
+        int pathLength = Encoding.UTF8.GetByteCount("/Quad");
+        var instanceBytes = new byte[276 + pathLength + 8 + (instancer.Length * 2)];
+        prototypeBytes.AsSpan(0, 276 + pathLength).CopyTo(instanceBytes);
+        BinaryPrimitives.WriteUInt32LittleEndian(instanceBytes.AsSpan(4), checked((uint)instanceBytes.Length));
+        BinaryPrimitives.WriteInt32LittleEndian(instanceBytes.AsSpan(20), 1);
+        BinaryPrimitives.WriteInt32LittleEndian(instanceBytes.AsSpan(24), 7);
+        Array.Clear(instanceBytes, 52, 12);
+        Array.Clear(instanceBytes, 236, 24);
+        BinaryPrimitives.WriteUInt32LittleEndian(instanceBytes.AsSpan(260), checked((uint)instancer.Length));
+        BinaryPrimitives.WriteUInt32LittleEndian(instanceBytes.AsSpan(264), 1);
+        int cursor = 276 + pathLength;
+        instancer.CopyTo(instanceBytes.AsSpan(cursor));
+        cursor += instancer.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(instanceBytes.AsSpan(cursor), checked((uint)instancer.Length));
+        BinaryPrimitives.WriteInt32LittleEndian(instanceBytes.AsSpan(cursor + 4), 7);
+        instancer.CopyTo(instanceBytes.AsSpan(cursor + 8));
+
+        using var scene = new SilkSceneState();
+        _ = scene.Apply([.. prototypeBytes, .. instanceBytes], 2, 1);
+        SilkMeshData prototype = scene.MeshesByPath[("/Quad", 0)];
+        SilkMeshData instance = scene.MeshesByPath[("/Quad", 7)];
+        await Assert.That(ReferenceEquals(prototype.SubprimTables, instance.SubprimTables)).IsTrue();
+        await Assert.That(scene.PickIdentities.TryGetRange(
+            "/Quad", 7, SilkPickSubprimKind.Edge, out SilkPickTokenRange edges)).IsTrue();
+        await Assert.That(scene.PickIdentities.TryGetRange(
+            "/Quad", 7, SilkPickSubprimKind.Point, out SilkPickTokenRange points)).IsTrue();
+        await Assert.That(edges.TokenCount).IsEqualTo(5u);
+        await Assert.That(points.TokenCount).IsEqualTo(6u);
+        await Assert.That(scene.PickIdentities.TryResolve(edges.FirstToken + 1, out SilkPickIdentity edge)).IsTrue();
+        await Assert.That(edge.InstanceIndex).IsEqualTo(7);
+        await Assert.That(edge.SubprimIndex).IsEqualTo(0);
+        await Assert.That(scene.PickIdentities.TryResolve(points.FirstToken + 4, out SilkPickIdentity point)).IsTrue();
+        await Assert.That(point.InstanceIndex).IsEqualTo(7);
+        await Assert.That(point.SubprimIndex).IsEqualTo(0);
     }
 
     /// <summary>
@@ -543,7 +687,9 @@ public sealed class SilkSubprimIdentityTests
         int[]? pointOriginOverride = null,
         int[]? cornerEdgeOverride = null,
         int instanceId = 0,
-        int instanceIndex = 0)
+        int instanceIndex = 0,
+        bool triangleLocal = false,
+        uint[]? indicesOverride = null)
     {
         const string path = "/World/Quad";
         return new SilkMeshData(
@@ -555,7 +701,7 @@ public sealed class SilkSubprimIdentityTests
             SilkTopologyKind.TriangleList,
             topologyRevision: 1,
             points: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0],
-            indices: [0, 1, 2, 0, 2, 3],
+            indices: indicesOverride ?? [0, 1, 2, 0, 2, 3],
             triangleSubprims: [0, 0],
             displayColor: [1, 1, 1, 1],
             transform: Identity())
@@ -579,7 +725,8 @@ public sealed class SilkSubprimIdentityTests
                 cornerEdgeOverride is not null ||
                 (withTables && identity.HasFlag(SilkSubprimIdentity.Edge))
                     ? 4
-                    : 0
+                    : 0,
+            TriangleLocalNormalFallback = triangleLocal
         };
     }
 

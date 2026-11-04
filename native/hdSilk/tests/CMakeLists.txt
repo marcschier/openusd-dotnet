@@ -25,6 +25,7 @@ add_executable(hdsilk_mesh_preparation_probe hdsilk_mesh_preparation_probe.cpp)
 target_compile_features(hdsilk_mesh_preparation_probe PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
 target_link_libraries(hdsilk_mesh_preparation_probe PRIVATE Threads::Threads)
+target_link_libraries(openusd_hdsilk_test PRIVATE Threads::Threads)
 if(MSVC)
     target_compile_options(hdsilk_mesh_preparation_probe PRIVATE /W4 /WX /permissive- /EHsc)
 else()
@@ -32,6 +33,19 @@ else()
 endif()
 add_test(NAME hdsilk_mesh_preparation COMMAND hdsilk_mesh_preparation_probe)
 set_tests_properties(hdsilk_mesh_preparation PROPERTIES TIMEOUT 60)
+
+add_executable(
+    hdsilk_nurbs_geometry_probe
+    nurbs_geometry_probe.cpp
+    ../src/nurbsGeometry.cpp)
+target_compile_features(hdsilk_nurbs_geometry_probe PRIVATE cxx_std_17)
+target_include_directories(hdsilk_nurbs_geometry_probe PRIVATE ../src)
+if(MSVC)
+    target_compile_options(hdsilk_nurbs_geometry_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(hdsilk_nurbs_geometry_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_nurbs_geometry COMMAND hdsilk_nurbs_geometry_probe)
 
 add_executable(hdsilk_point_preparation_probe hdsilk_point_preparation_probe.cpp)
 target_compile_features(hdsilk_point_preparation_probe PRIVATE cxx_std_17)
@@ -266,6 +280,32 @@ add_test(NAME hdsilk_curve_invalid_points COMMAND hdsilk_probe --curve-invalid-p
 add_test(NAME hdsilk_points_invalid_points COMMAND hdsilk_probe --points-invalid-points)
 add_test(NAME hdsilk_mesh_invalid_points COMMAND hdsilk_probe --mesh-invalid-points)
 add_test(NAME hdsilk_mesh_computed_points COMMAND hdsilk_probe --mesh-computed-points)
+add_test(NAME hdsilk_nurbs_rational_curve_sync
+    COMMAND hdsilk_probe --nurbs-sync rational-curve ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_rational_patch_sync
+    COMMAND hdsilk_probe --nurbs-sync rational-patch ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_trimmed_patch_sync
+    COMMAND hdsilk_probe --nurbs-sync trimmed-patch ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_dirty_curve_sync
+    COMMAND hdsilk_probe --nurbs-sync dirty-curve ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_dirty_patch_sync
+    COMMAND hdsilk_probe --nurbs-sync dirty-patch ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_bounded_curve_sync
+    COMMAND hdsilk_probe --nurbs-sync bounded-curve ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_bounded_patch_sync
+    COMMAND hdsilk_probe --nurbs-sync bounded-patch ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_patch_form_acceptance_sync
+    COMMAND hdsilk_probe --nurbs-sync patch-form-acceptance ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_empty_curve_weights_sync
+    COMMAND hdsilk_probe --nurbs-sync empty-curve-weights ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_empty_patch_weights_sync
+    COMMAND hdsilk_probe --nurbs-sync empty-patch-weights ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_concurrent_sampling
+    COMMAND hdsilk_probe --nurbs-sync concurrent-sampling ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_primvar_retention
+    COMMAND hdsilk_probe --nurbs-sync primvar-retention ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_diagnostic_recovery
+    COMMAND hdsilk_probe --nurbs-sync diagnostic-recovery ${HDSILK_PROBE_PLUGIN_DIR})
 add_test(NAME hdsilk_mesh_skel_normals_recovery
     COMMAND hdsilk_probe --mesh-skel-normals-recovery
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-deformation-probe.usda")
@@ -299,6 +339,14 @@ set_tests_properties(hdsilk_probe hdsilk_ptex_mapping_parser hdsilk_vertex_layou
     hdsilk_texture_metadata hdsilk_uv_fallback
     hdsilk_displacement_uv hdsilk_preview_unsupported_input hdsilk_linear_curve_topology hdsilk_curve_invalid_points
     hdsilk_points_invalid_points hdsilk_mesh_invalid_points hdsilk_mesh_computed_points
+    hdsilk_nurbs_rational_curve_sync hdsilk_nurbs_rational_patch_sync hdsilk_nurbs_trimmed_patch_sync
+    hdsilk_nurbs_dirty_curve_sync hdsilk_nurbs_dirty_patch_sync
+    hdsilk_nurbs_bounded_curve_sync hdsilk_nurbs_bounded_patch_sync
+    hdsilk_nurbs_patch_form_acceptance_sync
+    hdsilk_nurbs_empty_curve_weights_sync hdsilk_nurbs_empty_patch_weights_sync
+    hdsilk_nurbs_concurrent_sampling
+    hdsilk_nurbs_primvar_retention
+    hdsilk_nurbs_diagnostic_recovery
     hdsilk_mesh_skel_normals_recovery
     hdsilk_curve_non_geometry_sync hdsilk_geometry_non_geometry_sync hdsilk_surface_uv_fallback
     hdsilk_independent_uv_fallback

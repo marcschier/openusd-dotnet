@@ -17,8 +17,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         {
             throw new ArgumentException("Vulkan shader modules require SPIR-V.", nameof(descriptor));
         }
-        byte[] code = ShouldPatchSlangInstanceIndexLowering()
-            ? PatchSlangInstanceIndexLowering(descriptor.Code.Span)
+        byte[] code = ShouldPatchSlangDrawIndexLowering()
+            ? PatchSlangDrawIndexLowering(descriptor.Code.Span)
             : descriptor.Code.ToArray();
         ShaderModule module = default;
         RegisterDependentObject();
@@ -58,8 +58,30 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
     }
 
-    internal static byte[] PatchSlangInstanceIndexLowering(ReadOnlySpan<byte> source)
+    internal static byte[] PatchSlangDrawIndexLowering(ReadOnlySpan<byte> source)
     {
+        byte[] code = PatchSlangIndexLowering(source, 42, 4424, false, out var vertex);
+        code = PatchSlangIndexLowering(code, 43, 4425, true, out var instance);
+        if (vertex.Variable != 0 && instance.Variable != 0)
+        {
+            RemoveUnusedDrawParameters(
+                ref code, vertex.Variable, vertex.LoadedValue, 4424, instance.Variable, 4425);
+            RemoveUnusedDrawParameters(ref code, instance.Variable, instance.LoadedValue, 4425);
+        }
+        return code;
+    }
+
+    internal static byte[] PatchSlangInstanceIndexLowering(ReadOnlySpan<byte> source) =>
+        PatchSlangIndexLowering(source, 43, 4425, true, out _);
+
+    private static byte[] PatchSlangIndexLowering(
+        ReadOnlySpan<byte> source,
+        uint indexBuiltin,
+        uint baseBuiltin,
+        bool requireExpectedPattern,
+        out PatchedDrawParameter patched)
+    {
+        patched = default;
         if (source.Length < 20 || source.Length % sizeof(uint) != 0)
         {
             throw new InvalidDataException("The SPIR-V module is truncated.");
@@ -72,21 +94,17 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         const ushort opISub = 130;
         const ushort opCopyObject = 83;
         const uint decorationBuiltIn = 11;
-        const uint builtInInstanceIndex = 43;
-        const uint builtInBaseInstance = 4425;
-        // Slang lowers SV_InstanceID for SPIR-V as InstanceIndex - BaseInstance,
-        // which adds DrawParameters. SwiftShader advertises the module but reads
-        // BaseInstance incorrectly here, collapsing every instance to slot zero.
-        // VulkanSilkGraphicsDevice never issues a non-zero firstInstance, so the
-        // InstanceIndex operand is the correct table index and keeps SwiftShader
-        // on the hardware-instanced draw path.
+        // Slang subtracts the corresponding draw base from both index builtins.
+        // This backend always draws with zero firstInstance and vertex offset;
+        // SwiftShader cannot reliably execute the DrawParameters capability.
         if (readWord(source, 0) != magic)
         {
             throw new InvalidDataException("The SPIR-V module has an invalid magic number.");
         }
 
-        uint instanceIndexVariable = 0;
-        uint baseInstanceVariable = 0;
+        uint indexVariable = 0;
+        uint baseVariable = 0;
+        bool ambiguousBuiltin = false;
         var loadedVariablesByResult = new Dictionary<uint, uint>();
         var patchOffsets = new List<int>();
         int wordOffset = 5;
@@ -105,20 +123,14 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 readWord(source, wordOffset + 2) == decorationBuiltIn)
             {
                 uint target = readWord(source, wordOffset + 1);
-                switch (readWord(source, wordOffset + 3))
+                uint builtin = readWord(source, wordOffset + 3);
+                if (builtin == indexBuiltin)
                 {
-                    case builtInInstanceIndex:
-                        assignUniqueBuiltin(
-                            ref instanceIndexVariable,
-                            target,
-                            nameof(builtInInstanceIndex));
-                        break;
-                    case builtInBaseInstance:
-                        assignUniqueBuiltin(
-                            ref baseInstanceVariable,
-                            target,
-                            nameof(builtInBaseInstance));
-                        break;
+                    assignUniqueBuiltin(ref indexVariable, target, "index");
+                }
+                else if (builtin == baseBuiltin)
+                {
+                    assignUniqueBuiltin(ref baseVariable, target, "base");
                 }
             }
             else if (opcode == opLoad && instructionWords >= 4)
@@ -132,8 +144,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 uint rightOperand = readWord(source, wordOffset + 4);
                 if (loadedVariablesByResult.TryGetValue(leftOperand, out uint leftVariable) &&
                     loadedVariablesByResult.TryGetValue(rightOperand, out uint rightVariable) &&
-                    leftVariable == instanceIndexVariable &&
-                    rightVariable == baseInstanceVariable)
+                    leftVariable == indexVariable &&
+                    rightVariable == baseVariable)
                 {
                     patchOffsets.Add(wordOffset);
                 }
@@ -141,36 +153,41 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
             wordOffset += instructionWords;
         }
-        if (baseInstanceVariable == 0)
+        if (baseVariable == 0 || ambiguousBuiltin)
         {
             return code;
         }
-        if (instanceIndexVariable == 0)
+        if (indexVariable == 0 || patchOffsets.Count != 1)
         {
-            throw new InvalidDataException(
-                "The SPIR-V module references BaseInstance without InstanceIndex.");
-        }
-        if (patchOffsets.Count != 1)
-        {
-            throw new InvalidDataException(
-                "The SPIR-V module references BaseInstance but does not match " +
-                "Slang's expected InstanceIndex - BaseInstance lowering.");
+            if (requireExpectedPattern)
+            {
+                throw new InvalidDataException(
+                    "The SPIR-V module references BaseInstance but does not match " +
+                    "Slang's expected InstanceIndex - BaseInstance lowering.");
+            }
+            return code;
         }
         int patchOffset = patchOffsets[0];
-        uint instanceLoad = readWord(code, patchOffset + 3);
-        uint baseInstanceLoad = readWord(code, patchOffset + 4);
+        uint indexLoad = readWord(code, patchOffset + 3);
+        uint baseLoad = readWord(code, patchOffset + 4);
         writeWord(code, patchOffset, ((uint)4 << 16) | opCopyObject);
-        writeWord(code, patchOffset + 3, instanceLoad);
+        writeWord(code, patchOffset + 3, indexLoad);
         writeWord(code, patchOffset + 4, 1u << 16);
-        RemoveUnusedDrawParameters(ref code, baseInstanceVariable, baseInstanceLoad);
+        patched = new PatchedDrawParameter(baseVariable, baseLoad);
+        RemoveUnusedDrawParameters(ref code, baseVariable, baseLoad, baseBuiltin);
         return code;
 
-        static void assignUniqueBuiltin(ref uint current, uint target, string name)
+        void assignUniqueBuiltin(ref uint current, uint target, string name)
         {
             if (current != 0 && current != target)
             {
-                throw new InvalidDataException(
-                    $"The SPIR-V module decorates multiple variables as {name}.");
+                if (requireExpectedPattern)
+                {
+                    throw new InvalidDataException(
+                        $"The SPIR-V module decorates multiple variables as the {name} builtin.");
+                }
+                ambiguousBuiltin = true;
+                return;
             }
             current = target;
         }
@@ -185,7 +202,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 value);
     }
 
-    private bool ShouldPatchSlangInstanceIndexLowering() =>
+    private readonly record struct PatchedDrawParameter(uint Variable, uint LoadedValue);
+
+    private bool ShouldPatchSlangDrawIndexLowering() =>
         Capabilities.DeviceName.Contains("SwiftShader", StringComparison.OrdinalIgnoreCase);
 
     /// <inheritdoc/>
@@ -217,7 +236,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 Binding = descriptor.Binding,
                 DescriptorType = DescriptorType.UniformBuffer,
                 DescriptorCount = 1,
-                StageFlags = ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit
+                StageFlags = ToVulkanStages(descriptor.Visibility)
             };
             for (int index = 0; index < slots.Count; index++)
             {
@@ -488,18 +507,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             PColorAttachments = depthOnly ? null : &colorReference,
             PDepthStencilAttachment = &depthReference
         };
-        var dependency = new SubpassDependency
-        {
-            SrcSubpass = Vk.SubpassExternal,
-            DstSubpass = 0,
-            SrcStageMask = PipelineStageFlags.TransferBit,
-            DstStageMask = PipelineStageFlags.ColorAttachmentOutputBit |
-                PipelineStageFlags.EarlyFragmentTestsBit,
-            SrcAccessMask = AccessFlags.TransferWriteBit |
-                AccessFlags.TransferReadBit,
-            DstAccessMask = AccessFlags.ColorAttachmentWriteBit |
-                AccessFlags.DepthStencilAttachmentWriteBit
-        };
+        SubpassDependency dependency = GetTriangleRenderPassDependency();
         var createInfo = new RenderPassCreateInfo
         {
             SType = StructureType.RenderPassCreateInfo,
@@ -516,6 +524,29 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             "vkCreateRenderPass");
         return renderPass;
     }
+
+    internal static SubpassDependency GetTriangleRenderPassDependency() => new()
+    {
+        SrcSubpass = Vk.SubpassExternal,
+        DstSubpass = 0,
+        // Each indexed draw opens a render pass whose LOAD operations consume
+        // attachment writes from earlier draws, not only transfer operations.
+        SrcStageMask = PipelineStageFlags.TransferBit |
+            PipelineStageFlags.ColorAttachmentOutputBit |
+            PipelineStageFlags.EarlyFragmentTestsBit |
+            PipelineStageFlags.LateFragmentTestsBit,
+        DstStageMask = PipelineStageFlags.ColorAttachmentOutputBit |
+            PipelineStageFlags.EarlyFragmentTestsBit |
+            PipelineStageFlags.LateFragmentTestsBit,
+        SrcAccessMask = AccessFlags.TransferWriteBit |
+            AccessFlags.TransferReadBit |
+            AccessFlags.ColorAttachmentWriteBit |
+            AccessFlags.DepthStencilAttachmentWriteBit,
+        DstAccessMask = AccessFlags.ColorAttachmentReadBit |
+            AccessFlags.ColorAttachmentWriteBit |
+            AccessFlags.DepthStencilAttachmentReadBit |
+            AccessFlags.DepthStencilAttachmentWriteBit
+    };
 
     private Pipeline CreateTrianglePipeline(
         SilkGraphicsPipelineDescriptor descriptor,
@@ -758,7 +789,8 @@ internal sealed class VulkanSilkGraphicsShaderProgram(
     IDisposable[] resourceLeases)
     : SilkGraphicsResourceBase, ISilkGraphicsShaderProgram
 {
-    private IDisposable[]? _resourceLeases = resourceLeases;
+    private IDisposable?[]? _resourceLeases = resourceLeases;
+    private bool _releasingLeases;
 
     internal VulkanSilkGraphicsDevice Owner { get; } = owner;
 
@@ -776,16 +808,12 @@ internal sealed class VulkanSilkGraphicsShaderProgram(
 
     protected override void ReleaseNative()
     {
-        IDisposable[]? leases = Interlocked.Exchange(ref _resourceLeases, null);
-        if (leases is not null)
-        {
-            foreach (IDisposable lease in leases)
-            {
-                lease.Dispose();
-            }
-        }
+        RetireOwnedLeases(ref _resourceLeases, ref _releasingLeases);
         Owner.ReleaseDependentObject();
     }
+
+    internal static void RetireOwnedLeases(ref IDisposable?[]? leases, ref bool releasing) =>
+        SilkOwnedResourceLeases.Dispose(ref leases, ref releasing);
 }
 
 internal sealed class VulkanSilkGraphicsPipeline(
@@ -832,13 +860,22 @@ internal sealed class VulkanSilkGraphicsPipeline(
 
     protected override unsafe void ReleaseNative()
     {
-        _api.DestroyPipeline(_device, _pipeline, null);
-        _api.DestroyRenderPass(_device, _renderPass, null);
-        _api.DestroyPipelineLayout(_device, _layout, null);
-        _pipeline = default;
-        _renderPass = default;
-        _layout = default;
-        Interlocked.Exchange(ref _programLease, null)?.Dispose();
+        if (_pipeline.Handle != 0)
+        {
+            _api.DestroyPipeline(_device, _pipeline, null);
+            _pipeline = default;
+        }
+        if (_renderPass.Handle != 0)
+        {
+            _api.DestroyRenderPass(_device, _renderPass, null);
+            _renderPass = default;
+        }
+        if (_layout.Handle != 0)
+        {
+            _api.DestroyPipelineLayout(_device, _layout, null);
+            _layout = default;
+        }
+        SilkOwnedResourceLeases.Dispose(ref _programLease);
         Owner.ReleaseDependentObject();
     }
 }

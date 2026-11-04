@@ -24,6 +24,7 @@ public sealed partial class SilkSceneGpuResources
             throw new InvalidOperationException("A GPU scene update is already being prepared.");
         }
         if (delta.MeshUpserts == 0 && delta.MeshRemovals == 0 && delta.MaterialChanges == 0 &&
+            !HasStalePtexGeometry &&
             !(prepareMaterialTextures && RequiresTexturePreparation && HasChangedMaterialTextureDependencies()) &&
             !(reloadDependencies && RequiresEnvironmentPreparation(scene)) &&
             !(RequiresSurfacePreparation && _surfaceLinkRevision != scene.LightLinks.Revision))
@@ -89,15 +90,32 @@ public sealed partial class SilkSceneGpuResources
             SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures, bool prepareUniformCapacity,
             bool reloadDependencies, bool useSceneMaterials)
         {
+            bool stalePtexOnly = _owner.HasStalePtexGeometry &&
+                delta.MeshUpserts == 0 &&
+                delta.MeshRemovals == 0 &&
+                delta.MaterialChanges == 0 &&
+                !(prepareMaterialTextures && _owner.RequiresTexturePreparation &&
+                    _owner.HasChangedMaterialTextureDependencies()) &&
+                !(reloadDependencies && _owner.RequiresEnvironmentPreparation(scene)) &&
+                !(_owner.RequiresSurfacePreparation &&
+                    _owner._surfaceLinkRevision != scene.LightLinks.Revision);
             if (reloadDependencies && _owner.RequiresEnvironmentPreparation(scene))
             {
                 _environment = new PreparedEnvironmentUpdate(_owner);
                 _environment.Prepare(scene);
             }
-            if (prepareMaterialTextures && _owner.RequiresTexturePreparation)
+            if (prepareMaterialTextures && _owner.RequiresTexturePreparation && !stalePtexOnly)
             {
                 _textures = new PreparedTextureUpdate(_owner);
                 _textures.Prepare(scene, delta);
+            }
+            else if (delta.MaterialChanges != 0 || stalePtexOnly)
+            {
+                _textures = new PreparedTextureUpdate(_owner);
+                if (delta.MaterialChanges != 0)
+                {
+                    _textures.InvalidateChangedMaterials(delta);
+                }
             }
             var changedMaterials = new HashSet<string>(delta.ChangedMaterialPaths.ToArray(), StringComparer.Ordinal);
             var removed = new HashSet<ulong>(delta.RemovedMeshIds.ToArray());
@@ -131,6 +149,15 @@ public sealed partial class SilkSceneGpuResources
                     }
                 }
             }
+            foreach ((ulong id, SilkMeshGpuResource resource) in _owner._meshes)
+            {
+                if (resource.Geometry.Key.PtexSamplingIdentity != 0 &&
+                    resource.PtexTextureRetryRevision != _owner.TextureRetryRevision &&
+                    scene.Meshes.TryGetValue(id, out SilkMeshData? mesh))
+                {
+                    desired[id] = mesh;
+                }
+            }
             _replacements.EnsureCapacity(desired.Count);
             _metadata.EnsureCapacity(desired.Count);
             _retired.EnsureCapacity(checked(_retired.Count + desired.Count));
@@ -147,6 +174,8 @@ public sealed partial class SilkSceneGpuResources
             {
                 if (_owner._meshes.TryGetValue(id, out SilkMeshGpuResource? existing) &&
                     !removed.Contains(id) && !changedMaterials.Contains(mesh.MaterialPath) &&
+                    (existing.Geometry.Key.PtexSamplingIdentity == 0 ||
+                        existing.PtexTextureRetryRevision == _owner.TextureRetryRevision) &&
                     existing.HasSameGeometry(mesh))
                 {
                     _metadata.Add((existing, mesh, existing.Mesh));

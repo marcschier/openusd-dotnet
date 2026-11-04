@@ -780,16 +780,26 @@ fallback values
 
 ### `usdvol-density`
 
-UsdVol density rendering: single OpenVDBAsset density field, R32 3D texture, and bounded layer-centre integration for
-grids up to 512 layers deep; deeper grids are rejected explicitly rather than silently undersampled. Uniform and
-sampled-density gates execute on Vulkan for win-x64/linux-x64, D3D12 WARP for win-x64, and Metal for osx-arm64. Release
-run 33931868184, attempt 1, at f33ba5672b8cf854280c3562725475c5ee52664d recorded executed Metal evidence without
-capability skips; both Metal cases are now required. D3D12/Vulkan additionally gate 96-layer thin-feature recovery,
-exact depth integration, cross-backend image agreement and rejection of impossible volume/material-map combinations
+Historical UsdVol gates cover one OpenVDBAsset density field in an R32 3D texture. Uniform and sampled cases executed on
+Vulkan for win-x64/linux-x64, D3D12 WARP for win-x64, and Metal for osx-arm64; release run 33931868184, attempt 1, at
+f33ba5672b8cf854280c3562725475c5ee52664d recorded both Metal cases without capability skips. D3D12/Vulkan additionally
+gated 96-layer thin-feature recovery, axis-aligned depth integration, cross-backend image agreement and rejection of
+impossible volume/material-map combinations. Current source combines up to eight active density proxies with different
+tints in a two-phase camera-ray pass, clipped by the near/far planes and copied opaque depth. The sampled atlas limits
+each grid axis to 512; workload admission refuses more than 7,117 positions per phase or 64,040 field evaluations per
+pixel before allocating atlas or depth-target resources. Admission refuses non-finite density values, finite
+sample/scale products outside its supported range, tint/exposure products that exceed float range before blending, and
+certain low signals that produced black output. The low-signal screen is conservative and does not establish that all
+admitted ray integrations retain normal values. The 84-case camera gate passed locally on D3D12 WARP and Vulkan
+SwiftShader, including thin high-density fields, overlapping high-tint fields and representative refusal and retry
+cases. Linux, Metal and native producer-to-renderer execution remain unqualified, as do the remaining finite ray and
+integration arithmetic
 
-**Limits:** Only one OpenVDB density field is supported, not general multi-field volume shading. Metal's executed
-uniform/sampled cases do not establish the separate thin-depth or impossible-material-combination gates, GPU OCIO, GPU
-deformation, raster shadows, component picking, or Storm/Metal parity.
+**Limits:** Only density fields are modeled; temperature, emission/color and general multi-field shading remain
+unsupported. The joint multi-proxy path remains unqualified on Linux, Metal and the native producer-to-renderer chain;
+extreme finite numeric inputs remain unqualified. Metal's earlier executed uniform/sampled cases do not establish the
+separate thin-depth or impossible-material-combination gates, GPU OCIO, GPU deformation, raster shadows, component
+picking, or Storm/Metal parity.
 
 ### `cpu-skinning`
 
@@ -1092,28 +1102,38 @@ usdlux-shadow-linking
 
 ### `usdlux-shadow-linking`
 
-Raster shadow maps cover authored UsdLuxDistantLights and zero-radius UsdLuxSphereLights whose ShapingAPI cone angle is
-greater than 0 and less than 90 degrees. The cone angle is the half-angle used by the shading cutoff; wider cones,
-unshaped point lights and finite-radius spheres need other projections or multiple maps. hdSilk derives one bounded
-orthographic descriptor for each supported distant light and one perspective descriptor for each supported sphere spot
-from the world bounds of the published casters. The ABI v19 SHADOW command carries map index, resolution, depth bias,
-world-space normal bias and PCF radius; an unchanged table publishes no command. Managed Silk retains one bounded shadow
-atlas, renders supported casters through opaque or masked depth-only pipelines, expands perspective frusta for prepared
-caster displacement, and samples the atlas with a nine-tap filter. collection:shadowLink restricts casters independently
-of collection:lightLink and does not restrict receiving. A UsdPreviewSurface caster with a positive opacityThreshold
-casts where constant or textured opacity is at or above the threshold. Masked sampling shares the colour pass's UV
-transforms, channels, scale and bias, UDIM addressing, constant borders and composite operation. Texture-driven opacity
-or blended constant opacity without a positive threshold, and positive thresholds on other material kinds, remain
-unsupported and are reported as OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED; those casters remain lit and still receive
-shadows. A retained map is reused until its descriptor table, caster geometry, material, caster restriction, device
-generation, captured opacity-image dependencies or explicit failed-texture retry changes. Dependency checks detect
-in-place edits to resolved images and UDIM tiles by existence, length and last-write time, but do not discover new UDIM
-tiles or automatically recover failed fallbacks. Admitted replacement failures preserve the prior map and texture
-ownership. A spot whose caster bounds cannot fit in a finite perspective frustum is rejected. The table is bounded at
-four maps of at most 2048 texels; unsupported light shapes, scenes with no caster extent, map-budget overflow, and
-devices that cannot record a depth-only pass are reported as OPENUSD_SILK_SHADOW_UNSUPPORTED against the named light.
-Metal is source-complete and unclaimed: it reports no raster-shadow capability, so it allocates no map and diagnoses
-every shadow-enabled light
+Raster shadow maps cover authored UsdLuxDistantLights, zero-radius and finite-radius UsdLuxSphereLights, and rect, disk
+and cylinder lights. A distant light gets one bounded orthographic map; a shaped zero-radius sphere gets one perspective
+map when its cone half-angle is between 0 and 90 degrees; an unshaped point gets six world-axis maps. Each finite-area
+light gets five perspective maps, one per deterministic emitter-surface sample used by the direct-light shader. Sphere
+samples use a pole and four tangent/bitangent points, rect samples use the centre and four corners, disk samples use the
+centre and four cardinal points, and cylinder samples use five side points. The complete affine light transform maps
+every sample position, including rotation, nonuniform scale, shear and reflection. Sphere, disk and cylinder sample
+normals use the inverse-transpose transform with determinant sign retained. The managed frame rejects transforms with
+projective terms outside an absolute 1e-12 tolerance, basis rows with squared lengths at or below 1e-30, or normalized
+basis determinants below 1e-6; hdSilk publishes no sample group for those transforms. Five samples estimate visibility
+but do not integrate the emitter exactly. A sample group is refused if any perspective frustum cannot contain all
+published caster bounds; the producer does not substitute another projection. Page ABI v35 adds the EMITTER_SAMPLE
+descriptor flag to the ABI v19 SHADOW command. The command carries map index, resolution, depth bias, world-space normal
+bias and PCF radius; an unchanged table publishes no command. Managed Silk retains a bounded depth atlas, expands
+perspective frusta for prepared caster displacement and samples it with a nine-tap filter. collection:shadowLink
+restricts casters independently of collection:lightLink and does not restrict receiving. A UsdPreviewSurface caster with
+a positive opacityThreshold casts where constant or textured opacity meets that threshold, using the colour pass's UV
+transforms, channels, scale and bias, UDIM addressing, constant borders and composite operation. Source-only
+blended-caster support adds four peeled opacity layers to attenuate receivers by the preceding intersections; overflow
+and equal-depth multiplicity refuse the candidate. This is thin-surface attenuation, not coloured absorption, refraction
+or volume transport. A provisional 2 GiB per-renderer workspace limit applies when any CPU-texture, GPU-texture or
+GPU-staging budget is absent; configured budgets remain enforced. Ptex opacity and unsupported material coverage remain
+diagnosed rather than approximated. A retained map is reused until its descriptor table, caster geometry, material,
+caster restriction, device generation, captured opacity-image dependencies or explicit failed-texture retry changes.
+Dependency checks detect in-place edits to resolved images and UDIM tiles by existence, length and last-write time, but
+do not discover new UDIM tiles or automatically recover failed fallbacks. Admitted replacement failures preserve the
+prior map and texture ownership. The table admits up to four shadow lights within a shared 24-map cap, with each map at
+most 2048 texels per edge. Invalid emitter dimensions, unsupported shapes, missing caster extents, frusta that cannot
+contain caster bounds, map-budget overflow and devices that cannot record a depth-only pass are reported against the
+named light. The finite-area and blended-transmission tests and their backend gates are authored but have not run;
+runtime qualification awaits matching native assets, regenerated shaders and D3D12/Vulkan execution. Metal remains
+unclaimed: it reports no raster-shadow capability, allocates no map and diagnoses every shadow-enabled light
 
 ### `dome-light-linking`
 

@@ -97,6 +97,7 @@ on:
       - 'eng/silk-cubic-shadow-report.ps1'
       - 'eng/test-silk-cubic-shadow-report.ps1'
       - 'eng/run-silk-cubic-shadow-conformance.ps1'
+      - 'eng/assert-volume-camera-evidence.ps1'
       - 'eng/run-parity-capture.ps1'
       - 'eng/run-viewer-workflow-tests.ps1'
       - 'eng/physx.lock.json'
@@ -609,7 +610,8 @@ jobs:
             -Configuration Release `
             -MinimumExpectedTests 2 `
             -TestArguments @('--treenode-filter', '/*/*/SilkCurveDirtyNativeTests/*')
-      - name: Execute required Windows cubic and point-shadow conformance
+      # Source-only transmission gate: qualification requires a real retained receipt.
+      - name: Execute required Windows cubic, shadow and camera conformance
         id: windows-cubic-shadow
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -1524,7 +1526,8 @@ jobs:
           echo "Using Vulkan loader $loader and lavapipe ICD $icd."
           echo "loader=$loader" >> "$GITHUB_OUTPUT"
           echo "icd=$icd" >> "$GITHUB_OUTPUT"
-      - name: Execute required Linux cubic and point-shadow conformance
+      # Linux receipts require every Vulkan transmission identity to pass; D3D12 skips are not evidence.
+      - name: Execute required Linux cubic, shadow and camera conformance
         id: linux-cubic-shadow
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -2113,7 +2116,7 @@ jobs:
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh
         run: ./eng/stage-hdsilk-runtime.ps1 -Rid osx-arm64
-      - name: Execute required macOS cubic and point-shadow conformance
+      - name: Execute required macOS cubic, shadow and camera conformance
         id: macos-cubic-shadow
         if: steps.native-ready.outputs.ready == 'true'
         shell: pwsh

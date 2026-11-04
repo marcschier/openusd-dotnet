@@ -1,5 +1,57 @@
 # Copyright (c) marcschier. Licensed under the MIT License.
 
+function Save-SilkCameraFailureEvidence
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$VolumeRoot,
+        [Parameter(Mandatory = $true)][string]$EvidenceRoot,
+        [Parameter(Mandatory = $true)][ValidateSet('windows', 'linux', 'macos')][string]$Platform,
+        [Parameter(Mandatory = $true)][string]$PrimaryFailure
+    )
+
+    $root = Join-Path $EvidenceRoot 'camera-failure-receipts'
+    New-Item -ItemType Directory -Path $root -Force -ErrorAction Stop | Out-Null
+    $retained = @()
+    $errors = [Collections.Generic.List[string]]::new()
+    foreach ($backend in @('D3D12', 'Vulkan', 'Metal'))
+    {
+        $directory = "camera-$Platform-$backend"
+        $source = Join-Path (Join-Path $VolumeRoot $directory) 'receipt.json'
+        try
+        {
+            if (-not (Test-Path -LiteralPath $source -PathType Leaf -ErrorAction Stop)) { continue }
+            $targetDirectory = Join-Path $root $directory
+            New-Item -ItemType Directory -Path $targetDirectory -Force -ErrorAction Stop | Out-Null
+            $target = Join-Path $targetDirectory 'receipt.json'
+            $hash = (Get-FileHash -LiteralPath $source -Algorithm SHA256 -ErrorAction Stop).Hash
+            Copy-Item -LiteralPath $source -Destination $target -ErrorAction Stop
+            if ((Get-FileHash -LiteralPath $source -Algorithm SHA256 -ErrorAction Stop).Hash -cne $hash -or
+                (Get-FileHash -LiteralPath $target -Algorithm SHA256 -ErrorAction Stop).Hash -cne $hash)
+            {
+                throw "Camera diagnostic receipt changed during retention: $backend"
+            }
+            $retained += @{ backend = $backend; path = "camera-failure-receipts/$directory/receipt.json"
+                sha256 = $hash.ToLowerInvariant() }
+        }
+        catch
+        {
+            $errors.Add("${backend}: $($_.Exception.Message)")
+        }
+    }
+    [ordered]@{
+        status = 'failed'
+        primaryFailure = $PrimaryFailure
+        diagnosticOnly = $true
+        receipts = @($retained)
+        retentionErrors = $errors.ToArray()
+    } | ConvertTo-Json -Depth 8 |
+        Set-Content -LiteralPath (Join-Path $EvidenceRoot 'camera.failure.json') -ErrorAction Stop
+    foreach ($message in $errors)
+    {
+        Write-Warning "Camera diagnostic retention failed: $message" -WarningAction Continue
+    }
+}
+
 function Get-SilkCubicShadowContract
 {
     param(
@@ -7,7 +59,7 @@ function Get-SilkCubicShadowContract
         [ValidateSet('windows', 'linux', 'macos')]
         [string]$Platform,
         [Parameter(Mandatory = $true)]
-        [ValidateSet('SilkCubicCurveNativeTests', 'SilkPointShadowNativeConformanceTests')]
+        [ValidateSet('SilkCubicCurveNativeTests', 'SilkPointShadowNativeConformanceTests', 'SilkShadowTransmissionConformanceTests', 'SilkFiniteAreaShadowTests', 'VolumeCameraConformanceTests')]
         [string]$Class
     )
 
@@ -18,7 +70,78 @@ function Get-SilkCubicShadowContract
         'macos' { @('Metal') }
     }
     $cases = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
-    if ($Class -ceq 'SilkCubicCurveNativeTests')
+    $skips = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    if ($Class -ceq 'VolumeCameraConformanceTests')
+    {
+        $method = 'CameraIntegrationBackendGate'
+        foreach ($backend in @('D3D12', 'Vulkan', 'Metal'))
+        {
+            $name = "${method}($backend)"
+            $cases.Add($name, $method)
+            if ($backend -cnotin $backends) { [void]$skips.Add($name) }
+        }
+        $expectedCount = 3
+    }
+    elseif ($Class -ceq 'SilkFiniteAreaShadowTests')
+    {
+        if ($Platform -ceq 'macos') { throw 'Finite-area shadows have no qualified Metal execution gate.' }
+        foreach ($backend in @('D3D12', 'Vulkan'))
+        {
+            foreach ($method in @(
+                'RectEmitterShadowsMatchFiveRayReferenceAcrossUpdateAndRetirement',
+                'TransformedRectEmitterShadowsMatchFiveRayReference'))
+            {
+                $name = "${method}($backend)"
+                $cases.Add($name, $method)
+                if ($Platform -ceq 'linux' -and $backend -ceq 'D3D12') { [void]$skips.Add($name) }
+            }
+        }
+        $expectedCount = 4
+    }
+    elseif ($Class -ceq 'SilkShadowTransmissionConformanceTests')
+    {
+        if ($Platform -ceq 'macos') { throw 'Transmission has no qualified Metal execution gate.' }
+        foreach ($backend in @('D3D12', 'Vulkan'))
+        {
+            foreach ($method in @(
+                'TextureBudgetRefusalPreservesTransmissionAndRetriesTheSamePage',
+                'OpaqueAndCutoutCastersComposeWithTransmission'))
+            {
+                $cases.Add("${method}($backend)", $method)
+            }
+            $method = 'SingleAndMultipleLayersRespectReceiverDepthAndLifecycle'
+            foreach ($arguments in @('1, False', '2, False', '4, False', '1, True', '2, True'))
+            {
+                $cases.Add("${method}($backend, $arguments)", $method)
+            }
+            foreach ($method in @(
+                'OverflowAndEqualDepthRefusalPreservePublishedPixelsAndAllowCorrection',
+                'OpacityTextureEditsAndShadowLinksMatchAnalyticPixels'))
+            {
+                foreach ($argument in @('False', 'True'))
+                {
+                    $cases.Add("${method}($backend, $argument)", $method)
+                }
+            }
+            $method = 'ConstantAndTexturedLayersComposeInEitherDepthOrder'
+            foreach ($streaming in @('False', 'True'))
+            {
+                foreach ($constantBehindTexture in @('False', 'True'))
+                {
+                    $cases.Add("${method}($backend, $streaming, $constantBehindTexture)", $method)
+                }
+            }
+        }
+        if ($Platform -ceq 'linux')
+        {
+            foreach ($name in $cases.Keys)
+            {
+                if ($name.Contains('(D3D12', [StringComparison]::Ordinal)) { [void]$skips.Add($name) }
+            }
+        }
+        $expectedCount = 30
+    }
+    elseif ($Class -ceq 'SilkCubicCurveNativeTests')
     {
         $method = 'CubicBezierSamplesAndWidthsMatchIndependentBasis'
         foreach ($wrap in @('nonperiodic', 'periodic', 'pinned'))
@@ -113,7 +236,10 @@ function Get-SilkCubicShadowContract
     {
         throw "The $Platform $Class case manifest has $($cases.Count) entries; expected $expectedCount."
     }
-    return [pscustomobject]@{ Class = $Class; Count = $expectedCount; Cases = $cases }
+    return [pscustomobject]@{
+        Class = $Class; Count = $expectedCount; Cases = $cases
+        Skips = $skips; Passed = $expectedCount - $skips.Count
+    }
 }
 
 function Assert-SilkCubicShadowReport
@@ -124,7 +250,7 @@ function Assert-SilkCubicShadowReport
         [ValidateSet('windows', 'linux', 'macos')]
         [string]$Platform,
         [Parameter(Mandatory = $true)]
-        [ValidateSet('SilkCubicCurveNativeTests', 'SilkPointShadowNativeConformanceTests')]
+        [ValidateSet('SilkCubicCurveNativeTests', 'SilkPointShadowNativeConformanceTests', 'SilkShadowTransmissionConformanceTests', 'SilkFiniteAreaShadowTests', 'VolumeCameraConformanceTests')]
         [string]$Class,
         [Parameter(Mandatory = $true)][DateTime]$StartedUtc,
         [Parameter(Mandatory = $true)][int]$LogPassedCount,
@@ -183,17 +309,19 @@ function Assert-SilkCubicShadowReport
     }
     foreach ($summary in @($report.summary, $groups[0].summary))
     {
-        if ($summary.total -ne $contract.Count -or $summary.passed -ne $contract.Count -or
-            $summary.failed -ne 0 -or $summary.skipped -ne 0 -or
+        if ($summary.total -ne $contract.Count -or $summary.passed -ne $contract.Passed -or
+            $summary.failed -ne 0 -or $summary.skipped -ne $contract.Skips.Count -or
             $summary.cancelled -ne 0 -or $summary.timedOut -ne 0 -or $summary.flaky -ne 0)
         {
-            throw "$Class requires exactly $($contract.Count) passes with no skips or failures, including flaky cases."
+            $requirement = if ($contract.Skips.Count -eq 0) { 'no skips or failures' }
+                else { "only the $($contract.Skips.Count) named platform skips and no failures" }
+            throw "$Class requires exactly $($contract.Passed) passes with $requirement, including flaky cases."
         }
     }
     $tests = @($groups[0].tests)
-    if ($LogPassedCount -ne $contract.Count -or $tests.Count -ne $contract.Count)
+    if ($LogPassedCount -ne $contract.Passed -or $tests.Count -ne $contract.Count)
     {
-        throw "The execution log and $Class report must each contain $($contract.Count) passing cases."
+        throw "The execution log and $Class report must contain $($contract.Passed) passes and $($contract.Count) total identities."
     }
     $ids = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $names = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -202,7 +330,8 @@ function Assert-SilkCubicShadowReport
         $expectedMethod = $null
         $name = [string]$test.displayName
         $id = [string]$test.id
-        if ($test.className -cne $Class -or $test.status -cne 'passed' -or
+        $expectedStatus = if ($contract.Skips.Contains($name)) { 'skipped' } else { 'passed' }
+        if ($test.className -cne $Class -or $test.status -cne $expectedStatus -or
             [string]::IsNullOrWhiteSpace($id) -or
             -not $id.StartsWith("OpenUsd.Rendering.ConformanceTests.$Class.", [StringComparison]::Ordinal) -or
             -not $ids.Add($id) -or [string]::IsNullOrWhiteSpace($name) -or
@@ -216,6 +345,7 @@ function Assert-SilkCubicShadowReport
         {
             throw "An unexpected, duplicate, mis-cased, or non-passing $Class case was reported: $name"
         }
+        if ($expectedStatus -ceq 'skipped') { continue }
         try
         {
             $caseStart = if ($test.startTime -is [DateTime])
@@ -249,7 +379,8 @@ function Assert-SilkCubicShadowReport
     return [pscustomobject]@{
         platform = $Platform
         testClass = $Class
-        passed = $contract.Count
+        passed = $contract.Passed
+        skipped = $contract.Skips.Count
         publicationGeneration = $report.publicationGeneration
         reportSha256 = $hash.ToLowerInvariant()
     }

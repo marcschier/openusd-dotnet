@@ -221,6 +221,52 @@ public sealed partial class SilkSceneGpuResources
         }
     }
 
+    private TextureCacheEntry CreateStreamedPtexEntry(
+        TextureCacheKey key,
+        SilkDecodedImage image,
+        Dictionary<TextureCacheKey, TextureCacheEntry> cache,
+        IReadOnlyList<string>? dependencies,
+        SilkPtexAtlasLayout? ptexLayout,
+        bool isFallback)
+    {
+        if (ptexLayout is null)
+        {
+            throw new InvalidDataException("A Ptex atlas texture requires a face mapping.");
+        }
+
+        _materialCaptureRequest?.ThrowIfCancellationRequested();
+        ulong bytes = checked((ulong)image.Pixels.Length);
+        TrimStreamedTextureReuse(bytes, key.MaterialPath);
+        ISilkGraphicsTexture? texture = null;
+        try
+        {
+            texture = _device.CreateTexture2D(new SilkTextureDescriptor(
+                image.Width,
+                image.Height,
+                image.Format,
+                SilkTextureUsage.Sampled | SilkTextureUsage.CopySource | SilkTextureUsage.CopyDestination,
+                MipLevelCount: 1));
+            UploadMipRows(texture, image, level: 0);
+            var entry = new TextureCacheEntry(
+                texture, [], bytes, false, CaptureDependencies(dependencies),
+                isFallback: isFallback,
+                ptexLayout: ptexLayout,
+                ptexSamplingIdentity: key.PtexSamplingIdentity)
+            {
+                Uploaded = true
+            };
+            RegisterEntry(entry);
+            cache.Add(key, entry);
+            texture = null;
+            return entry;
+        }
+        finally
+        {
+            texture?.Dispose();
+            image.Dispose();
+        }
+    }
+
     private SilkDecodedImage CompactScalarImage(SilkDecodedImage image)
     {
         SilkTextureFormat format = image.Format == SilkTextureFormat.Rgba32Float
@@ -345,10 +391,11 @@ public sealed partial class SilkSceneGpuResources
         }
     }
 
-    internal void ReportTextureCoordinateFallback(SilkMeshGpuResource mesh)
+    internal void ReportTextureCoordinateFallback(SilkMeshGpuResource mesh, SilkMaterialData? material)
     {
         SilkMeshGpuGeometryKey key = mesh.Geometry.Key;
-        if (key.RequireTextureCoordinates && mesh.Mesh.FindTexCoord(key.UvPrimvar) is null)
+        if (key.RequireTextureCoordinates && material?.PtexUsesPrimaryUv != true &&
+            mesh.Mesh.FindTexCoord(key.UvPrimvar) is null)
         {
             AddDiagnostic(SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable, mesh.Mesh.Path,
                 RenderDiagnosticSeverity.Warning,
@@ -666,18 +713,13 @@ public sealed partial class SilkSceneGpuResources
 
         internal void Prepare(SilkSceneState scene, SilkSceneDelta delta)
         {
-            if (delta.MaterialChanges != 0)
-            {
-                _owner.RemoveMaterialDiagnostics();
-            }
-            _owner.RemoveChangedMaterialTextureCacheEntries(delta.ChangedMaterialPaths.Span);
+            InvalidateChangedMaterials(delta);
             if (_owner.StreamsMaterialTextures)
             {
                 return;
             }
             var materials = new HashSet<string>(StringComparer.Ordinal);
             var uploads = new HashSet<TextureCacheEntry>();
-            var volumes = new HashSet<TextureCacheEntry>();
             foreach (SilkMeshData mesh in scene.Meshes.Values)
             {
                 if (!materials.Add(mesh.MaterialPath) ||
@@ -695,14 +737,6 @@ public sealed partial class SilkSceneGpuResources
                     }
                     if (texture.Parameter == SilkMaterialParameter.VolumeDensity)
                     {
-                        if (_owner._device is ISilkVolumeTextureGraphicsDevice)
-                        {
-                            TextureCacheEntry entry = _owner.RequireVolumeTexture(texture);
-                            if (!entry.Uploaded)
-                            {
-                                volumes.Add(entry);
-                            }
-                        }
                         continue;
                     }
                     TextureCacheEntry ordinary = _owner.RequireTexture(material, texture);
@@ -714,7 +748,7 @@ public sealed partial class SilkSceneGpuResources
                     }
                 }
             }
-            if (uploads.Count == 0 && volumes.Count == 0)
+            if (uploads.Count == 0)
             {
                 return;
             }
@@ -724,25 +758,21 @@ public sealed partial class SilkSceneGpuResources
                 commands.UploadTexture(entry.Texture, entry.Pixels);
                 _owner._textureUploadBytes += checked((ulong)entry.Pixels.Length);
             }
-            if (volumes.Count != 0)
-            {
-                if (commands is not ISilkVolumeTextureCommandList volumeCommands)
-                {
-                    throw new InvalidOperationException(
-                        "The device cannot record its prepared volume texture uploads.");
-                }
-                foreach (TextureCacheEntry entry in volumes)
-                {
-                    volumeCommands.UploadTexture3D(entry.Texture, entry.Pixels);
-                    _owner._textureUploadBytes += checked((ulong)entry.Pixels.Length);
-                }
-            }
             using ISilkGraphicsSubmission submission = _owner._device.Submit(commands);
             submission.Wait();
-            foreach (TextureCacheEntry entry in uploads.Concat(volumes))
+            foreach (TextureCacheEntry entry in uploads)
             {
                 entry.Uploaded = true;
             }
+        }
+
+        internal void InvalidateChangedMaterials(SilkSceneDelta delta)
+        {
+            if (delta.MaterialChanges != 0)
+            {
+                _owner.RemoveMaterialDiagnostics();
+            }
+            _owner.RemoveChangedMaterialTextureCacheEntries(delta.ChangedMaterialPaths.Span);
         }
 
         internal void Commit()

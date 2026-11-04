@@ -46,7 +46,7 @@ public sealed partial class RuntimePackageTests
     private const int RequiredStormAbiVersion = 9;
     private static readonly int RequiredSilkSessionAbiVersion =
         checked((int)ReadLockNumber("silkSession"));
-    private const int RequiredSilkPageAbiVersion = 34;
+    private const int RequiredSilkPageAbiVersion = 35;
     private const int RequiredStormChildAbiVersion = 9;
     private const int RequiredStormChildNavigationInputVersion = 2;
 
@@ -1456,6 +1456,24 @@ public sealed partial class RuntimePackageTests
                 "shadow.mask.fragment.dxil",
                 "shadow.mask.fragment.spv",
                 "shadow.mask.fragment.reflection.json",
+                "shadow.transmission.fragment.dxil",
+                "shadow.transmission.first.fragment.dxil",
+                "shadow.transmission.first.fragment.spv",
+                "shadow.transmission.first.fragment.reflection.json",
+                "shadow.transmission.fragment.spv",
+                "shadow.transmission.fragment.reflection.json",
+                "shadow.transmission.probe.fragment.dxil",
+                "shadow.transmission.probe.fragment.spv",
+                "shadow.transmission.probe.fragment.reflection.json",
+                "shadow.transmission.constant.first.fragment.dxil",
+                "shadow.transmission.constant.first.fragment.spv",
+                "shadow.transmission.constant.first.fragment.reflection.json",
+                "shadow.transmission.constant.fragment.dxil",
+                "shadow.transmission.constant.fragment.spv",
+                "shadow.transmission.constant.fragment.reflection.json",
+                "shadow.transmission.constant.probe.fragment.dxil",
+                "shadow.transmission.constant.probe.fragment.spv",
+                "shadow.transmission.constant.probe.fragment.reflection.json",
                 "mesh.fragment.dxil",
                 "mesh.fragment.spv",
                 "mesh.fragment.reflection.json",
@@ -1470,6 +1488,15 @@ public sealed partial class RuntimePackageTests
                 "mesh.volume.fragment.dxil",
                 "mesh.volume.fragment.spv",
                 "mesh.volume.fragment.reflection.json",
+                "volume.camera.vertex.dxil",
+                "volume.camera.vertex.spv",
+                "volume.camera.vertex.reflection.json",
+                "volume.camera.fragment.uniform.dxil",
+                "volume.camera.fragment.uniform.spv",
+                "volume.camera.fragment.uniform.reflection.json",
+                "volume.camera.fragment.atlas.dxil",
+                "volume.camera.fragment.atlas.spv",
+                "volume.camera.fragment.atlas.reflection.json",
                 "manifest.json",
             ];
             foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
@@ -4103,7 +4130,8 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("PTEX_FACE_DESCRIBE_EXPORT=true");
             await Assert.That(result.Output).Contains("PTEX_MEMORY_SOURCE=true");
             await Assert.That(result.Output).Contains("PTEX_SOURCE_CONTRACT=true");
-            await Assert.That(result.Output).Contains("Ptex sampling is not available");
+            await Assert.That(result.Output.Contains(
+                "Ptex sampling is not available", StringComparison.Ordinal)).IsFalse();
             await Assert.That(result.Output).Contains("VOLUME_BUDGET_ADMISSION=true");
             await Assert.That(result.Output).Contains("COMMAND_STORAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("MATERIAL_STREAMING=true");

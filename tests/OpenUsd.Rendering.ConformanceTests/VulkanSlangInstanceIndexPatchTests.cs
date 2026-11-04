@@ -17,7 +17,9 @@ public sealed class VulkanSlangInstanceIndexPatchTests
     private const uint OpCapability = (2u << 16) | 17u;
     private const uint OpVariable = (4u << 16) | 59u;
     private const uint DecorationBuiltIn = 11;
+    private const uint BuiltInVertexIndex = 42;
     private const uint BuiltInInstanceIndex = 43;
+    private const uint BuiltInBaseVertex = 4424;
     private const uint BuiltInBaseInstance = 4425;
     private const uint BuiltInDrawIndex = 4426;
     private const uint CapabilityDrawParameters = 4427;
@@ -48,6 +50,187 @@ public sealed class VulkanSlangInstanceIndexPatchTests
         await Assert.That(patchedWords[subtractOffset + 2]).IsEqualTo(subtractionResult);
         await Assert.That(patchedWords[subtractOffset + 3]).IsEqualTo(instanceIndexLoad);
         await Assert.That(patchedWords[subtractOffset + 4]).IsEqualTo(OpNop);
+    }
+
+    [Test]
+    public async Task PatchesVertexAndInstanceLoweringsAndRemovesBothUnusedBases()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11, 12, 13, 14),
+            DecorateBuiltIn(10, BuiltInInstanceIndex),
+            DecorateBuiltIn(11, BuiltInBaseInstance),
+            DecorateBuiltIn(12, BuiltInVertexIndex),
+            DecorateBuiltIn(13, BuiltInBaseVertex),
+            [(3u << 16) | 71u, 40, 13],
+            [(5u << 16) | 72u, 40, 0, 7, 11],
+            [(4u << 16) | 43u, 1, 27, 11],
+            [OpVariable, 1, 11, 1],
+            [OpVariable, 1, 13, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21),
+            Load(12, 23),
+            Load(13, 24),
+            ISub(25, 23, 24),
+            Load(30, 31),
+            Load(32, 33),
+            ISub(34, 31, 33));
+
+        uint[][] patched = Instructions(VulkanSilkGraphicsDevice.PatchSlangDrawIndexLowering(module));
+
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsFalse();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpDecorate &&
+            instruction[2] == DecorationBuiltIn &&
+            instruction[3] is BuiltInBaseVertex or BuiltInBaseInstance)).IsFalse();
+        await Assert.That(patched.Any(static instruction =>
+            instruction[0] == OpCopyObject && instruction[2] == 22 && instruction[3] == 20)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction[0] == OpCopyObject && instruction[2] == 25 && instruction[3] == 23)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction[0] == OpISub && instruction[2] == 34 &&
+            instruction[3] == 31 && instruction[4] == 33)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 && (instruction[0] & 0xffff) == 43 &&
+            instruction[2] == 27 && instruction[3] == 11)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 3 && (instruction[0] & 0xffff) == 71 &&
+            instruction[1] == 40 && instruction[2] == 13)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 5 && (instruction[0] & 0xffff) == 72 &&
+            instruction[1] == 40 && instruction[3] == 7 && instruction[4] == 11)).IsTrue();
+        uint[] entryPoint = patched.Single(static instruction => (instruction[0] & 0xffff) == 15);
+        await Assert.That(entryPoint.Skip(5).SequenceEqual([10u, 12u, 14u])).IsTrue();
+    }
+
+    [Test]
+    public async Task RemovesUnusedBaseVertexFromVertexOnlyLowering()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11),
+            DecorateBuiltIn(10, BuiltInVertexIndex),
+            DecorateBuiltIn(11, BuiltInBaseVertex),
+            [OpVariable, 1, 11, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21));
+
+        uint[][] patched = Instructions(VulkanSilkGraphicsDevice.PatchSlangDrawIndexLowering(module));
+
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsFalse();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 && instruction[0] == OpVariable && instruction[2] == 11)).IsFalse();
+        await Assert.That(patched.Any(static instruction =>
+            instruction[0] == OpCopyObject && instruction[2] == 22 && instruction[3] == 20)).IsTrue();
+    }
+
+    [Test]
+    public async Task KeepsBothBasesWhenVertexBaseHasAnotherUse()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11, 12, 13),
+            DecorateBuiltIn(10, BuiltInInstanceIndex),
+            DecorateBuiltIn(11, BuiltInBaseInstance),
+            DecorateBuiltIn(12, BuiltInVertexIndex),
+            DecorateBuiltIn(13, BuiltInBaseVertex),
+            [OpVariable, 1, 11, 1],
+            [OpVariable, 1, 13, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21),
+            Load(12, 23),
+            Load(13, 24),
+            ISub(25, 23, 24),
+            [OpCopyObject, 1, 26, 24]);
+
+        uint[][] patched = Instructions(VulkanSilkGraphicsDevice.PatchSlangDrawIndexLowering(module));
+
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction[0] == OpVariable && instruction[2] == 11)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction[0] == OpVariable && instruction[2] == 13)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction[0] == OpCopyObject && instruction[2] == 26 && instruction[3] == 24)).IsTrue();
+    }
+
+    [Test]
+    public async Task PreservesOtherDrawBuiltinsWhenBothIndexPatternsMatch()
+    {
+        byte[] module = ToBytes(
+            Header(),
+            [OpCapability, CapabilityDrawParameters],
+            EntryPoint(10, 11, 12, 13, 14),
+            DecorateBuiltIn(10, BuiltInInstanceIndex),
+            DecorateBuiltIn(11, BuiltInBaseInstance),
+            DecorateBuiltIn(12, BuiltInVertexIndex),
+            DecorateBuiltIn(13, BuiltInBaseVertex),
+            DecorateBuiltIn(14, BuiltInDrawIndex),
+            [OpVariable, 1, 11, 1],
+            [OpVariable, 1, 13, 1],
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21),
+            Load(12, 23),
+            Load(13, 24),
+            ISub(25, 23, 24));
+
+        uint[][] patched = Instructions(VulkanSilkGraphicsDevice.PatchSlangDrawIndexLowering(module));
+
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 2 &&
+            instruction[0] == OpCapability &&
+            instruction[1] == CapabilityDrawParameters)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction.Length == 4 &&
+            instruction[0] == OpDecorate &&
+            instruction[1] == 14 &&
+            instruction[3] == BuiltInDrawIndex)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction[0] == OpVariable && instruction[2] == 11)).IsTrue();
+        await Assert.That(patched.Any(static instruction =>
+            instruction[0] == OpVariable && instruction[2] == 13)).IsTrue();
+    }
+
+    [Test]
+    public async Task LeavesUnmatchedVertexBaseUsageByteIdentical()
+    {
+        byte[] reversed = ToBytes(
+            Header(),
+            DecorateBuiltIn(10, BuiltInVertexIndex),
+            DecorateBuiltIn(11, BuiltInBaseVertex),
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 21, 20));
+        byte[] multiple = ToBytes(
+            Header(),
+            DecorateBuiltIn(10, BuiltInVertexIndex),
+            DecorateBuiltIn(11, BuiltInBaseVertex),
+            Load(10, 20),
+            Load(11, 21),
+            ISub(22, 20, 21),
+            ISub(23, 20, 21));
+
+        await Assert.That(VulkanSilkGraphicsDevice.PatchSlangDrawIndexLowering(reversed)
+            .AsSpan().SequenceEqual(reversed)).IsTrue();
+        await Assert.That(VulkanSilkGraphicsDevice.PatchSlangDrawIndexLowering(multiple)
+            .AsSpan().SequenceEqual(multiple)).IsTrue();
     }
 
     [Test]

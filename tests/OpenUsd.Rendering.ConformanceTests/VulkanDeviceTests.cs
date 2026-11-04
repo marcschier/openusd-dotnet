@@ -593,7 +593,7 @@ public sealed class VulkanDeviceTests
     }
 
     [Test]
-    public async Task SwiftShaderSkipsAndNamesAnOpacityMaskedCaster()
+    public async Task SwiftShaderOmitsABelowCutoffCasterWithoutDiagnostic()
     {
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
         {
@@ -602,7 +602,7 @@ public sealed class VulkanDeviceTests
         }
 
         using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
-        await SilkShadowConformance.AnOpacityMaskedCasterIsSkippedAndNamed(device);
+        await SilkShadowConformance.AnOpacityCutoffCasterIsOmittedWithoutDiagnostic(device);
     }
 
     [Test]

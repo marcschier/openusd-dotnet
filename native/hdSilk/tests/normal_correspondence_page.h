@@ -10,8 +10,13 @@
 #include <limits>
 
 inline bool HdSilkTestReadNormalCorrespondence(
-    const uint8_t* data, size_t end, size_t* cursor, uint32_t pointCount)
+    const uint8_t* data, size_t end, size_t* cursor, uint32_t pointCount,
+    bool* triangleLocal = nullptr)
 {
+    if (triangleLocal != nullptr)
+    {
+        *triangleLocal = false;
+    }
     if (*cursor == end)
     {
         return true;
@@ -24,6 +29,9 @@ inline bool HdSilkTestReadNormalCorrespondence(
     uint32_t corners = 0;
     uint32_t extraPoints = 0;
     std::memcpy(&identities, data + *cursor, 4);
+    const bool encodedTriangleLocal =
+        (identities & OPENUSD_SILK_NORMAL_IDENTITY_TRIANGLE_LOCAL) != 0;
+    identities &= ~OPENUSD_SILK_NORMAL_IDENTITY_TRIANGLE_LOCAL;
     std::memcpy(&corners, data + *cursor + 4, 4);
     std::memcpy(&extraPoints, data + *cursor + 8, 4);
     *cursor += 12;
@@ -54,6 +62,10 @@ inline bool HdSilkTestReadNormalCorrespondence(
         {
             return false;
         }
+    }
+    if (triangleLocal != nullptr)
+    {
+        *triangleLocal = encodedTriangleLocal;
     }
     return true;
 }

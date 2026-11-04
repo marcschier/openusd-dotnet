@@ -152,6 +152,7 @@ internal sealed class SilkShadowFrameBinding
     /// <summary>
     /// Gets one map's controls as (depthBias, normalBias, pcfRadius, texelSize).
     /// </summary>
+    /// <remarks>A negative radius encodes active transmission as -(pcfRadius + 1).</remarks>
     public Vector4 GetControls(int slot) => _controls[slot];
 
     /// <summary>Gets the map slot a direct light samples, or <c>-1</c>.</summary>
@@ -177,7 +178,8 @@ internal sealed class SilkShadowFrameBinding
     /// </remarks>
     public static SilkShadowFrameBinding Create(
         IReadOnlyList<SilkShadowDescriptor> descriptors,
-        SilkShadowAtlasLayout layout)
+        SilkShadowAtlasLayout layout,
+        bool transmission = false)
     {
         ArgumentNullException.ThrowIfNull(descriptors);
         ArgumentNullException.ThrowIfNull(layout);
@@ -198,7 +200,7 @@ internal sealed class SilkShadowFrameBinding
             controls[index] = new Vector4(
                 descriptor.DepthBias,
                 descriptor.NormalBias,
-                descriptor.PcfRadius,
+                transmission ? -1 - descriptor.PcfRadius : descriptor.PcfRadius,
                 layout.TexelSize);
             if (slots[(int)descriptor.LightIndex] < 0)
             {

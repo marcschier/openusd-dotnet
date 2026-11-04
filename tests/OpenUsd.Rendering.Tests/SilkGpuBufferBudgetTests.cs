@@ -7,6 +7,205 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkGpuBufferBudgetTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task FailedFinalResourceLeaseReleaseCanRetryThroughEitherOwnerWithoutReturningCreditEarly(bool retryResource)
+    {
+        var budget = new SilkGpuBufferBudget(64);
+        var device = new BudgetDevice();
+        device.ConfigureBufferBudget(budget);
+        using BudgetBuffer buffer = device.Create(64);
+        IDisposable first = buffer.Borrow(), last = buffer.Borrow();
+        buffer.Dispose();
+        first.Dispose();
+        first.Dispose();
+        buffer.FailRelease = true;
+        await Assert.That(last.Dispose).Throws<InvalidOperationException>();
+        await Assert.That(buffer.NativeReleases).IsEqualTo(0);
+        await Assert.That(buffer.ReleaseAttempts).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(64ul);
+        await Assert.That(() => buffer.Borrow()).Throws<ObjectDisposedException>();
+        await Assert.That(() => buffer.Write(new byte[1])).Throws<ObjectDisposedException>();
+        await Assert.That(() => device.Create(1)).Throws<SilkGpuBufferBudgetExceededException>();
+        buffer.FailRelease = false;
+        if (retryResource)
+        { buffer.Dispose(); }
+        else
+        { last.Dispose(); }
+        last.Dispose();
+        last.Dispose();
+        buffer.Dispose();
+        await Assert.That(buffer.NativeReleases).IsEqualTo(1);
+        await Assert.That(buffer.ReleaseAttempts).IsEqualTo(2);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+        using BudgetBuffer replacement = device.Create(64);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(64ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ResourceReservationFailureRetriesOnlyTheReservationAfterNativeReleaseSucceeds(bool leased)
+    {
+        using var buffer = new BudgetBuffer(64);
+        var reservation = new ReleaseReservation { Refuse = true };
+        buffer.OwnBufferReservation(reservation);
+        IDisposable? lease = leased ? buffer.Borrow() : null;
+        if (leased)
+        {
+            buffer.Dispose();
+            await Assert.That(lease!.Dispose).Throws<InvalidOperationException>();
+        }
+        else
+        {
+            await Assert.That(buffer.Dispose).Throws<InvalidOperationException>();
+        }
+        await Assert.That(buffer.NativeReleases).IsEqualTo(1);
+        await Assert.That(buffer.ReleaseAttempts).IsEqualTo(1);
+        await Assert.That(reservation.Attempts).IsEqualTo(1);
+        await Assert.That(() => buffer.Borrow()).Throws<ObjectDisposedException>();
+        reservation.Refuse = false;
+        if (leased)
+        { lease!.Dispose(); }
+        else
+        { buffer.Dispose(); }
+        buffer.Dispose();
+        lease?.Dispose();
+        await Assert.That(buffer.NativeReleases).IsEqualTo(1);
+        await Assert.That(buffer.ReleaseAttempts).IsEqualTo(1);
+        await Assert.That(reservation.Attempts).IsEqualTo(2);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ResourceNativeReleaseReentryDoesNotDuplicateReleaseOrReturnCreditEarly(bool leased)
+    {
+        var budget = new SilkGpuBufferBudget(64);
+        var device = new BudgetDevice();
+        device.ConfigureBufferBudget(budget);
+        using BudgetBuffer buffer = device.Create(64);
+        IDisposable? lease = leased ? buffer.Borrow() : null;
+        int reentries = 0;
+        ulong held = 0;
+        buffer.OnRelease = () =>
+        {
+            reentries++;
+            if (leased)
+            { lease!.Dispose(); }
+            else
+            { buffer.Dispose(); }
+            held = budget.Usage.ReservedBytes;
+        };
+        buffer.Dispose();
+        lease?.Dispose();
+        await Assert.That(reentries).IsEqualTo(1);
+        await Assert.That(held).IsEqualTo(64ul);
+        await Assert.That(buffer.NativeReleases).IsEqualTo(1);
+        await Assert.That(buffer.ReleaseAttempts).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        lease?.Dispose();
+        buffer.Dispose();
+        await Assert.That(buffer.ReleaseAttempts).IsEqualTo(1);
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task ConcurrentResourceDisposalReturnsWhileOneNativeReleaseOwnsTheResourceAndItsCredit(
+        bool leased, bool failRelease)
+    {
+        var budget = new SilkGpuBufferBudget(64);
+        var device = new BudgetDevice();
+        device.ConfigureBufferBudget(budget);
+        using BudgetBuffer buffer = device.Create(64);
+        IDisposable? lease = leased ? buffer.Borrow() : null;
+        if (leased)
+        { buffer.Dispose(); }
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        buffer.OnRelease = () =>
+        {
+            entered.TrySetResult();
+            if (!release.Wait(TimeSpan.FromSeconds(10)))
+            { throw new TimeoutException("Native release was not released."); }
+            if (failRelease)
+            { throw new InvalidOperationException("Injected concurrent resource release failure."); }
+        };
+        Task completion = Task.Run(() =>
+        {
+            if (leased)
+            { lease!.Dispose(); }
+            else
+            { buffer.Dispose(); }
+        });
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            buffer.Dispose();
+            lease?.Dispose();
+            await Assert.That(() => buffer.Borrow()).Throws<ObjectDisposedException>();
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(64ul);
+            await Assert.That(() => device.Create(1)).Throws<SilkGpuBufferBudgetExceededException>();
+        }
+        finally
+        {
+            release.Set();
+            if (failRelease)
+            { _ = await Assert.ThrowsAsync<InvalidOperationException>(() => completion); }
+            else
+            { await completion; }
+        }
+        if (failRelease)
+        {
+            await Assert.That(buffer.NativeReleases).IsEqualTo(0);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(64ul);
+            buffer.OnRelease = null;
+            if (leased)
+            { lease!.Dispose(); }
+            else
+            { buffer.Dispose(); }
+        }
+        buffer.Dispose();
+        lease?.Dispose();
+        await Assert.That(buffer.ReleaseAttempts).IsEqualTo(failRelease ? 2 : 1);
+        await Assert.That(buffer.NativeReleases).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task UnbudgetedResourceReleaseFailureRemainsRetryableWithoutRepeatingCompletedDestruction(bool leased)
+    {
+        using var buffer = new BudgetBuffer(64) { FailRelease = true };
+        IDisposable? lease = leased ? buffer.Borrow() : null;
+        if (leased)
+        {
+            buffer.Dispose();
+            await Assert.That(lease!.Dispose).Throws<InvalidOperationException>();
+        }
+        else
+        {
+            await Assert.That(buffer.Dispose).Throws<InvalidOperationException>();
+        }
+        await Assert.That(buffer.NativeReleases).IsEqualTo(0);
+        await Assert.That(() => buffer.Borrow()).Throws<ObjectDisposedException>();
+        buffer.FailRelease = false;
+        if (leased)
+        { lease!.Dispose(); }
+        else
+        { buffer.Dispose(); }
+        buffer.Dispose();
+        lease?.Dispose();
+        await Assert.That(buffer.NativeReleases).IsEqualTo(1);
+        await Assert.That(buffer.ReleaseAttempts).IsEqualTo(2);
+    }
+
+    [Test]
     public async Task ExactCapacityIsAdmittedAndOneByteMoreIsRefusedBeforeCreation()
     {
         var budget = new SilkGpuBufferBudget(64);
@@ -179,6 +378,15 @@ public sealed class SilkGpuBufferBudgetTests
         await Assert.That(buffer.Dispose).Throws<InvalidOperationException>();
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(64ul);
         await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+        await Assert.That(() => buffer.Borrow()).Throws<ObjectDisposedException>();
+        buffer.FailRelease = false;
+        buffer.Dispose();
+        buffer.Dispose();
+        await Assert.That(buffer.NativeReleases).IsEqualTo(1);
+        await Assert.That(buffer.ReleaseAttempts).IsEqualTo(2);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        using BudgetBuffer replacement = device.Create(64);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(64ul);
     }
 
     [Test]
@@ -229,16 +437,32 @@ public sealed class SilkGpuBufferBudgetTests
     {
         internal int NativeReleases { get; private set; }
         internal bool FailRelease { get; set; }
+        internal int ReleaseAttempts { get; private set; }
+        internal Action? OnRelease { get; set; }
         internal IDisposable Borrow() => AcquireBufferLease();
         public override void Write(ReadOnlySpan<byte> data, nuint offset = 0) => _ = ValidateWrite(data.Length, offset);
         public override void ReadbackForTesting(Span<byte> destination) => throw new NotSupportedException();
         protected override void ReleaseNative()
         {
+            ReleaseAttempts++;
             if (FailRelease)
             {
                 throw new InvalidOperationException("Injected native release failure.");
             }
+            OnRelease?.Invoke();
             NativeReleases++;
+        }
+    }
+
+    private sealed class ReleaseReservation : IDisposable
+    {
+        internal bool Refuse { get; set; }
+        internal int Attempts { get; private set; }
+        public void Dispose()
+        {
+            Attempts++;
+            if (Refuse)
+            { throw new InvalidOperationException("Injected buffer reservation release failure."); }
         }
     }
 }

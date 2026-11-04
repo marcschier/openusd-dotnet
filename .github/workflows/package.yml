@@ -90,6 +90,8 @@ on:
       - '.github/workflows/package.yml'
       - 'eng/report-validated-checkout.ps1'
       - 'eng/pack-packages.ps1'
+      - 'eng/managed-workflow-reports.ps1'
+      - 'eng/run-managed-tests.ps1'
       - 'eng/generate-native-notices.py'
       - 'eng/shaderc-source-patches.lock.json'
       - 'eng/patches/shaderc/**'
@@ -120,17 +122,22 @@ on:
       - 'src/OpenUsd.Runtime.Imaging*/**'
       - 'src/OpenUsd.Runtime.Cesium*/**'
       - 'src/OpenUsd.Runtime.Physics*/**'
+      - 'src/OpenUsd/**'
+      - 'src/OpenUsd.Interop/**'
       # The managed physics library and the schema resources it embeds are packed and executed by
       # the physics package gates, so a change to either has to run them. The wildcard above matches
       # only the runtime packages; without these two, removing an <EmbeddedResource> or editing the
       # generated schema would skip the only gate that reads them out of a packed assembly.
       - 'src/OpenUsd.Physics/**'
       - 'src/OpenUsd.Rendering/**'
+      - 'src/OpenUsd.Rendering.Silk*/**'
       - 'src/OpenUsd.Rendering.Physics/**'
+      - 'eng/shaders/checked/**'
       - 'schemas/**'
       - 'tests/OpenUsd.Package.Tests/**'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
+      - 'global.json'
       - 'version.json'
   pull_request:
     branches: [ master, main ]
@@ -615,7 +622,7 @@ jobs:
               shutil.rmtree(clean)
           PY
       - name: Build package tests
-        if: steps.native-ready.outputs.ready == 'true'
+        if: steps.native-ready.outputs.ready == 'true' || runner.os == 'Linux'
         shell: pwsh
         # The MSVC developer environment exports Platform=x64, which makes MSBuild
         # write to bin\x64\Release instead of bin\Release and leaves the executable
@@ -650,6 +657,207 @@ jobs:
           {
             throw 'The required Core EXR case must execute exactly once without skips.'
           }
+      - name: Execute required Silk capture package surface
+        if: runner.os == 'Linux'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/silk-capture-work
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./eng/managed-workflow-reports.ps1
+          $source = & git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $source -cnotmatch '^[0-9a-f]{40}$') {
+            throw 'The tested checkout has no valid source commit.'
+          }
+          $checkoutChanges = @(& git status --porcelain --untracked-files=all)
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to inspect the capture package checkout.'
+          }
+          if ($checkoutChanges.Count -ne 0) {
+            throw "The capture package gate requires a clean checkout.`n$($checkoutChanges -join "`n")"
+          }
+          $evidence = Join-Path $env:GITHUB_WORKSPACE 'artifacts/silk-capture-package'
+          if (Test-Path -LiteralPath $evidence) {
+            throw 'Silk capture package evidence must use a new directory.'
+          }
+          $feed = Join-Path $evidence 'feed'
+          New-Item -ItemType Directory -Path $feed -Force | Out-Null
+          New-Item -ItemType Directory -Path $env:OPENUSD_TEST_WORK_ROOT -Force | Out-Null
+          $packages = @{}
+          $packageEvidence = @()
+          $version = $null
+          foreach ($id in @('OpenUsd.Interop', 'OpenUsd', 'OpenUsd.Rendering', 'OpenUsd.Rendering.Silk')) {
+            $project = Join-Path (Join-Path $env:GITHUB_WORKSPACE 'src') (Join-Path $id "$id.csproj")
+            & dotnet pack $project -c Release -o $feed -m:1 `
+              -p:PublicRelease=true -p:UseSharedCompilation=false
+            if ($LASTEXITCODE -ne 0) { throw "Packing $id for the capture gate failed." }
+            $pattern = '^' + [regex]::Escape($id) + '\.[0-9].*\.nupkg$'
+            $candidates = @(Get-ChildItem -LiteralPath $feed -File |
+              Where-Object { $_.Name -cmatch $pattern })
+            if ($candidates.Count -ne 1) { throw "Expected one freshly packed $id package." }
+            $file = $candidates[0]
+            $currentVersion = $file.Name.Substring(
+              $id.Length + 1, $file.Name.Length - $id.Length - 1 - '.nupkg'.Length)
+            if ($null -ne $version -and $currentVersion -cne $version) {
+              throw 'The capture feed contains different managed package versions.'
+            }
+            $version = $currentVersion
+            $archive = [System.IO.Compression.ZipFile]::OpenRead($file.FullName)
+            try {
+              $manifests = @($archive.Entries | Where-Object {
+                $_.FullName -cmatch '^[^/]+\.nuspec$'
+              })
+              if ($manifests.Count -ne 1) {
+                throw "The $id package must contain exactly one root nuspec."
+              }
+              $stream = $manifests[0].Open()
+              try {
+                $document = [System.Xml.Linq.XDocument]::Load($stream)
+              }
+              finally {
+                $stream.Dispose()
+              }
+              $repository = $document.Root.Elements() |
+                Where-Object { $_.Name.LocalName -ceq 'metadata' } |
+                ForEach-Object { $_.Elements() } |
+                Where-Object { $_.Name.LocalName -ceq 'repository' }
+              if (@($repository).Count -ne 1 -or
+                  $null -eq $repository.Attribute('commit') -or
+                  $repository.Attribute('commit').Value -cne $source) {
+                throw "The $id package does not identify the tested source commit."
+              }
+            }
+            finally {
+              $archive.Dispose()
+            }
+            $packages[$id] = $file.FullName
+            $packageEvidence += [ordered]@{
+              id = $id
+              file = $file.Name
+              source = $source
+              sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+          }
+          $env:OPENUSD_SILK_HDR_PACKAGE = $packages['OpenUsd.Rendering.Silk']
+          $env:OPENUSD_SILK_DEPTH_PACKAGE = $packages['OpenUsd.Rendering.Silk']
+          $env:OPENUSD_SILK_GPU_HDR_PACKAGE = $packages['OpenUsd.Rendering.Silk']
+          $cases = @(
+            @{ Id = 'hdr-surface'; Class = 'SilkHdrColorCapturePackageTests'
+              Method = 'PackedHdrCaptureCarriesReviewedSurfaceDefaultsAndXmlForEveryProductionFramework' },
+            @{ Id = 'hdr-consumer'; Class = 'SilkHdrColorCapturePackageTests'
+              Method = 'PackageOnlyConsumerCompilesEveryHdrOverloadWithNullableTrimAndAotAnalysis' },
+            @{ Id = 'depth-surface'; Class = 'SilkDepthCapturePackageTests'
+              Method = 'PackedDepthCaptureExposesTheReviewedSurfaceForEveryProductionFramework' },
+            @{ Id = 'gpu-hdr-surface'; Class = 'SilkGpuHdrColorCapturePackageTests'
+              Method = 'PackedGpuHdrDocumentsCompletedFrameOnlyFailureAndUnchangedPixelQuota' }
+          )
+          $project = Join-Path $env:GITHUB_WORKSPACE 'tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj'
+          $assemblyDirectory = Join-Path $env:GITHUB_WORKSPACE 'tests/OpenUsd.Package.Tests/bin/Release/net10.0'
+          $runner = Join-Path $env:GITHUB_WORKSPACE 'eng/run-managed-tests.ps1'
+          $generations = [Collections.Generic.HashSet[guid]]::new()
+          $caseEvidence = @()
+          foreach ($case in $cases) {
+            $started = [DateTime]::UtcNow
+            $result = Invoke-ManagedWorkflowScenario `
+              -Runner $runner -Project $project -AssemblyDirectory $assemblyDirectory `
+              -EvidenceRoot $evidence -Entry $case -Configuration Release `
+              -ReportAssembly 'OpenUsd.Package.Tests' `
+              -TestArguments @('--treenode-filter', "/*/*/$($case.Class)/$($case.Method)") `
+              -RequireNoSkips $true
+            $finished = [DateTime]::UtcNow
+            $reportPath = Join-Path $evidence $result.rawReport
+            if ($result.passed -ne 1 -or
+                (Get-Item -LiteralPath $reportPath).LastWriteTimeUtc -lt $started) {
+              throw "The $($case.Id) capture test did not produce one fresh pass."
+            }
+            $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+            $groups = $report.groups
+            $generation = [guid]::Empty
+            if (($report.schemaVersion -isnot [int] -and $report.schemaVersion -isnot [long]) -or
+                $report.schemaVersion -ne 1 -or
+                $report.assemblyName -cne 'OpenUsd.Package.Tests' -or
+                $report.publicationGeneration -isnot [string] -or
+                -not [guid]::TryParseExact([string]$report.publicationGeneration, 'N', [ref]$generation) -or
+                $generation -eq [guid]::Empty -or -not $generations.Add($generation) -or
+                $groups -isnot [array] -or $groups.Count -ne 1 -or
+                $groups[0].namespace -cne 'OpenUsd.Package.Tests' -or
+                $groups[0].className -cne $case.Class) {
+              throw "The $($case.Id) capture report has an unexpected identity or generation."
+            }
+            foreach ($prior in @(Get-ChildItem -LiteralPath $evidence `
+              -Filter "$($case.Id).prior-*.tunit-report.json" -File)) {
+              $old = Get-Content -LiteralPath $prior.FullName -Raw | ConvertFrom-Json
+              if ($old.publicationGeneration -ceq $report.publicationGeneration) {
+                throw "The $($case.Id) capture report reused a prior generation."
+              }
+            }
+            $tests = $groups[0].tests
+            if ($tests -isnot [array] -or $tests.Count -ne 1 -or
+                $tests[0].className -cne $case.Class -or
+                $tests[0].methodName -cne $case.Method -or $tests[0].displayName -cne $case.Method -or
+                $tests[0].status -cne 'passed' -or $tests[0].id -isnot [string] -or
+                [string]::IsNullOrWhiteSpace($tests[0].id) -or
+                -not $tests[0].id.StartsWith("OpenUsd.Package.Tests.$($case.Class).", [StringComparison]::Ordinal) -or
+                -not $tests[0].id.Contains(".$($case.Method).", [StringComparison]::Ordinal)) {
+              throw "The $($case.Id) capture report does not contain its exact passing case."
+            }
+            $caseStart = [DateTimeOffset]($tests[0].startTime)
+            $caseEnd = [DateTimeOffset]($tests[0].endTime)
+            if ($caseStart.UtcDateTime -lt $started -or $caseEnd.UtcDateTime -gt $finished -or
+                $caseEnd -lt $caseStart) {
+              throw "The $($case.Id) capture case is outside its execution interval."
+            }
+            $expectedCounts = [ordered]@{
+              total = 1; passed = 1; failed = 0; skipped = 0; cancelled = 0; timedOut = 0; flaky = 0
+            }
+            foreach ($summary in @($report.summary, $groups[0].summary)) {
+              foreach ($name in $expectedCounts.Keys) {
+                $value = $summary.$name
+                if (($value -isnot [int] -and $value -isnot [long]) -or
+                    $value -ne $expectedCounts[$name]) {
+                  throw "The $($case.Id) capture report has incomplete or inconsistent counts."
+                }
+              }
+            }
+            $caseEvidence += [ordered]@{
+              class = $case.Class
+              method = $case.Method
+              generation = $report.publicationGeneration
+              report = $result.rawReport
+              reportSha256 = $result.rawReportSha256
+              html = $result.htmlReport
+              htmlSha256 = $result.htmlReportSha256
+              log = "$($case.Id).log"
+              logSha256 = $result.logSha256
+            }
+          }
+          foreach ($package in $packageEvidence) {
+            $currentHash = (Get-FileHash -LiteralPath (Join-Path $feed $package.file) `
+              -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($currentHash -cne $package.sha256) {
+              throw "The $($package.id) package changed after packing."
+            }
+          }
+          $finishedSource = & git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $finishedSource -cne $source) {
+            throw 'The source commit changed during capture package execution.'
+          }
+          $checkoutChanges = @(& git status --porcelain --untracked-files=all)
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to inspect the capture package checkout after execution.'
+          }
+          if ($checkoutChanges.Count -ne 0) {
+            throw "The checkout changed during capture package execution.`n$($checkoutChanges -join "`n")"
+          }
+          [ordered]@{
+            schemaVersion = 1
+            source = $source
+            packageVersion = $version
+            packages = $packageEvidence
+            cases = $caseEvidence
+          } | ConvertTo-Json -Depth 6 |
+            Set-Content -LiteralPath (Join-Path $evidence 'receipt.json') -Encoding utf8
       - name: Verify Metal package staging
         if: runner.os == 'macOS' && steps.native-ready.outputs.ready == 'true'
         shell: pwsh
@@ -702,6 +910,7 @@ jobs:
           path: |
             tests/OpenUsd.Package.Tests/bin/Release/net10.0/TestResults
             artifacts/exr-package-execution/${{ matrix.rid }}
+            artifacts/silk-capture-package
             eng/shaders/out/package-metal-library/metallib-manifest.json
             eng/shaders/out/package-metal-library/mesh.metallib
             eng/shaders/out/package-metal/*.nupkg

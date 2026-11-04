@@ -197,8 +197,71 @@ public readonly ref struct SilkFrameCommand
                         "A frame light transform is not representable as a finite GPU value.");
                 }
             }
+            uint type = BinaryPrimitives.ReadUInt32LittleEndian(entry);
+            float radius = BinaryPrimitives.ReadSingleLittleEndian(entry[172..]);
+            bool finiteArea = type is 3 or 4 or 5 || (type == 2 && radius > 0);
+            if (finiteArea && !IsRepresentableFiniteAreaTransform(entry))
+            {
+                throw new InvalidDataException(
+                    "A finite-area light transform must be affine and have an invertible linear basis.");
+            }
         }
     }
+
+    private static bool IsRepresentableFiniteAreaTransform(ReadOnlySpan<byte> entry)
+    {
+        double x0 = ReadTransformElement(entry, 0);
+        double x1 = ReadTransformElement(entry, 1);
+        double x2 = ReadTransformElement(entry, 2);
+        double y0 = ReadTransformElement(entry, 4);
+        double y1 = ReadTransformElement(entry, 5);
+        double y2 = ReadTransformElement(entry, 6);
+        double z0 = ReadTransformElement(entry, 8);
+        double z1 = ReadTransformElement(entry, 9);
+        double z2 = ReadTransformElement(entry, 10);
+
+        if (Math.Abs(ReadTransformElement(entry, 3)) > 1e-12 ||
+            Math.Abs(ReadTransformElement(entry, 7)) > 1e-12 ||
+            Math.Abs(ReadTransformElement(entry, 11)) > 1e-12 ||
+            Math.Abs(ReadTransformElement(entry, 15) - 1) > 1e-12 ||
+            !HasFloatBasis(x0, x1, x2) ||
+            !HasFloatBasis(y0, y1, y2) ||
+            !HasFloatBasis(z0, z1, z2))
+        {
+            return false;
+        }
+
+        double xLength = Math.Sqrt((x0 * x0) + (x1 * x1) + (x2 * x2));
+        double yLength = Math.Sqrt((y0 * y0) + (y1 * y1) + (y2 * y2));
+        double zLength = Math.Sqrt((z0 * z0) + (z1 * z1) + (z2 * z2));
+        if (!double.IsFinite(xLength) || !double.IsFinite(yLength) ||
+            !double.IsFinite(zLength) || xLength <= 1e-15 ||
+            yLength <= 1e-15 || zLength <= 1e-15)
+        {
+            return false;
+        }
+
+        x0 /= xLength;
+        x1 /= xLength;
+        x2 /= xLength;
+        y0 /= yLength;
+        y1 /= yLength;
+        y2 /= yLength;
+        z0 /= zLength;
+        z1 /= zLength;
+        z2 /= zLength;
+        double determinant = (x0 * ((y1 * z2) - (y2 * z1))) +
+            (x1 * ((y2 * z0) - (y0 * z2))) +
+            (x2 * ((y0 * z1) - (y1 * z0)));
+        return double.IsFinite(determinant) && Math.Abs(determinant) >= 1e-6;
+    }
+
+    private static double ReadTransformElement(ReadOnlySpan<byte> entry, int element) =>
+        BinaryPrimitives.ReadDoubleLittleEndian(entry[(32 + (element * sizeof(double)))..]);
+
+    private static bool HasFloatBasis(double x, double y, double z) =>
+        float.IsFinite((float)x) && float.IsFinite((float)y) && float.IsFinite((float)z) &&
+        ((float)x != 0 || (float)y != 0 || (float)z != 0);
 
     private static void ValidateLightScalar(ReadOnlySpan<byte> entry, int offset)
     {
@@ -608,6 +671,7 @@ public readonly ref struct SilkMeshUpsertCommand
     private readonly int _ptexMappingOffset;
     private readonly SilkPtexMappingStatus _ptexMappingStatus;
     private readonly int _normalIdentityCount;
+    private readonly bool _triangleLocalNormalFallback;
     private readonly int _normalCornerCount;
     private readonly int _normalIdentityOffset;
     private readonly int _normalCornerOffset;
@@ -885,6 +949,7 @@ public readonly ref struct SilkMeshUpsertCommand
         if (mappingEnd == bytes.Length)
         {
             _normalIdentityCount = 0;
+            _triangleLocalNormalFallback = false;
             _normalCornerCount = 0;
             _normalExtraPointCount = 0;
         }
@@ -894,7 +959,10 @@ public readonly ref struct SilkMeshUpsertCommand
             {
                 throw new InvalidDataException("The mesh normal correspondence header is truncated.");
             }
-            _normalIdentityCount = ReadCount(bytes, checked((int)mappingEnd), "normal identity");
+            uint normalIdentityCountAndMode = BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes.Slice(checked((int)mappingEnd), sizeof(uint)));
+            _triangleLocalNormalFallback = (normalIdentityCountAndMode & 0x80000000u) != 0;
+            _normalIdentityCount = checked((int)(normalIdentityCountAndMode & 0x7fffffffu));
             _normalCornerCount = ReadCount(bytes, checked((int)mappingEnd + 4), "normal corner");
             _normalExtraPointCount = ReadCount(bytes, checked((int)mappingEnd + 8), "normal extra point");
             if (_normalIdentityCount == 0)
@@ -1080,6 +1148,7 @@ public readonly ref struct SilkMeshUpsertCommand
     public int PointOriginCount => _pointOriginCount;
 
     internal int NormalIdentityCount => _normalIdentityCount;
+    internal bool TriangleLocalNormalFallback => _triangleLocalNormalFallback;
     internal int NormalCornerCount => _normalCornerCount;
     internal int NormalExtraPointCount => _normalExtraPointCount;
 
@@ -3421,8 +3490,19 @@ public enum SilkShadowDescriptorOptions : uint
     /// One of six consecutive perspective maps for the same light, ordered
     /// +X, -X, +Y, -Y, +Z, -Z in world space.
     /// </summary>
-    CubeFace = 4
+    CubeFace = 4,
+
+    /// <summary>
+    /// One of five consecutive perspective maps for the same finite-area light.
+    /// Each map is fitted from one deterministic position on the emitter.
+    /// </summary>
+    EmitterSample = 8
 }
+
+internal readonly record struct SilkShadowGroup(
+    uint LightIndex,
+    uint MapCount,
+    SilkShadowDescriptorOptions Flags);
 
 /// <summary>
 /// The bounded raster shadow-map descriptor table for one page.
@@ -3453,7 +3533,7 @@ public readonly ref struct SilkShadowCommand
 
     private const SilkShadowDescriptorOptions KnownFlags =
         SilkShadowDescriptorOptions.Orthographic | SilkShadowDescriptorOptions.CasterLinked |
-        SilkShadowDescriptorOptions.CubeFace;
+        SilkShadowDescriptorOptions.CubeFace | SilkShadowDescriptorOptions.EmitterSample;
 
     private const SilkShadowUnsupportedFeatures KnownUnsupported =
         SilkShadowUnsupportedFeatures.LightType |
@@ -3496,10 +3576,10 @@ public readonly ref struct SilkShadowCommand
         // of it is applied, and so every later read is a bounds-checked slice of
         // an already valid span.
         UInt128 seenLights = 0;
-        uint cubeRemaining = 0;
-        uint cubeLight = 0;
-        uint cubeResolution = 0;
-        uint cubeFlags = 0;
+        uint groupedRemaining = 0;
+        uint groupedLight = 0;
+        uint groupedResolution = 0;
+        uint groupedFlags = 0;
         uint projectionGroups = 0;
         for (uint index = 0; index < descriptorCount; index++)
         {
@@ -3531,15 +3611,25 @@ public readonly ref struct SilkShadowCommand
             }
             uint flags = BinaryPrimitives.ReadUInt32LittleEndian(descriptor[12..16]);
             bool cube = (flags & (uint)SilkShadowDescriptorOptions.CubeFace) != 0;
-            if (cubeRemaining > 0)
+            bool emitterSample = (flags & (uint)SilkShadowDescriptorOptions.EmitterSample) != 0;
+            if (cube && emitterSample)
             {
-                if (!cube || lightIndex != cubeLight || resolution != cubeResolution ||
-                    flags != cubeFlags)
+                throw new InvalidDataException(
+                    "A shadow projection cannot be both a cube face and an emitter sample.");
+            }
+            if (groupedRemaining > 0)
+            {
+                SilkShadowDescriptorOptions groupFlag = cube
+                    ? SilkShadowDescriptorOptions.CubeFace
+                    : SilkShadowDescriptorOptions.EmitterSample;
+                bool groupMember = (flags & (uint)groupFlag) != 0;
+                if (!groupMember || lightIndex != groupedLight ||
+                    resolution != groupedResolution || flags != groupedFlags)
                 {
                     throw new InvalidDataException(
-                        "A cube shadow requires six consecutive matching descriptors for one light.");
+                        "A grouped shadow projection requires consecutive matching descriptors for one light.");
                 }
-                cubeRemaining--;
+                groupedRemaining--;
             }
             else
             {
@@ -3553,16 +3643,17 @@ public readonly ref struct SilkShadowCommand
                 {
                     throw new InvalidDataException("The shadow table exceeds the four-light budget.");
                 }
-                if (cube)
+                if (cube || emitterSample)
                 {
                     if ((flags & (uint)SilkShadowDescriptorOptions.Orthographic) != 0)
                     {
-                        throw new InvalidDataException("A cube shadow face must be perspective.");
+                        throw new InvalidDataException(
+                            "Grouped shadow projections must use perspective maps.");
                     }
-                    cubeRemaining = 5;
-                    cubeLight = lightIndex;
-                    cubeResolution = resolution;
-                    cubeFlags = flags;
+                    groupedRemaining = cube ? 5u : 4u;
+                    groupedLight = lightIndex;
+                    groupedResolution = resolution;
+                    groupedFlags = flags;
                 }
             }
             for (int element = 0; element < 32; element++)
@@ -3591,9 +3682,9 @@ public readonly ref struct SilkShadowCommand
             }
         }
 
-        if (cubeRemaining != 0)
+        if (groupedRemaining != 0)
         {
-            throw new InvalidDataException("A cube shadow projection group is incomplete.");
+            throw new InvalidDataException("A grouped shadow projection is incomplete.");
         }
         _bytes = bytes;
     }
@@ -3639,6 +3730,39 @@ public readonly ref struct SilkShadowCommand
             View = view,
             Projection = projection,
         };
+    }
+
+    internal int CopyGroupsTo(Span<SilkShadowGroup> destination)
+    {
+        int groupCount = 0;
+        uint index = 0;
+        while (index < DescriptorCount)
+        {
+            if (groupCount == destination.Length)
+            {
+                throw new ArgumentException("The destination is too small.", nameof(destination));
+            }
+            ReadOnlySpan<byte> descriptor =
+                _bytes.Slice(FixedSize + ((int)index * DescriptorSize), DescriptorSize);
+            uint lightIndex = BinaryPrimitives.ReadUInt32LittleEndian(descriptor[..4]);
+            SilkShadowDescriptorOptions flags =
+                (SilkShadowDescriptorOptions)BinaryPrimitives.ReadUInt32LittleEndian(descriptor[12..16]);
+            uint mapCount = 1;
+            index++;
+            while (index < DescriptorCount)
+            {
+                descriptor = _bytes.Slice(
+                    FixedSize + ((int)index * DescriptorSize), DescriptorSize);
+                if (BinaryPrimitives.ReadUInt32LittleEndian(descriptor[..4]) != lightIndex)
+                {
+                    break;
+                }
+                mapCount++;
+                index++;
+            }
+            destination[groupCount++] = new SilkShadowGroup(lightIndex, mapCount, flags);
+        }
+        return groupCount;
     }
 }
 

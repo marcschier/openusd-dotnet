@@ -41,11 +41,35 @@ public sealed class SilkDepthCapturePackageTests
                 .Contains("get_Depth");
             await Assert.That(PublicMethods(metadata, FindType(metadata, "SilkFrameCapture"))
                 .Count(name => name == "CaptureRetainedWithDepth")).IsEqualTo(2);
-            await Assert.That(PublicMethods(metadata, FindType(metadata, "SilkFrameCapturer"))
-                .Count(name => name == "CaptureWithDepth")).IsEqualTo(2);
+            MethodDefinition[] captureMethods =
+            [
+                .. FindType(metadata, "SilkFrameCapturer").GetMethods().Select(metadata.GetMethodDefinition)
+                    .Where(method =>
+                        (method.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public &&
+                        metadata.GetString(method.Name) == "CaptureWithDepth")
+            ];
+            string[] captureParameters =
+            [
+                .. captureMethods.Select(method => string.Join(",",
+                    method.GetParameters().Select(metadata.GetParameter)
+                        .Where(parameter => parameter.SequenceNumber != 0)
+                        .Select(parameter => metadata.GetString(parameter.Name))))
+            ];
+            await Assert.That(captureParameters).IsEquivalentTo(
+                [
+                    "session,width,height,renderSettings,depthOptions,timeCode,camera,cancellationToken",
+                    "session,width,height,renderSettings,ocioProcessor,depthOptions,timeCode,camera,cancellationToken",
+                    "session,width,height,renderSettings,ingestionOptions,depthOptions,timeCode,camera,cancellationToken"
+                ]);
             await Assert.That(PublicMethods(metadata, FindType(metadata, "SilkDepthCaptureOptions")))
                 .IsEquivalentTo(
-                    [".ctor", "get_Default", "get_MaximumPixelCount", "get_MaximumReadbackBytes"]);
+                    [
+                        ".ctor", "get_Default", "get_MaximumPixelCount", "get_MaximumReadbackBytes",
+                        "get_IncludePrimId", "set_IncludePrimId",
+                        "get_IncludeInstanceId", "set_IncludeInstanceId",
+                        "get_IncludeElementId", "set_IncludeElementId",
+                        "get_IncludeNormal", "set_IncludeNormal"
+                    ]);
             TypeDefinition convention = FindType(metadata, "SilkDepthConvention");
             string[] values =
             [

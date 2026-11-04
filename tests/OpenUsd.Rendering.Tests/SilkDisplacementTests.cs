@@ -1718,6 +1718,31 @@ internal sealed class SilkDisplacementTests
             resources.Meshes.Values.Single().Geometry.Key.DisplacementIdentity;
     }
 
+    [Test]
+    public async Task PtexIdentitySeparatesGpuDeformedGeometryKeys()
+    {
+        SilkMeshData mesh = BuildMesh(FlatPoints, FlatNormals, TexCoords);
+        SilkMeshDeformationData deformation = SilkDeformationRigFixture.Build(
+            FlatPoints,
+            FlatNormals,
+            influencesPerPoint: 1,
+            [0, 0, 0],
+            [1f, 1f, 1f],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+        SilkMeshGpuGeometryKey ordinary = SilkMeshGpuGeometryKey.CreateGpuDeformed(mesh, deformation, "st", false);
+        SilkMeshGpuGeometryKey first = SilkMeshGpuGeometryKey.CreateGpuDeformed(
+            mesh, deformation, "st", false, ptexSamplingIdentity: 11);
+        SilkMeshGpuGeometryKey replacement = SilkMeshGpuGeometryKey.CreateGpuDeformed(
+            mesh, deformation, "st", false, ptexSamplingIdentity: 12);
+
+        await Assert.That(first.IsGpuDeformed).IsTrue();
+        await Assert.That(first.PtexSamplingIdentity).IsEqualTo(11ul);
+        await Assert.That(replacement.PtexSamplingIdentity).IsEqualTo(12ul);
+        await Assert.That(first).IsNotEqualTo(ordinary);
+        await Assert.That(first).IsNotEqualTo(replacement);
+    }
+
     /// <summary>
     /// A displacement is resolved on its own merits, so editing the coordinates
     /// it samples through resamples it even when the bound surface is a network

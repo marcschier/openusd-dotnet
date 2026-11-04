@@ -51,6 +51,30 @@ public sealed class SilkShadowDiagnosticTests
     }
 
     [Test]
+    public async Task UnsupportedCasterDiagnosticDescribesCoverageAndClears()
+    {
+        using var device = new ShadowDiagnosticGraphicsDevice();
+        using var resources = new SilkSceneGpuResources(device);
+        resources.ReportUnsupportedShadowCasters(["/Caster"], revision: 1);
+
+        RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.ShadowCasterUnsupported);
+        await Assert.That(diagnostic.Message).Contains("/Caster");
+        await Assert.That(diagnostic.Message).Contains("density-volume shadow transport");
+        await Assert.That(diagnostic.Message).Contains("cannot integrate volume density");
+        await Assert.That(diagnostic.Message).Contains("non-PreviewSurface or Ptex opacity");
+        await Assert.That(diagnostic.Message).Contains("sample Ptex opacity");
+        await Assert.That(diagnostic.Message).Contains("bounded continuous-opacity layers");
+        await Assert.That(diagnostic.Message).Contains("does not suppress rendering of the prim");
+        await Assert.That(diagnostic.Message.Contains("opacity-masked", StringComparison.Ordinal)).IsFalse();
+        await Assert.That(diagnostic.Severity).IsEqualTo(RenderDiagnosticSeverity.Warning);
+
+        resources.ReportUnsupportedShadowCasters([], revision: 2);
+        await Assert.That(resources.Diagnostics.Entries.Select(entry => entry.Code))
+            .DoesNotContain(SilkRenderDiagnosticCodes.ShadowCasterUnsupported);
+    }
+
+    [Test]
     public async Task EveryShadowCastingLightTypeIsNamedByItsOwnType()
     {
         // A renderer that only ever reported "a light" would make an unsupported
@@ -233,7 +257,7 @@ public sealed class SilkShadowDiagnosticTests
     }
 
     [Test]
-    public async Task AFiniteSphereShadowRequiresAreaSamplingRatherThanPointProjection()
+    public async Task AFiniteSphereShadowReportsAnUnfittableEmitterSample()
     {
         byte[] frame = CreateLightingFrame([(Type: 2u, ShadowEnabled: 1u)]);
         BinaryPrimitives.WriteSingleLittleEndian(
@@ -249,8 +273,8 @@ public sealed class SilkShadowDiagnosticTests
 
         RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
             entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
-        await Assert.That(diagnostic.Message).Contains("area-light shadow sampling");
-        await Assert.That(diagnostic.Message).Contains("not a point-light projection");
+        await Assert.That(diagnostic.Message).Contains("emitter-surface sample");
+        await Assert.That(diagnostic.Message).Contains("complete caster bounds");
     }
 
     [Test]
@@ -267,7 +291,7 @@ public sealed class SilkShadowDiagnosticTests
         bool refused = resources.Diagnostics.Entries.Any(
             entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
 
-        _ = scene.Apply(CreateShadowTable(lightCount: 1u, lightIndex: 0u), 1, 3);
+        _ = scene.Apply(CreateShadowTable(lightCount: 1u, lightIndex: 0u, cube: true), 1, 3);
         _ = resources.RequireFrameBuffer(scene, RenderOutputTransform.Identity, exposure: 0f);
         bool reportedAfterAdmission = resources.Diagnostics.Entries.Any(
             entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported);
@@ -286,27 +310,33 @@ public sealed class SilkShadowDiagnosticTests
         return bytes;
     }
 
-    /// <summary>Builds an ABI v19 shadow table with one orthographic descriptor.</summary>
-    private static byte[] CreateShadowTable(uint lightCount, uint lightIndex)
+    /// <summary>Builds an orthographic shadow table or a six-face point-light group.</summary>
+    private static byte[] CreateShadowTable(uint lightCount, uint lightIndex, bool cube = false)
     {
-        var bytes = new byte[24 + 288];
+        int descriptorCount = cube ? 6 : 1;
+        var bytes = new byte[24 + (288 * descriptorCount)];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.Shadow);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), 1u);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), (uint)descriptorCount);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), lightCount);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), lightIndex);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), 0u);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(32), 1024u);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(36), 1u);
-        for (int element = 0; element < 16; element++)
+        for (int descriptor = 0; descriptor < descriptorCount; descriptor++)
         {
-            double identity = element % 5 == 0 ? 1 : 0;
-            BinaryPrimitives.WriteDoubleLittleEndian(
-                bytes.AsSpan(40 + (element * 8)),
-                identity);
-            BinaryPrimitives.WriteDoubleLittleEndian(
-                bytes.AsSpan(168 + (element * 8)),
-                identity);
+            int offset = 24 + (descriptor * 288);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), lightIndex);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 4), (uint)descriptor);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 8), 1024u);
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 12),
+                (uint)(cube ? SilkShadowDescriptorOptions.CubeFace : SilkShadowDescriptorOptions.Orthographic));
+            for (int element = 0; element < 16; element++)
+            {
+                double identity = element % 5 == 0 ? 1 : 0;
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    bytes.AsSpan(offset + 16 + (element * 8)),
+                    identity);
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    bytes.AsSpan(offset + 144 + (element * 8)),
+                    identity);
+            }
         }
         return bytes;
     }

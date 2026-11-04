@@ -1,0 +1,206 @@
+#include <metal_stdlib>
+#include <metal_math>
+#include <metal_texture>
+using namespace metal;
+float rcp_0(float x_0)
+{
+    return 1.0f / x_0;
+}
+
+struct volumeVertexMain_Result_0
+{
+    float4 position_0 [[position]];
+    float3 eyePosition_0 [[user(TEXCOORD_1)]];
+    float3 objectPosition_0 [[user(TEXCOORD_2)]];
+    float3 volumeEyeToObjectRow0_0 [[user(TEXCOORD_6)]];
+    float3 volumeEyeToObjectRow1_0 [[user(TEXCOORD_7)]];
+    float3 volumeEyeToObjectRow2_0 [[user(TEXCOORD_8)]];
+    float3 volumeCameraPosition_0 [[user(TEXCOORD_9)]];
+    float volumeRayValid_0 [[user(TEXCOORD_11)]];
+    float4 volumeClipPosition_0 [[user(TEXCOORD_12)]];
+    float3 normal_0 [[user(NORMAL)]];
+    float4 tint_0 [[user(COLOR)]];
+    float3 worldNormal_0 [[user(TEXCOORD_3)]];
+};
+
+struct vertexInput_0
+{
+    float3 position_1 [[attribute(0)]];
+    float3 normal_1 [[attribute(1)]];
+};
+
+struct _MatrixStorage_float4x4natural_0
+{
+    array<packed_float4, int(4)> data_0;
+};
+
+struct InstanceParameters_natural_0
+{
+    _MatrixStorage_float4x4natural_0 objectToClip_0;
+    packed_float4 tint_1;
+};
+
+struct KernelContext_0
+{
+    InstanceParameters_natural_0 device* instanceParameters_0;
+    uint32_t device* frameParameters_0;
+};
+
+struct VertexFrameMatrices_0
+{
+    matrix<float,int(4),int(4)>  clipToEye_0;
+    matrix<float,int(4),int(4)>  eyeToWorld_0;
+};
+
+struct VertexOutput_0
+{
+    float4 position_2;
+    float3 eyePosition_1;
+    float3 objectPosition_1;
+    float3 volumeEyeToObjectRow0_1;
+    float3 volumeEyeToObjectRow1_1;
+    float3 volumeEyeToObjectRow2_1;
+    float3 volumeCameraPosition_1;
+    float volumeRayValid_1;
+    float4 volumeClipPosition_1;
+    float3 normal_2;
+    float4 tint_2;
+    float3 worldNormal_1;
+};
+
+[[vertex]] volumeVertexMain_Result_0 volumeVertexMain(vertexInput_0 _S1 [[stage_in]], uint instanceId_0 [[instance_id]], uint base_instance_0 [[base_instance]], InstanceParameters_natural_0 device* instanceParameters_1 [[buffer(6)]], uint32_t device* frameParameters_1 [[buffer(8)]])
+{
+    thread KernelContext_0 kernelContext_0;
+    (&kernelContext_0)->instanceParameters_0 = instanceParameters_1;
+    (&kernelContext_0)->frameParameters_0 = frameParameters_1;
+    InstanceParameters_natural_0 instance_0 = instanceParameters_1[instanceId_0 - base_instance_0];
+    thread VertexFrameMatrices_0 frame_0;
+    float _S2 = as_type<float>(frameParameters_1[(0U)>>2]);
+    float _S3 = as_type<float>((&kernelContext_0)->frameParameters_0[(4U)>>2]);
+    float _S4 = as_type<float>((&kernelContext_0)->frameParameters_0[(8U)>>2]);
+    float _S5 = as_type<float>((&kernelContext_0)->frameParameters_0[(12U)>>2]);
+    float4 _S6 = float4(_S2, _S3, _S4, _S5);
+    float _S7 = as_type<float>((&kernelContext_0)->frameParameters_0[(16U)>>2]);
+    float _S8 = as_type<float>((&kernelContext_0)->frameParameters_0[(20U)>>2]);
+    float _S9 = as_type<float>((&kernelContext_0)->frameParameters_0[(24U)>>2]);
+    float _S10 = as_type<float>((&kernelContext_0)->frameParameters_0[(28U)>>2]);
+    float4 _S11 = float4(_S7, _S8, _S9, _S10);
+    float _S12 = as_type<float>((&kernelContext_0)->frameParameters_0[(32U)>>2]);
+    float _S13 = as_type<float>((&kernelContext_0)->frameParameters_0[(36U)>>2]);
+    float _S14 = as_type<float>((&kernelContext_0)->frameParameters_0[(40U)>>2]);
+    float _S15 = as_type<float>((&kernelContext_0)->frameParameters_0[(44U)>>2]);
+    float4 _S16 = float4(_S12, _S13, _S14, _S15);
+    float _S17 = as_type<float>((&kernelContext_0)->frameParameters_0[(48U)>>2]);
+    float _S18 = as_type<float>((&kernelContext_0)->frameParameters_0[(52U)>>2]);
+    float _S19 = as_type<float>((&kernelContext_0)->frameParameters_0[(56U)>>2]);
+    float _S20 = as_type<float>((&kernelContext_0)->frameParameters_0[(60U)>>2]);
+    (&frame_0)->clipToEye_0 = matrix<float,int(4),int(4)> (_S6, _S11, _S16, float4(_S17, _S18, _S19, _S20));
+    float _S21 = as_type<float>((&kernelContext_0)->frameParameters_0[(12512U)>>2]);
+    float _S22 = as_type<float>((&kernelContext_0)->frameParameters_0[(12516U)>>2]);
+    float _S23 = as_type<float>((&kernelContext_0)->frameParameters_0[(12520U)>>2]);
+    float _S24 = as_type<float>((&kernelContext_0)->frameParameters_0[(12524U)>>2]);
+    float4 _S25 = float4(_S21, _S22, _S23, _S24);
+    float _S26 = as_type<float>((&kernelContext_0)->frameParameters_0[(12528U)>>2]);
+    float _S27 = as_type<float>((&kernelContext_0)->frameParameters_0[(12532U)>>2]);
+    float _S28 = as_type<float>((&kernelContext_0)->frameParameters_0[(12536U)>>2]);
+    float _S29 = as_type<float>((&kernelContext_0)->frameParameters_0[(12540U)>>2]);
+    float4 _S30 = float4(_S26, _S27, _S28, _S29);
+    float _S31 = as_type<float>((&kernelContext_0)->frameParameters_0[(12544U)>>2]);
+    float _S32 = as_type<float>((&kernelContext_0)->frameParameters_0[(12548U)>>2]);
+    float _S33 = as_type<float>((&kernelContext_0)->frameParameters_0[(12552U)>>2]);
+    float _S34 = as_type<float>((&kernelContext_0)->frameParameters_0[(12556U)>>2]);
+    float4 _S35 = float4(_S31, _S32, _S33, _S34);
+    float _S36 = as_type<float>((&kernelContext_0)->frameParameters_0[(12560U)>>2]);
+    float _S37 = as_type<float>((&kernelContext_0)->frameParameters_0[(12564U)>>2]);
+    float _S38 = as_type<float>((&kernelContext_0)->frameParameters_0[(12568U)>>2]);
+    float _S39 = as_type<float>((&kernelContext_0)->frameParameters_0[(12572U)>>2]);
+    (&frame_0)->eyeToWorld_0 = matrix<float,int(4),int(4)> (_S25, _S30, _S35, float4(_S36, _S37, _S38, _S39));
+    matrix<float,int(4),int(4)>  _S40 = matrix<float,int(4),int(4)> (instance_0.objectToClip_0.data_0[int(0)][int(0)], instance_0.objectToClip_0.data_0[int(0)][int(1)], instance_0.objectToClip_0.data_0[int(0)][int(2)], instance_0.objectToClip_0.data_0[int(0)][int(3)], instance_0.objectToClip_0.data_0[int(1)][int(0)], instance_0.objectToClip_0.data_0[int(1)][int(1)], instance_0.objectToClip_0.data_0[int(1)][int(2)], instance_0.objectToClip_0.data_0[int(1)][int(3)], instance_0.objectToClip_0.data_0[int(2)][int(0)], instance_0.objectToClip_0.data_0[int(2)][int(1)], instance_0.objectToClip_0.data_0[int(2)][int(2)], instance_0.objectToClip_0.data_0[int(2)][int(3)], instance_0.objectToClip_0.data_0[int(3)][int(0)], instance_0.objectToClip_0.data_0[int(3)][int(1)], instance_0.objectToClip_0.data_0[int(3)][int(2)], instance_0.objectToClip_0.data_0[int(3)][int(3)]);
+    float4 clipPosition_0 = (((float4(_S1.position_1, 1.0f)) * (_S40)));
+    float4 eyePosition_2 = (((clipPosition_0) * ((&frame_0)->clipToEye_0)));
+    thread VertexOutput_0 output_0;
+    (&output_0)->position_2 = clipPosition_0;
+    (&output_0)->volumeClipPosition_1 = clipPosition_0;
+    float _S41 = clipPosition_0.w;
+    bool _S42;
+    if(_S41 > 0.0f)
+    {
+        _S42 = (clipPosition_0.z) > _S41;
+    }
+    else
+    {
+        _S42 = false;
+    }
+    if(_S42)
+    {
+        (&output_0)->position_2.z = _S41;
+    }
+    (&output_0)->eyePosition_1 = eyePosition_2.xyz / float3(eyePosition_2.w) ;
+    (&output_0)->objectPosition_1 = _S1.position_1;
+    (&output_0)->normal_2 = _S1.normal_1;
+    (&output_0)->tint_2 = float4(instance_0.tint_1) ;
+    matrix<float,int(4),int(4)>  objectToEye_0 = (((_S40) * ((&frame_0)->clipToEye_0)));
+    matrix<float,int(4),int(4)>  objectToWorld_0 = (((objectToEye_0) * ((&frame_0)->eyeToWorld_0)));
+    float3 basisX_0 = float3(objectToWorld_0[int(0)][int(0)], objectToWorld_0[int(1)][int(0)], objectToWorld_0[int(2)][int(0)]);
+    float3 basisY_0 = float3(objectToWorld_0[int(0)][int(1)], objectToWorld_0[int(1)][int(1)], objectToWorld_0[int(2)][int(1)]);
+    float3 basisZ_0 = float3(objectToWorld_0[int(0)][int(2)], objectToWorld_0[int(1)][int(2)], objectToWorld_0[int(2)][int(2)]);
+    float3 eyeBasisX_0 = float3(objectToEye_0[int(0)][int(0)], objectToEye_0[int(1)][int(0)], objectToEye_0[int(2)][int(0)]);
+    float3 eyeBasisY_0 = float3(objectToEye_0[int(0)][int(1)], objectToEye_0[int(1)][int(1)], objectToEye_0[int(2)][int(1)]);
+    float3 eyeBasisZ_0 = float3(objectToEye_0[int(0)][int(2)], objectToEye_0[int(1)][int(2)], objectToEye_0[int(2)][int(2)]);
+    float3 inverseBasisX_0 = cross(eyeBasisY_0, eyeBasisZ_0);
+    float3 inverseBasisY_0 = cross(eyeBasisZ_0, eyeBasisX_0);
+    float3 inverseBasisZ_0 = cross(eyeBasisX_0, eyeBasisY_0);
+    float determinant_0 = dot(eyeBasisX_0, inverseBasisX_0);
+    float basisScale_0 = length(eyeBasisX_0) * length(eyeBasisY_0) * length(eyeBasisZ_0);
+    if(basisScale_0 > 0.0f)
+    {
+        _S42 = (abs(determinant_0)) > (basisScale_0 * 9.99999997475242708e-07f);
+    }
+    else
+    {
+        _S42 = false;
+    }
+    float rayValid_0;
+    if(_S42)
+    {
+        rayValid_0 = 1.0f;
+    }
+    else
+    {
+        rayValid_0 = 0.0f;
+    }
+    float inverseDeterminant_0;
+    if(rayValid_0 > 0.5f)
+    {
+        inverseDeterminant_0 = rcp_0(determinant_0);
+    }
+    else
+    {
+        inverseDeterminant_0 = 0.0f;
+    }
+    float3 cameraOffset_0 = - float3(objectToEye_0[int(0)][int(3)], objectToEye_0[int(1)][int(3)], objectToEye_0[int(2)][int(3)]);
+    float3 _S43 = inverseBasisX_0 * float3(inverseDeterminant_0) ;
+    (&output_0)->volumeEyeToObjectRow0_1 = _S43;
+    float3 _S44 = inverseBasisY_0 * float3(inverseDeterminant_0) ;
+    (&output_0)->volumeEyeToObjectRow1_1 = _S44;
+    float3 _S45 = inverseBasisZ_0 * float3(inverseDeterminant_0) ;
+    (&output_0)->volumeEyeToObjectRow2_1 = _S45;
+    (&output_0)->volumeCameraPosition_1 = float3(dot(_S43, cameraOffset_0), dot(_S44, cameraOffset_0), dot(_S45, cameraOffset_0));
+    (&output_0)->volumeRayValid_1 = rayValid_0;
+    (&output_0)->worldNormal_1 = cross(basisY_0, basisZ_0) * float3(_S1.normal_1.x)  + cross(basisZ_0, basisX_0) * float3(_S1.normal_1.y)  + cross(basisX_0, basisY_0) * float3(_S1.normal_1.z) ;
+    VertexOutput_0 _S46 = output_0;
+    thread volumeVertexMain_Result_0 _S47;
+    (&_S47)->position_0 = _S46.position_2;
+    (&_S47)->eyePosition_0 = _S46.eyePosition_1;
+    (&_S47)->objectPosition_0 = _S46.objectPosition_1;
+    (&_S47)->volumeEyeToObjectRow0_0 = _S46.volumeEyeToObjectRow0_1;
+    (&_S47)->volumeEyeToObjectRow1_0 = _S46.volumeEyeToObjectRow1_1;
+    (&_S47)->volumeEyeToObjectRow2_0 = _S46.volumeEyeToObjectRow2_1;
+    (&_S47)->volumeCameraPosition_0 = _S46.volumeCameraPosition_1;
+    (&_S47)->volumeRayValid_0 = _S46.volumeRayValid_1;
+    (&_S47)->volumeClipPosition_0 = _S46.volumeClipPosition_1;
+    (&_S47)->normal_0 = _S46.normal_2;
+    (&_S47)->tint_0 = _S46.tint_2;
+    (&_S47)->worldNormal_0 = _S46.worldNormal_1;
+    return _S47;
+}

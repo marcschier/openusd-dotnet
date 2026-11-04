@@ -301,8 +301,9 @@ and only when the native profile provides OpenUSD's `hioOpenVDB` field reader. T
 win-x64 and linux-x64; the D3D12 WARP leg and the cross-backend comparison are executed on win-x64 only, because
 Direct3D 12 exists only on Windows. The native shim reads one
 `UsdVolOpenVDBAsset` density field through OpenUSD Hio and publishes a bulk cached R32 volume texture; both backends
-upload that cache as a 3D texture and the mesh raymarches it, integrating one sample per voxel layer so the
-reconstruction follows the grid's own Z resolution rather than a fixed step count. Each backend gate compares the
+upload that cache as a 3D texture. Current source integrates along the clipped camera ray with midpoint samples
+based on the longest grid axis and the field-local chord length. This camera-ray implementation and its regenerated
+shaders remain unqualified; the results below apply to earlier source. Each existing backend gate compares the
 sampled render with a
 uniform proxy at the same mean density and with a shifted density grid, so a uniform fallback fails. If the Hio OpenVDB
 reader is absent, the gate is reported as a capability skip. Storm is not a usable VDB reference in the current
@@ -725,10 +726,13 @@ analytic native fixtures rather than this unsuitable Storm reference.
   rendering rather than by Storm parity, because Storm's offscreen harness has no linked-light reference.
   `collection:shadowLink` is applied where UsdLux defines it, as a caster restriction: a prim a light's
   shadow collection excludes is not drawn into that light's shadow map, while every prim the light
-  illuminates still receives. hdSilk casts raster shadows for authored `UsdLuxDistantLight`s through a
-  bounded light-space shadow map and a depth-only pass, gated analytically on D3D12 WARP and Vulkan
-  SwiftShader; every other light type, and any device that cannot record a depth-only pass, is reported
-  as `OPENUSD_SILK_SHADOW_UNSUPPORTED` rather than silently rendering unshadowed.
+  illuminates still receives. hdSilk casts raster shadows for authored `UsdLuxDistantLight`s, zero-radius
+  sphere spots and points, and finite-area sphere, rect, disk and cylinder lights. Finite-area lights
+  publish five perspective maps matched to five direct-light emitter samples; a group is refused when
+  any sample cannot contain the complete caster bounds. Analytic rect-emitter pixel coverage has been
+  authored for D3D12 WARP and Vulkan SwiftShader but awaits execution with the matching native build.
+  Dome lights and any device that cannot record a depth-only pass remain unsupported and are reported
+  as `OPENUSD_SILK_SHADOW_UNSUPPORTED`.
   `collection:lightLink` on a `UsdLuxDomeLight` is implemented too, for textured and untextured domes
   alike: up to eight domes carry a stable bit in a bounded dome table, a linked prim receives only the
   skies its collection admits in both the diffuse and the specular response, and a scene that links no
@@ -773,7 +777,7 @@ analytic native fixtures rather than this unsuitable Storm reference.
 | Dome linking | Implemented, analytically gated | Per-draw dome mask, bounded at 8; unlinked pixels byte-identical |
 | Dome shadow linking | Excluded and diagnosed | No dome shadow pass exists to restrict casters |
 | Shadow linking | Implemented, analytically gated | Caster restriction applied in the depth-only pass |
-| hdSilk raster shadows | Distant lights implemented, gated | Bounded light-space maps on WARP and SwiftShader |
+| hdSilk raster shadows | Distant/spot gated; point/area pixels pending | Five perspective maps per area emitter |
 | Shadow-map depth resource path | Implemented and gated | Render, sample and re-render a sampled depth target |
 
 `light-distant-shadow` is one of the measured Storm offscreen-harness limits, alongside area lights,

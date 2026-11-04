@@ -453,6 +453,99 @@ public sealed class SilkMeshRendererTests
     }
 
     [Test]
+    public async Task EmptyVolumePreparationRetiresAReentrantPublicationAfterPageCommit()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using var first = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
+        renderer.ApplyPage(first);
+        SilkVolumeCameraPass pass = GetVolumeCameraPass(renderer);
+        var atlas = new SilkVolumeCameraPublicationTests.TrackingTexture(SilkTextureFormat.R32Float);
+        SilkVolumeCameraPass.ResourceSet resources =
+            SilkVolumeCameraPublicationTests.CreateResources(atlas, ownsAtlas: true);
+        bool published = false;
+        device.OnCreateBuffer = () =>
+        {
+            using var nested = new SilkVolumeCameraPass.Prepared(pass, resources);
+            nested.Commit();
+            published = true;
+        };
+        using var changed = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, CreateMeshCommand([0, 1, 0, 1], pointZ: 1), 1);
+
+        renderer.ApplyPage(changed);
+
+        await Assert.That(published).IsTrue();
+        await Assert.That(resources.IsDisposed).IsTrue();
+        await Assert.That(atlas.ReleaseCount).IsEqualTo(1);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(2ul);
+    }
+
+    [Test]
+    public async Task EmptyVolumePreparationPreservesAReentrantPublicationWhenThePageFails()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using var first = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
+        renderer.ApplyPage(first);
+        SilkVolumeCameraPass pass = GetVolumeCameraPass(renderer);
+        var atlas = new SilkVolumeCameraPublicationTests.TrackingTexture(SilkTextureFormat.R32Float);
+        SilkVolumeCameraPass.ResourceSet resources =
+            SilkVolumeCameraPublicationTests.CreateResources(atlas, ownsAtlas: true);
+        device.OnCreateBuffer = () =>
+        {
+            using var nested = new SilkVolumeCameraPass.Prepared(pass, resources);
+            nested.Commit();
+        };
+        device.BufferFailureCountdown = 0;
+        using var changed = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, CreateMeshCommand([0, 1, 0, 1], pointZ: 1), 1);
+
+        await Assert.That(() => renderer.ApplyPage(changed)).Throws<InvalidOperationException>();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1ul);
+        await Assert.That(resources.IsDisposed).IsFalse();
+        await Assert.That(atlas.ReleaseCount).IsEqualTo(0);
+
+        renderer.Dispose();
+        await Assert.That(atlas.ReleaseCount).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task EmptyVolumePreparationReportsAndRetriesReentrantRetirementFailure()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using var first = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 1, [.. CreateFrameCommand(), .. CreateMeshCommand([1, 0, 0, 1])], 2);
+        renderer.ApplyPage(first);
+        SilkVolumeCameraPass pass = GetVolumeCameraPass(renderer);
+        var atlas = new SilkVolumeCameraPublicationTests.TrackingTexture(
+            SilkTextureFormat.R32Float, failuresBeforeRelease: 1);
+        SilkVolumeCameraPass.ResourceSet resources =
+            SilkVolumeCameraPublicationTests.CreateResources(atlas, ownsAtlas: true);
+        device.OnCreateBuffer = () =>
+        {
+            using var nested = new SilkVolumeCameraPass.Prepared(pass, resources);
+            nested.Commit();
+        };
+        using var changed = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, CreateMeshCommand([0, 1, 0, 1], pointZ: 1), 1);
+
+        await Assert.That(() => renderer.ApplyPage(changed)).Throws<InvalidOperationException>();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(2ul);
+        await Assert.That(atlas.ReleaseAttempts).IsEqualTo(1);
+        await Assert.That(atlas.ReleaseCount).IsEqualTo(0);
+
+        using var quiet = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, CreateFrameCommand(), 1);
+        renderer.ApplyPage(quiet);
+        await Assert.That(atlas.ReleaseAttempts).IsEqualTo(2);
+        await Assert.That(atlas.ReleaseCount).IsEqualTo(1);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(3ul);
+    }
+
+    [Test]
     public async Task BuildsInterleavedNormalsAndThirtyTwoBitIndices()
     {
         SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(CreateMesh(
@@ -962,6 +1055,12 @@ public sealed class SilkMeshRendererTests
         resources.Apply(scene, scene.Apply(page, 2, revision));
     }
 
+    private static SilkVolumeCameraPass GetVolumeCameraPass(SilkMeshRenderer renderer) =>
+        (SilkVolumeCameraPass)typeof(SilkMeshRenderer)
+            .GetField("_volumeCameraPass",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(renderer)!;
+
     private static byte[] CreateFrameCommand()
     {
         var bytes = new byte[272];
@@ -1085,6 +1184,7 @@ public sealed class SilkMeshRendererTests
         internal List<TestGraphicsBuffer> Buffers { get; } = [];
         internal int? BufferFailureCountdown { get; set; }
         internal int? WriteFailureCountdown { get; set; }
+        internal Action? OnCreateBuffer { get; set; }
 
         public SilkGraphicsBackend Backend => SilkGraphicsBackend.Vulkan;
 
@@ -1093,6 +1193,9 @@ public sealed class SilkMeshRendererTests
 
         public ISilkGraphicsBuffer CreateBuffer(nuint size, SilkBufferUsage usage)
         {
+            Action? callback = OnCreateBuffer;
+            OnCreateBuffer = null;
+            callback?.Invoke();
             if (BufferFailureCountdown is { } count)
             {
                 BufferFailureCountdown = count - 1;

@@ -353,6 +353,41 @@ public sealed class SilkInstanceSlotTests
     }
 
     [Test]
+    public async Task ClearDepthChangeInvalidatesAndFrameRollbackRestoresTheUniformCache()
+    {
+        using var device = new FailingBufferDevice();
+        var budget = new SilkGpuBufferBudget(1_048_576);
+        budget.ConfigureDevice(device);
+        using var resources = new SilkSceneGpuResources(device);
+        var scene = new SilkSceneState();
+        var original = (FailingBuffer)resources.RequireFrameBuffer(
+            scene,
+            RenderOutputTransform.Identity,
+            exposure: 0,
+            clearDepth: 0.25f);
+        byte[] originalBytes = original.Snapshot();
+
+        using (resources.PrepareFrameUniforms())
+        {
+            var changed = (FailingBuffer)resources.RequireFrameBuffer(
+                scene,
+                RenderOutputTransform.Identity,
+                exposure: 0,
+                clearDepth: 0.75f);
+            await Assert.That(changed).IsNotSameReferenceAs(original);
+            await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(changed.Snapshot().AsSpan(76)))
+                .IsEqualTo(0.75f);
+        }
+
+        await Assert.That(resources.RequireFrameBuffer(
+            scene,
+            RenderOutputTransform.Identity,
+            exposure: 0,
+            clearDepth: 0.25f)).IsSameReferenceAs(original);
+        await Assert.That(original.Snapshot().SequenceEqual(originalBytes)).IsTrue();
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task FrameInstanceWritesPublishOrRemoveNewBatchSlotsTogether(bool commit)

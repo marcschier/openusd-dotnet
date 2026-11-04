@@ -393,8 +393,7 @@ internal static partial class SilkShadowConformance
     /// same prim, same binding, same geometry -- changes which prims are in the
     /// map. Nothing in the geometry, link, or descriptor revisions moves for that
     /// edit, so a retained map keyed only on those is reused with the opposite
-    /// caster set and the diagnostic naming its skipped casters outlives the
-    /// condition. This drives the transition in both directions, because only one
+    /// caster set. This drives the transition in both directions, because only one
     /// of them is caught by a cache that clears on any material change but never
     /// re-populates.
     /// </remarks>
@@ -458,8 +457,8 @@ internal static partial class SilkShadowConformance
                 "exactly once, not reuse the map it was drawn into.");
         await AssertLit(masked, ShadowedX, "receiver behind a newly masked caster");
         await Assert.That(HasCasterDiagnostic(renderer))
-            .IsTrue()
-            .Because("A skipped opacity-masked caster must be named.");
+            .IsFalse()
+            .Because("A supported opacity cutoff must not be named as unsupported.");
 
         // Revision 3: back to opaque, again with only a material command. The
         // shadow must return and the diagnostic must clear.
@@ -476,7 +475,7 @@ internal static partial class SilkShadowConformance
         await AssertShadowed(reopened, ShadowedX, "caster whose material turned opaque again");
         await Assert.That(HasCasterDiagnostic(renderer))
             .IsFalse()
-            .Because("A caster that is no longer masked must stop being named.");
+            .Because("A supported caster must not be named as unsupported.");
         await Assert.That(reopened.AsSpan().SequenceEqual(opaque))
             .IsTrue()
             .Because("Returning to the opaque material must reproduce its image exactly.");
@@ -609,7 +608,7 @@ internal static partial class SilkShadowConformance
             CreateCasterMaterial(masked: false),
             CreateReceiver(),
             CreateCutoutCaster(x: 0),
-            CreateShadow());
+            CreateTransmissionShadow());
         _ = renderer.Render(color, depth);
         byte[] opaque = ReadPixels(color);
         await AssertShadowed(opaque, ShadowedX, "opaque reference caster");
@@ -618,7 +617,7 @@ internal static partial class SilkShadowConformance
         ulong links = renderer.Scene.LightLinks.Revision;
         ulong shadows = renderer.Scene.Shadows.Revision;
 
-        (float? Opacity, float Threshold, bool Casts, bool Unsupported, string Label)[] cases =
+        (float? Opacity, float Threshold, bool Casts, bool Transmissive, string Label)[] cases =
         [
             (0.75f, 0.5f, true, false, "above threshold"),
             (MathF.BitDecrement(0.5f), 0.5f, false, false, "below threshold"),
@@ -655,11 +654,16 @@ internal static partial class SilkShadowConformance
                     .IsTrue()
                     .Because(testCase.Label);
             }
+            else if (testCase.Transmissive)
+            {
+                await Assert.That(pixels[Offset(ShadowedX)]).IsGreaterThan(opaque[Offset(ShadowedX)]);
+                await Assert.That(pixels[Offset(ShadowedX)]).IsLessThan(pixels[Offset(LitX)]);
+            }
             else
             {
                 await AssertLit(pixels, ShadowedX, testCase.Label);
             }
-            await Assert.That(HasCasterDiagnostic(renderer)).IsEqualTo(testCase.Unsupported);
+            await Assert.That(HasCasterDiagnostic(renderer)).IsFalse();
         }
 
         _ = renderer.Render(color, depth);
@@ -682,7 +686,7 @@ internal static partial class SilkShadowConformance
                 opacityThreshold: 0.5f),
             .. CreateReceiver(),
             .. CreateTexturedCaster(),
-            .. CreateShadow(),
+            .. CreateTransmissionShadow(),
         ], 5);
         _ = renderer.ApplyAndRender(first, color, depth);
         byte[] initial = ReadPixels(color);
@@ -713,10 +717,10 @@ internal static partial class SilkShadowConformance
         using var blended = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
             SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity), 1);
         _ = renderer.ApplyAndRender(blended, color, depth);
-        byte[] unsupported = ReadPixels(color);
-        await AssertLit(unsupported, 16, "unsupported blended caster");
-        await AssertLit(unsupported, 24, "unsupported blended caster");
-        await Assert.That(HasCasterDiagnostic(renderer)).IsTrue();
+        byte[] continuous = ReadPixels(color);
+        await AssertShadowed(continuous, 16, "unit-opacity region of the blended caster");
+        await AssertLit(continuous, 24, "zero-opacity region of the blended caster");
+        await Assert.That(HasCasterDiagnostic(renderer)).IsFalse();
 
         static SilkDecodedImage decode(string asset, bool _)
         {
@@ -1379,15 +1383,12 @@ internal static partial class SilkShadowConformance
     }
 
     /// <summary>
-    /// Requires a blended caster to be dropped from the shadow map and named,
-    /// rather than casting the solid shadow of its geometry.
+    /// Requires a below-cutoff caster to be omitted without an unsupported-caster diagnostic.
     /// </summary>
     /// <remarks>
-    /// The depth-only caster program binds no material and cannot discard, so a
-    /// blended surface would shadow as an opaque quad, so the caster is skipped
-    /// and reported instead.
+    /// PreviewSurface opacity cutoffs are supported by the shadow pass.
     /// </remarks>
-    internal static async Task AnOpacityMaskedCasterIsSkippedAndNamed(
+    internal static async Task AnOpacityCutoffCasterIsOmittedWithoutDiagnostic(
         ISilkGraphicsDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
@@ -1411,8 +1412,7 @@ internal static partial class SilkShadowConformance
         _ = renderer.Render(color, depth);
         await AssertShadowed(ReadPixels(color), ShadowedX, "opaque caster");
 
-        // Rebinding the same caster to a blended material must remove its
-        // shadow and name it, rather than keep casting a solid one.
+        // A below-cutoff material removes the caster's shadow without a diagnostic.
         SilkMeshRendererConformance.Apply(
             renderer,
             revision: 2,
@@ -1422,11 +1422,7 @@ internal static partial class SilkShadowConformance
         byte[] pixels = ReadPixels(color);
 
         await AssertLit(pixels, ShadowedX, "receiver behind an opacity-masked caster");
-        RenderDiagnostic diagnostic = renderer.GpuResources.Diagnostics.Entries.Single(
-            entry => entry.Code == SilkRenderDiagnosticCodes.ShadowCasterUnsupported);
-        await Assert.That(diagnostic.Message).Contains(Caster);
-        await Assert.That(diagnostic.Message).Contains("opacity-masked");
-        await Assert.That(diagnostic.Severity).IsEqualTo(RenderDiagnosticSeverity.Warning);
+        await Assert.That(HasCasterDiagnostic(renderer)).IsFalse();
     }
 
     private static async Task AssertLit(byte[] pixels, int x, string what)
@@ -1550,16 +1546,12 @@ internal static partial class SilkShadowConformance
     }
 
     /// <summary>
-    /// Builds the caster's UsdPreviewSurface material, either opaque or blended.
+    /// Builds the caster's UsdPreviewSurface material, either opaque or below cutoff.
     /// </summary>
-    /// <remarks>
-    /// Both forms carry the same number of scalars, so the two pages differ only
-    /// in which input is authored: a transition between them is a material edit
-    /// and nothing else.
-    /// </remarks>
     private static byte[] CreateCasterMaterial(bool masked) =>
-        CreateCasterMaterial(
-            [(masked ? SilkMaterialParameter.Opacity : SilkMaterialParameter.Roughness, 0.5f)]);
+        CreateCasterMaterial(masked
+            ? [(SilkMaterialParameter.Opacity, 0.25f), (SilkMaterialParameter.OpacityThreshold, 0.5f)]
+            : [(SilkMaterialParameter.Roughness, 0.5f)]);
 
     private static byte[] CreateCasterMaterial((SilkMaterialParameter Parameter, float Value)[] scalars)
     {

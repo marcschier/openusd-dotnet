@@ -57,16 +57,90 @@ and 8 vertex permutations for the mesh family; plan generation fails when an
 expanded family exceeds its budget. Arithmetic-only material choices remain
 uniforms and are intentionally not feature bits.
 
-The sampled density volume is a separate single-permutation family,
-`mesh.volume.fragment`, rather than a sixth mesh fragment variant. It is the only
-mesh fragment program that declares the 3D density texture and its sampler, and
-only the sampled-volume binding layout declares them. A D3D12 root signature must
-cover every resource its shader binary references, so those resources cannot live
-in the shared binary that ordinary mesh pipelines use. Programs select the
-preprocessor switch through a manifest `defines` object, validated against the
-`DEFAULT_DEFINES` set in `shader_model.py`; the value is applied identically to
-DXIL, SPIR-V, and MSL, so a resource can never exist in one backend's binary and
-be absent from another's.
+The joint density-volume camera pass declares `volume.camera.vertex` and separate
+`volume.camera.fragment.atlas` and `volume.camera.fragment.uniform` programs.
+Their fragment wrappers include `volume.camera.fragment.shared.slang`, so clipping,
+field-local extinction and overlapping-field source integration use the same code.
+Fullscreen coverage includes rays whose volume-box faces lie beyond both clip planes.
+The atlas variant binds one guttered R32Float 3D texture; the uniform variant declares
+neither that texture nor its sampler and also serves backends without 3D sampling.
+
+The source layout has a 32-byte parameter buffer `b0`, field/frame storage `t6`/`t8`,
+atlas `t9` with sampler `s4` at Vulkan bindings 9/13, and opaque depth `t28` at
+Vulkan binding 45. It does not use environment bindings 46/47 or `t29`/`t30`, and
+the shared native frame ABI is unchanged. Admission permits at most eight active
+fields; zero-opacity fields do not consume those slots. Sampled field axes are
+1–512 voxels, and one-voxel repeated-boundary gutters isolate atlas regions. The
+existing Z stack is retained when it fits; otherwise a deterministic portable grid
+keeps every atlas axis at or below 2,048. The managed payload is limited to
+`int.MaxValue` bytes, and device limits and CPU/GPU reservations also apply. A
+packable atlas does not imply that the sampling workload is admitted.
+
+The two phases use identical integer midpoint sampling lattices. For `N` active
+fields and `A` equal to the sum of their longest sampled axes, with axis 1 for a
+uniform or fallback field, each phase is bounded by `P = 2 * A * (2 * N - 1)`
+positions. Both phases together are bounded by `E = 2 * N * P` field evaluations
+per pixel. Admission refuses `P > 7,117` or `E > 64,040` before `CreateResources`
+and atlas or depth-target allocation; frame-area multiplication is also checked.
+Two fields with longest axes of 512 give `P = 6,144` and `E = 24,576` and pass
+those per-pixel bounds; three or eight such fields are refused. Sampling is not
+clamped.
+
+CPU range checks address finite-endpoint ray-length overflow and
+inverse-transform/eye-coordinate product overflow. Collapsed ray normalization,
+near-parallel slab or clip arithmetic, and far-origin cancellation remain
+unqualified. Validation refuses non-finite active `VolumeDensity` values and
+copied R32 samples. It also bounds the maximum absolute sample, the nonnegative
+density scale and their product to `float.MaxValue / 32`. A retained atlas stores
+the sample maxima and subnormal-sample flag with its CPU reservation and checks
+them against the current scale, opacity and workload before reuse. For fields
+that can contribute, admission refuses subnormal density scales, opacities or
+samples. It also refuses a unit-ray optical depth below the smallest normal float
+times the maximum steps in a segment. This rejects the reproduced black output
+for very small density and opacity, but does not establish a lower bound for
+shorter clipped rays or interpolated samples. Admission also refuses a non-finite
+exposure or tint, an exposure scale above `float.MaxValue`, or a nonnegative tint/scale product above
+that limit. When a display transform is requested, it uses the larger of 1 and
+`2^exposure` because rendering can fall back to the direct path. The shader
+applies exposure before alpha blending, so this check can refuse a final
+composite that would fit. These checks do not prove that density integrals, tint
+accumulation or exposure remain finite for all admitted inputs.
+
+Both fragments use precise floating-point mode and multiply the field-local ray
+speed by the sample step before multiplying by density. This avoids the
+overflowing intermediate reproduced for a thin, high-density field on Vulkan
+SwiftShader. Tests inspect that grouping in checked SPIR-V and generated Metal
+source; the Metal shader still requires execution on macOS.
+
+Source preflight refuses a volume material with additional non-density textures,
+duplicate density entries, or a composited density texture before publication.
+`RenderCore` disposes a volume candidate only if it created it; `ApplyPageCore`
+keeps a staged candidate through commit or rollback. The Windows camera gate
+exercises preflight refusal, preservation of the prior scene and output, and
+corrected retry. It cannot reverse a final output copy that already succeeded.
+Transparent surfaces are not depth-interleaved with volume transport; physical
+density-volume shadow transport is a separate limitation.
+
+All four sources, including the shared include, are provenance inputs in
+`shader_model.py`; its changes also require regenerating and verifying the
+`FlatOrdinalShaders` checked receipt. The checked shader payload and receipt
+were regenerated and verified on Windows. The 114-case camera gate passed on
+D3D12 WARP and Vulkan SwiftShader, including snapshot rollback, admission and
+retirement cases. The macOS metallib gate, Linux and Metal
+camera execution, and the native producer-to-renderer chain remain to be
+qualified.
+
+The earlier sampled density volume retains a separate single-permutation mesh family:
+`mesh.volume.vertex` supplies camera-ray and volume-local transform data, while
+`mesh.volume.fragment` declares the 3D density texture, its sampler, and the
+opaque-depth snapshot texture. These are not mesh permutation variants. Its
+sampled-volume binding layout declares these resources, and a D3D12 root signature
+must cover every resource its shader binary references, so those resources cannot
+live in the shared fragment binary that ordinary mesh pipelines use. Programs select
+the preprocessor switch through a manifest `defines` object, validated against
+the `DEFAULT_DEFINES` set in `shader_model.py`; the value is applied identically
+to DXIL, SPIR-V, and MSL, so a resource can never exist in one backend's binary
+and be absent from another's.
 
 Normal-map permutations additionally bind an independent detail-normal texture at
 the otherwise unused volume texture/sampler registers (`t9`/`s4`, Vulkan bindings
@@ -74,7 +148,8 @@ the otherwise unused volume texture/sampler registers (`t9`/`s4`, Vulkan binding
 the full material path within 16 fragment samplers without borrowing the emission
 composite. Detail samples use their own UV affine and tangent orientation, then
 combine with the primary normal through per-fragment reoriented normal mapping.
-The surface block is 272 bytes; its final two rows carry the detail affine. An
+The surface block grew to 304 bytes with page ABI 30; the rows at offsets 240 and
+256 carry the detail affine, followed by alternate UV rows at offsets 272 and 288. An
 exactly antipodal primary normal uses a half-turn about tangent X, resolving the
 shortest-arc ambiguity without division by zero.
 

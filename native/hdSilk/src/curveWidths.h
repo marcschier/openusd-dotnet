@@ -88,7 +88,8 @@ bool HdSilkBuildLinearCurveLines(
     const HdBasisCurvesTopology& topology,
     const VtVec3fArray& points,
     const HdSilkCurveWidths& widths,
-    HdSilkMeshRecord* record);
+    HdSilkMeshRecord* record,
+    const std::vector<HdSilkMeshAttribute>& vertexAttributes = {});
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

@@ -93,7 +93,7 @@ struct ParsedAttribute
     std::vector<float> values;
 };
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 7);
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 34);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 35);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128);
 
 using ParsedLightMask = std::array<uint32_t, 4>;
@@ -259,6 +259,8 @@ struct ParsedPage
     // revision.
     std::vector<uint64_t> mesh_topology_revisions;
     std::vector<uint32_t> mesh_triangle_counts;
+    std::vector<bool> mesh_has_normal_correspondence;
+    std::vector<bool> mesh_triangle_local_normal_fallback;
     // ABI v20 deformation evidence. The published count and the reason mask are
     // separate because a page that publishes no rig and a page that publishes
     // one it could not describe are different outcomes, and only the second one
@@ -1218,8 +1220,11 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                 }
                 sizesValid = sizesValid && ptexMappingsValid;
                 size_t normalCursor = offset + expectedSize;
+                const bool hasNormalCorrespondence = normalCursor < offset + byteSize;
+                bool triangleLocalNormalFallback = false;
                 sizesValid = sizesValid && HdSilkTestReadNormalCorrespondence(
-                    data, offset + byteSize, &normalCursor, pointCount);
+                    data, offset + byteSize, &normalCursor, pointCount,
+                    &triangleLocalNormalFallback);
                 expectedSize = normalCursor - offset;
                 sizesValid = sizesValid && subprimValid &&
                     expectedSize == byteSize &&
@@ -1248,6 +1253,9 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     result.mesh_topology_kinds.push_back(topologyKind);
                     result.mesh_topology_revisions.push_back(topologyRevision);
                     result.mesh_triangle_counts.push_back(triangleCount);
+                    result.mesh_has_normal_correspondence.push_back(hasNormalCorrespondence);
+                    result.mesh_triangle_local_normal_fallback.push_back(
+                        triangleLocalNormalFallback);
                     result.mesh_subprim_identities.push_back(subprimIdentity);
                     result.mesh_subprim_unsupported.push_back(subprimUnsupported);
                     result.mesh_point_origins.push_back(parsedPointOrigins);
@@ -1828,7 +1836,9 @@ ParsedPage ParseCommands(const uint8_t* data, size_t size)
                     resolution <= OPENUSD_SILK_MAX_SHADOW_MAP_RESOLUTION &&
                     (resolution & (resolution - 1u)) == 0u &&
                     (flags & ~(OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC |
-                        OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED)) == 0u &&
+                        OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED |
+                        OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE |
+                        OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE)) == 0u &&
                     depthBias >= 0.0f && normalBias >= 0.0f && pcfRadius >= 0.0f &&
                     reserved == 0u;
 
@@ -1953,7 +1963,13 @@ bool VerifyInstancedSceneStateSerialization()
         record.instanceIndex = index;
         record.instancerContext = {{"/Instancer", index}};
         record.transform[3] = static_cast<double>(index);
-        if (index != 0)
+        if (index == 0)
+        {
+            record.normalIdentities = {0, 1, 2};
+            record.normalCorners = {2, 0, 1, 0, 1, 2, 1, 2, 0};
+            record.triangleLocalNormalFallback = true;
+        }
+        else
         {
             record.points.clear();
             record.indices.clear();
@@ -1971,7 +1987,9 @@ bool VerifyInstancedSceneStateSerialization()
     if (commandCount != 4 ||
         first.mesh_upsert_count != 3 ||
         first.mesh_remove_count != 0 ||
-        first.mesh_identities.size() != 3)
+        first.mesh_identities.size() != 3 ||
+        first.mesh_has_normal_correspondence != std::vector<bool>({true, false, false}) ||
+        first.mesh_triangle_local_normal_fallback != std::vector<bool>({true, false, false}))
     {
         return false;
     }
@@ -2459,6 +2477,10 @@ bool VerifyInstanceReferenceReleasesIdentityCapacity()
     prototype.triangleSubprims.assign(65536, 0);
     prototype.pointOrigins.assign(65536, 0);
     prototype.cornerEdges.assign(65536, 0);
+    prototype.normalIdentities.assign(65536, 0);
+    prototype.normalCorners.assign(3, 0);
+    prototype.normalExtraPoints.assign(3, 0.0F);
+    prototype.triangleLocalNormalFallback = true;
     prototype.attributes.emplace_back();
     prototype.materialPath = "/Materials/Surface";
     prototype.authoredPointCount = 65536;
@@ -2476,6 +2498,10 @@ bool VerifyInstanceReferenceReleasesIdentityCapacity()
         reference.triangleSubprims.capacity() != 0 ||
         reference.pointOrigins.capacity() != 0 ||
         reference.cornerEdges.capacity() != 0 ||
+        reference.normalIdentities.capacity() != 0 ||
+        reference.normalCorners.capacity() != 0 ||
+        reference.normalExtraPoints.capacity() != 0 ||
+        reference.triangleLocalNormalFallback ||
         reference.attributes.capacity() != 0 ||
         !reference.materialPath.empty() ||
         reference.deformation.published ||
@@ -2513,6 +2539,8 @@ bool VerifyInstanceReferenceReleasesIdentityCapacity()
     // not disturb the record that actually publishes the table.
     if (prototype.pointOrigins.size() != 65536 ||
         prototype.cornerEdges.size() != 65536 ||
+        prototype.normalIdentities.size() != 65536 ||
+        !prototype.triangleLocalNormalFallback ||
         prototype.points.size() != 3 * 65536 ||
         prototype.authoredPointCount != 65536)
     {
@@ -2526,6 +2554,10 @@ bool VerifyInstanceReferenceReleasesIdentityCapacity()
     cleared.ClearSubprimIdentity();
     if (cleared.pointOrigins.capacity() != 0 ||
         cleared.cornerEdges.capacity() != 0 ||
+        cleared.normalIdentities.capacity() != 0 ||
+        cleared.normalCorners.capacity() != 0 ||
+        cleared.normalExtraPoints.capacity() != 0 ||
+        cleared.triangleLocalNormalFallback ||
         cleared.subprimIdentity != OPENUSD_SILK_SUBPRIM_IDENTITY_NONE)
     {
         std::cerr << "hdSilk ClearSubprimIdentity kept its allocation.\n";
@@ -2727,6 +2759,65 @@ bool RejectsInvalidSceneStateRecord(HdSilkMeshRecord record)
     return commandCount == 1 &&
         page.mesh_upsert_count == 0 &&
         HdSilkSceneState::GetRejectedMeshCount() > rejectedBefore;
+}
+
+bool VerifyTriangleLocalNormalWireContract()
+{
+    HdSilkSceneState state;
+    HdSilkMeshRecord record = MakeSceneStateRecord("/NormalMode", 43);
+    record.normalIdentities = {0, 1, 2};
+    record.normalCorners = {2, 0, 1, 0, 1, 2, 1, 2, 0};
+    record.triangleLocalNormalFallback = true;
+    ReplaceSingleMesh(state, record.path, record);
+
+    struct ExpectedPresentation
+    {
+        uint32_t drawMode;
+        uint32_t topologyKind;
+        bool hasNormalCorrespondence;
+        bool triangleLocal;
+    };
+    const ExpectedPresentation cases[] = {
+        {OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED,
+            OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST, true, true},
+        {OPENUSD_SILK_DRAW_MODE_WIREFRAME,
+            OPENUSD_SILK_TOPOLOGY_LINE_LIST, false, false},
+        {OPENUSD_SILK_DRAW_MODE_POINTS,
+            OPENUSD_SILK_TOPOLOGY_POINT_LIST, false, false},
+        {OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED,
+            OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST, true, true}};
+    for (const ExpectedPresentation& expected : cases)
+    {
+        state.SetDrawMode(expected.drawMode);
+        uint32_t commandCount = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(nullptr, &commandCount);
+        const ParsedPage page = ParseCommands(bytes.data(), bytes.size());
+        if (commandCount != 2 || page.mesh_upsert_count != 1 ||
+            page.mesh_topology_kinds != std::vector<uint32_t>{expected.topologyKind} ||
+            page.mesh_has_normal_correspondence !=
+                std::vector<bool>{expected.hasNormalCorrespondence} ||
+            page.mesh_triangle_local_normal_fallback !=
+                std::vector<bool>{expected.triangleLocal})
+        {
+            std::cerr << "hdSilk normal fallback mode did not follow draw mode "
+                      << expected.drawMode << ".\n";
+            return false;
+        }
+    }
+
+    HdSilkMeshRecord missing = MakeSceneStateRecord("/MissingNormalMode", 44);
+    missing.triangleLocalNormalFallback = true;
+    HdSilkMeshRecord mismatched = MakeSceneStateRecord("/MismatchedNormalMode", 45);
+    mismatched.normalIdentities = {0, 1};
+    mismatched.triangleLocalNormalFallback = true;
+    HdSilkMeshRecord nonTriangle = MakeSceneStateRecord("/LineNormalMode", 46);
+    nonTriangle.topologyKind = OPENUSD_SILK_TOPOLOGY_LINE_LIST;
+    nonTriangle.indices = {0, 1};
+    nonTriangle.normalIdentities = {0, 1, 2};
+    nonTriangle.triangleLocalNormalFallback = true;
+    return RejectsInvalidSceneStateRecord(std::move(missing)) &&
+        RejectsInvalidSceneStateRecord(std::move(mismatched)) &&
+        RejectsInvalidSceneStateRecord(std::move(nonTriangle));
 }
 
 /// A quad triangulated from one authored face, carrying every ABI v22 subprim
@@ -5665,6 +5756,7 @@ bool VerifySceneStateSerialization()
         VerifySparsePrototypeInstanceSerialization() &&
         VerifyRejectedPayloadDropsWholePath() &&
         VerifyMalformedRecordIsRejectedBeforeTransforms() &&
+        VerifyTriangleLocalNormalWireContract() &&
         VerifySubprimIdentityBudgetIsPreflighted() &&
         VerifyInstanceReferenceReleasesIdentityCapacity() &&
         VerifyPointsIdentityBudgetBoundaryIsExact() &&
@@ -9052,18 +9144,16 @@ bool VerifyPreviewSurfaceUnsupportedInput()
         const HdSilkMaterialTexture* resolved =
             FindMaterialTexture(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR);
         const auto& warnings = diagnostics.GetWarnings();
-        const bool warned = warnings.size() == 1 &&
-            warnings[0].GetContext().IsHidden() &&
-            warnings[0].GetCommentary().find("Ptex sampling is not available") != std::string::npos;
+        const bool noWarnings = warnings.empty();
         diagnostics.ClearWarnings();
-        if (!warned || resolved == nullptr ||
+        if (!noWarnings || resolved == nullptr ||
             resolved->sourceKind != OPENUSD_SILK_TEXTURE_SOURCE_PTEX ||
             resolved->asset != "textures/same.ptx" || !resolved->uvPrimvar.empty() ||
             resolved->outputChannel != OPENUSD_SILK_TEXTURE_CHANNEL_RGB ||
             FindMaterialScalar(record, OPENUSD_SILK_MATERIAL_DIFFUSE_COLOR) != nullptr ||
             !ScalarIs(record, OPENUSD_SILK_MATERIAL_ROUGHNESS, 0.25F, "Roughness"))
         {
-            std::cerr << "A direct Ptex connection did not retain its source kind and fallback warning.\n";
+            std::cerr << "A direct Ptex connection did not retain its source kind without a warning.\n";
             return false;
         }
         HdSilkSceneState state;
@@ -13182,6 +13272,30 @@ int main(int argc, char** argv)
             std::cerr << "Mesh computed-points sync failed: result " << result << ".\n";
         }
         return result == 0 ? 0 : 1;
+    }
+    if (argc == 4 && std::string(argv[1]) == "--nurbs-sync")
+    {
+        const char* const scenarios[] = {
+            "rational-curve", "rational-patch", "trimmed-patch",
+            "dirty-curve", "dirty-patch", "bounded-curve", "bounded-patch",
+            "patch-form-acceptance", "empty-curve-weights", "empty-patch-weights",
+            "concurrent-sampling", "primvar-retention",
+            "diagnostic-recovery"};
+        for (int32_t scenario = 0; scenario < 13; ++scenario)
+        {
+            if (std::string(argv[2]) == scenarios[scenario])
+            {
+                const int32_t result = openusd_hdsilk_test_nurbs_sync(argv[3], scenario);
+                if (result != 0)
+                {
+                    std::cerr << "NURBS sync " << scenarios[scenario]
+                              << " failed: result " << result << ".\n";
+                }
+                return result == 0 ? 0 : 1;
+            }
+        }
+        std::cerr << "Unknown NURBS sync scenario: " << argv[2] << ".\n";
+        return 1;
     }
     if (argc == 3 && std::string(argv[1]) == "--mesh-skel-normals-recovery")
     {

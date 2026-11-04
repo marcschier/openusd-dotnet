@@ -198,23 +198,22 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         buffer.ThrowIfDisposed();
-        WaitIdle();
-
-        global::Silk.NET.Vulkan.Buffer readback = default;
-        DeviceMemory memory = default;
-        CommandPool pool = default;
-        CommandBuffer commands = default;
-        Fence fence = default;
-        IDisposable? reservation = null;
+        var retirement = new VulkanSilkReadbackRetirement(this, _api, _device);
         try
         {
+            retirement.SetSourceLease(buffer.AcquireLease());
+            RegisterDependentObject();
+            retirement.SetDependentRegistered();
+            WaitIdle();
             CreateHostBuffer(
                 checked((ulong)buffer.Size),
                 BufferUsageFlags.TransferDstBit,
-                out readback,
-                out memory,
-                out reservation);
-            CreateCommandBuffer(out pool, out commands);
+                out global::Silk.NET.Vulkan.Buffer readback,
+                out DeviceMemory memory,
+                out _,
+                retirement);
+            CreateCommandBuffer(out CommandPool pool, out CommandBuffer commands);
+            retirement.SetCommandPool(pool);
             var barrier = new BufferMemoryBarrier
             {
                 SType = StructureType.BufferMemoryBarrier,
@@ -240,8 +239,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             var copy = new BufferCopy(0, 0, checked((ulong)buffer.Size));
             _api.CmdCopyBuffer(commands, buffer.Buffer, readback, 1, &copy);
             ThrowIfFailed(_api.EndCommandBuffer(commands), "vkEndCommandBuffer");
-            fence = SubmitCommandBuffer(commands);
-            WaitForFence(fence);
+            Fence fence = SubmitCommandBuffer(commands);
+            retirement.SetSubmission(fence);
+            Result waitResult = GetReadbackFenceResult(fence);
+            retirement.ObserveWaitResult(waitResult);
+            ThrowIfDeviceCallFailed(waitResult, "vkWaitForFences");
 
             void* mapped = null;
             ThrowIfFailed(
@@ -262,26 +264,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 _api.UnmapMemory(_device, memory);
             }
         }
-        finally
+        catch (Exception failure)
         {
-            if (fence.Handle != 0)
-            {
-                _api.DestroyFence(_device, fence, null);
-            }
-            if (pool.Handle != 0)
-            {
-                _api.DestroyCommandPool(_device, pool, null);
-            }
-            if (readback.Handle != 0)
-            {
-                _api.DestroyBuffer(_device, readback, null);
-            }
-            if (memory.Handle != 0)
-            {
-                _api.FreeMemory(_device, memory, null);
-            }
-            reservation?.Dispose();
+            retirement.DisposeAfterFailure(failure);
+            throw;
         }
+        retirement.Dispose();
     }
 }
 
@@ -322,7 +310,8 @@ internal sealed class VulkanSilkComputeShaderProgram(
     IDisposable[] resourceLeases)
     : SilkGraphicsResourceBase, ISilkComputeShaderProgram
 {
-    private IDisposable[]? _resourceLeases = resourceLeases;
+    private IDisposable?[]? _resourceLeases = resourceLeases;
+    private bool _releasingLeases;
 
     internal VulkanSilkGraphicsDevice Owner { get; } = owner;
 
@@ -338,16 +327,12 @@ internal sealed class VulkanSilkComputeShaderProgram(
 
     protected override void ReleaseNative()
     {
-        IDisposable[]? leases = Interlocked.Exchange(ref _resourceLeases, null);
-        if (leases is not null)
-        {
-            foreach (IDisposable lease in leases)
-            {
-                lease.Dispose();
-            }
-        }
+        RetireOwnedLeases(ref _resourceLeases, ref _releasingLeases);
         Owner.ReleaseDependentObject();
     }
+
+    internal static void RetireOwnedLeases(ref IDisposable?[]? leases, ref bool releasing) =>
+        SilkOwnedResourceLeases.Dispose(ref leases, ref releasing);
 }
 
 internal sealed class VulkanSilkComputePipeline(
@@ -383,11 +368,17 @@ internal sealed class VulkanSilkComputePipeline(
 
     protected override unsafe void ReleaseNative()
     {
-        _api.DestroyPipeline(_device, _pipeline, null);
-        _api.DestroyPipelineLayout(_device, _layout, null);
-        _pipeline = default;
-        _layout = default;
-        Interlocked.Exchange(ref _programLease, null)?.Dispose();
+        if (_pipeline.Handle != 0)
+        {
+            _api.DestroyPipeline(_device, _pipeline, null);
+            _pipeline = default;
+        }
+        if (_layout.Handle != 0)
+        {
+            _api.DestroyPipelineLayout(_device, _layout, null);
+            _layout = default;
+        }
+        SilkOwnedResourceLeases.Dispose(ref _programLease);
         Owner.ReleaseDependentObject();
     }
 }

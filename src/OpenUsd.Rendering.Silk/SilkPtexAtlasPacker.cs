@@ -23,6 +23,79 @@ internal readonly record struct SilkPtexAtlasTile(
     uint AdjacentEdgeId2,
     uint AdjacentEdgeId3);
 
+internal sealed class SilkPtexAtlasLayout(
+    uint width,
+    uint height,
+    IReadOnlyDictionary<uint, SilkPtexAtlasTile> tiles,
+    bool isFallback = false)
+{
+    internal uint Width { get; } = width;
+    internal uint Height { get; } = height;
+    internal IReadOnlyDictionary<uint, SilkPtexAtlasTile> Tiles { get; } = tiles;
+    internal bool IsFallback { get; } = isFallback;
+
+    internal static SilkPtexAtlasLayout Fallback { get; } =
+        new(1, 1, SilkPackedPtexAtlas.EmptyTiles, isFallback: true);
+
+    internal (float U, float V) Map(uint faceId, float u, float v)
+    {
+        if (IsFallback)
+        {
+            return (0.5f, 0.5f);
+        }
+        if (!float.IsFinite(u) || !float.IsFinite(v) || u is < 0 or > 1 || v is < 0 or > 1)
+        {
+            throw new InvalidDataException(
+                $"Ptex face {faceId} has a non-finite or out-of-range texture coordinate.");
+        }
+        if (!Tiles.TryGetValue(faceId, out SilkPtexAtlasTile tile))
+        {
+            throw new InvalidDataException(
+                $"Ptex face {faceId} was not included in the sampling atlas.");
+        }
+        return (
+            tile.U0 + (u * (tile.U1 - tile.U0)),
+            tile.V0 + (v * (tile.V1 - tile.V0)));
+    }
+
+    internal ulong GetUvFingerprint(SilkMeshData mesh)
+    {
+        if (IsFallback)
+        {
+            return 1;
+        }
+        ValidateMapping(mesh);
+
+        const ulong offsetBasis = 14695981039346656037;
+        const ulong prime = 1099511628211;
+        ulong hash = offsetBasis;
+        for (int corner = 0; corner < mesh.Indices.Length; corner++)
+        {
+            uint faceId = checked((uint)mesh.PtexFaceIndices[corner / 3]);
+            (float u, float v) = Map(
+                faceId,
+                mesh.PtexCoordinates[corner * 2],
+                mesh.PtexCoordinates[(corner * 2) + 1]);
+            hash = unchecked((hash ^ (uint)BitConverter.SingleToInt32Bits(u)) * prime);
+            hash = unchecked((hash ^ (uint)BitConverter.SingleToInt32Bits(v)) * prime);
+        }
+        return hash == 0 ? 1 : hash;
+    }
+
+    internal static void ValidateMapping(SilkMeshData mesh)
+    {
+        if (mesh.PtexMappingStatus != SilkPtexMappingStatus.Mapped ||
+            mesh.TopologyKind != SilkTopologyKind.TriangleList ||
+            mesh.Indices.Length % 3 != 0 ||
+            mesh.PtexFaceIndices.Length != mesh.Indices.Length / 3 ||
+            mesh.PtexCoordinates.LongLength != (long)mesh.Indices.Length * 2)
+        {
+            throw new InvalidDataException(
+                $"Mesh '{mesh.Path}' has inconsistent Ptex triangle mappings.");
+        }
+    }
+}
+
 internal sealed class SilkPackedPtexAtlas : IDisposable
 {
     internal static readonly IReadOnlyDictionary<uint, SilkPtexAtlasTile> EmptyTiles =
@@ -48,6 +121,10 @@ internal sealed class SilkPackedPtexAtlas : IDisposable
     internal uint Height { get; }
     internal byte[] Pixels { get; private set; }
     internal IReadOnlyDictionary<uint, SilkPtexAtlasTile> Tiles { get; private set; }
+    internal SilkPtexAtlasLayout Layout => new(Width, Height, Tiles);
+
+    internal IDisposable? TransferReservation() =>
+        Interlocked.Exchange(ref _reservation, null);
 
     public void Dispose()
     {

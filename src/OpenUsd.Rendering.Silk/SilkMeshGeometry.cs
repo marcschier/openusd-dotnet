@@ -12,9 +12,13 @@ internal sealed record SilkMeshGeometry(
     bool HasTangents,
     bool Displaced = false,
     float MaximumDisplacement = 0,
-    string SecondaryUvPrimvar = "")
+    string SecondaryUvPrimvar = "",
+    bool DerivedCornerVertices = false,
+    bool PtexUvSecondary = false)
 {
     internal uint IndexCount => checked((uint)Indices.Length);
+    internal uint VertexCount => checked((uint)(Vertices.Length /
+        (VertexLayout.Stride / sizeof(float))));
 }
 
 internal static class SilkMeshGeometryBuilder
@@ -28,7 +32,9 @@ internal static class SilkMeshGeometryBuilder
         ReadOnlySpan<float> displacementAmounts = default,
         bool requireTextureCoordinates = false,
         string secondaryUvPrimvar = "",
-        bool tangentsFromSecondary = false)
+        bool tangentsFromSecondary = false,
+        SilkPtexAtlasLayout? ptexAtlas = null,
+        bool ptexAsSecondary = false)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         ReadOnlySpan<float> points = mesh.Points.Span;
@@ -56,6 +62,13 @@ internal static class SilkMeshGeometryBuilder
                 mesh,
                 "displacement amounts must carry exactly one value per point");
         }
+        for (int point = 0; point < displacementAmounts.Length; point++)
+        {
+            if (!float.IsFinite(displacementAmounts[point]))
+            {
+                throw InvalidMesh(mesh, $"displacement amount {point} is not finite");
+            }
+        }
 
         for (int i = 0; i < points.Length; i++)
         {
@@ -67,14 +80,22 @@ internal static class SilkMeshGeometryBuilder
 
         ReadOnlySpan<float> authored = mesh.AuthoredNormals.Span;
         bool useAuthored = authored.Length == points.Length;
+        bool triangleLocal = mesh.TriangleLocalNormalFallback && !useAuthored &&
+            mesh.TopologyKind == SilkTopologyKind.TriangleList;
+        int[] unreferencedPoints = triangleLocal || ptexAtlas is { IsFallback: false }
+            ? SilkSubprimPickGeometry.FindUnreferencedAuthoredPoints(mesh)
+            : [];
+        int vertexCount = triangleLocal
+            ? checked(meshIndices.Length + unreferencedPoints.Length)
+            : pointCount;
         uint[] indices = new uint[meshIndices.Length];
-        double[] normals = useAuthored ? [] : new double[points.Length];
+        double[] normals = useAuthored ? [] : new double[checked(vertexCount * 3)];
         for (int i = 0; i < meshIndices.Length; i++)
         {
             indices[i] = checked((uint)ValidateIndex(mesh, meshIndices, pointCount, i));
         }
 
-        if (!useAuthored && mesh.TopologyKind == SilkTopologyKind.TriangleList &&
+        if (!useAuthored && !triangleLocal && mesh.TopologyKind == SilkTopologyKind.TriangleList &&
             mesh.NormalIdentityArray.Length != 0)
         {
             BuildPolygonNormals(mesh, points, indices, normals);
@@ -106,21 +127,23 @@ internal static class SilkMeshGeometryBuilder
                 }
 
                 // A tiny face can still change the sum at a shared vertex.
-                Accumulate(normals, pa, nx, ny, nz);
-                Accumulate(normals, pb, nx, ny, nz);
-                Accumulate(normals, pc, nx, ny, nz);
+                Accumulate(normals, triangleLocal ? triangle * 3 : pa, nx, ny, nz);
+                Accumulate(normals, triangleLocal ? (triangle + 1) * 3 : pb, nx, ny, nz);
+                Accumulate(normals, triangleLocal ? (triangle + 2) * 3 : pc, nx, ny, nz);
             }
         }
 
         SilkVertexAttributeData? uvAttribute = string.IsNullOrEmpty(uvPrimvar)
             ? null
             : mesh.FindTexCoord(uvPrimvar);
-        bool hasUv = uvAttribute is not null || requireTextureCoordinates;
+        bool hasUv = uvAttribute is not null || requireTextureCoordinates || ptexAtlas is not null;
         bool hasTangents = hasUv && requireTangents;
         // A second surface coordinate set is emitted only beside a first one. A mesh
         // that lacks it reads zeros, exactly as a missing first set does.
-        bool hasSecondary = hasUv && !string.IsNullOrEmpty(secondaryUvPrimvar) &&
-            !string.Equals(secondaryUvPrimvar, uvPrimvar, StringComparison.Ordinal);
+        bool hasSecondary = hasUv &&
+            (ptexAsSecondary ||
+                (!string.IsNullOrEmpty(secondaryUvPrimvar) &&
+                    !string.Equals(secondaryUvPrimvar, uvPrimvar, StringComparison.Ordinal)));
         SilkVertexAttributeData? secondaryAttribute = hasSecondary
             ? mesh.FindTexCoord(secondaryUvPrimvar)
             : null;
@@ -129,8 +152,8 @@ internal static class SilkMeshGeometryBuilder
         SilkVertexAttributeData? tangentAttribute = hasSecondary && tangentsFromSecondary
             ? secondaryAttribute
             : uvAttribute;
-        double[] tangents = hasTangents ? new double[checked(pointCount * 3)] : [];
-        double[] bitangents = hasTangents ? new double[checked(pointCount * 3)] : [];
+        double[] tangents = hasTangents ? new double[checked(vertexCount * 3)] : [];
+        double[] bitangents = hasTangents ? new double[checked(vertexCount * 3)] : [];
 
         if (hasTangents && tangentAttribute is not null && mesh.TopologyKind == SilkTopologyKind.TriangleList)
         {
@@ -139,7 +162,10 @@ internal static class SilkMeshGeometryBuilder
                 int a = checked((int)indices[triangle]);
                 int b = checked((int)indices[triangle + 1]);
                 int c = checked((int)indices[triangle + 2]);
-                AccumulateTangent(mesh, points, tangentAttribute, tangents, bitangents, a, b, c);
+                AccumulateTangent(mesh, points, tangentAttribute, tangents, bitangents, a, b, c,
+                    triangleLocal ? triangle : a,
+                    triangleLocal ? triangle + 1 : b,
+                    triangleLocal ? triangle + 2 : c);
             }
         }
 
@@ -148,16 +174,22 @@ internal static class SilkMeshGeometryBuilder
         // Both paths still normalise and reject a degenerate normal, so an
         // authored zero or non-finite value cannot reach the GPU.
         int strideFloats = (hasTangents ? 12 : hasUv ? 8 : 6) + (hasSecondary ? 2 : 0);
-        float[] vertices = new float[checked(pointCount * strideFloats)];
+        float[] vertices = new float[checked(vertexCount * strideFloats)];
         float maximumDisplacement = 0;
-        for (int point = 0; point < pointCount; point++)
+        for (int vertex = 0; vertex < vertexCount; vertex++)
         {
+            int point = triangleLocal
+                ? vertex < indices.Length
+                    ? checked((int)indices[vertex])
+                    : unreferencedPoints[vertex - indices.Length]
+                : vertex;
             int source = point * 3;
-            int destination = point * strideFloats;
+            int normalSource = triangleLocal ? vertex * 3 : source;
+            int destination = vertex * strideFloats;
 
-            double nx = useAuthored ? authored[source] : normals[source];
-            double ny = useAuthored ? authored[source + 1] : normals[source + 1];
-            double nz = useAuthored ? authored[source + 2] : normals[source + 2];
+            double nx = useAuthored ? authored[source] : normals[normalSource];
+            double ny = useAuthored ? authored[source + 1] : normals[normalSource + 1];
+            double nz = useAuthored ? authored[source + 2] : normals[normalSource + 2];
             double lengthSquared = (nx * nx) + (ny * ny) + (nz * nz);
             if (!double.IsFinite(lengthSquared) || lengthSquared <= NormalEpsilonSquared)
             {
@@ -179,10 +211,6 @@ internal static class SilkMeshGeometryBuilder
             // renderer claims is deform, then displace, and a re-derived frame
             // would make the claim untestable against the CPU deformation oracle.
             float amount = displacementAmounts.IsEmpty ? 0 : displacementAmounts[point];
-            if (!float.IsFinite(amount))
-            {
-                throw InvalidMesh(mesh, $"displacement amount {point} is not finite");
-            }
             float positionX = points[source] + (amount * normalX);
             float positionY = points[source + 1] + (amount * normalY);
             float positionZ = points[source + 2] + (amount * normalZ);
@@ -208,7 +236,7 @@ internal static class SilkMeshGeometryBuilder
             }
             if (hasTangents)
             {
-                int tangentSource = point * 3;
+                int tangentSource = vertex * 3;
                 double tx = tangents[tangentSource];
                 double ty = tangents[tangentSource + 1];
                 double tz = tangents[tangentSource + 2];
@@ -240,6 +268,10 @@ internal static class SilkMeshGeometryBuilder
                     ? secondaryAttribute.GetComponent(point, 1)
                     : 0;
             }
+            if (triangleLocal && vertex < indices.Length)
+            {
+                indices[vertex] = checked((uint)vertex);
+            }
         }
 
         SilkVertexLayoutDescriptor layout = (hasTangents, hasSecondary) switch
@@ -251,15 +283,86 @@ internal static class SilkMeshGeometryBuilder
                 ? SilkVertexLayoutDescriptor.PositionNormalTexCoord
                 : SilkVertexLayoutDescriptor.PositionNormal
         };
+        uint[] emittedIndices = indices;
+        if (ptexAtlas is { IsFallback: true })
+        {
+            int textureCoordinate = ptexAsSecondary ? strideFloats - 2 : 6;
+            for (int vertex = 0; vertex < vertexCount; vertex++)
+            {
+                int destination = checked((vertex * strideFloats) + textureCoordinate);
+                vertices[destination] = 0.5f;
+                vertices[destination + 1] = 0.5f;
+            }
+        }
+        else if (ptexAtlas is not null)
+        {
+            if (mesh.TopologyKind != SilkTopologyKind.TriangleList)
+            {
+                throw InvalidMesh(mesh, "Ptex sampling requires triangle-list topology");
+            }
+            SilkPtexAtlasLayout.ValidateMapping(mesh);
+            if (!triangleLocal)
+            {
+                (vertices, emittedIndices) = ExpandTriangleCorners(
+                    vertices, indices, strideFloats, unreferencedPoints);
+            }
+            for (int corner = 0; corner < meshIndices.Length; corner++)
+            {
+                uint faceId = checked((uint)mesh.PtexFaceIndices[corner / 3]);
+                (float u, float v) = ptexAtlas.Map(
+                    faceId,
+                    mesh.PtexCoordinates[corner * 2],
+                    mesh.PtexCoordinates[(corner * 2) + 1]);
+                int textureCoordinate = ptexAsSecondary ? strideFloats - 2 : 6;
+                int destination = checked((corner * strideFloats) + textureCoordinate);
+                vertices[destination] = u;
+                vertices[destination + 1] = v;
+            }
+        }
+
         return new SilkMeshGeometry(
             vertices,
-            indices,
+            emittedIndices,
             layout,
             hasUv ? uvPrimvar : "",
             hasTangents,
             !displacementAmounts.IsEmpty,
             maximumDisplacement,
-            hasSecondary ? secondaryUvPrimvar : "");
+            hasSecondary && !ptexAsSecondary ? secondaryUvPrimvar : "",
+            triangleLocal || ptexAtlas is { IsFallback: false },
+            ptexAsSecondary);
+    }
+
+    internal static (float[] Vertices, uint[] Indices) ExpandTriangleCorners(
+        ReadOnlySpan<float> sourceVertices,
+        ReadOnlySpan<uint> sourceIndices,
+        int strideFloats,
+        ReadOnlySpan<int> unreferencedPoints = default)
+    {
+        if (strideFloats <= 0 || sourceVertices.Length % strideFloats != 0)
+        {
+            throw new InvalidDataException("The source vertex stream does not match its stride.");
+        }
+        float[] vertices = new float[checked((sourceIndices.Length + unreferencedPoints.Length) * strideFloats)];
+        uint[] indices = new uint[sourceIndices.Length];
+        for (int corner = 0; corner < sourceIndices.Length; corner++)
+        {
+            if (sourceIndices[corner] >= sourceVertices.Length / strideFloats)
+            {
+                throw new InvalidDataException($"Triangle corner {corner} references an absent source vertex.");
+            }
+            int source = checked((int)sourceIndices[corner] * strideFloats);
+            int destination = checked(corner * strideFloats);
+            sourceVertices.Slice(source, strideFloats).CopyTo(vertices.AsSpan(destination, strideFloats));
+            indices[corner] = checked((uint)corner);
+        }
+        for (int point = 0; point < unreferencedPoints.Length; point++)
+        {
+            int source = checked(unreferencedPoints[point] * strideFloats);
+            int destination = checked((sourceIndices.Length + point) * strideFloats);
+            sourceVertices.Slice(source, strideFloats).CopyTo(vertices.AsSpan(destination, strideFloats));
+        }
+        return (vertices, indices);
     }
 
     private static void AccumulateTangent(
@@ -270,7 +373,10 @@ internal static class SilkMeshGeometryBuilder
         double[] bitangents,
         int a,
         int b,
-        int c)
+        int c,
+        int targetA,
+        int targetB,
+        int targetC)
     {
         int pa = a * 3;
         int pb = b * 3;
@@ -306,12 +412,12 @@ internal static class SilkMeshGeometryBuilder
         {
             throw InvalidMesh(mesh, "computed tangent is not finite");
         }
-        Accumulate(tangents, pa, tx, ty, tz);
-        Accumulate(tangents, pb, tx, ty, tz);
-        Accumulate(tangents, pc, tx, ty, tz);
-        Accumulate(bitangents, pa, bx, by, bz);
-        Accumulate(bitangents, pb, bx, by, bz);
-        Accumulate(bitangents, pc, bx, by, bz);
+        Accumulate(tangents, targetA * 3, tx, ty, tz);
+        Accumulate(tangents, targetB * 3, tx, ty, tz);
+        Accumulate(tangents, targetC * 3, tx, ty, tz);
+        Accumulate(bitangents, targetA * 3, bx, by, bz);
+        Accumulate(bitangents, targetB * 3, bx, by, bz);
+        Accumulate(bitangents, targetC * 3, bx, by, bz);
     }
 
     private static int ValidateIndex(

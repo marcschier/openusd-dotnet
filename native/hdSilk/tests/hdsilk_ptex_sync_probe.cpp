@@ -34,6 +34,7 @@ struct MaterialWire
 
 struct PageWire
 {
+    std::vector<std::string> materialPaths;
     std::vector<MaterialWire> materials;
     std::vector<std::string> meshes;
 };
@@ -93,6 +94,7 @@ bool ReadPage(const openusd_silk_page_view& view, PageWire* result)
             }
             const std::string path(
                 reinterpret_cast<const char*>(view.data + offset + fixedSize), pathSize);
+            result->materialPaths.push_back(path);
             size_t cursor = offset + fixedSize + pathSize;
             for (uint32_t scalar = 0; scalar < scalarCount; ++scalar)
             {
@@ -158,6 +160,27 @@ bool CheckMaterialWire(
     }
     std::cerr << "Material source entry missing from page: " << materialPath << "\n";
     return false;
+}
+
+bool CheckOmittedMaterialTexture(
+    const PageWire& page, const char* materialPath, uint32_t parameter)
+{
+    if (std::find(page.materialPaths.begin(), page.materialPaths.end(), materialPath) ==
+        page.materialPaths.end())
+    {
+        std::cerr << "Material missing from page: " << materialPath << "\n";
+        return false;
+    }
+    if (std::any_of(page.materials.begin(), page.materials.end(),
+        [&](const MaterialWire& entry)
+        {
+            return entry.path == materialPath && entry.parameter == parameter;
+        }))
+    {
+        std::cerr << "Unsupported texture published for material: " << materialPath << "\n";
+        return false;
+    }
+    return true;
 }
 
 void Print(const openusd_hdsilk_test_ptex_observation& observation)
@@ -235,7 +258,8 @@ bool CheckFrame(
                 observation.values[2] == 3 && observation.values[3] == 80 &&
                 !observation.usd_default_one_proven &&
                 observation.strict_status == Invalid &&
-                observation.default_one_status == Invalid;
+                observation.default_one_status == Invalid &&
+                CheckPtexMaterial(observation, fixtureDirectory, false);
             continue;
         }
         if (std::strcmp(observation.path, "/World/GroupedIndexed") == 0)
@@ -331,20 +355,43 @@ bool CheckFrame(
     return valid;
 }
 
-bool CheckRestoredMaterial(
+bool CheckRestoredFrame(
     const std::vector<openusd_hdsilk_test_ptex_observation>& observations,
     const std::filesystem::path& fixtureDirectory)
 {
+    bool ordinary = false;
+    bool indexedDefault = false;
     for (const auto& observation : observations)
     {
         if (std::strcmp(observation.path, "/World/Ordinary") == 0)
         {
             Print(observation);
-            return CheckPtexMaterial(observation, fixtureDirectory, false);
+            ordinary = observation.usd_default_one_proven &&
+                observation.delegate_matches &&
+                observation.value_count == 2 &&
+                observation.values[0] == 2 && observation.values[1] == 3 &&
+                observation.default_one_status == Mapped &&
+                observation.mapped_faces[0] == 2 && observation.mapped_faces[1] == 4 &&
+                CheckPtexMaterial(observation, fixtureDirectory, false);
+        }
+        else if (std::strcmp(observation.path, "/World/IndexedDefault") == 0)
+        {
+            Print(observation);
+            indexedDefault = observation.usd_default_one_proven &&
+                observation.delegate_matches &&
+                observation.value_count == 2 &&
+                observation.values[0] == 7 && observation.values[1] == 2 &&
+                observation.index_count == 2 &&
+                observation.indices[0] == 1 && observation.indices[1] == 0 &&
+                observation.default_one_status == Invalid;
         }
     }
-    std::cerr << "Restored Ptex material observation was missing.\n";
-    return false;
+    if (!ordinary || !indexedDefault)
+    {
+        std::cerr << "Missing or invalid restored Ptex observations: ordinary="
+                  << ordinary << " indexedDefault=" << indexedDefault << "\n";
+    }
+    return ordinary && indexedDefault;
 }
 
 bool Sync(
@@ -413,7 +460,9 @@ int main(int argc, char** argv)
             CheckMaterialWire(initial, fixtureDirectory, "/World/PtexMaterial",
                 "tetrahedron.ptx", OPENUSD_SILK_TEXTURE_SOURCE_PTEX) &&
             CheckMaterialWire(initial, fixtureDirectory, "/World/UvMaterial",
-                "tetrahedron.ptx", OPENUSD_SILK_TEXTURE_SOURCE_STANDARD);
+                "tetrahedron.ptx", OPENUSD_SILK_TEXTURE_SOURCE_STANDARD) &&
+            CheckOmittedMaterialTexture(initial, "/World/UnsupportedPtexMaterial",
+                OPENUSD_SILK_MATERIAL_EMISSIVE_COLOR);
         PageWire updated;
         valid = Sync(session, 1.0, &observations, &updated, &error) &&
             CheckFrame(observations, fixtureDirectory, true) &&
@@ -423,7 +472,7 @@ int main(int argc, char** argv)
                 updated.meshes.end() && valid;
         PageWire restored;
         valid = Sync(session, 0.0, &observations, &restored, &error) &&
-            CheckRestoredMaterial(observations, fixtureDirectory) &&
+            CheckRestoredFrame(observations, fixtureDirectory) &&
             CheckMaterialWire(restored, fixtureDirectory, "/World/PtexMaterial",
                 "tetrahedron.ptx", OPENUSD_SILK_TEXTURE_SOURCE_PTEX) && valid;
     }

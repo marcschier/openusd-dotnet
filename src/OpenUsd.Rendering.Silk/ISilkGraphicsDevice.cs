@@ -251,6 +251,7 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
     private int _submissionLeaseCount;
     private bool _disposeRequested;
     private bool _nativeReleased;
+    private bool _releaseInProgress;
     private IDisposable? _textureReservation;
 
     internal void OwnTextureReservation(IDisposable? reservation)
@@ -272,8 +273,40 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
 
     private void ReleaseNativeAndReservation()
     {
-        ReleaseNative();
-        Interlocked.Exchange(ref _textureReservation, null)?.Dispose();
+        try
+        {
+            if (!_nativeReleased)
+            {
+                ReleaseNative();
+                lock (_lifetimeGate)
+                {
+                    _nativeReleased = true;
+                }
+            }
+            _textureReservation?.Dispose();
+            lock (_lifetimeGate)
+            {
+                _textureReservation = null;
+            }
+        }
+        finally
+        {
+            lock (_lifetimeGate)
+            {
+                _releaseInProgress = false;
+            }
+        }
+    }
+
+    private bool BeginRelease()
+    {
+        if (!_disposeRequested || _submissionLeaseCount != 0 || _releaseInProgress ||
+            (_nativeReleased && _textureReservation is null))
+        {
+            return false;
+        }
+        _releaseInProgress = true;
+        return true;
     }
 
     /// <summary>Initializes a texture wrapper.</summary>
@@ -325,17 +358,8 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
         bool releaseNative;
         lock (_lifetimeGate)
         {
-            if (_disposeRequested)
-            {
-                return;
-            }
-
             _disposeRequested = true;
-            releaseNative = _submissionLeaseCount == 0;
-            if (releaseNative)
-            {
-                _nativeReleased = true;
-            }
+            releaseNative = BeginRelease();
         }
 
         if (releaseNative)
@@ -407,37 +431,45 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
         return requiredLength;
     }
 
-    private void ReleaseSubmissionLease()
+    private void ReleaseSubmissionLease(SubmissionLease lease)
     {
         bool releaseNative;
         lock (_lifetimeGate)
         {
-            _submissionLeaseCount--;
-            releaseNative =
-                _disposeRequested &&
-                _submissionLeaseCount == 0 &&
-                !_nativeReleased;
-            if (releaseNative)
+            if (lease.Texture is null)
             {
-                _nativeReleased = true;
+                return;
+            }
+            if (!lease.CountReleased)
+            {
+                _submissionLeaseCount--;
+                lease.CountReleased = true;
+            }
+            releaseNative = BeginRelease();
+            if (!releaseNative && !_releaseInProgress)
+            {
+                lease.Texture = null;
             }
         }
 
         if (releaseNative)
         {
             ReleaseNativeAndReservation();
+            lock (_lifetimeGate)
+            {
+                lease.Texture = null;
+            }
         }
     }
 
     private sealed class SubmissionLease(SilkGraphicsTextureBase texture) : IDisposable
     {
-        private SilkGraphicsTextureBase? _texture = texture;
+        internal SilkGraphicsTextureBase? Texture = texture;
+        internal bool CountReleased;
 
         public void Dispose()
         {
-            SilkGraphicsTextureBase? texture =
-                Interlocked.Exchange(ref _texture, null);
-            texture?.ReleaseSubmissionLease();
+            Volatile.Read(ref Texture)?.ReleaseSubmissionLease(this);
         }
     }
 }

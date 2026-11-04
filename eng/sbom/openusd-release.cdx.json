@@ -23,7 +23,7 @@
     "properties": [
       {
         "name": "openusd:input:Directory.Packages.props:sha256",
-        "value": "d497c413d09b1950222278a2749fd972b1607af1a46f7a5c54e93df41aa4d695"
+        "value": "f2a3ed67e7852c1e94328ce768b0a42f9bfa835f1fcaaad017292412cc80b68b"
       },
       {
         "name": "openusd:input:eng/cesium.lock.json:sha256",
@@ -1545,19 +1545,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "nuget-dependency:SPIRV-Cross.NET",
-      "name": "SPIRV-Cross.NET",
-      "version": "1.0.2",
-      "purl": "pkg:nuget/SPIRV-Cross.NET@1.0.2",
-      "properties": [
-        {
-          "name": "openusd:source",
-          "value": "Directory.Packages.props"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "nuget-dependency:SharpMetal",
       "name": "SharpMetal",
       "version": "1.1.0",
@@ -1614,6 +1601,19 @@
       "name": "Silk.NET.Direct3D12",
       "version": "2.23.0",
       "purl": "pkg:nuget/Silk.NET.Direct3D12@2.23.0",
+      "properties": [
+        {
+          "name": "openusd:source",
+          "value": "Directory.Packages.props"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nuget-dependency:Silk.NET.SPIRV.Cross.Native",
+      "name": "Silk.NET.SPIRV.Cross.Native",
+      "version": "2.23.0",
+      "purl": "pkg:nuget/Silk.NET.SPIRV.Cross.Native@2.23.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -3049,9 +3049,9 @@
         "nuget-dependency:Silk.NET.Direct3D11",
         "nuget-dependency:Silk.NET.Direct3D12",
         "nuget-dependency:Silk.NET.DXGI",
+        "nuget-dependency:Silk.NET.SPIRV.Cross.Native",
         "nuget-dependency:Silk.NET.Vulkan",
         "nuget-dependency:Silk.NET.Vulkan.Loader.Native",
-        "nuget-dependency:SPIRV-Cross.NET",
         "nuget-dependency:Stride.Dependencies.SwiftShader",
         "nuget-dependency:System.IO.Hashing",
         "nuget-dependency:TUnit",
@@ -3362,15 +3362,15 @@
       "dependsOn": []
     },
     {
+      "ref": "nuget-dependency:Silk.NET.SPIRV.Cross.Native",
+      "dependsOn": []
+    },
+    {
       "ref": "nuget-dependency:Silk.NET.Vulkan",
       "dependsOn": []
     },
     {
       "ref": "nuget-dependency:Silk.NET.Vulkan.Loader.Native",
-      "dependsOn": []
-    },
-    {
-      "ref": "nuget-dependency:SPIRV-Cross.NET",
       "dependsOn": []
     },
     {

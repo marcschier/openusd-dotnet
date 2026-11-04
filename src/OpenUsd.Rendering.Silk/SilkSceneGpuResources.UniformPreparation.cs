@@ -131,6 +131,7 @@ public sealed partial class SilkSceneGpuResources
         private readonly ulong _shadowRevision;
         private readonly RenderOutputTransform _outputTransform;
         private readonly float _exposure;
+        private readonly float _clearDepth;
 
         internal FrameUniformCheckpoint(SilkSceneGpuResources owner)
         {
@@ -146,6 +147,7 @@ public sealed partial class SilkSceneGpuResources
             _shadowRevision = owner._frameShadowRevision;
             _outputTransform = owner._frameOutputTransform;
             _exposure = owner._frameExposure;
+            _clearDepth = owner._frameClearDepth;
         }
 
         internal ISilkGraphicsBuffer? PublishedBuffer => _buffer;
@@ -171,6 +173,7 @@ public sealed partial class SilkSceneGpuResources
             _owner._frameShadowRevision = _shadowRevision;
             _owner._frameOutputTransform = _outputTransform;
             _owner._frameExposure = _exposure;
+            _owner._frameClearDepth = _clearDepth;
             ReleaseUnpublishedUniform(current, _buffer, _spare, ref errors);
             if (!ReferenceEquals(current, spare))
             {

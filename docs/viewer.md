@@ -1874,13 +1874,15 @@ automatically requesting HDR or depth. The dialog shows the selected file types,
 charge, and completed PNG/HDR/depth file counts.
 
 When HDR is enabled, **HDR format** offers **Raw half** (the default) or **EXR**.
-EXR writes `frame-000000.hdr.exr` through the matching Windows x64 Data ABI 26 Core encoder.
+EXR writes `frame-000000.hdr.exr` through the matching Data ABI 26 Core encoder. The encoder has
+Windows x64 and little-endian Linux/macOS x64/ARM64 profiles; Windows sequence execution has
+prior evidence, while POSIX encoder and Viewer sequence execution still need hosted evidence.
 It preserves the same finite binary16 samples and stored alpha without a color/alpha conversion;
 equal origin-zero windows, square pixels, unspecified primaries and alpha association remain explicit.
 The format is frozen with the job options and disabled during rendering; changing a control
 programmatically cannot alter an admitted sequence. EXR shares the existing combined encoded
 PNG/depth/HDR byte budget, but native codec working memory is outside that quota and is stated
-in the dialog. Other host encoding profiles remain unsupported.
+in the dialog.
 
 The Windows **hdSilk / Direct3D 12** and **hdSilk / Vulkan** bindings support PNG and both optional data planes.
 **Native Storm** captures timed PNG sequences using its completed native viewport framebuffer.

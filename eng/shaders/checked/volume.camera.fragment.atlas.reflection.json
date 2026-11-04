@@ -1,0 +1,320 @@
+{
+  "schemaVersion": 2,
+  "source": "eng/shaders/sources/volume.camera.fragment.atlas.slang",
+  "entryPoint": {
+    "name": "volumeCameraAtlasFragmentMain",
+    "stage": "fragment",
+    "profile": "ps_6_0",
+    "threadGroupSize": null
+  },
+  "resources": [
+    {
+      "name": "VolumeCameraParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "b",
+          "register": 0,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 0,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "volumeHeader",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "uint32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "atlasShape",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "uint32"
+                }
+              },
+              "layout": {
+                "offset": 16,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 32
+      },
+      "vulkanLayout": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "volumeHeader",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "uint32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            },
+            {
+              "name": "atlasShape",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "uint32"
+                }
+              },
+              "layout": {
+                "offset": 16,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 32
+      }
+    },
+    {
+      "name": "volumeFields",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 6,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 6,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "byteAddressBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "byteAddressBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "frameParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 8,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 8,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "byteAddressBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "byteAddressBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "densityAtlas",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 9,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 9,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture3D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture3D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "densitySampler",
+      "bindings": {
+        "d3d": {
+          "registerClass": "s",
+          "register": 4,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 13,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "sampler",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "opaqueDepthTexture",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 28,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 45,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        },
+        "elementStride": null,
+        "size": null
+      }
+    }
+  ],
+  "stageInputs": [
+    {
+      "name": "position",
+      "semantic": {
+        "name": "SV_POSITION",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    }
+  ],
+  "stageOutputs": [
+    {
+      "name": "result",
+      "semantic": {
+        "name": "SV_TARGET",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    }
+  ]
+}

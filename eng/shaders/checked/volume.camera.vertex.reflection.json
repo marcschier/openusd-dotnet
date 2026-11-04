@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 2,
+  "source": "eng/shaders/sources/volume.camera.vertex.slang",
+  "entryPoint": {
+    "name": "volumeCameraVertexMain",
+    "stage": "vertex",
+    "profile": "vs_6_0",
+    "threadGroupSize": null
+  },
+  "resources": [],
+  "stageInputs": [
+    {
+      "name": "position",
+      "semantic": {
+        "name": "POSITION",
+        "index": 0,
+        "systemValue": false
+      },
+      "location": 0,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "normal",
+      "semantic": {
+        "name": "NORMAL",
+        "index": 0,
+        "systemValue": false
+      },
+      "location": 1,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    }
+  ],
+  "stageOutputs": [
+    {
+      "name": "position",
+      "semantic": {
+        "name": "SV_POSITION",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    }
+  ]
+}

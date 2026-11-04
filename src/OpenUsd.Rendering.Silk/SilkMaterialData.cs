@@ -70,7 +70,7 @@ public sealed class SilkMaterialTexture
     public SilkMaterialParameter Parameter { get; }
 
     /// <summary>Gets the texture source kind, independently of its asset name.</summary>
-    /// <remarks>Ptex sources are retained for inspection but are not yet sampled by the renderer.</remarks>
+    /// <remarks>A Ptex source is sampled through a face-indexed atlas when its mesh mapping and material input are supported.</remarks>
     public SilkTextureSourceKind SourceKind { get; }
 
     /// <summary>
@@ -482,6 +482,86 @@ public sealed class SilkMaterialData
     internal SilkMaterialTexture? GetRenderableTexture(SilkMaterialParameter parameter) =>
         GetTexture(parameter) is { SourceKind: SilkTextureSourceKind.Standard } texture ? texture : null;
 
+    internal SilkMaterialTexture? GetPtexTexture()
+    {
+        for (int index = 0; index < Textures.Count; index++)
+        {
+            SilkMaterialTexture texture = Textures[index];
+            if (texture.SourceKind == SilkTextureSourceKind.Ptex &&
+                texture.Parameter is not SilkMaterialParameter.Displacement and
+                    not SilkMaterialParameter.VolumeDensity &&
+                texture.CompositeOperator == SilkCompositeOperator.None)
+            {
+                return texture;
+            }
+        }
+        return null;
+    }
+
+    internal SilkMaterialTexture? GetRenderableSurfaceTexture(SilkMaterialParameter parameter)
+    {
+        SilkMaterialTexture? texture = GetTexture(parameter);
+        if (texture is null || texture.SourceKind == SilkTextureSourceKind.Standard)
+        {
+            return texture;
+        }
+        if (texture.SourceKind != SilkTextureSourceKind.Ptex ||
+            texture.Parameter is SilkMaterialParameter.Displacement or SilkMaterialParameter.VolumeDensity)
+        {
+            return null;
+        }
+        // Unsupported surface Ptex inputs still reach the sampler as a one-texel
+        // fallback texture. Dropping them here would select the surface
+        // scalar/default instead of the texture's authored fallback value.
+        return texture;
+    }
+
+    internal string? GetPtexUnsupportedReason(SilkMaterialTexture texture)
+    {
+        if (texture.SourceKind != SilkTextureSourceKind.Ptex)
+        {
+            return null;
+        }
+        if (texture.Parameter is SilkMaterialParameter.Normal or
+            SilkMaterialParameter.DetailNormal or
+            SilkMaterialParameter.Displacement or
+            SilkMaterialParameter.VolumeDensity)
+        {
+            return $"Ptex sampling is not supported for {texture.Parameter}.";
+        }
+        if (GetSecondaryUvPrimvar().Length != 0)
+        {
+            return "Ptex sampling cannot use a third surface texture-coordinate set.";
+        }
+        if (texture.Parameter == SilkMaterialParameter.Opacity)
+        {
+            return "Ptex opacity sampling is not available in the shadow-mask pass.";
+        }
+        if (!ReferenceEquals(GetPtexTexture(), texture))
+        {
+            return "A material can sample only one Ptex input; this input uses its authored fallback.";
+        }
+        return null;
+    }
+
+    internal bool PtexUsesPrimaryUv =>
+        GetPtexTexture() is not null && !HasOrdinarySurfaceUvTexture();
+
+    internal bool PtexUsesSecondaryUv =>
+        GetPtexTexture() is not null && HasOrdinarySurfaceUvTexture();
+
+    private bool HasOrdinarySurfaceUvTexture()
+    {
+        for (int index = 0; index < Textures.Count; index++)
+        {
+            if (IsSurfaceUvTexture(Textures[index]))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>
     /// Gets the material's single composite operand, or null when no surface
     /// input of this material is driven by two images.
@@ -507,16 +587,16 @@ public sealed class SilkMaterialData
     internal SilkShaderFeatures GetTextureFeatures()
     {
         SilkShaderFeatures features = SilkShaderFeatures.None;
-        if (GetRenderableTexture(SilkMaterialParameter.DiffuseColor) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.DiffuseColor) is not null)
         {
             features |= SilkShaderFeatures.BaseColorMap;
         }
 
-        if (GetRenderableTexture(SilkMaterialParameter.Normal) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.Normal) is not null)
         {
             features |= SilkShaderFeatures.NormalMap;
         }
-        if (GetRenderableTexture(SilkMaterialParameter.DetailNormal) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.DetailNormal) is not null)
         {
             features |= SilkShaderFeatures.DetailNormalMap;
         }
@@ -526,41 +606,41 @@ public sealed class SilkMaterialData
         // occlusion/roughness/metallic file reaches here as two entries naming one
         // asset and two different output channels, and still resolves correctly
         // because each entry carries the channel it was authored with.
-        if (GetRenderableTexture(SilkMaterialParameter.Roughness) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.Roughness) is not null)
         {
             features |= SilkShaderFeatures.RoughnessMetallicMap;
         }
 
-        if (GetRenderableTexture(SilkMaterialParameter.Metallic) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.Metallic) is not null)
         {
             features |= SilkShaderFeatures.MetallicMap;
         }
 
-        if (GetRenderableTexture(SilkMaterialParameter.EmissiveColor) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.EmissiveColor) is not null)
         {
             features |= SilkShaderFeatures.EmissiveMap;
         }
-        if (GetRenderableTexture(SilkMaterialParameter.Opacity) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.Opacity) is not null)
         {
             features |= SilkShaderFeatures.OpacityMap;
         }
-        if (GetRenderableTexture(SilkMaterialParameter.Occlusion) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.Occlusion) is not null)
         {
             features |= SilkShaderFeatures.OcclusionMap;
         }
-        if (GetRenderableTexture(SilkMaterialParameter.SpecularColor) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.SpecularColor) is not null)
         {
             features |= SilkShaderFeatures.SpecularColorMap;
         }
-        if (GetRenderableTexture(SilkMaterialParameter.Clearcoat) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.Clearcoat) is not null)
         {
             features |= SilkShaderFeatures.ClearcoatMap;
         }
-        if (GetRenderableTexture(SilkMaterialParameter.ClearcoatRoughness) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.ClearcoatRoughness) is not null)
         {
             features |= SilkShaderFeatures.ClearcoatRoughnessMap;
         }
-        if (GetRenderableTexture(SilkMaterialParameter.Ior) is not null)
+        if (GetRenderableSurfaceTexture(SilkMaterialParameter.Ior) is not null)
         {
             features |= SilkShaderFeatures.IorMap;
         }
@@ -690,15 +770,20 @@ public sealed class SilkMaterialData
     internal SilkShaderFeatures GetSecondaryUvTextureMask()
     {
         string secondary = GetSecondaryUvPrimvar();
-        if (secondary.Length == 0)
+        if (secondary.Length == 0 && !PtexUsesSecondaryUv)
         {
             return SilkShaderFeatures.None;
         }
         SilkShaderFeatures mask = SilkShaderFeatures.None;
         foreach (SilkMaterialTexture texture in Textures)
         {
-            if (IsSurfaceUvTexture(texture) &&
-                string.Equals(texture.UvPrimvar, secondary, StringComparison.Ordinal))
+            bool usesSecondary = IsSurfaceUvTexture(texture) &&
+                secondary.Length != 0 &&
+                string.Equals(texture.UvPrimvar, secondary, StringComparison.Ordinal);
+            usesSecondary |= texture.SourceKind == SilkTextureSourceKind.Ptex &&
+                PtexUsesSecondaryUv &&
+                GetPtexUnsupportedReason(texture) is null;
+            if (usesSecondary)
             {
                 mask |= GetSurfaceTextureBit(texture.Parameter);
             }

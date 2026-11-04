@@ -158,6 +158,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         // The general signal is per-failure and the pick invalidation is
         // one-time, so the unlatched notification comes first.
         NotifyDeviceLost();
+        InvalidatePickDeviceAfterLoss();
+    }
+
+    private void InvalidatePickDeviceAfterLoss()
+    {
         if (Interlocked.Exchange(ref _pickDeviceLostNotified, 1) == 0)
         {
             AdvancePickDeviceGeneration(deviceLost: true);
@@ -358,19 +363,20 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 }
             }
 
-            ulong serial = readback.RecordAndSubmit(
+            ulong serial = 0;
+            SubmissionOwnerCreationProbeForTesting?.Invoke(serial != 0);
+            var submission = new VulkanSilkPickSubmission(readback, leases);
+            serial = readback.RecordAndSubmit(
                 color,
                 depth,
                 clearColor,
                 clearDepth,
                 passes,
                 commands.PickCoordinate);
+            submission.SetSerial(serial);
             Interlocked.Increment(ref _pickSubmissions);
             Interlocked.Increment(ref _pickCopies);
-            return new VulkanSilkPickSubmission(
-                readback,
-                serial,
-                leases);
+            return submission;
         }
         catch
         {
@@ -1263,7 +1269,7 @@ internal readonly record struct VulkanPickPassCacheEntry(
     int DrawCount);
 
 internal sealed unsafe class VulkanSilkPickReadbackBuffer :
-    ISilkPickReadbackBuffer, ISilkDiscardedPickReadback
+    SilkPendingSubmissionRetirement, ISilkPickReadbackBuffer, ISilkDiscardedPickReadback
 {
     private readonly Vk _api;
     private readonly Device _device;
@@ -1309,6 +1315,12 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
     private ulong _activeSerial;
     private PickSlotState _state;
     private bool _disposed;
+    private bool _retirementRequested;
+    private bool _retiringAfterDeviceIdle;
+    private readonly object _retirementGate = new();
+    private SilkResourceReleaseSteps _retirement;
+    private Action<int>? _releaseStep;
+    private int _disposing;
     private bool _diagnosticsRegistered;
     private bool _pickUniformDiagnosticsRegistered;
     private bool _dependentReleased;
@@ -1405,35 +1417,73 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
 
     public void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
-        _disposed = true;
+        if (Interlocked.CompareExchange(ref _disposing, 1, 0) != 0)
+        { return; }
         try
         {
-            if (_state == PickSlotState.Submitted)
+            lock (_retirementGate)
             {
-                CompleteForTeardown();
+                if (_disposed)
+                { return; }
+                try
+                {
+                    CompleteDisposal();
+                }
+                catch
+                {
+                    Owner.RetainPendingSubmission(this);
+                    throw;
+                }
             }
         }
-        finally
+        finally { Volatile.Write(ref _disposing, 0); }
+    }
+
+    internal override void RetireAfterDeviceIdle()
+    {
+        lock (_retirementGate)
         {
+            if (_disposed)
+            { return; }
+            _retiringAfterDeviceIdle = true;
             try
-            {
-                DestroyNativeResources();
-            }
-            finally
-            {
-                _activeSerial = 0;
-                _state = PickSlotState.Disposed;
-                ReleaseDependent();
-            }
+            { CompleteDisposal(); }
+            finally { _retiringAfterDeviceIdle = false; }
         }
     }
 
+    private void CompleteDisposal()
+    {
+        RetireOwnedSteps(ref _retirement, _releaseStep ??= ReleaseStep);
+        _activeSerial = 0;
+        _state = PickSlotState.Disposed;
+        _disposed = true;
+        Owner.RemovePendingSubmission(this);
+    }
+
     internal void ThrowIfDisposed() =>
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed || _retirementRequested, this);
+
+    internal static void RetireOwnedSteps(ref SilkResourceReleaseSteps steps, Action<int> release) =>
+        steps.Release(3, release);
+
+    private void ReleaseStep(int step)
+    {
+        switch (step)
+        {
+            case 0:
+                if (_state == PickSlotState.Submitted && !_retiringAfterDeviceIdle)
+                { CompleteForTeardown(); }
+                break;
+            case 1:
+                _retirementRequested = true;
+                DestroyNativeResources();
+                break;
+            case 2:
+                ReleaseDependent();
+                break;
+        }
+    }
 
     /// <summary>
     /// The render area covering the copied pixel and every recorded scissor.
@@ -1490,7 +1540,8 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
     {
         VulkanSilkPickGraphicsPipeline pipeline = passes[0].Pipeline;
         ThrowIfDisposed();
-        if (_state != PickSlotState.Idle)
+        if (_state != PickSlotState.Idle &&
+            !(_activeSerial == 0 && _state is (PickSlotState.Completed or PickSlotState.Read)))
         {
             throw new InvalidOperationException(
                 "The persistent Vulkan pick readback slot is still in use.");
@@ -1661,7 +1712,8 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
 
         color.Layout = ImageLayout.ColorAttachmentOptimal;
         depth.Layout = ImageLayout.DepthStencilAttachmentOptimal;
-        ulong serial = _nextSerial++;
+        ulong serial = _nextSerial;
+        _nextSerial = unchecked(_nextSerial + 1);
         if (_nextSerial == 0)
         {
             _nextSerial = 1;
@@ -1720,27 +1772,38 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
             "vkWaitForFences(pick)");
     }
 
-    internal void ReleaseSubmission(ulong serial)
+    internal void ReleaseSubmission(
+        ulong serial, bool afterDeviceIdle = false, bool preserveResult = false)
     {
-        ValidateActiveSerial(serial);
-        try
+        lock (_retirementGate)
         {
-            if (_state == PickSlotState.Submitted)
+            if (_disposed)
+            { return; }
+            ValidateActiveSerial(serial, allowRetirement: true);
+            if (_state == PickSlotState.Submitted && !afterDeviceIdle)
             {
                 CompleteForTeardown();
             }
-        }
-        finally
-        {
             _activeSerial = 0;
-            _state = PickSlotState.Idle;
+            if (!preserveResult)
+            {
+                _state = PickSlotState.Idle;
+            }
+            else if (Owner.IsPickDeviceLost)
+            {
+                _state = PickSlotState.Failed;
+            }
+            else if (_state == PickSlotState.Submitted)
+            {
+                _state = PickSlotState.Completed;
+            }
         }
     }
 
     public void ReleaseDiscardedFrameResources()
     {
         ThrowIfDisposed();
-        if (_state != PickSlotState.Idle)
+        if (_state != PickSlotState.Idle && _activeSerial != 0)
         {
             throw new InvalidOperationException("A submitted Vulkan pick must finish before releasing its cache.");
         }
@@ -2485,9 +2548,9 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
             _state = PickSlotState.Completed;
             return;
         }
-        _state = PickSlotState.Failed;
         if (result == Result.ErrorDeviceLost)
         {
+            _state = PickSlotState.Failed;
             Owner.NotifyPickDeviceLost();
         }
     }
@@ -2496,6 +2559,15 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
     {
         Result result = GetFenceResult(wait: true);
         ObserveFenceResult(result);
+        RequireTerminalRetirementResult(result);
+    }
+
+    internal static void RequireTerminalRetirementResult(Result result)
+    {
+        if (result != Result.ErrorDeviceLost)
+        {
+            VulkanSilkGraphicsDevice.ThrowIfFailed(result, "vkWaitForFences(pick retirement)");
+        }
     }
 
     private void ReleaseDependent()
@@ -2504,13 +2576,14 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
         {
             return;
         }
-        _dependentReleased = true;
         Owner.ReleasePickReadbackDependent();
+        _dependentReleased = true;
     }
 
-    private void ValidateActiveSerial(ulong serial)
+    private void ValidateActiveSerial(ulong serial, bool allowRetirement = false)
     {
-        ThrowIfDisposed();
+        if (!allowRetirement)
+        { ThrowIfDisposed(); }
         if (serial == 0 ||
             serial != _activeSerial ||
             _state == PickSlotState.Idle)
@@ -2528,12 +2601,9 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
             _api.DestroyFramebuffer(_device, _framebuffer, null);
             _framebuffer = default;
         }
-        _framebufferDepthLease?.Dispose();
-        _framebufferColorLease?.Dispose();
-        _framebufferPipelineLease?.Dispose();
-        _framebufferDepthLease = null;
-        _framebufferColorLease = null;
-        _framebufferPipelineLease = null;
+        SilkOwnedResourceLeases.Dispose(ref _framebufferDepthLease);
+        SilkOwnedResourceLeases.Dispose(ref _framebufferColorLease);
+        SilkOwnedResourceLeases.Dispose(ref _framebufferPipelineLease);
         _framebufferPipeline = null;
         _framebufferColor = null;
         _framebufferDepth = null;
@@ -2557,7 +2627,7 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
             _api.FreeMemory(_device, _pickUniformMemory, null);
             _pickUniformMemory = default;
         }
-        Interlocked.Exchange(ref _uniformReservation, null)?.Dispose();
+        SilkOwnedResourceLeases.Dispose(ref _uniformReservation);
         if (_pickUniformDiagnosticsRegistered)
         {
             _pickUniformDiagnosticsRegistered = false;
@@ -2585,47 +2655,41 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
 
     private void DestroyNativeResources()
     {
-        try
+        DestroyDescriptorResources();
+        DestroyFramebuffer();
+        if (_fence.Handle != 0)
         {
-            DestroyDescriptorResources();
-            DestroyFramebuffer();
-            if (_fence.Handle != 0)
-            {
-                _api.DestroyFence(_device, _fence, null);
-                _fence = default;
-            }
-            if (_commandPool.Handle != 0)
-            {
-                _api.DestroyCommandPool(_device, _commandPool, null);
-                _commandPool = default;
-                _commands = default;
-                _secondaryCommands = default;
-            }
-            if (_mapped != 0)
-            {
-                _api.UnmapMemory(_device, _memory);
-                _mapped = 0;
-            }
-            if (_buffer.Handle != 0)
-            {
-                _api.DestroyBuffer(_device, _buffer, null);
-                _buffer = default;
-            }
-            if (_memory.Handle != 0)
-            {
-                _api.FreeMemory(_device, _memory, null);
-                _memory = default;
-            }
-            Interlocked.Exchange(ref _readbackReservation, null)?.Dispose();
-            _allocationSize = 0;
+            _api.DestroyFence(_device, _fence, null);
+            _fence = default;
         }
-        finally
+        if (_commandPool.Handle != 0)
         {
-            if (_diagnosticsRegistered)
-            {
-                _diagnosticsRegistered = false;
-                Owner.ReleasePickReadbackResources();
-            }
+            _api.DestroyCommandPool(_device, _commandPool, null);
+            _commandPool = default;
+            _commands = default;
+            _secondaryCommands = default;
+        }
+        if (_mapped != 0)
+        {
+            _api.UnmapMemory(_device, _memory);
+            _mapped = 0;
+        }
+        if (_buffer.Handle != 0)
+        {
+            _api.DestroyBuffer(_device, _buffer, null);
+            _buffer = default;
+        }
+        if (_memory.Handle != 0)
+        {
+            _api.FreeMemory(_device, _memory, null);
+            _memory = default;
+        }
+        SilkOwnedResourceLeases.Dispose(ref _readbackReservation);
+        _allocationSize = 0;
+        if (_diagnosticsRegistered)
+        {
+            Owner.ReleasePickReadbackResources();
+            _diagnosticsRegistered = false;
         }
     }
 
@@ -2642,55 +2706,159 @@ internal sealed unsafe class VulkanSilkPickReadbackBuffer :
 
 internal sealed class VulkanSilkPickSubmission(
     VulkanSilkPickReadbackBuffer readback,
-    ulong serial,
     IDisposable[] leases)
-    : ISilkGraphicsSubmission
+    : SilkPendingSubmissionRetirement, ISilkGraphicsSubmission
 {
+    private readonly object _gate = leases;
+    private readonly VulkanSilkGraphicsDevice _owner = readback.Owner;
     private VulkanSilkPickReadbackBuffer? _readback = readback;
-    private IDisposable[]? _leases = leases;
+    private IDisposable?[]? _leases = leases;
+    private bool _releasingLeases;
+    private SilkResourceReleaseSteps _retirement;
+    private Action<int>? _releaseStep;
+    private int _disposing;
+    private bool _retiringAfterDeviceIdle;
+    private bool _disposeRequested;
+    private bool _retired;
+    private bool _completionObserved;
+    private bool _deviceLossObserved;
+    private bool _disposed;
+    private ulong _serial;
+
+    internal void SetSerial(ulong serial) => _serial = serial;
 
     public bool IsCompleted
     {
         get
         {
-            VulkanSilkPickReadbackBuffer active = _readback ??
-                throw new ObjectDisposedException(
-                    nameof(VulkanSilkPickSubmission));
-            return active.TryComplete(serial);
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                ThrowIfDeviceLossObserved();
+                if (_retired)
+                {
+                    return true;
+                }
+                if (_completionObserved || _retirement.Completed != 0)
+                { return true; }
+                try
+                {
+                    _completionObserved = _readback!.TryComplete(_serial);
+                    return _completionObserved;
+                }
+                catch
+                {
+                    _deviceLossObserved |= _owner.IsPickDeviceLost;
+                    _owner.RetainPendingSubmission(this);
+                    throw;
+                }
+            }
         }
     }
 
     public void Wait()
     {
-        VulkanSilkPickReadbackBuffer active = _readback ??
-            throw new ObjectDisposedException(
-                nameof(VulkanSilkPickSubmission));
-        active.Wait(serial);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ThrowIfDeviceLossObserved();
+            if (_retired)
+            {
+                return;
+            }
+            if (!_completionObserved && _retirement.Completed == 0)
+            {
+                try
+                {
+                    _readback!.Wait(_serial);
+                    _completionObserved = true;
+                }
+                catch
+                {
+                    _deviceLossObserved |= _owner.IsPickDeviceLost;
+                    _owner.RetainPendingSubmission(this);
+                    throw;
+                }
+            }
+        }
     }
 
     public void Dispose()
     {
-        VulkanSilkPickReadbackBuffer? active =
-            Interlocked.Exchange(ref _readback, null);
-        if (active is null)
-        {
-            return;
-        }
+        if (Interlocked.CompareExchange(ref _disposing, 1, 0) != 0)
+        { return; }
         try
         {
-            active.ReleaseSubmission(serial);
-        }
-        finally
-        {
-            IDisposable[]? retained =
-                Interlocked.Exchange(ref _leases, null);
-            if (retained is not null)
+            lock (_gate)
             {
-                for (int index = retained.Length - 1; index >= 0; index--)
+                if (_disposed)
+                { return; }
+                _disposeRequested = true;
+                if (_retired)
                 {
-                    retained[index].Dispose();
+                    _disposed = true;
+                    return;
+                }
+                try
+                { CompleteRetirement(); }
+                catch
+                {
+                    _owner.RetainPendingSubmission(this);
+                    throw;
                 }
             }
         }
+        finally { Volatile.Write(ref _disposing, 0); }
+    }
+
+    internal override void RetireAfterDeviceIdle()
+    {
+        lock (_gate)
+        {
+            if (_retired)
+            { return; }
+            _deviceLossObserved |= !_completionObserved && _owner.IsPickDeviceLost;
+            _completionObserved |= !_deviceLossObserved;
+            _retiringAfterDeviceIdle = true;
+            try
+            { CompleteRetirement(); }
+            finally { _retiringAfterDeviceIdle = false; }
+        }
+    }
+
+    private void CompleteRetirement()
+    {
+        RetireOwnedSteps(ref _retirement, _releaseStep ??= ReleaseStep);
+        _retired = true;
+        _disposed = _disposeRequested;
+        _owner.RemovePendingSubmission(this);
+    }
+
+    private void ThrowIfDeviceLossObserved()
+    {
+        if (_deviceLossObserved)
+        {
+            throw new InvalidOperationException("The Vulkan device was lost before the pick completed.");
+        }
+    }
+
+    internal static void RetireOwnedSteps(ref SilkResourceReleaseSteps steps, Action<int> release) =>
+        steps.Release(2, release);
+
+    internal static void RetireOwnedLeases(ref IDisposable?[]? leases, ref bool releasing) =>
+        SilkOwnedResourceLeases.Dispose(ref leases, ref releasing, reverse: true);
+
+    private void ReleaseStep(int step)
+    {
+        if (step == 0)
+        {
+            _readback!.ReleaseSubmission(
+                _serial,
+                _retiringAfterDeviceIdle,
+                preserveResult: _retiringAfterDeviceIdle && !_disposeRequested);
+            _readback = null;
+            return;
+        }
+        RetireOwnedLeases(ref _leases, ref _releasingLeases);
     }
 }

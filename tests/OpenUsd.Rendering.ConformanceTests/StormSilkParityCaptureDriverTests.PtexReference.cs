@@ -255,6 +255,109 @@ public sealed partial class StormSilkParityCaptureDriverTests
         }
     }
 
+    [Test]
+    public async Task NativePtexQuadOffsetsUpdateAndRestoreProductionPixels()
+    {
+        string pluginPath;
+        try
+        {
+            PrependHdSilkNativeSearchPath();
+            pluginPath = ResolvePluginPath();
+        }
+        catch (DirectoryNotFoundException exception)
+        {
+            SkipOrFail("native Ptex rendering", exception.ToString());
+            throw new InvalidOperationException("SkipOrFail returned unexpectedly.", exception);
+        }
+
+        string directory = Path.Combine(Path.GetTempPath(), $"openusd-ptex-native-render-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.Copy(
+                ResolveTestAsset(Path.Combine("native-profile", "ptex", "quad-colors.ptx")),
+                Path.Combine(directory, "quad-colors.ptx"));
+            string stage = Path.Combine(directory, "reference.usda");
+            File.WriteAllText(stage, CreatePtexQuadStage("bilinear"));
+
+            foreach (SilkParityBackend backend in CreateBackends())
+            {
+                using ISilkGraphicsDevice device = backend.CreateDevice();
+                using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(pluginPath, stage);
+                using var renderer = new SilkMeshRenderer(device);
+                using ISilkGraphicsTexture color = device.CreateTexture2D(
+                    new SilkTextureDescriptor(
+                        Width,
+                        Height,
+                        SilkTextureFormat.Rgba8Unorm,
+                        SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+                using ISilkGraphicsTexture depth = device.CreateTexture2D(
+                    SilkTextureDescriptor.DepthTarget(Width, Height));
+
+                (ParityImage Image, int[] FaceIndices, SilkPtexMappingStatus Status, int DrawCount,
+                    bool Unsupported, bool MissingCoordinates) Capture(double time)
+                {
+                    using OpenUsdSilkPage page = session.Sync(
+                        Width,
+                        Height,
+                        time,
+                        new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+                    SilkMeshRenderResult result = renderer.ApplyAndRender(
+                        page, color, depth, new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1));
+                    byte[] pixels = new byte[Width * Height * ParityImage.BytesPerPixel];
+                    color.ReadbackForTesting(pixels);
+                    SilkMeshData mesh = renderer.Scene.MeshesByPath[("/World/Faces", 0)];
+                    return (
+                        new ParityImage(Width, Height, pixels),
+                        mesh.PtexFaceIndices.ToArray(),
+                        mesh.PtexMappingStatus,
+                        result.DrawCount,
+                        renderer.GpuResources.Diagnostics.Entries.Any(static entry =>
+                            entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported),
+                        renderer.GpuResources.Diagnostics.Entries.Any(static entry =>
+                            entry.Code == SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable));
+                }
+
+                var baseline = Capture(1);
+                var shifted = Capture(2);
+                var restored = Capture(1);
+                await Assert.That(baseline.DrawCount).IsGreaterThan(0);
+                await Assert.That(baseline.Status).IsEqualTo(SilkPtexMappingStatus.Mapped);
+                await Assert.That(shifted.Status).IsEqualTo(SilkPtexMappingStatus.Mapped);
+                await Assert.That(baseline.FaceIndices.SequenceEqual(shifted.FaceIndices)).IsFalse();
+                await Assert.That(restored.FaceIndices.SequenceEqual(baseline.FaceIndices)).IsTrue();
+                await Assert.That(baseline.Unsupported || shifted.Unsupported || restored.Unsupported).IsFalse();
+                await Assert.That(baseline.MissingCoordinates || shifted.MissingCoordinates || restored.MissingCoordinates)
+                    .IsFalse();
+                await Assert.That(restored.Image.Rgba.Span.SequenceEqual(baseline.Image.Rgba.Span)).IsTrue();
+
+                (int X, int Y, int Red, int Green, int Blue)[] colors =
+                [
+                    (40, 100, 255, 255, 255),
+                    (120, 100, 255, 0, 0),
+                    (40, 43, 0, 255, 0),
+                    (120, 43, 0, 0, 255),
+                ];
+                for (int face = 0; face < colors.Length; face++)
+                {
+                    (int x, int y, int red, int green, int blue) = colors[face];
+                    (_, _, int shiftedRed, int shiftedGreen, int shiftedBlue) =
+                        colors[(face + 1) % colors.Length];
+                    await Assert.That(PtexPixelDelta(baseline.Image, x, y, red, green, blue))
+                        .IsLessThanOrEqualTo(16)
+                        .Because($"{backend.Name} must sample the expected color on native Ptex face {face}.");
+                    await Assert.That(PtexPixelDelta(shifted.Image, x, y, shiftedRed, shiftedGreen, shiftedBlue))
+                        .IsLessThanOrEqualTo(16)
+                        .Because($"{backend.Name} must use the updated native Ptex face offset.");
+                }
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string ReplacePtexStageFragment(string original, string replacement)
     {
         if (!PtexReferenceStage.Contains(original, StringComparison.Ordinal))

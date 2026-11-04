@@ -566,8 +566,8 @@ public static partial class SilkFrameCapture
             pageRevision,
             commandCount,
             preparationPage is null
-                ? MergeDisplayTransformDiagnostics(renderer)
-                : preparationPage.WithPreparationDiagnostics(MergeDisplayTransformDiagnostics(renderer)),
+                ? MergeRendererDiagnostics(renderer)
+                : preparationPage.WithPreparationDiagnostics(MergeRendererDiagnostics(renderer)),
             capturedDepth,
             hdrColor,
             primId,
@@ -576,22 +576,28 @@ public static partial class SilkFrameCapture
             elementId);
     }
 
-    private static RenderDiagnosticsState MergeDisplayTransformDiagnostics(
+    private static RenderDiagnosticsState MergeRendererDiagnostics(
         SilkMeshRenderer renderer)
     {
         RenderDiagnosticsState diagnostics = renderer.GpuResources.Diagnostics;
         RenderDiagnostic? displayDiagnostic = renderer.DisplayTransformDiagnostic;
-        if (displayDiagnostic is null)
+        IReadOnlyList<RenderDiagnostic> shaderDiagnostics = renderer.MaterialShaderDiagnostics;
+        if (displayDiagnostic is null && shaderDiagnostics.Count == 0)
         {
             return diagnostics;
         }
 
-        // Appended rather than replacing, and bounded to exactly one entry, so a
-        // colour-management failure is visible next to the material and texture
-        // degradations a caller already reads without displacing any of them.
-        var entries = new List<RenderDiagnostic>(diagnostics.Entries.Count + 1);
+        // Appended rather than replacing, and each source is bounded, so a
+        // colour-management or shader-compilation failure is visible next to the
+        // material and texture degradations a caller already reads without
+        // displacing any of them.
+        var entries = new List<RenderDiagnostic>(diagnostics.Entries.Count + shaderDiagnostics.Count + 1);
         entries.AddRange(diagnostics.Entries);
-        entries.Add(displayDiagnostic);
+        entries.AddRange(shaderDiagnostics);
+        if (displayDiagnostic is not null)
+        {
+            entries.Add(displayDiagnostic);
+        }
         return new RenderDiagnosticsState(entries);
     }
 

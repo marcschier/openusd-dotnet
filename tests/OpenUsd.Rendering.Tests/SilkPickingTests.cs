@@ -110,6 +110,112 @@ public sealed class SilkPickingTests
     }
 
     [Test]
+    public async Task ReadbackRingPreservesReadAndDisposalFailuresForRetry()
+    {
+        using var device = new TestGraphicsDevice();
+        var ring = new SilkPickReadbackRing(device, capacity: 2);
+        var context = new SilkPickReadbackContext(
+            CreateRequest(0, 0, 2, 2, stateRevision: 1, sceneRevision: 2),
+            1, 2, 3, device.PickDeviceGeneration, new ViewportDimensions(2, 2));
+        var readFailure = new InvalidOperationException("Injected read failure.");
+        var disposeFailure = new InvalidOperationException("Injected disposal failure.");
+        await Assert.That(ring.TryAcquire(out SilkPickReadbackReservation reservation)).IsTrue();
+        var buffer = (TestReadbackBuffer)reservation.Buffer;
+        var submission = new TestSubmission();
+        submission.Complete();
+        buffer.ReadFailure = readFailure;
+        submission.DisposeFailure = disposeFailure;
+        ring.Commit(reservation, submission, context);
+
+        try
+        {
+            AggregateException observed = Assert.Throws<AggregateException>(
+                () => ring.TryReadCompleted(out _));
+
+            await Assert.That(observed.InnerExceptions.Count).IsEqualTo(2);
+            await Assert.That(observed.InnerExceptions[0]).IsSameReferenceAs(readFailure);
+            await Assert.That(observed.InnerExceptions[1]).IsSameReferenceAs(disposeFailure);
+            await Assert.That(ring.InFlightCount).IsEqualTo(1);
+            await Assert.That(submission.IsDisposed).IsFalse();
+        }
+        finally
+        {
+            buffer.ReadFailure = null;
+            submission.DisposeFailure = null;
+            ring.Dispose();
+        }
+
+        await Assert.That(submission.IsDisposed).IsTrue();
+        await Assert.That(ring.InFlightCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ReadbackRingReleasesSlotAfterReadFailureWhenDisposalSucceeds()
+    {
+        using var device = new TestGraphicsDevice();
+        using var ring = new SilkPickReadbackRing(device, capacity: 2);
+        var context = new SilkPickReadbackContext(
+            CreateRequest(0, 0, 2, 2, stateRevision: 1, sceneRevision: 2),
+            1, 2, 3, device.PickDeviceGeneration, new ViewportDimensions(2, 2));
+        var readFailure = new InvalidOperationException("Injected read failure.");
+        await Assert.That(ring.TryAcquire(out SilkPickReadbackReservation reservation)).IsTrue();
+        var buffer = (TestReadbackBuffer)reservation.Buffer;
+        var submission = new TestSubmission();
+        submission.Complete();
+        buffer.ReadFailure = readFailure;
+        ring.Commit(reservation, submission, context);
+
+        InvalidOperationException observed = Assert.Throws<InvalidOperationException>(
+            () => ring.TryReadCompleted(out _));
+
+        await Assert.That(observed).IsSameReferenceAs(readFailure);
+        await Assert.That(submission.IsDisposed).IsTrue();
+        await Assert.That(ring.InFlightCount).IsEqualTo(0);
+        await Assert.That(ring.TryAcquire(out SilkPickReadbackReservation next)).IsTrue();
+        await Assert.That(ring.TryAcquire(out SilkPickReadbackReservation reused)).IsTrue();
+        await Assert.That(reused.Buffer).IsSameReferenceAs(reservation.Buffer);
+        ring.Cancel(next);
+        ring.Cancel(reused);
+    }
+
+    [Test]
+    public async Task ReadbackRingRetainsCompletedSlotAfterDisposalFailure()
+    {
+        using var device = new TestGraphicsDevice();
+        var ring = new SilkPickReadbackRing(device, capacity: 2);
+        var context = new SilkPickReadbackContext(
+            CreateRequest(0, 0, 2, 2, stateRevision: 1, sceneRevision: 2),
+            1, 2, 3, device.PickDeviceGeneration, new ViewportDimensions(2, 2));
+        var disposeFailure = new InvalidOperationException("Injected disposal failure.");
+        await Assert.That(ring.TryAcquire(out SilkPickReadbackReservation reservation)).IsTrue();
+        var buffer = (TestReadbackBuffer)reservation.Buffer;
+        var submission = new TestSubmission();
+        buffer.SetToken(0x44332211);
+        submission.Complete();
+        submission.DisposeFailure = disposeFailure;
+        ring.Commit(reservation, submission, context);
+
+        try
+        {
+            InvalidOperationException observed = Assert.Throws<InvalidOperationException>(
+                () => ring.TryReadCompleted(out _));
+
+            await Assert.That(observed).IsSameReferenceAs(disposeFailure);
+            await Assert.That(ring.InFlightCount).IsEqualTo(1);
+            await Assert.That(submission.IsDisposed).IsFalse();
+            submission.DisposeFailure = null;
+            await Assert.That(ring.TryReadCompleted(out SilkPickReadbackResult completed)).IsTrue();
+            await Assert.That(completed.Token).IsEqualTo(0x44332211u);
+            await Assert.That(ring.InFlightCount).IsEqualTo(0);
+        }
+        finally
+        {
+            submission.DisposeFailure = null;
+            ring.Dispose();
+        }
+    }
+
+    [Test]
     public async Task WarmReadbackRingOperationsDoNotAllocate()
     {
         using var device = new TestGraphicsDevice();
@@ -174,6 +280,84 @@ public sealed class SilkPickingTests
         await Assert.That(device.LastPickBaseTokens).Contains(range.FirstToken);
         await Assert.That(device.PickPipelineCreateCount).IsEqualTo(1);
         await Assert.That(device.ReadbackBufferCreateCount).IsEqualTo(3);
+    }
+
+    [Test]
+    [Arguments(RenderPickTarget.Edge, false)]
+    [Arguments(RenderPickTarget.Point, false)]
+    [Arguments(RenderPickTarget.Point, true)]
+    public async Task DerivedCornerPickDrawsAndResolvesEveryComponentCopy(
+        RenderPickTarget target,
+        bool orphan)
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = CreateColorTarget(device, 8, 6);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(8, 6));
+        ApplySubprimScene(renderer, 1, triangleLocal: true, orphan: orphan);
+
+        SilkPickSubprimKind kind = target == RenderPickTarget.Edge
+            ? SilkPickSubprimKind.Edge
+            : SilkPickSubprimKind.Point;
+        await Assert.That(renderer.Scene.PickIdentities.TryGetRange(
+            "/Quad", 0, kind, out SilkPickTokenRange range)).IsTrue();
+        uint tokenOffset = target == RenderPickTarget.Edge ? 1u : orphan ? 6u : 4u;
+        device.EnqueuePickToken(range.FirstToken + tokenOffset);
+        ValueTask<RenderPickResult> pending = renderer.PickAsync(
+            CreateRequest(3, 2, 8, 6, 5, 9, target));
+        _ = renderer.Render(color, depth, new SilkPickFrameBinding(5, 9));
+        RenderPickResult result = await pending;
+
+        SilkPickPrimitiveTopology topology = target == RenderPickTarget.Edge
+            ? SilkPickPrimitiveTopology.LineList
+            : SilkPickPrimitiveTopology.PointList;
+        TestPickDraw draw = device.PickDraws.Single(candidate => candidate.Topology == topology);
+        uint[] expectedIndices = target == RenderPickTarget.Edge
+            ? [0, 1, 3, 4, 1, 2, 4, 5, 5, 3]
+            : orphan ? [0, 1, 2, 3, 4, 5, 6] : [0, 1, 2, 3, 4, 5];
+        await Assert.That(draw.Indices.SequenceEqual(expectedIndices)).IsTrue();
+        await Assert.That(draw.BaseToken).IsEqualTo(range.FirstToken);
+        await Assert.That(result.Status).IsEqualTo(RenderPickStatus.Hit);
+        await Assert.That(result.PrimPath).IsEqualTo("/Quad");
+        await Assert.That(result.ElementIndex).IsEqualTo(orphan ? 4 : 0);
+        await Assert.That(result.BackendToken).IsEqualTo(range.FirstToken + tokenOffset);
+    }
+
+    [Test]
+    [Arguments(RenderPickTarget.Edge)]
+    [Arguments(RenderPickTarget.Point)]
+    public async Task CornerEligibilityChangesInvalidateInFlightSubprimPicks(RenderPickTarget target)
+    {
+        using var device = new TestGraphicsDevice { AutoCompletePickSubmissions = false };
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = CreateColorTarget(device, 8, 6);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(8, 6));
+        SilkPickSubprimKind kind = target == RenderPickTarget.Edge
+            ? SilkPickSubprimKind.Edge
+            : SilkPickSubprimKind.Point;
+        var binding = new SilkPickFrameBinding(5, 9);
+        ApplySubprimScene(renderer, 1, triangleLocal: false);
+
+        for (int step = 0; step < 2; step++)
+        {
+            await Assert.That(renderer.Scene.PickIdentities.TryGetRange(
+                "/Quad", 0, kind, out SilkPickTokenRange previous)).IsTrue();
+            device.EnqueuePickToken(previous.FirstToken);
+            ValueTask<RenderPickResult> pending = renderer.PickAsync(
+                CreateRequest(3, 2, 8, 6, 5, 9, target));
+            _ = renderer.Render(color, depth, binding);
+
+            ApplySubprimScene(renderer, checked((ulong)step + 2), triangleLocal: step == 0);
+            device.CompleteNextPick();
+            _ = renderer.Render(color, depth, binding);
+            RenderPickResult result = await pending;
+
+            await Assert.That(result.Status).IsEqualTo(RenderPickStatus.Stale);
+            await Assert.That(result.StaleReasons.HasFlag(RenderPickStaleReason.BackendState)).IsTrue();
+            await Assert.That(renderer.Scene.PickIdentities.TryResolve(previous.FirstToken, out _)).IsFalse();
+        }
     }
 
     [Test]
@@ -778,6 +962,22 @@ public sealed class SilkPickingTests
         return delta;
     }
 
+    private static void ApplySubprimScene(
+        SilkMeshRenderer renderer,
+        ulong pageRevision,
+        bool triangleLocal,
+        bool orphan = false)
+    {
+        byte[] frame = CreateFrameCommand(8, 6);
+        byte[] mesh = SilkSelectionOutlineTests.CreateSubprimQuadCommand(
+            triangleLocal: triangleLocal, orphan: orphan, sharedEdge: true);
+        var page = new byte[frame.Length + mesh.Length];
+        frame.CopyTo(page, 0);
+        mesh.CopyTo(page, frame.Length);
+        SilkSceneDelta delta = renderer.Scene.Apply(page, 2, pageRevision);
+        renderer.GpuResources.Apply(renderer.Scene, delta);
+    }
+
     private static SilkSceneDelta ApplyFrame(
         SilkMeshRenderer renderer,
         uint width,
@@ -921,6 +1121,8 @@ public sealed class SilkPickingTests
         internal ISilkGraphicsTexture? LastPickSource { get; set; }
 
         internal List<uint> LastPickBaseTokens { get; } = [];
+
+        internal List<TestPickDraw> PickDraws { get; } = [];
 
         public SilkGraphicsBackend Backend => SilkGraphicsBackend.Vulkan;
 
@@ -1073,6 +1275,17 @@ public sealed class SilkPickingTests
             _data.CopyTo(destination);
         }
 
+        internal uint[] ReadIndices(uint count)
+        {
+            var indices = new uint[checked((int)count)];
+            for (int index = 0; index < indices.Length; index++)
+            {
+                indices[index] = BinaryPrimitives.ReadUInt32LittleEndian(
+                    _data.AsSpan(index * sizeof(uint)));
+            }
+            return indices;
+        }
+
         protected override void ReleaseNative()
         {
         }
@@ -1118,11 +1331,16 @@ public sealed class SilkPickingTests
 
         public int ByteSize => _bytes.Length;
         internal int DiscardedFrames { get; private set; }
+        internal Exception? ReadFailure { get; set; }
         public void ReleaseDiscardedFrameResources() => DiscardedFrames++;
 
         public void ReadRgba8Pixel(Span<byte> destination)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (ReadFailure is { } failure)
+            {
+                throw failure;
+            }
             if (destination.Length != _bytes.Length)
             {
                 throw new ArgumentException(
@@ -1143,6 +1361,9 @@ public sealed class SilkPickingTests
         ISilkPickGraphicsCommandList
     {
         private TestReadbackBuffer? _destination;
+        private TestGraphicsBuffer? _indexBuffer;
+        private SilkPickPrimitiveTopology _topology;
+        private uint _baseToken;
 
         internal bool IsPick { get; private set; }
 
@@ -1169,8 +1390,11 @@ public sealed class SilkPickingTests
         }
 
         public void SetPickGraphicsPipeline(
-            ISilkPickGraphicsPipeline pipeline) =>
+            ISilkPickGraphicsPipeline pipeline)
+        {
             IsPick = true;
+            _topology = pipeline.Descriptor.PrimitiveTopology;
+        }
 
         public void SetViewport(SilkViewport viewport)
         {
@@ -1190,6 +1414,7 @@ public sealed class SilkPickingTests
 
         public void SetIndexBuffer(ISilkGraphicsBuffer buffer)
         {
+            _indexBuffer = (TestGraphicsBuffer)buffer;
         }
 
         public void SetUniformBuffer(
@@ -1215,11 +1440,17 @@ public sealed class SilkPickingTests
 
         public void SetPickBaseToken(uint baseToken)
         {
+            _baseToken = baseToken;
             device.LastPickBaseTokens.Add(baseToken);
         }
 
         public void DrawIndexed(uint indexCount)
         {
+            if (IsPick && _indexBuffer is not null)
+            {
+                device.PickDraws.Add(new TestPickDraw(
+                    _topology, _baseToken, _indexBuffer.ReadIndices(indexCount)));
+            }
         }
 
         public void DrawIndexedInstanced(uint indexCount, uint instanceCount)
@@ -1275,6 +1506,11 @@ public sealed class SilkPickingTests
         }
     }
 
+    private sealed record TestPickDraw(
+        SilkPickPrimitiveTopology Topology,
+        uint BaseToken,
+        uint[] Indices);
+
     private sealed class TestSubmission(Action? completion = null)
         : ISilkGraphicsSubmission
     {
@@ -1283,6 +1519,8 @@ public sealed class SilkPickingTests
         public bool IsCompleted { get; private set; }
 
         internal bool IsDisposed { get; private set; }
+
+        internal Exception? DisposeFailure { get; set; }
 
         public void Complete()
         {
@@ -1296,7 +1534,14 @@ public sealed class SilkPickingTests
 
         public void Wait() => Complete();
 
-        public void Dispose() => IsDisposed = true;
+        public void Dispose()
+        {
+            if (DisposeFailure is { } failure)
+            {
+                throw failure;
+            }
+            IsDisposed = true;
+        }
     }
 
     private sealed class CompletedSubmission : ISilkGraphicsSubmission

@@ -759,7 +759,7 @@ public sealed class OpenUsdMcpServiceTests
     {
         if (format == "exr" && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Core native runtime for this host.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
     }

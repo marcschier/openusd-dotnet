@@ -223,8 +223,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     internal void NotifySelectionOutlineDeviceLost()
     {
         NotifyDeviceLost();
-        AdvanceSelectionOutlineDeviceGeneration(deviceLost: true);
+        InvalidateSelectionOutlineAfterLoss();
     }
+
+    private void InvalidateSelectionOutlineAfterLoss() =>
+        AdvanceSelectionOutlineDeviceGeneration(deviceLost: true);
 
     internal void CountSelectionFramebufferCreation() =>
         Interlocked.Increment(ref _selectionFramebufferCreations);
@@ -1852,6 +1855,8 @@ internal sealed partial class VulkanSilkGraphicsCommandList
             throw new InvalidOperationException(
                 "The Vulkan selection-mask pipeline belongs to a stale device generation.");
         }
+        _pipeline = null;
+        _pickPipeline = null;
         _selectionMaskPipeline = vulkanPipeline;
         _commands.Add(VulkanGraphicsCommand.SetSelectionMaskPipeline(
             vulkanPipeline));

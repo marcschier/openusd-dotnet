@@ -29,6 +29,8 @@ internal static class MetalShaderResourceIndices
     internal static uint Map(SilkBindingKind kind, uint binding) =>
         kind switch
         {
+            SilkBindingKind.StorageBuffer when binding == SilkPtexCandidateBinding.Binding =>
+                SilkPtexCandidateBinding.MetalBuffer,
             SilkBindingKind.SampledTexture => binding switch
             {
                 SilkBindingLayoutDescriptor.BaseColorTextureBinding => 0,
@@ -57,6 +59,10 @@ internal static class MetalShaderResourceIndices
                 SilkBindingLayoutDescriptor.DetailNormalValuesTextureBinding => 21,
                 SilkBindingLayoutDescriptor.DiffuseValuesTextureBinding => 22,
                 SilkBindingLayoutDescriptor.EmissiveValuesTextureBinding => 23,
+                >= SilkBindingLayoutDescriptor.ShadowTransmissionTextureBinding and
+                    < SilkBindingLayoutDescriptor.ShadowTransmissionTextureBinding + 4 =>
+                    binding - SilkBindingLayoutDescriptor.ShadowTransmissionTextureBinding + 24,
+                SilkBindingLayoutDescriptor.VolumeOpaqueDepthTextureBinding => 28,
                 _ => binding
             },
             SilkBindingKind.Sampler => binding switch

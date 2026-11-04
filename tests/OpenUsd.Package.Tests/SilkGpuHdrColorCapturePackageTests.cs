@@ -33,7 +33,8 @@ public sealed class SilkGpuHdrColorCapturePackageTests
                         name.StartsWith(
                             "M:OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(",
                             StringComparison.Ordinal)) &&
-                        !name.Contains("SilkOpenColorIoProcessor", StringComparison.Ordinal);
+                        !name.Contains("SilkOpenColorIoProcessor", StringComparison.Ordinal) &&
+                        !name.Contains("SilkSceneIngestionOptions", StringComparison.Ordinal);
                 })
             ];
             await Assert.That(gpuMethods.Length).IsEqualTo(2);
@@ -47,6 +48,17 @@ public sealed class SilkGpuHdrColorCapturePackageTests
                 await Assert.That(method.Elements("exception").Select(exception => exception.Attribute("cref")?.Value)
                     .Contains("T:System.InvalidOperationException")).IsTrue();
             }
+            XElement ingestionMethod = documentation.Descendants("member").Single(member =>
+            {
+                string name = member.Attribute("name")?.Value ?? string.Empty;
+                return name.StartsWith(
+                    "M:OpenUsd.Rendering.Silk.SilkFrameCapturer.CaptureWithHdrColor(",
+                    StringComparison.Ordinal) &&
+                    name.Contains("SilkSceneIngestionOptions", StringComparison.Ordinal);
+            });
+            string ingestion = Normalize(ingestionMethod.Value);
+            await Assert.That(ingestion).Contains("completed-submission drainage");
+            await Assert.That(ingestion).Contains("current-frame HDR rules apply unchanged");
             string semantics = Normalize(documentation.Descendants("member").Single(member =>
                 member.Attribute("name")?.Value == "T:OpenUsd.Rendering.Silk.SilkHdrColorCaptureResult").Value);
             await Assert.That(semantics).Contains("GPU display transforms");

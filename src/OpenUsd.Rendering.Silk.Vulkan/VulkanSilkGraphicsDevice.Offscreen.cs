@@ -583,10 +583,10 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                         };
                         _api.CmdCopyImage(nativeCommands, copySource.Image, ImageLayout.TransferSrcOptimal,
                             copyDestination.Image, ImageLayout.TransferDstOptimal, 1, &imageCopy);
-                        Transition(nativeCommands, copyDestination.Image, copyDestination.AspectMask,
-                            ImageLayout.TransferDstOptimal, ImageLayout.TransferSrcOptimal);
                         finalLayouts[copySource] = ImageLayout.TransferSrcOptimal;
-                        finalLayouts[copyDestination] = ImageLayout.TransferSrcOptimal;
+                        // Keep the last write visible to the next consumer's barrier,
+                        // whether it samples, reads back, or copies this image again.
+                        finalLayouts[copyDestination] = ImageLayout.TransferDstOptimal;
                         break;
                     case SilkGraphicsCommandKind.UploadTexture:
                         VulkanSilkGraphicsTexture uploadTexture = command.Texture!;
@@ -946,7 +946,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                                 "The ordered Vulkan command stream has incomplete draw state.");
                         }
                         VulkanMaterialBinding[] bindingsForDraw = materialBindings.ToArray();
-                        if (!HasStorageBinding(bindingsForDraw, 6))
+                        if (currentPipeline.BindingLayout.DeclaresMaterialSlot(
+                                0, 6, SilkBindingKind.StorageBuffer) &&
+                            !HasStorageBinding(bindingsForDraw, 6))
                         {
                             bindingsForDraw =
                             [
@@ -1324,17 +1326,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 }
             }
             ThrowIfFailed(_api.EndCommandBuffer(nativeCommands), "vkEndCommandBuffer");
-            fence = SubmitCommandBuffer(nativeCommands);
-            if (commands.HasSelectionOutlineSubmission)
-            {
-                CountSelectionSubmission();
-            }
-            foreach (KeyValuePair<VulkanSilkGraphicsTexture, ImageLayout> layout in finalLayouts)
-            {
-                layout.Key.Layout = layout.Value;
-            }
-            success = true;
-            return new VulkanSilkGraphicsSubmission(
+            SubmissionOwnerCreationProbeForTesting?.Invoke(fence.Handle != 0);
+            var submission = new VulkanSilkGraphicsSubmission(
                 this,
                 _api,
                 _device,
@@ -1345,6 +1338,18 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 [.. drawResources],
                 [.. computeResources],
                 commands.HasSelectionOutlineSubmission);
+            fence = SubmitCommandBuffer(nativeCommands);
+            submission.SetFence(fence);
+            if (commands.HasSelectionOutlineSubmission)
+            {
+                CountSelectionSubmission();
+            }
+            foreach (KeyValuePair<VulkanSilkGraphicsTexture, ImageLayout> layout in finalLayouts)
+            {
+                layout.Key.Layout = layout.Value;
+            }
+            success = true;
+            return submission;
         }
         finally
         {
@@ -1536,12 +1541,13 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     private void WriteDrawDescriptors(
         DescriptorSet descriptorSet,
         VulkanSilkGraphicsBuffer uniformBuffer,
+        SilkBindingLayoutDescriptor layout,
         IReadOnlyList<VulkanMaterialBinding> bindings)
     {
         var bufferInfo = new DescriptorBufferInfo(
             uniformBuffer.Buffer,
             0,
-            80);
+            layout.UniformByteSize);
         var write = new WriteDescriptorSet
         {
             SType = StructureType.WriteDescriptorSet,
@@ -1552,11 +1558,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             PBufferInfo = &bufferInfo
         };
         _api.UpdateDescriptorSets(_device, 1, &write, 0, null);
-        WriteMaterialDescriptors(descriptorSet, bindings);
+        WriteMaterialDescriptors(descriptorSet, layout, bindings);
     }
 
     private void WriteMaterialDescriptors(
         DescriptorSet descriptorSet,
+        SilkBindingLayoutDescriptor layout,
         IReadOnlyList<VulkanMaterialBinding> bindings)
     {
         if (bindings.Count == 0)
@@ -1572,79 +1579,88 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         fixed (DescriptorBufferInfo* bufferPointer = bufferInfos)
         fixed (WriteDescriptorSet* writePointer = writes)
         {
+            int writeCount = 0;
             for (int index = 0; index < bindings.Count; index++)
             {
                 VulkanMaterialBinding binding = bindings[index];
+                if (!layout.DeclaresMaterialSlot(0, binding.Binding, binding.Kind))
+                {
+                    continue;
+                }
                 switch (binding.Kind)
                 {
                     case SilkBindingKind.StorageBuffer:
-                        bufferPointer[index] = new DescriptorBufferInfo(
+                        bufferPointer[writeCount] = new DescriptorBufferInfo(
                             binding.Buffer!.Buffer,
                             0,
                             binding.Buffer.Size);
-                        writePointer[index] = new WriteDescriptorSet
+                        writePointer[writeCount] = new WriteDescriptorSet
                         {
                             SType = StructureType.WriteDescriptorSet,
                             DstSet = descriptorSet,
                             DstBinding = binding.Binding,
                             DescriptorCount = 1,
                             DescriptorType = DescriptorType.StorageBuffer,
-                            PBufferInfo = &bufferPointer[index]
+                            PBufferInfo = &bufferPointer[writeCount]
                         };
                         break;
                     case SilkBindingKind.SampledTexture:
-                        imagePointer[index] = new DescriptorImageInfo(
+                        imagePointer[writeCount] = new DescriptorImageInfo(
                             default,
                             binding.Texture!.ImageView,
                             ImageLayout.ShaderReadOnlyOptimal);
-                        writePointer[index] = new WriteDescriptorSet
+                        writePointer[writeCount] = new WriteDescriptorSet
                         {
                             SType = StructureType.WriteDescriptorSet,
                             DstSet = descriptorSet,
                             DstBinding = binding.Binding,
                             DescriptorCount = 1,
                             DescriptorType = DescriptorType.SampledImage,
-                            PImageInfo = &imagePointer[index]
+                            PImageInfo = &imagePointer[writeCount]
                         };
                         break;
                     case SilkBindingKind.Sampler:
-                        imagePointer[index] = new DescriptorImageInfo(
+                        imagePointer[writeCount] = new DescriptorImageInfo(
                             binding.Sampler!.Sampler,
                             default,
                             ImageLayout.Undefined);
-                        writePointer[index] = new WriteDescriptorSet
+                        writePointer[writeCount] = new WriteDescriptorSet
                         {
                             SType = StructureType.WriteDescriptorSet,
                             DstSet = descriptorSet,
                             DstBinding = binding.Binding,
                             DescriptorCount = 1,
                             DescriptorType = DescriptorType.Sampler,
-                            PImageInfo = &imagePointer[index]
+                            PImageInfo = &imagePointer[writeCount]
                         };
                         break;
                     default:
-                        bufferPointer[index] = new DescriptorBufferInfo(
+                        bufferPointer[writeCount] = new DescriptorBufferInfo(
                             binding.Buffer!.Buffer,
                             0,
                             binding.Buffer.Size);
-                        writePointer[index] = new WriteDescriptorSet
+                        writePointer[writeCount] = new WriteDescriptorSet
                         {
                             SType = StructureType.WriteDescriptorSet,
                             DstSet = descriptorSet,
                             DstBinding = binding.Binding,
                             DescriptorCount = 1,
                             DescriptorType = DescriptorType.UniformBuffer,
-                            PBufferInfo = &bufferPointer[index]
+                            PBufferInfo = &bufferPointer[writeCount]
                         };
                         break;
                 }
+                writeCount++;
             }
-            _api.UpdateDescriptorSets(
-                _device,
-                (uint)bindings.Count,
-                writePointer,
-                0,
-                null);
+            if (writeCount != 0)
+            {
+                _api.UpdateDescriptorSets(
+                    _device,
+                    (uint)writeCount,
+                    writePointer,
+                    0,
+                    null);
+            }
         }
     }
 
@@ -1718,6 +1734,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             WriteDrawDescriptors(
                 descriptorSet,
                 command.UniformBuffer,
+                command.Pipeline.BindingLayout,
                 command.MaterialBindings);
             framebuffer = CreateDrawFramebuffer(command);
             return new VulkanDrawSubmissionResource(
@@ -1806,16 +1823,20 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         ObjectDisposedException.ThrowIf(_disposed, this);
         texture.ThrowIfDisposed();
         ulong size = checked((ulong)destination.Length);
-        CreateReadbackBuffer(
-            size,
-            out global::Silk.NET.Vulkan.Buffer buffer,
-            out DeviceMemory memory,
-            out IDisposable? reservation);
-        CommandPool pool = default;
-        Fence fence = default;
+        var retirement = new VulkanSilkReadbackRetirement(this, _api, _device);
         try
         {
-            CreateCommandBuffer(out pool, out CommandBuffer commands);
+            retirement.SetSourceLease(texture.AcquireLease());
+            RegisterDependentObject();
+            retirement.SetDependentRegistered();
+            CreateReadbackBuffer(
+                size,
+                out global::Silk.NET.Vulkan.Buffer buffer,
+                out DeviceMemory memory,
+                out _,
+                retirement);
+            CreateCommandBuffer(out CommandPool pool, out CommandBuffer commands);
+            retirement.SetCommandPool(pool);
             Transition(
                 commands,
                 texture.Image,
@@ -1847,9 +1868,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 1,
                 &region);
             ThrowIfFailed(_api.EndCommandBuffer(commands), "vkEndCommandBuffer");
-            fence = SubmitCommandBuffer(commands);
-            WaitForFence(fence);
+            Fence fence = SubmitCommandBuffer(commands);
+            retirement.SetSubmission(fence);
             texture.Layout = ImageLayout.TransferSrcOptimal;
+            Result waitResult = GetReadbackFenceResult(fence);
+            retirement.ObserveWaitResult(waitResult);
+            ThrowIfDeviceCallFailed(waitResult, "vkWaitForFences");
 
             void* mapped = null;
             ThrowIfFailed(
@@ -1864,20 +1888,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 _api.UnmapMemory(_device, memory);
             }
         }
-        finally
+        catch (Exception failure)
         {
-            if (fence.Handle != 0)
-            {
-                _api.DestroyFence(_device, fence, null);
-            }
-            if (pool.Handle != 0)
-            {
-                _api.DestroyCommandPool(_device, pool, null);
-            }
-            _api.DestroyBuffer(_device, buffer, null);
-            _api.FreeMemory(_device, memory, null);
-            reservation?.Dispose();
+            retirement.DisposeAfterFailure(failure);
+            throw;
         }
+        retirement.Dispose();
     }
 
     internal void DestroyTexture(
@@ -1958,20 +1974,23 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         ulong size,
         out global::Silk.NET.Vulkan.Buffer buffer,
         out DeviceMemory memory,
-        out IDisposable? reservation) =>
+        out IDisposable? reservation,
+        VulkanSilkReadbackRetirement? retirement = null) =>
         CreateHostBuffer(
             size,
             BufferUsageFlags.TransferDstBit,
             out buffer,
             out memory,
-            out reservation);
+            out reservation,
+            retirement);
 
     private void CreateHostBuffer(
         ulong size,
         BufferUsageFlags usage,
         out global::Silk.NET.Vulkan.Buffer buffer,
         out DeviceMemory memory,
-        out IDisposable? reservation)
+        out IDisposable? reservation,
+        VulkanSilkReadbackRetirement? retirement = null)
     {
         var bufferInfo = new BufferCreateInfo
         {
@@ -1983,12 +2002,17 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         global::Silk.NET.Vulkan.Buffer createdBuffer = default;
         DeviceMemory allocatedMemory = default;
         IDisposable? pendingReservation = ReserveStagingAllocation(size);
+        retirement?.SetReservation(pendingReservation);
         bool success = false;
         try
         {
-            ThrowIfFailed(
-                _api.CreateBuffer(_device, &bufferInfo, null, &createdBuffer),
-                "vkCreateBuffer");
+            Result result = _api.CreateBuffer(_device, &bufferInfo, null, &createdBuffer);
+            retirement?.SetBuffer(createdBuffer);
+            ThrowIfFailed(result, "vkCreateBuffer");
+            if (retirement is not null)
+            {
+                ReadbackBufferCreationProbeForTesting?.Invoke();
+            }
             _api.GetBufferMemoryRequirements(
                 _device,
                 createdBuffer,
@@ -2002,9 +2026,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     MemoryPropertyFlags.HostVisibleBit |
                     MemoryPropertyFlags.HostCoherentBit)
             };
-            ThrowIfFailed(
-                _api.AllocateMemory(_device, &allocationInfo, null, &allocatedMemory),
-                "vkAllocateMemory");
+            result = _api.AllocateMemory(_device, &allocationInfo, null, &allocatedMemory);
+            retirement?.SetMemory(allocatedMemory);
+            ThrowIfFailed(result, "vkAllocateMemory");
             ThrowIfFailed(
                 _api.BindBufferMemory(_device, createdBuffer, allocatedMemory, 0),
                 "vkBindBufferMemory");
@@ -2015,15 +2039,15 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
         finally
         {
-            if (!success && createdBuffer.Handle != 0)
+            if (!success && retirement is null && createdBuffer.Handle != 0)
             {
                 _api.DestroyBuffer(_device, createdBuffer, null);
             }
-            if (!success && allocatedMemory.Handle != 0)
+            if (!success && retirement is null && allocatedMemory.Handle != 0)
             {
                 _api.FreeMemory(_device, allocatedMemory, null);
             }
-            if (!success)
+            if (!success && retirement is null)
             {
                 pendingReservation?.Dispose();
             }
@@ -2098,11 +2122,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 CommandBufferCount = 1,
                 PCommandBuffers = &commands
             };
-            Result submitted = _api.QueueSubmit(_queue, 1, &submitInfo, fence);
-            if (TryConsumeOffscreenSubmitDeviceLossForTesting())
-            {
-                submitted = Result.ErrorDeviceLost;
-            }
+            Result submitted = TryConsumeOffscreenSubmitDeviceLossForTesting()
+                ? Result.ErrorDeviceLost
+                : _api.QueueSubmit(_queue, 1, &submitInfo, fence);
             ThrowIfDeviceCallFailed(submitted, "vkQueueSubmit");
             success = true;
             return fence;
@@ -2116,11 +2138,20 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
     }
 
-    private void WaitForFence(Fence fence)
+    private Result GetReadbackFenceResult(Fence fence)
     {
-        ThrowIfDeviceCallFailed(
-            _api.WaitForFences(_device, 1, &fence, true, ulong.MaxValue),
-            "vkWaitForFences");
+        Result result = _api.WaitForFences(_device, 1, &fence, true, ulong.MaxValue);
+        int injected = Interlocked.Exchange(ref _nextReadbackFenceFailureForTesting, 0);
+        if (result == Result.Success)
+        {
+            result = injected switch
+            {
+                1 => Result.ErrorOutOfHostMemory,
+                2 => Result.ErrorDeviceLost,
+                _ => result
+            };
+        }
+        return result;
     }
 
     /// <summary>
@@ -2137,7 +2168,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         ImageLayout after,
         uint levelCount = 1)
     {
-        if (before == after)
+        if (before == after && after != ImageLayout.TransferDstOptimal)
         {
             return;
         }
@@ -2181,7 +2212,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             &barrier);
     }
 
-    private static void GetTransitionMasks(
+    internal static void GetTransitionMasks(
         ImageLayout before,
         ImageLayout after,
         out AccessFlags sourceAccess,
@@ -2193,9 +2224,10 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         {
             ImageLayout.TransferDstOptimal => AccessFlags.TransferWriteBit,
             ImageLayout.TransferSrcOptimal => AccessFlags.TransferReadBit,
-            ImageLayout.ColorAttachmentOptimal => AccessFlags.ColorAttachmentWriteBit,
+            ImageLayout.ColorAttachmentOptimal =>
+                AccessFlags.ColorAttachmentReadBit | AccessFlags.ColorAttachmentWriteBit,
             ImageLayout.DepthStencilAttachmentOptimal =>
-                AccessFlags.DepthStencilAttachmentWriteBit,
+                AccessFlags.DepthStencilAttachmentReadBit | AccessFlags.DepthStencilAttachmentWriteBit,
             ImageLayout.DepthStencilReadOnlyOptimal =>
                 AccessFlags.DepthStencilAttachmentReadBit |
                 AccessFlags.ShaderReadBit,
@@ -2206,9 +2238,10 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         {
             ImageLayout.TransferDstOptimal => AccessFlags.TransferWriteBit,
             ImageLayout.TransferSrcOptimal => AccessFlags.TransferReadBit,
-            ImageLayout.ColorAttachmentOptimal => AccessFlags.ColorAttachmentWriteBit,
+            ImageLayout.ColorAttachmentOptimal =>
+                AccessFlags.ColorAttachmentReadBit | AccessFlags.ColorAttachmentWriteBit,
             ImageLayout.DepthStencilAttachmentOptimal =>
-                AccessFlags.DepthStencilAttachmentWriteBit,
+                AccessFlags.DepthStencilAttachmentReadBit | AccessFlags.DepthStencilAttachmentWriteBit,
             ImageLayout.DepthStencilReadOnlyOptimal =>
                 AccessFlags.DepthStencilAttachmentReadBit |
                 AccessFlags.ShaderReadBit,
@@ -2221,9 +2254,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             ImageLayout.ColorAttachmentOptimal =>
                 PipelineStageFlags.ColorAttachmentOutputBit,
             ImageLayout.DepthStencilAttachmentOptimal =>
-                PipelineStageFlags.EarlyFragmentTestsBit,
+                PipelineStageFlags.EarlyFragmentTestsBit |
+                PipelineStageFlags.LateFragmentTestsBit,
             ImageLayout.DepthStencilReadOnlyOptimal =>
                 PipelineStageFlags.EarlyFragmentTestsBit |
+                PipelineStageFlags.LateFragmentTestsBit |
                 PipelineStageFlags.FragmentShaderBit,
             ImageLayout.ShaderReadOnlyOptimal =>
                 PipelineStageFlags.FragmentShaderBit,
@@ -2234,9 +2269,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             ImageLayout.ColorAttachmentOptimal =>
                 PipelineStageFlags.ColorAttachmentOutputBit,
             ImageLayout.DepthStencilAttachmentOptimal =>
-                PipelineStageFlags.EarlyFragmentTestsBit,
+                PipelineStageFlags.EarlyFragmentTestsBit |
+                PipelineStageFlags.LateFragmentTestsBit,
             ImageLayout.DepthStencilReadOnlyOptimal =>
                 PipelineStageFlags.EarlyFragmentTestsBit |
+                PipelineStageFlags.LateFragmentTestsBit |
                 PipelineStageFlags.FragmentShaderBit,
             ImageLayout.ShaderReadOnlyOptimal =>
                 PipelineStageFlags.FragmentShaderBit,
@@ -2417,6 +2454,11 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     private bool _shadowRendering;
     private bool _submitted;
     private bool _disposed;
+
+    private SilkBindingLayoutDescriptor? ActiveUniformLayout =>
+        _selectionScope == VulkanSelectionRenderingScope.Mask
+            ? null
+            : _pipeline?.BindingLayout;
 
     internal VulkanSilkGraphicsDevice Device { get; } = device;
 
@@ -2663,14 +2705,8 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
     {
         ThrowIfRendering();
         VulkanSilkGraphicsBuffer vulkanBuffer = ValidateBuffer(buffer);
-        if (setIndex != 0 || binding != 0 ||
-            !vulkanBuffer.Usage.HasFlag(SilkBufferUsage.Uniform) ||
-            vulkanBuffer.Size < 80)
-        {
-            throw new ArgumentException(
-                "SceneParameters requires an 80-byte uniform buffer at set 0, binding 0.",
-                nameof(buffer));
-        }
+        SilkGraphicsUniformBinding.ValidateBinding(
+            setIndex, binding, vulkanBuffer, ActiveUniformLayout);
         _uniformBuffer = vulkanBuffer;
         _commands.Add(VulkanGraphicsCommand.SetUniformBuffer(
             setIndex,
@@ -2744,6 +2780,7 @@ internal sealed partial class VulkanSilkGraphicsCommandList(VulkanSilkGraphicsDe
             throw new InvalidOperationException(
                 "Indexed drawing requires attachments, pipeline, viewport, scissor, and all buffers.");
         }
+        SilkGraphicsUniformBinding.ValidateDraw(_uniformBuffer, ActiveUniformLayout);
         if (checked((nuint)indexCount * 2) > _indexBuffer.Size)
         {
             throw new ArgumentOutOfRangeException(nameof(indexCount));
@@ -3351,152 +3388,302 @@ internal sealed unsafe class VulkanSilkGraphicsSubmission(
     VulkanDrawSubmissionResource[] drawResources,
     VulkanComputeSubmissionResource[] computeResources,
     bool selectionOutlineSubmission)
-    : ISilkGraphicsSubmission
+    : SilkPendingSubmissionRetirement, ISilkGraphicsSubmission
 {
     private readonly VulkanSilkGraphicsDevice _owner = owner;
     private readonly Vk _api = api;
     private readonly Device _device = device;
     private CommandPool _pool = pool;
     private Fence _fence = fence;
-    private IDisposable[]? _leases = leases;
+    private readonly object _retirementGate = leases;
+    private IDisposable?[]? _leases = leases;
+    private bool _releasingLeases;
     private VulkanUploadResource[]? _uploadResources = uploadResources;
     private VulkanDrawSubmissionResource[]? _drawResources = drawResources;
     private VulkanComputeSubmissionResource[]? _computeResources = computeResources;
     private readonly bool _selectionOutlineSubmission = selectionOutlineSubmission;
+    private bool _disposeRequested;
+    private bool _retired;
+    private bool _completionObserved;
+    private bool _deviceLossObserved;
+    private bool _disposed;
+
+    internal void SetFence(Fence fence) => _fence = fence;
 
     public bool IsCompleted
     {
         get
         {
-            ObjectDisposedException.ThrowIf(_fence.Handle == 0, this);
-            Result result =
-                _selectionOutlineSubmission &&
-                _owner.TryConsumeSelectionOutlineFenceFailureForTesting(
-                    out Result injected)
-                    ? injected
-                    : _api.GetFenceStatus(_device, _fence);
-            if (result == Result.Success)
+            lock (_retirementGate)
             {
-                ReleaseCompletedResources();
-                return true;
-            }
-            if (result == Result.ErrorDeviceLost)
-            {
-                _owner.NotifyDeviceLost();
-                _owner.NotifyPickDeviceLost();
-                if (_selectionOutlineSubmission)
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                ThrowIfDeviceLossObserved();
+                if (_retired)
                 {
-                    _owner.NotifySelectionOutlineDeviceLost();
+                    return true;
                 }
-                ReleaseCompletedResources();
+                try
+                {
+                    if (_completionObserved)
+                    {
+                        ReleaseCompletedResources();
+                        return true;
+                    }
+                    Result result =
+                        _selectionOutlineSubmission &&
+                        _owner.TryConsumeSelectionOutlineFenceFailureForTesting(
+                            out Result injected)
+                            ? injected
+                            : _api.GetFenceStatus(_device, _fence);
+                    if (result == Result.Success)
+                    {
+                        _completionObserved = true;
+                        ReleaseCompletedResources();
+                        return true;
+                    }
+                    if (result == Result.ErrorDeviceLost)
+                    {
+                        _deviceLossObserved = true;
+                        _owner.NotifyDeviceLost();
+                        _owner.NotifyPickDeviceLost();
+                        if (_selectionOutlineSubmission)
+                        {
+                            _owner.NotifySelectionOutlineDeviceLost();
+                        }
+                        ReleaseCompletedResources();
+                    }
+                    if (result == Result.NotReady)
+                    {
+                        return false;
+                    }
+                    VulkanSilkGraphicsDevice.ThrowIfFailed(result, "vkGetFenceStatus");
+                    return false;
+                }
+                catch
+                {
+                    _owner.RetainPendingSubmission(this);
+                    throw;
+                }
             }
-            if (result == Result.NotReady)
-            {
-                return false;
-            }
-            VulkanSilkGraphicsDevice.ThrowIfFailed(result, "vkGetFenceStatus");
-            return false;
         }
     }
 
     public void Wait()
     {
-        ObjectDisposedException.ThrowIf(_fence.Handle == 0, this);
-        Result result = WaitForCompletion();
-        if (IsTerminal(result))
+        lock (_retirementGate)
         {
-            ReleaseCompletedResources();
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ThrowIfDeviceLossObserved();
+            if (_retired)
+            {
+                return;
+            }
+            try
+            {
+                Result result = _completionObserved ? Result.Success : WaitForCompletion();
+                try
+                {
+                    VulkanSilkGraphicsDevice.ThrowIfFailed(result, "vkWaitForFences");
+                    _completionObserved = true;
+                }
+                catch (Exception failure)
+                {
+                    if (IsTerminal(result))
+                    {
+                        try
+                        {
+                            ReleaseCompletedResources();
+                        }
+                        catch (Exception cleanup)
+                        {
+                            throw new AggregateException(
+                                "Vulkan submission wait and resource retirement failed.",
+                                failure, cleanup);
+                        }
+                    }
+                    throw;
+                }
+                ReleaseCompletedResources();
+            }
+            catch
+            {
+                _owner.RetainPendingSubmission(this);
+                throw;
+            }
         }
-        VulkanSilkGraphicsDevice.ThrowIfFailed(result, "vkWaitForFences");
     }
 
     public void Dispose()
     {
-        if (_fence.Handle == 0)
+        lock (_retirementGate)
         {
-            return;
-        }
-        Result result = WaitForCompletion();
-        bool terminal = IsTerminal(result);
-        try
-        {
-            VulkanSilkGraphicsDevice.ThrowIfFailed(result, "vkWaitForFences");
-        }
-        finally
-        {
-            if (terminal)
+            if (_disposed)
             {
-                ReleaseCompletedResources();
-                _api.DestroyFence(_device, _fence, null);
-                _api.DestroyCommandPool(_device, _pool, null);
-                _fence = default;
-                _pool = default;
-                _owner.ReleaseDependentObject();
+                return;
             }
+            _disposeRequested = true;
+            if (_retired)
+            {
+                _disposed = true;
+                return;
+            }
+            try
+            {
+                Result result = _completionObserved || _fence.Handle == 0
+                    ? Result.Success : WaitForCompletion();
+                try
+                {
+                    VulkanSilkGraphicsDevice.ThrowIfFailed(result, "vkWaitForFences");
+                    _completionObserved = true;
+                }
+                catch (Exception failure)
+                {
+                    if (IsTerminal(result))
+                    {
+                        try
+                        {
+                            CompleteRetirement();
+                        }
+                        catch (Exception cleanup)
+                        {
+                            throw new AggregateException(
+                                "Vulkan submission wait and disposal failed.", failure, cleanup);
+                        }
+                    }
+                    throw;
+                }
+                CompleteRetirement();
+            }
+            catch
+            {
+                if (!_retired)
+                {
+                    _owner.RetainPendingSubmission(this);
+                }
+                throw;
+            }
+        }
+    }
+
+    internal override void RetireAfterDeviceIdle()
+    {
+        lock (_retirementGate)
+        {
+            if (!_retired)
+            {
+                _deviceLossObserved |= !_completionObserved && _owner.IsPickDeviceLost;
+                _completionObserved |= !_deviceLossObserved;
+                CompleteRetirement();
+            }
+        }
+    }
+
+    private void CompleteRetirement()
+    {
+        ReleaseCompletedResources();
+        if (_fence.Handle != 0)
+        {
+            _api.DestroyFence(_device, _fence, null);
+            _fence = default;
+        }
+        if (_pool.Handle != 0)
+        {
+            _api.DestroyCommandPool(_device, _pool, null);
+            _pool = default;
+        }
+        _owner.ReleaseDependentObject();
+        _retired = true;
+        _disposed = _disposeRequested;
+        _owner.RemovePendingSubmission(this);
+    }
+
+    private void ThrowIfDeviceLossObserved()
+    {
+        if (_deviceLossObserved)
+        {
+            VulkanSilkGraphicsDevice.ThrowIfFailed(Result.ErrorDeviceLost, "vkWaitForFences");
         }
     }
 
     private void ReleaseCompletedResources()
     {
-        IDisposable[]? leases = Interlocked.Exchange(ref _leases, null);
-        if (leases is not null)
+        lock (_retirementGate)
         {
-            foreach (IDisposable lease in leases)
-            {
-                lease.Dispose();
-            }
+            RetireOwnedResources(_api, _device, ref _leases, ref _releasingLeases,
+                ref _uploadResources, ref _drawResources, ref _computeResources);
         }
-        VulkanUploadResource[]? uploads =
-            Interlocked.Exchange(ref _uploadResources, null);
-        if (uploads is not null)
+    }
+
+    internal static void RetireOwnedResources(
+        Vk? api, Device device, ref IDisposable?[]? leases, ref bool releasingLeases,
+        ref VulkanUploadResource[]? uploadResources, ref VulkanDrawSubmissionResource[]? drawResources,
+        ref VulkanComputeSubmissionResource[]? computeResources)
+    {
+        SilkOwnedResourceLeases.Dispose(ref leases, ref releasingLeases);
+        if (uploadResources is { } uploads)
         {
-            foreach (VulkanUploadResource upload in uploads)
+            for (int index = 0; index < uploads.Length; index++)
             {
+                VulkanUploadResource upload = uploads[index];
                 if (upload.Buffer.Handle != 0)
                 {
-                    _api.DestroyBuffer(_device, upload.Buffer, null);
+                    ArgumentNullException.ThrowIfNull(api);
+                    api.DestroyBuffer(device, upload.Buffer, null);
+                    upload = upload with { Buffer = default };
+                    uploads[index] = upload;
                 }
                 if (upload.Memory.Handle != 0)
                 {
-                    _api.FreeMemory(_device, upload.Memory, null);
+                    ArgumentNullException.ThrowIfNull(api);
+                    api.FreeMemory(device, upload.Memory, null);
+                    upload = upload with { Memory = default };
+                    uploads[index] = upload;
                 }
                 upload.Reservation?.Dispose();
+                uploads[index] = default;
             }
+            uploadResources = null;
         }
-        VulkanDrawSubmissionResource[]? draws =
-            Interlocked.Exchange(ref _drawResources, null);
-        if (draws is not null)
+        if (drawResources is { } draws)
         {
-            foreach (VulkanDrawSubmissionResource draw in draws)
+            for (int index = 0; index < draws.Length; index++)
             {
+                VulkanDrawSubmissionResource draw = draws[index];
                 if (draw.Framebuffer.Handle != 0)
                 {
-                    _api.DestroyFramebuffer(_device, draw.Framebuffer, null);
+                    ArgumentNullException.ThrowIfNull(api);
+                    api.DestroyFramebuffer(device, draw.Framebuffer, null);
+                    draw = draw with { Framebuffer = default };
+                    draws[index] = draw;
                 }
                 if (draw.DescriptorTables is not null)
                 {
                     draw.DescriptorTables.Free(draw.DescriptorSet);
+                    draw = draw with { DescriptorTables = null, DescriptorSet = default };
+                    draws[index] = draw;
                 }
                 if (draw.DescriptorPool.Handle != 0)
                 {
-                    _api.DestroyDescriptorPool(_device, draw.DescriptorPool, null);
+                    ArgumentNullException.ThrowIfNull(api);
+                    api.DestroyDescriptorPool(device, draw.DescriptorPool, null);
                 }
+                draws[index] = default;
             }
+            drawResources = null;
         }
-        VulkanComputeSubmissionResource[]? computes =
-            Interlocked.Exchange(ref _computeResources, null);
-        if (computes is not null)
+        if (computeResources is { } computes)
         {
-            foreach (VulkanComputeSubmissionResource compute in computes)
+            for (int index = 0; index < computes.Length; index++)
             {
+                VulkanComputeSubmissionResource compute = computes[index];
                 if (compute.DescriptorPool.Handle != 0)
                 {
-                    _api.DestroyDescriptorPool(
-                        _device,
-                        compute.DescriptorPool,
-                        null);
+                    ArgumentNullException.ThrowIfNull(api);
+                    api.DestroyDescriptorPool(device, compute.DescriptorPool, null);
                 }
+                computes[index] = default;
             }
+            computeResources = null;
         }
     }
 
@@ -3516,6 +3703,7 @@ internal sealed unsafe class VulkanSilkGraphicsSubmission(
         }
         if (result == Result.ErrorDeviceLost)
         {
+            _deviceLossObserved = true;
             _owner.NotifyDeviceLost();
             _owner.NotifyPickDeviceLost();
             if (_selectionOutlineSubmission)
@@ -3526,10 +3714,7 @@ internal sealed unsafe class VulkanSilkGraphicsSubmission(
         return result;
     }
 
-    private bool IsTerminal(Result result) =>
+    private static bool IsTerminal(Result result) =>
         result == Result.Success ||
-        result == Result.ErrorDeviceLost ||
-        (_selectionOutlineSubmission &&
-         result != Result.NotReady &&
-         result != Result.Timeout);
+        result == Result.ErrorDeviceLost;
 }

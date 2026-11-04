@@ -1,0 +1,517 @@
+{
+  "schemaVersion": 2,
+  "source": "eng/shaders/sources/mesh.slang",
+  "entryPoint": {
+    "name": "volumeVertexMain",
+    "stage": "vertex",
+    "profile": "vs_6_0",
+    "threadGroupSize": null
+  },
+  "resources": [
+    {
+      "name": "SceneParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "b",
+          "register": 0,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 0,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "objectToClip",
+              "type": {
+                "kind": "matrix",
+                "rowCount": 4,
+                "columnCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 64,
+                "elementStride": 0,
+                "matrixStride": 16,
+                "matrixLayout": "row-major"
+              }
+            },
+            {
+              "name": "tint",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 64,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 80
+      },
+      "vulkanLayout": {
+        "kind": "constantBuffer",
+        "access": "constant",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": null,
+          "fields": [
+            {
+              "name": "objectToClip",
+              "type": {
+                "kind": "matrix",
+                "rowCount": 4,
+                "columnCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 64,
+                "elementStride": 0,
+                "matrixStride": 16,
+                "matrixLayout": "row-major"
+              }
+            },
+            {
+              "name": "tint",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 64,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 0,
+        "size": 80
+      }
+    },
+    {
+      "name": "instanceParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 6,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 6,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": "InstanceParameters",
+          "fields": [
+            {
+              "name": "objectToClip",
+              "type": {
+                "kind": "matrix",
+                "rowCount": 4,
+                "columnCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 64,
+                "elementStride": 0,
+                "matrixStride": 16,
+                "matrixLayout": "row-major"
+              }
+            },
+            {
+              "name": "tint",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 64,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 80,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "structuredBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "struct",
+          "name": "InstanceParameters",
+          "fields": [
+            {
+              "name": "objectToClip",
+              "type": {
+                "kind": "matrix",
+                "rowCount": 4,
+                "columnCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 0,
+                "size": 64,
+                "elementStride": 0,
+                "matrixStride": 16,
+                "matrixLayout": "row-major"
+              }
+            },
+            {
+              "name": "tint",
+              "type": {
+                "kind": "vector",
+                "elementCount": 4,
+                "elementType": {
+                  "kind": "scalar",
+                  "scalarType": "float32"
+                }
+              },
+              "layout": {
+                "offset": 64,
+                "size": 16,
+                "elementStride": 4,
+                "matrixStride": null
+              }
+            }
+          ]
+        },
+        "elementStride": 80,
+        "size": null
+      }
+    },
+    {
+      "name": "frameParameters",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 8,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 8,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "byteAddressBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "byteAddressBuffer",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": null,
+        "elementStride": null,
+        "size": null
+      }
+    }
+  ],
+  "stageInputs": [
+    {
+      "name": "position",
+      "semantic": {
+        "name": "POSITION",
+        "index": 0,
+        "systemValue": false
+      },
+      "location": 0,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "normal",
+      "semantic": {
+        "name": "NORMAL",
+        "index": 0,
+        "systemValue": false
+      },
+      "location": 1,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "instanceId",
+      "semantic": {
+        "name": "SV_INSTANCEID",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "uint32"
+      }
+    }
+  ],
+  "stageOutputs": [
+    {
+      "name": "position",
+      "semantic": {
+        "name": "SV_POSITION",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "eyePosition",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 1,
+        "systemValue": false
+      },
+      "location": 0,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "objectPosition",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 2,
+        "systemValue": false
+      },
+      "location": 1,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "volumeEyeToObjectRow0",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 6,
+        "systemValue": false
+      },
+      "location": 2,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "volumeEyeToObjectRow1",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 7,
+        "systemValue": false
+      },
+      "location": 3,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "volumeEyeToObjectRow2",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 8,
+        "systemValue": false
+      },
+      "location": 4,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "volumeCameraPosition",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 9,
+        "systemValue": false
+      },
+      "location": 5,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "volumeRayValid",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 11,
+        "systemValue": false
+      },
+      "location": 6,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "float32"
+      }
+    },
+    {
+      "name": "volumeClipPosition",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 12,
+        "systemValue": false
+      },
+      "location": 7,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "normal",
+      "semantic": {
+        "name": "NORMAL",
+        "index": 0,
+        "systemValue": false
+      },
+      "location": 8,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "tint",
+      "semantic": {
+        "name": "COLOR",
+        "index": 0,
+        "systemValue": false
+      },
+      "location": 9,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "worldNormal",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 3,
+        "systemValue": false
+      },
+      "location": 10,
+      "type": {
+        "kind": "vector",
+        "elementCount": 3,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    }
+  ]
+}

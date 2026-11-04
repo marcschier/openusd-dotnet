@@ -10,6 +10,29 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkPhysicsOverrideTests
 {
     [Test]
+    public async Task WarmNestedOverrideCheckpointsAndRefreshReuseManagedStorage()
+    {
+        using var scene = new SilkSceneState();
+        _ = scene.Apply(CreateMeshCommand(), 1, 1);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBind(id, "/Triangle");
+        var overrides = new SilkPhysicsTransformOverrides(1);
+        PhysicsRenderOverrideView view = CreateView(id, 5, 6, 7);
+        long allocated = MeasureWarmAllocations(() =>
+        {
+            using SilkPhysicsTransformOverrides.PreparedState outer = overrides.PrepareState();
+            using SilkPhysicsTransformOverrides.PreparedState inner = overrides.PrepareState();
+            overrides.Stage(bindings, view);
+            _ = overrides.RefreshStaged(scene);
+            inner.Commit();
+            outer.Commit();
+        });
+        await Assert.That(allocated).IsEqualTo(0L);
+        await Assert.That(overrides.GetTransform(7)[12]).IsEqualTo(5.0);
+    }
+
+    [Test]
     public async Task EqualPageGeometrySharesOnlyImmutableArraysAcrossDistinctPrimIdentities()
     {
         var scene = new SilkSceneState();

@@ -35,6 +35,10 @@ public sealed partial class SilkHdrColorCapturePackageTests
             await Assert.That(PublicMethods(metadata, options)).IsEquivalentTo(
                 [
                     ".ctor", "get_Default", "get_IncludeDeviceDepth",
+                    "get_IncludePrimId", "set_IncludePrimId",
+                    "get_IncludeInstanceId", "set_IncludeInstanceId",
+                    "get_IncludeElementId", "set_IncludeElementId",
+                    "get_IncludeNormal", "set_IncludeNormal",
                     "get_MaximumPixelCount", "get_MaximumReadbackBytes"
                 ]);
             MethodDefinition constructor = options.GetMethods().Select(metadata.GetMethodDefinition)
@@ -103,9 +107,12 @@ public sealed partial class SilkHdrColorCapturePackageTests
         MethodDefinition[] methods =
         [
             .. FindType(metadata, type).GetMethods().Select(metadata.GetMethodDefinition)
-                .Where(method => metadata.GetString(method.Name) == name)
+                .Where(method =>
+                    (method.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public &&
+                    metadata.GetString(method.Name) == name)
         ];
-        await Assert.That(methods.Length).IsEqualTo(2);
+        bool supportsIngestionOptions = type == "SilkFrameCapturer";
+        await Assert.That(methods.Length).IsEqualTo(supportsIngestionOptions ? 3 : 2);
         string[][] actual =
         [
             .. methods.Select(method => method.GetParameters()
@@ -118,6 +125,12 @@ public sealed partial class SilkHdrColorCapturePackageTests
             [.. builtinParameters[..processorIndex], "ocioProcessor", .. builtinParameters[processorIndex..]];
         await Assert.That(actual.Any(parameters => parameters.SequenceEqual(builtinParameters))).IsTrue();
         await Assert.That(actual.Any(parameters => parameters.SequenceEqual(ocioParameters))).IsTrue();
+        if (supportsIngestionOptions)
+        {
+            string[] ingestionParameters =
+                [.. builtinParameters[..processorIndex], "ingestionOptions", .. builtinParameters[processorIndex..]];
+            await Assert.That(actual.Any(parameters => parameters.SequenceEqual(ingestionParameters))).IsTrue();
+        }
     }
 
     private static string RequirePackage()

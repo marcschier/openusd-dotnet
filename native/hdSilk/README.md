@@ -27,6 +27,9 @@ unchanged.
 - **`src/mesh.{h,cpp}`**: `HdSilkMesh` (an `HdMesh` Rprim). `Sync()` pulls topology/points/transform from
   `HdSceneDelegate` based on `HdDirtyBits`, triangulates with `HdMeshUtil::ComputeTriangleIndices`, and upserts
   the result into `HdSilkSceneState`.
+- **`src/nurbsSceneIndexPlugin.{h,cpp}`** and **`src/nurbsGeometry.{h,cpp}`**: evaluate rational NURBS curves
+  and untrimmed patches from their control points, knots, orders, ranges and optional weights before hdSilk
+  synchronizes the resulting linear curves and mesh.
 - **`src/renderPass.{h,cpp}`**: `HdSilkRenderPass::_Execute` captures the `HdRenderPassState` world-to-view
   matrix, projection matrix, and viewport into `HdSilkSceneState`, and -- only while a light carries a
   non-default UsdLux link collection -- collects the prim and instance categories the link table resolves from.
@@ -90,7 +93,7 @@ rejected, token values are never reused, and the registry keeps no tombstones.
 
 Authored `UsdRender` execution needs explicit scene-ingestion choices that do
 not silently collapse to viewport defaults. The current public header describes
-session ABI 7 and page ABI 34. Managed creation requires the matching session/page
+session ABI 7 and page ABI 35. Managed creation requires the matching session/page
 version exports; older libraries cannot be mixed with these bindings.
 
 The version-1 request is append-only and request-scoped: one struct carries the
@@ -227,9 +230,11 @@ Invisible curves and points do not renumber the remaining segment identities.
 
 Nonperiodic and pinned curves require at least two control points, and
 periodic curves require at least three. Invalid topology removes the retained
-curve and emits a native warning; a later valid edit republishes it. Cubic
-curves remain unsupported. The optional bounded preparation profile admits
-the four supported linear wraps.
+curve and emits a native warning; a later valid edit republishes it. Direct
+cubic Bezier `BasisCurves` are sampled as fixed line chords; NURBS curves are
+evaluated into linear curves by the scene-index adapter below. The optional
+bounded preparation profile admits the four supported linear wraps and the
+supported cubic Bezier topologies.
 
 An unresolved or wrongly typed points value removes the retained curve in an
 unbounded session and emits a native warning. A bounded session refuses the
@@ -243,6 +248,84 @@ The native topology probe covers indices, visibility and width expansion;
 the managed conformance cases compare animated curves with independent
 segmented geometry on D3D12 WARP and Vulkan SwiftShader.
 
+## Rational NURBS geometry
+
+The scene-index adapter evaluates authored NURBS curves and untrimmed patches
+before hdSilk synchronizes them. It uses control points, order, knot vectors,
+and authored parameter ranges; optional `pointWeights` supply the rational
+weights, with unit weights used when they are absent. Open, closed and periodic
+patch forms are evaluated the same way. USD defines a closed or periodic form as
+closure that the authored control grid and knots already express, so the form
+token adds no evaluation rule. hdSilk does not weld the seam: the first and last
+sample rows coincide in position and normal but remain separate mesh points.
+Patch control points follow USD's row-major layout, with U as rows and V as
+columns. OpenUSD's USD Imaging scene-index adapter maps the built-in USD
+`pointWeights` attribute into `HdPrimvarsSchema`; hdSilk reads that mapped value
+rather than looking for a `primvars:pointWeights` USD attribute.
+Each nonzero knot span is sampled at eight intervals. Patch samples form a quad
+mesh with normals calculated from the rational surface's U and V derivatives.
+Where one partial derivative vanishes along a collapsed edge on the sampled
+range boundary, such as the pole of a revolved surface, hdSilk uses the limit
+of the normal taken from the patch interior. It calculates that limit from the
+rational mixed derivative. hdSilk refuses the patch when both partials vanish,
+when the partials are parallel but nonzero, when a collapsed line lies inside
+the sampled range, or when the limit itself vanishes. In each of those cases
+the surface has no unique normal at that point.
+This fixed tessellation does not adapt to curvature or screen-space error. A
+single NURBS prim may emit at most 1,048,576
+tessellated points; this output limit does not bound source storage or total
+process memory. hdSilk also limits estimated evaluation work for each NURBS
+prim to 67,108,864 units. Each curve sample costs `order^2 + order` units;
+each patch sample costs `2 * uOrder^2 + 2 * vOrder^2 + 4 * uOrder * vOrder`
+units. The squared terms bound basis and derivative recurrence work; the
+product term bounds rational point, first-derivative and mixed-derivative
+accumulation.
+Checked arithmetic rejects overflow and work above the limit before tessellated
+output is allocated. The evaluator warns and leaves no generated output for a
+refused sample; a later scene edit can retry.
+
+A patch with populated trim-curve data is skipped with
+a native warning. hdSilk does not clip the surface to its trims or substitute
+the control cage. Invalid knots, ranges, weights, or points also skip the
+generated geometry; a later scene edit can retry it. Weights must be finite,
+and their nonzero values must not mix signs within a curve or patch. A sample
+with a singular rational denominator is rejected.
+
+Generated geometry keeps constant source primvars and evaluates up to eight
+authored vertex primvars through the same rational basis as the points. A
+retained vertex primvar holds one to four float or double components per
+control point and is published as float data with vertex interpolation, one
+value per generated sample. Each retained primvar adds its samples to the
+evaluation-work charge, so a prim near the work limit can be refused once
+attributes are added. Curve vertex primvars are expanded onto each emitted
+line endpoint, including their texture-coordinate, color or custom semantic;
+bounded preparation also reserves their source and expanded storage.
+hdSilk warns and discards a vertex primvar beyond the eighth, and every
+uniform, varying or faceVarying primvar, because generated
+spans and faces have no authored correspondence for those interpolations.
+Authored normals are replaced: patches publish evaluated surface normals and
+curves publish none. hdSilk omits `ptexFaceOffset` because generated patch
+faces have no authored face IDs.
+
+NURBS prims carrying `skel:jointIndices` or `skel:jointWeights` are skipped with
+a warning. OpenUSD's skinning scene index resolves only meshes, points and basis
+curves, so no skinned control points reach the evaluator. Supporting them
+requires deforming the control net before tessellation, which this release
+does not do.
+
+Generated patch faces and points have no authored USD subprim identity, so
+hdSilk reports that identity as unsupported rather than publishing generated
+indices as authored picks. The optional bounded mesh-preparation profile admits
+generated NURBS geometry from a topology-only plan. The adapter publishes the
+generated point, element and run counts without evaluating points, so hdSilk
+reserves the budget before any authored or generated point is read. A refused
+reservation leaves no mesh published; a later sync under a larger limit
+evaluates and publishes the geometry. Trimmed patches stay refused in both
+bounded and unbounded sessions. Generated-geometry recognition requires the
+adapter's in-process cache provenance, not an authored boolean or primvar name.
+Missing or altered plan metadata and deliberately refused topology stop bounded
+preparation with distinct diagnostics; neither becomes a zero-byte reservation.
+
 ## Preview Surface connections
 
 A Preview Surface input connected to a known unsupported node stays at the
@@ -251,12 +334,16 @@ node. An authored constant behind that connection is not treated as an
 unconnected value.
 
 Page ABI 33 retains direct `HwPtexTexture_1` connections as Ptex sources,
-with their asset path and output channel. The renderer does not sample
-Ptex yet: it uses the input default and reports
-`OPENUSD_SILK_TEXTURE_PTEX_UNSUPPORTED` when the material is rendered.
-Native translation also warns. Connections to the Ptex node's own inputs
-and unsupported parameter overrides are refused with a warning. A
-`UsdUVTexture` pointing to the same file remains an ordinary image source.
+with their asset path and output channel. The renderer can sample supported
+surface inputs using the mesh's Ptex mapping. A retained input with an unusable
+mapping or source format uses its published fallback and reports
+`OPENUSD_SILK_TEXTURE_PTEX_UNSUPPORTED`; admission failures propagate. Ptex
+normal, detail-normal and opacity inputs are not sampled. Native translation
+rejects Ptex displacement with a warning and leaves the material undisplaced.
+Connections to the Ptex node's own inputs and unsupported parameter overrides
+are refused with a native warning. A `UsdUVTexture` pointing to the same file
+remains an ordinary image source. Backend pixel and lifecycle qualification
+of Ptex sampling remains pending.
 
 The subdivision module can derive default Ptex face IDs and local triangle
 coordinates for refined Catmull-Clark, bilinear and Loop meshes, and for
@@ -357,8 +444,9 @@ the encoded source, Ptex cache or decoder allocations, allocator overhead or
 later GPU storage. The cache's eviction setting is not a hard limit on active
 Ptex allocations. The path-based exports pass paths to Ptex unchanged, so
 non-ASCII Windows path handling for those exports remains unqualified. The C
-ABI has no renderer caller; Ptex sampling, boundary filtering and rendered
-lifecycle, refusal, retry and release coverage remain open.
+ABI also serves the renderer's mapped face-atlas construction. Backend pixel,
+boundary-filtering and rendered lifecycle, refusal, retry and release coverage
+remain open.
 
 A separate Storm-only reference renders four Ptex faces with authored offsets
 and compares them with reordered topology and indexed offsets. Individual-face
@@ -372,8 +460,8 @@ face-index behavior for other producers or shaders, refined corner mapping, or
 filtering across Ptex face boundaries. The generator in
 `test-assets/native-profile/ptex/generate_quad_fixture.cpp` creates the quad
 Ptex file. Page ABI 32 publishes the mapping status and, when mapping succeeds,
-one Ptex face ID and three corner coordinates per emitted triangle. The
-renderer does not yet consume those mappings or sample Ptex textures.
+one Ptex face ID and three corner coordinates per emitted triangle. The renderer
+uses those mappings for supported Ptex surface inputs.
 
 ## Wire format
 
@@ -399,13 +487,18 @@ authored polygon corners; subdivision uses final-level polygon corners, so a fan
 does not add another face contribution. Coarse smooth adjacency includes hole faces,
 matching the pinned Storm reference, without publishing triangles for those faces.
 Normal-only positions retain neighbors omitted by a face-varying emitted layout.
+Page ABI 35 marks triangle-local fallback in the high bit of the normal identity count;
+the remaining bits carry the number of identities. The mode remains present when the
+mesh publishes authored normals, which lets a consumer recompute the fallback after
+simulated points replace those normals.
 
 The managed fallback sums each corner's cross product and shares that sum only between
 copies with the same source identity and exactly equal current positions. Divergent
 simulated copies separate; coincident unrelated source vertices remain separate. A
 triangle copy that separates from its representative polygon corner gets its local
-triangle normal. Authored normals still take precedence. Polygon/bilinear meshes without
-published normals retain their existing emitted-triangle fallback. Simulation, instance
+triangle normal. Authored normals still take precedence. For polygon and bilinear meshes
+without them, the renderer derives a vertex per triangle corner without changing retained
+points or simulation topology. Simulation, instance
 references and restoration share the immutable correspondence arrays; changing the
 correspondence changes retained geometry identity even when point bytes stay unchanged.
 Malformed counts, indices and nonfinite normal-only positions are refused before scene

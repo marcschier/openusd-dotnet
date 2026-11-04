@@ -1098,7 +1098,7 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
-    public async Task WarpReleasesEverySubmissionResourceWhenTheWaitFails()
+    public async Task WarpReleasesEverySubmissionResourceAfterProvenDeviceRemoval()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -1106,14 +1106,6 @@ public sealed class D3D12DeviceTests
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
-        // The window between handing a submission to the queue and its wait
-        // completing is where the submission still owns its fence, its command
-        // list, its allocator, the upload staging it holds leases on, the
-        // descriptor heaps it retained, and the device's own dependent
-        // registration. A removed device is the ordinary way that wait fails, and
-        // a failure that dropped any of those on the floor would make the device
-        // permanently undisposable and the memory unreclaimable -- on top of the
-        // failure the caller already has to handle.
         D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
         ISilkGraphicsTexture color = device.CreateTexture2D(
             new SilkTextureDescriptor(
@@ -1124,13 +1116,13 @@ public sealed class D3D12DeviceTests
 
         var injected = new InvalidOperationException("The injected fence wait failed.");
         InvalidOperationException? observed = null;
+        InvalidOperationException? disposalFailure = null;
         using (ISilkGraphicsCommandList commands = device.CreateCommandList())
         {
             commands.ClearColor(color, new SilkColor(0.25f, 0.5f, 0.75f, 1f));
             ISilkGraphicsSubmission submission = device.Submit(commands);
-
-            // Armed after the work is queued and before its wait completes,
-            // which is exactly the window the submission owns everything in.
+            device.WaitIdle();
+            device.SetTeardownHookForTesting(new FakeTeardownHook(unchecked((int)0x887A0005)));
             device.FailFenceWaitsForTesting(() => injected);
             try
             {
@@ -1141,11 +1133,10 @@ public sealed class D3D12DeviceTests
                 observed = exception;
             }
 
-            // Disposal runs while the original failure is still unwinding, and
-            // its own wait fails for the same reason the first one did, so it
-            // must neither throw nor replace the failure the caller has.
+            disposalFailure = await Assert.That(submission.Dispose).Throws<InvalidOperationException>();
             submission.Dispose();
             device.FailFenceWaitsForTesting(null);
+            device.SetTeardownHookForTesting(null);
         }
 
         device.WaitIdle();
@@ -1153,6 +1144,7 @@ public sealed class D3D12DeviceTests
         await Assert.That(observed)
             .IsSameReferenceAs(injected)
             .Because("The original wait failure must reach the caller unchanged.");
+        await Assert.That(disposalFailure).IsSameReferenceAs(injected);
 
         // The device refuses to dispose while any submission, buffer or texture
         // is still registered against it, so disposing cleanly below is the proof
@@ -1262,7 +1254,7 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
-    public async Task WarpSkipsAndNamesAnOpacityMaskedCaster()
+    public async Task WarpOmitsABelowCutoffCasterWithoutDiagnostic()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -1272,7 +1264,7 @@ public sealed class D3D12DeviceTests
 
         using D3D12SilkGraphicsDevice device =
             D3D12SilkGraphicsDevice.Create(useWarp: true);
-        await SilkShadowConformance.AnOpacityMaskedCasterIsSkippedAndNamed(device);
+        await SilkShadowConformance.AnOpacityCutoffCasterIsOmittedWithoutDiagnostic(device);
     }
 
     [Test]

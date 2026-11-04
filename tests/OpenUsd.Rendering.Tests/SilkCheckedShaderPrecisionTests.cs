@@ -3,12 +3,13 @@
 using System.Buffers.Binary;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace OpenUsd.Rendering.Tests;
 
 /// <summary>
-/// Covers the arithmetic the checked mesh fragment was actually compiled to,
-/// rather than the arithmetic its source describes.
+/// Covers the arithmetic the checked fragments were actually compiled to,
+/// rather than the arithmetic described by shader source.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -41,6 +42,8 @@ public sealed class SilkCheckedShaderPrecisionTests
     private const uint OpFDiv = 136;
     private const uint OpExtInst = 12;
     private const uint SpirvMagic = 0x07230203;
+    private const uint GlslLength = 66;
+    private const uint NoContraction = 42;
 
     /// <summary>The fragment permutations that shade a lit surface.</summary>
     public static IEnumerable<string> LitFragmentPermutations() =>
@@ -52,6 +55,71 @@ public sealed class SilkCheckedShaderPrecisionTests
         "mesh.fragment.uv+normal",
         "mesh.volume.fragment",
     ];
+
+    public static IEnumerable<string> VolumeCameraFragments() =>
+    [
+        "volume.camera.fragment.uniform",
+        "volume.camera.fragment.atlas",
+    ];
+
+    [Test]
+    [MethodDataSource(nameof(VolumeCameraFragments))]
+    public async Task TheCompiledVolumeSpirvScalesLocalStepsBeforeDensity(string program)
+    {
+        (uint Opcode, uint[] Operands)[] instructions = ParseSpirv(
+            ReadCheckedArtifact($"{program}.spv"));
+        HashSet<uint> lengths = instructions
+            .Where(static item => item.Opcode == OpExtInst &&
+                item.Operands.Length >= 5 && item.Operands[3] == GlslLength)
+            .Select(static item => item.Operands[1])
+            .ToHashSet();
+        HashSet<uint> divisions = instructions
+            .Where(static item => item.Opcode == OpFDiv && item.Operands.Length >= 4)
+            .Select(static item => item.Operands[1])
+            .ToHashSet();
+        HashSet<uint> noContraction = instructions
+            .Where(static item => item.Opcode == OpDecorate &&
+                item.Operands.Length >= 2 && item.Operands[1] == NoContraction)
+            .Select(static item => item.Operands[0])
+            .ToHashSet();
+        Dictionary<uint, uint[]> products = instructions
+            .Where(static item => item.Opcode == OpFMul && item.Operands.Length >= 4)
+            .ToDictionary(static item => item.Operands[1], static item => item.Operands[2..4]);
+        HashSet<uint> localSteps = products
+            .Where(pair => pair.Value.Any(lengths.Contains) && pair.Value.Any(divisions.Contains))
+            .Select(static pair => pair.Key)
+            .ToHashSet();
+        (uint Product, uint LocalStep)[] densityProducts =
+        [
+            .. from product in products
+               from operand in product.Value
+               where localSteps.Contains(operand)
+               select (product.Key, operand),
+        ];
+
+        await Assert.That(lengths.Count).IsEqualTo(2);
+        await Assert.That(localSteps.Count).IsEqualTo(2);
+        await Assert.That(densityProducts.Length).IsEqualTo(2);
+        await Assert.That(densityProducts.All(pair =>
+            noContraction.Contains(pair.Product) && noContraction.Contains(pair.LocalStep))).IsTrue();
+    }
+
+    [Test]
+    [MethodDataSource(nameof(VolumeCameraFragments))]
+    public async Task TheCompiledVolumeMetalScalesLocalStepsBeforeDensity(string program)
+    {
+        string metal = Encoding.UTF8.GetString(ReadCheckedArtifact($"{program}.metal"));
+
+        await Assert.That(metal).DoesNotContain("precise float");
+        await Assert.That(Regex.IsMatch(
+            metal,
+            @"densityIntegrals_0\[field_0\]\s*=\s*densityIntegrals_0\[field_0\]\s*\+\s*[^;\n]+\*\s*localStepLength_0;"))
+            .IsTrue();
+        await Assert.That(Regex.IsMatch(
+            metal,
+            @"\*\s*\(\s*length\(_S\d+\)\s*\*\s*_S\d+\s*\)"))
+            .IsTrue();
+    }
 
     [Test]
     [MethodDataSource(nameof(LitFragmentPermutations))]
@@ -118,7 +186,13 @@ public sealed class SilkCheckedShaderPrecisionTests
                 .GetProperty("programs")
                 .EnumerateArray(),
         ];
-        foreach (string name in new[] { "mesh.fragment", "mesh.volume.fragment" })
+        foreach (string name in new[]
+        {
+            "mesh.fragment",
+            "mesh.volume.fragment",
+            "volume.camera.fragment.uniform",
+            "volume.camera.fragment.atlas",
+        })
         {
             JsonElement program = programs.Single(element =>
                 element.GetProperty("name").GetString() == name);

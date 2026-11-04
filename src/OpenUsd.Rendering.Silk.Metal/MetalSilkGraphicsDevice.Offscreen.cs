@@ -1274,7 +1274,10 @@ public sealed partial class MetalSilkGraphicsDevice
         List<MetalMaterialBinding> tableBindings = [];
         foreach (MetalMaterialBinding binding in bindings)
         {
-            _ = layout.RequireMaterialSlot(0, binding.Binding, binding.Kind);
+            if (!layout.DeclaresMaterialSlot(0, binding.Binding, binding.Kind))
+            {
+                continue;
+            }
             if (binding.Kind is SilkBindingKind.StorageBuffer or
                 SilkBindingKind.UniformBuffer)
             {
@@ -1309,8 +1312,9 @@ public sealed partial class MetalSilkGraphicsDevice
         if (binding.Kind is SilkBindingKind.StorageBuffer or
             SilkBindingKind.UniformBuffer)
         {
-            encoder.SetVertexBuffer(binding.Buffer!.Buffer, 0, binding.Binding);
-            encoder.SetFragmentBuffer(binding.Buffer.Buffer, 0, binding.Binding);
+            uint bufferIndex = ToMetalShaderResourceIndex(binding);
+            encoder.SetVertexBuffer(binding.Buffer!.Buffer, 0, bufferIndex);
+            encoder.SetFragmentBuffer(binding.Buffer.Buffer, 0, bufferIndex);
             return;
         }
         if (binding.Kind == SilkBindingKind.SampledTexture)
@@ -2024,14 +2028,8 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
     {
         ThrowIfRendering();
         MetalSilkGraphicsBuffer metalBuffer = ValidateBuffer(buffer);
-        if (setIndex != 0 || binding != 0 ||
-            !metalBuffer.Usage.HasFlag(SilkBufferUsage.Uniform) ||
-            metalBuffer.Size < 80)
-        {
-            throw new ArgumentException(
-                "SceneParameters requires an 80-byte uniform buffer at set 0, binding 0.",
-                nameof(buffer));
-        }
+        SilkGraphicsUniformBinding.ValidateBinding(
+            setIndex, binding, metalBuffer, _pipeline?.BindingLayout);
         _uniformBuffer = metalBuffer;
         _commands.Add(MetalGraphicsCommand.SetUniformBuffer(
             setIndex,
@@ -2105,6 +2103,7 @@ internal sealed class MetalSilkGraphicsCommandList(MetalSilkGraphicsDevice devic
             throw new InvalidOperationException(
                 "Indexed drawing requires attachments, pipeline, viewport, scissor, and all buffers.");
         }
+        SilkGraphicsUniformBinding.ValidateDraw(_uniformBuffer, _pipeline?.BindingLayout);
         if (_pickPipeline is not null && _pickBaseToken is null)
         {
             throw new InvalidOperationException(
@@ -2969,8 +2968,11 @@ internal sealed class MetalSilkGraphicsSubmission(
     private readonly MetalSilkGraphicsDevice _device = device;
     private readonly MetalSubmissionCompletion _completion = completion;
     private MTLCommandBuffer _commandBuffer = commandBuffer;
-    private IDisposable[]? _leases = leases;
-    private MetalStagingResource[]? _uploadBuffers = uploadBuffers;
+    private readonly object _retirementGate = leases;
+    private IDisposable?[]? _leases = leases;
+    private bool _releasingLeases;
+    private MetalStagingResource?[]? _uploadBuffers = uploadBuffers;
+    private bool _releasingUploads;
     private bool _disposed;
 
     public bool IsCompleted
@@ -3008,49 +3010,57 @@ internal sealed class MetalSilkGraphicsSubmission(
         {
             return;
         }
-        _ = _completion.WaitAndGetFailure();
-        ReleaseLeases();
-        _commandBuffer.Dispose();
-        _disposed = true;
-        _device.ReleaseDependentObject();
+        if (_commandBuffer.NativePtr != 0)
+        { _ = _completion.WaitAndGetFailure(); }
+        lock (_retirementGate)
+        {
+            if (_disposed)
+            { return; }
+            ReleaseLeases();
+            if (_commandBuffer.NativePtr != 0)
+            {
+                _commandBuffer.Dispose();
+                _commandBuffer = default;
+            }
+            _device.ReleaseDependentObject();
+            _disposed = true;
+        }
     }
 
     private void ReleaseLeases()
     {
-        IDisposable[]? leases = Interlocked.Exchange(ref _leases, null);
-        if (leases is null)
+        lock (_retirementGate)
         {
-            return;
+            RetireOwnedResources(ref _leases, ref _releasingLeases, ref _uploadBuffers, ref _releasingUploads);
         }
-        foreach (IDisposable lease in leases)
-        {
-            lease.Dispose();
-        }
-        MetalStagingResource[]? uploads = Interlocked.Exchange(ref _uploadBuffers, null);
-        if (uploads is null)
-        {
-            return;
-        }
-        foreach (MetalStagingResource upload in uploads)
-        {
-            upload.Dispose();
-        }
+    }
+
+    internal static void RetireOwnedResources(
+        ref IDisposable?[]? leases, ref bool releasingLeases,
+        ref MetalStagingResource?[]? uploads, ref bool releasingUploads)
+    {
+        SilkOwnedResourceLeases.Dispose(ref leases, ref releasingLeases);
+        SilkOwnedResourceLeases.Dispose(ref uploads, ref releasingUploads);
     }
 }
 
 [SupportedOSPlatform("macos")]
-internal sealed class MetalStagingResource(MTLBuffer buffer, IDisposable? reservation) : IDisposable
+internal sealed class MetalStagingResource : SilkGraphicsResourceBase
 {
-    private nint _pointer = buffer.NativePtr;
-    internal MTLBuffer Buffer { get; } = buffer;
+    private MTLBuffer _buffer;
+    internal MTLBuffer Buffer => _buffer;
 
-    public void Dispose()
+    internal MetalStagingResource(MTLBuffer buffer, IDisposable? reservation)
     {
-        if (Interlocked.Exchange(ref _pointer, 0) != 0)
-        {
-            Buffer.Dispose();
-            reservation?.Dispose();
-        }
+        _buffer = buffer;
+        OwnBufferReservation(reservation);
+    }
+
+    protected override void ReleaseNative()
+    {
+        if (_buffer.NativePtr != 0)
+        { _buffer.Dispose(); }
+        _buffer = default;
     }
 }
 

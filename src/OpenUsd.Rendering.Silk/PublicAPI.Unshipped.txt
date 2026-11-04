@@ -529,6 +529,7 @@ OpenUsd.Rendering.Silk.SilkDeformationEvaluator
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.AllocationFailed = 8 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.ByteBudget = 6 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.DerivedCornerVertices = 11 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.MaterialDisplacement = 9 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.SecondaryTexCoords = 10 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 OpenUsd.Rendering.Silk.SilkDeformationGpuFallback.NoBindNormals = 2 -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
@@ -1266,6 +1267,7 @@ OpenUsd.Rendering.Silk.SilkMeshRenderer.ApplyAndRender(OpenUsd.Rendering.Silk.Op
 OpenUsd.Rendering.Silk.SilkMeshRenderer.ApplyAndRender(OpenUsd.Rendering.Silk.OpenUsdSilkPage! page, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! colorTarget, OpenUsd.Rendering.Silk.ISilkGraphicsTexture! depthTarget, OpenUsd.Rendering.Silk.SilkPickFrameBinding pickBinding, OpenUsd.Rendering.Silk.SilkMeshRenderOptions? options = null) -> OpenUsd.Rendering.Silk.SilkMeshRenderResult
 OpenUsd.Rendering.Silk.SilkMeshRenderer.DisplayTransformDiagnostic.get -> OpenUsd.Rendering.RenderDiagnostic?
 OpenUsd.Rendering.Silk.SilkMeshRenderer.DisplayTransformDiagnostics.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformDiagnostics
+OpenUsd.Rendering.Silk.SilkMeshRenderer.MaterialShaderDiagnostics.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderDiagnostic!>!
 OpenUsd.Rendering.Silk.SilkMeshRenderer.Dispose() -> void
 OpenUsd.Rendering.Silk.SilkMeshRenderer.GpuResources.get -> OpenUsd.Rendering.Silk.SilkSceneGpuResources!
 OpenUsd.Rendering.Silk.SilkMeshRenderer.PhysicsDeformations.get -> OpenUsd.Rendering.Silk.SilkPhysicsDeformations?
@@ -2113,6 +2115,7 @@ OpenUsd.Rendering.Silk.SilkShadowDescriptor.View.get -> double[]!
 OpenUsd.Rendering.Silk.SilkShadowDescriptor.View.init -> void
 OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
 OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions.CasterLinked = 2 -> OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
+OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions.EmitterSample = 8 -> OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
 OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions.None = 0 -> OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
 OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions.Orthographic = 1 -> OpenUsd.Rendering.Silk.SilkShadowDescriptorOptions
 OpenUsd.Rendering.Silk.SilkShadowRenderingDescriptor
@@ -2299,7 +2302,7 @@ abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReadbackForTesting(Syste
 abstract OpenUsd.Rendering.Silk.SilkGraphicsTextureBase.ReleaseNative() -> void
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.FrameParametersBinding = 8 -> uint
 const OpenUsd.Rendering.Silk.SilkBindingLayoutDescriptor.SurfaceParametersBinding = 7 -> uint
-const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 34 -> uint
+const OpenUsd.Rendering.Silk.SilkCommandParser.PageAbiVersion = 35 -> uint
 const OpenUsd.Rendering.Silk.SilkComputeBindingLayoutDescriptor.MaximumSlots = 12 -> int
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BindPoseBinding = 1 -> uint
 const OpenUsd.Rendering.Silk.SilkDeformComputeReflection.BlendDeltasBinding = 7 -> uint
@@ -2353,6 +2356,7 @@ const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.LightLinkDomeBudget = "OP
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.LightLinkGeneratedShaderUnsupported = "OPENUSD_SILK_LIGHT_LINK_GENERATED_SHADER_UNSUPPORTED" -> string!
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.LightLinkTruncated = "OPENUSD_SILK_LIGHT_LINK_TRUNCATED" -> string!
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialMdlUnavailable = "OPENUSD_SILK_MATERIAL_MDL_UNAVAILABLE" -> string!
+const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialShaderCompilationFailed = "OPENUSD_SILK_MATERIAL_SHADER_COMPILATION_FAILED" -> string!
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnresolved = "OPENUSD_SILK_MATERIAL_UNRESOLVED" -> string!
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.MaterialUnsupported = "OPENUSD_SILK_MATERIAL_UNSUPPORTED" -> string!
 const OpenUsd.Rendering.Silk.SilkRenderDiagnosticCodes.ShadowCasterUnsupported = "OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED" -> string!
@@ -2506,6 +2510,7 @@ static OpenUsd.Rendering.Silk.SilkDeformationEvaluator.TryEvaluateNormals(OpenUs
 static OpenUsd.Rendering.Silk.SilkDeformationEvaluator.TryEvaluateNormals(OpenUsd.Rendering.Silk.SilkMeshDeformationData! deformation, System.Span<float> normals, System.Span<bool> degenerate) -> bool
 static OpenUsd.Rendering.Silk.SilkDeformationEvaluator.WriteInverseTranspose(System.ReadOnlySpan<float> matrix, System.Span<float> result) -> void
 static OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.TryBuild(OpenUsd.Rendering.Silk.SilkMeshDeformationData? deformation, uint vertexStrideFloats, int pointCount, bool hasTangents, OpenUsd.Rendering.Silk.SilkTopologyKind topologyKind, out OpenUsd.Rendering.Silk.SilkDeformationGpuPayload? payload, System.ReadOnlySpan<float> texCoords = default(System.ReadOnlySpan<float>)) -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
+static OpenUsd.Rendering.Silk.SilkDeformationGpuPayload.TryBuild(OpenUsd.Rendering.Silk.SilkMeshDeformationData? deformation, uint vertexStrideFloats, int pointCount, bool hasTangents, OpenUsd.Rendering.Silk.SilkTopologyKind topologyKind, bool derivedCornerVertices, out OpenUsd.Rendering.Silk.SilkDeformationGpuPayload? payload, System.ReadOnlySpan<float> texCoords = default(System.ReadOnlySpan<float>)) -> OpenUsd.Rendering.Silk.SilkDeformationGpuFallback
 static OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.operator !=(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor.operator ==(OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor left, OpenUsd.Rendering.Silk.SilkDisplayTransformBindingDescriptor right) -> bool
 static OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor.Checked.get -> OpenUsd.Rendering.Silk.SilkDisplayTransformBindingLayoutDescriptor

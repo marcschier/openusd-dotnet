@@ -29,7 +29,8 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 34u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 35u
+#define OPENUSD_SILK_NORMAL_IDENTITY_TRIANGLE_LOCAL 0x80000000u
 #define OPENUSD_SILK_SESSION_ABI_VERSION 7u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
 #define OPENUSD_SILK_PTEX_DECODE_VERSION 1u
@@ -134,7 +135,7 @@ typedef enum openusd_silk_ptex_mapping_status
 ///        *    * uint8    instancer_path[instancer_path_byte_count]
 ///        *    *          instancer_context[instancer_context_count]
 ///        *    *          ptex_mappings[ptex_mapping_count]
-///        *    4 uint32   normal_identity_count (point_count)
+///        *    4 uint32   normal_identity_count_and_mode
 ///        *    4 uint32   normal_corner_count
 ///        *    4 uint32   normal_extra_point_count
 ///        *    * uint32   normal_identities[normal_identity_count]
@@ -154,6 +155,10 @@ typedef enum openusd_silk_ptex_mapping_status
 /// The complete trailing normal block, including its counts, is absent for
 /// topology without polygon normal correspondence and for lightweight instance
 /// references. Authored normals take precedence. The fixed header is unchanged.
+/// ABI v35 uses the high bit of normal_identity_count_and_mode to request
+/// triangle-local fallback normals; the remaining bits carry point_count.
+/// This mode describes the fallback even when authored normals are present, so
+/// consumers can recompute it after simulated points replace those normals.
 ///
 /// Each Ptex mapping is 28 bytes: uint32 face_index followed by float
 /// corner_coordinates[6] in triangle-corner order. Status is NOT_REQUESTED
@@ -1217,6 +1222,8 @@ typedef enum openusd_silk_ptex_mapping_status
 /// divide; it is used for distant lights. A zero-radius sphere spot uses a
 /// perspective projection with no flag. CUBE_FACE groups six perspective maps
 /// for one point light in world-axis order +X, -X, +Y, -Y, +Z, -Z.
+/// EMITTER_SAMPLE groups five perspective maps for one finite-area light, one
+/// map per deterministic point on the emitter surface.
 /// CASTER_LINKED states that at least one
 /// published prim is excluded from this light's caster collection, so a consumer
 /// that ignores the LIGHT_LINK shadow mask renders a knowably different image.
@@ -1224,13 +1231,15 @@ typedef enum openusd_silk_ptex_mapping_status
 #define OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC 1u
 #define OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED 2u
 #define OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE 4u
+#define OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE 8u
 
 /// Authored shadow state hdSilk did not put on the SHADOW command.
 /// LIGHT_TYPE is set when a light has no supported projection: distant lights
-/// use orthographic maps, and zero-radius sphere spots use one perspective map
-/// when their ShapingAPI cone half-angle is in (0, 90) degrees. Wider or
-/// unshaped zero-radius lights use six cube faces. Finite spheres and area lights
-/// need emitter-geometry shadow semantics. MAP_BUDGET is set when more lights
+/// use orthographic maps, zero-radius sphere spots use one perspective map when
+/// their ShapingAPI cone half-angle is in (0, 90) degrees, wider or unshaped
+/// zero-radius lights use six cube faces, and finite-area lights use five
+/// perspective maps from deterministic emitter-surface samples when every sample
+/// can project the complete caster bounds. MAP_BUDGET is set when more lights
 /// asked for maps than OPENUSD_SILK_MAX_SHADOW_LIGHTS allows, or their complete
 /// projection groups exceed OPENUSD_SILK_MAX_SHADOW_MAPS. NO_CASTERS is set when a light asked for
 /// a map but the published geometry has no world extent to derive one from.

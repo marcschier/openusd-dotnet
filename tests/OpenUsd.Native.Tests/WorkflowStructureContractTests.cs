@@ -37,6 +37,173 @@ namespace OpenUsd.Native.Tests;
 /// </remarks>
 public sealed class WorkflowStructureContractTests
 {
+    [Test]
+    public async Task TransmissionGateRequiresExactBackendIdentitiesAndRetainsExecutionReceipts()
+    {
+        string root = FindRepositoryRoot();
+        string render = await File.ReadAllTextAsync(Path.Combine(root, ".github", "workflows", "render.yml"));
+        foreach ((string jobName, string platform, string title) in new[]
+        {
+            ("windows-wgl", "Windows", "windows"),
+            ("linux-presentation", "Linux", "linux"),
+        })
+        {
+            string job = ReadJob(render, jobName);
+            string step = ReadStep(job,
+                $"Execute required {platform} cubic, shadow and camera conformance");
+            await Assert.That(step).Contains("if: steps.native-ready.outputs.ready == 'true'");
+            await Assert.That(step).Contains("dotnet build $project -c Release -f net10.0");
+            await Assert.That(step).Contains("./eng/run-silk-cubic-shadow-conformance.ps1 -Configuration Release");
+            await Assert.That(step).Contains("OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED: '1'");
+            await Assert.That(job).Contains($"path: artifacts/silk-cubic-shadow-conformance/{title}");
+            await Assert.That(job).Contains($"steps.{title}-cubic-shadow.outcome == 'failure'");
+            await Assert.That(job).Contains("./eng/test-silk-cubic-shadow-report.ps1");
+        }
+        await Assert.That(ReadStep(ReadJob(render, "windows-wgl"),
+            "Execute required Windows cubic, shadow and camera conformance"))
+            .Contains("OPENUSD_REQUIRE_SWIFTSHADER: '1'");
+        string runner = await File.ReadAllTextAsync(Path.Combine(root, "eng", "run-silk-cubic-shadow-conformance.ps1"));
+        await Assert.That(runner).Contains("Class = 'SilkShadowTransmissionConformanceTests'");
+        await Assert.That(runner).Contains("-RequireNoSkips ($entry.Id -cne 'camera' -and");
+        await Assert.That(runner).Contains("($entry.Id -cnotin @('transmission', 'finite-area') -or -not $IsLinux)");
+        await Assert.That(runner).Contains("Class = 'SilkFiniteAreaShadowTests'");
+        await Assert.That(runner).Contains("-ExpectedSha256 $result.rawReportSha256");
+        await Assert.That(runner).Contains("-PriorReportPaths $priorReports");
+        await Assert.That(runner).Contains("$($entry.Id).execution.json");
+        string guard = await File.ReadAllTextAsync(Path.Combine(root, "eng", "silk-cubic-shadow-report.ps1"));
+        await Assert.That(guard).Contains("'RectEmitterShadowsMatchFiveRayReferenceAcrossUpdateAndRetirement'");
+        await Assert.That(guard).Contains("'TransformedRectEmitterShadowsMatchFiveRayReference'");
+        await Assert.That(guard).Contains("$expectedCount = 4");
+        await Assert.That(guard).Contains("$expectedCount = 30");
+        await Assert.That(guard).Contains("$expectedStatus = if ($contract.Skips.Contains($name)) { 'skipped' } else { 'passed' }");
+        await Assert.That(guard).Contains("$LogPassedCount -ne $contract.Passed");
+        await Assert.That(guard).Contains("$summary.skipped -ne $contract.Skips.Count");
+        await Assert.That(guard).Contains("$test.methodName -cne $expectedMethod");
+        await Assert.That(guard).Contains("$caseStart -lt $StartedUtc.ToUniversalTime()");
+        string fixtures = await File.ReadAllTextAsync(Path.Combine(root, "tests",
+            "OpenUsd.Rendering.ConformanceTests", "SilkShadowConformance.Transmission.cs"));
+        string testClass = fixtures[fixtures.IndexOf("public sealed class SilkShadowTransmissionConformanceTests",
+            StringComparison.Ordinal)..];
+        await Assert.That(Regex.Count(testClass, @"\[Arguments\(SilkGraphicsBackend\.D3D12")).IsEqualTo(15);
+        await Assert.That(Regex.Count(testClass, @"\[Arguments\(SilkGraphicsBackend\.Vulkan")).IsEqualTo(15);
+        foreach (Match method in Regex.Matches(testClass, @"public async Task (?<method>\w+)\("))
+        {
+            await Assert.That(guard).Contains($"'{method.Groups["method"].Value}'");
+        }
+    }
+
+    [Test]
+    public async Task CameraReceiptGateRunsEveryPlatformAndRetainsVerifiedBackendReceipts()
+    {
+        string root = FindRepositoryRoot();
+        string workflow = await File.ReadAllTextAsync(Path.Combine(root, ".github", "workflows", "render.yml"));
+        foreach ((string jobName, string title, string platform) in new[]
+        {
+            ("windows-wgl", "Windows", "windows"),
+            ("linux-presentation", "Linux", "linux"),
+            ("macos-arm64", "macOS", "macos"),
+        })
+        {
+            string job = ReadJob(workflow, jobName);
+            string step = ReadStep(job, $"Execute required {title} cubic, shadow and camera conformance");
+            await Assert.That(step).Contains("./eng/run-silk-cubic-shadow-conformance.ps1 -Configuration Release");
+            await Assert.That(job).Contains($"path: artifacts/silk-cubic-shadow-conformance/{platform}");
+            await Assert.That(job).Contains($"steps.{platform}-cubic-shadow.outcome == 'failure'");
+            if (platform == "macos")
+            {
+                await Assert.That(step).Contains("-p:OpenUsdRequireMetalShaderLibrary=true");
+            }
+        }
+        string runner = await File.ReadAllTextAsync(Path.Combine(root, "eng", "run-silk-cubic-shadow-conformance.ps1"));
+        await Assert.That(runner).Contains("'/*/*/VolumeCameraConformanceTests/CameraIntegrationBackendGate'");
+        await Assert.That(runner).Contains("Join-Path (Join-Path $assemblyDirectory 'TestResults') 'volumes'");
+        await Assert.That(runner).Contains("-NotBeforeUtc $started");
+        await Assert.That(runner).Contains("$source -Algorithm SHA256");
+        await Assert.That(runner).Contains("$target -Algorithm SHA256");
+        await Assert.That(runner).Contains("cameraReceipts = $cameraReceipts");
+        await Assert.That(runner).Contains("Save-SilkCameraFailureEvidence");
+        await Assert.That(runner).Contains("-PrimaryFailure $message");
+        await Assert.That(runner).Contains("Camera diagnostic retention failed:");
+        await Assert.That(runner.IndexOf("$failures.Add($message)", StringComparison.Ordinal))
+            .IsLessThan(runner.IndexOf("Save-SilkCameraFailureEvidence", StringComparison.Ordinal));
+        string verifier = await File.ReadAllTextAsync(Path.Combine(root, "eng", "assert-volume-camera-evidence.ps1"));
+        await Assert.That(verifier).Contains("Join-Path (Join-Path $Root");
+        await Assert.That(verifier).Contains("$receipt.status -cne 'passed'");
+        await Assert.That(verifier).Contains("$receipt.backend -cne $backend");
+        await Assert.That(verifier).Contains("$file.LastWriteTimeUtc -lt $NotBeforeUtc.ToUniversalTime()");
+        await Assert.That(verifier).Contains("Compare-Object $expectedCases");
+    }
+
+    [Test]
+    public async Task CameraReceiptProducerVerifierAndAdversarialFixtureUseTheSameCaseManifest()
+    {
+        string root = FindRepositoryRoot();
+        string producer = await File.ReadAllTextAsync(Path.Combine(root, "tests",
+            "OpenUsd.Rendering.ConformanceTests", "VolumeCameraConformanceTests.cs"));
+        int start = producer.IndexOf("public async Task CameraIntegrationBackendGate(", StringComparison.Ordinal);
+        await Assert.That(start).IsGreaterThanOrEqualTo(0);
+        int end = producer.IndexOf("[Test]", start, StringComparison.Ordinal);
+        await Assert.That(end).IsGreaterThan(start);
+        string gate = producer[start..end];
+        const string literalCase = """await Run\("(?<id>[^"]+)"\s*,""";
+        const string clipLoop = """foreach\s*\(string plane in new\[\]\s*\{(?<planes>[^}]+)\}\)\s*\{\s*await Run\(\$"scene-clip-\{plane\}",\s*\(\) => SceneClipPlanesBoundTheIntegratedChord\(plane\)\);\s*\}""";
+        MatchCollection declarations = Regex.Matches(gate, $"{literalCase}|{clipLoop}");
+        await Assert.That(declarations.Count).IsEqualTo(Regex.Count(gate, @"await Run\("));
+        var producedCases = new List<string>();
+        foreach (Match declaration in declarations)
+        {
+            if (declaration.Groups["id"].Success)
+            {
+                producedCases.Add(declaration.Groups["id"].Value);
+            }
+            else
+            {
+                producedCases.AddRange(Regex.Matches(declaration.Groups["planes"].Value, "\"(?<plane>[^\"]+)\"")
+                    .Select(match => $"scene-clip-{match.Groups["plane"].Value}"));
+            }
+        }
+        string[] produced = producedCases.ToArray();
+        string[] expected =
+        [
+            "analytic-slab-511-side", "analytic-slab-512-side", "analytic-slab-512-oblique",
+            "large-scale-inside", "large-scale-threshold", "parallel-outside",
+            "camera-inside", "camera-perspective", "camera-near", "camera-far", "camera-enclosing-clip",
+            "scaled-field-local", "same-tint-order", "opaque-update-reuse", "transform-refusal-retry",
+            "material-disabled-single",
+            "camera-far-origin", "camera-nonrigid-view", "camera-micro-outside", "camera-micro-inside",
+            "camera-micro-clipped", "perspective-near-small", "perspective-near-one",
+            "perspective-near-two-asymmetric", "oblique-off-center-clip",
+            "perspective-finite-large-far", "perspective-infinite-far",
+            "opaque-one-ulp-before-clear",
+            "scene-clip-entry", "scene-clip-exit", "scene-clip-oblique",
+            "scene-clip-excluded", "scene-clip-parallel",
+            "joint-unequal-tint-reference", "joint-uniform-mixed-clipping",
+            "joint-replacement-CpuAdmission", "joint-replacement-GpuAdmission",
+            "joint-replacement-AtlasSubmission", "joint-ownership-uniform", "joint-ownership-atlas",
+            "joint-zero-opacity-field-limit",
+            "joint-missing-asset-refusal", "joint-retained-atlas-source-removal",
+            "joint-unsupported-uniform-map", "joint-unsupported-zero-opacity-map", "joint-unsupported-sampled-map",
+            "joint-unsupported-density-duplicate", "joint-unsupported-density-composite",
+            "joint-dense-unequal-tint-uniform", "joint-dense-unequal-tint-atlas", "joint-workload-refusal-retry",
+            "joint-nonfinite-density-scalar", "joint-nonfinite-density-grid"
+        ];
+        await Assert.That(string.Join('\n', produced)).IsEqualTo(string.Join('\n', expected));
+        await Assert.That(produced.Distinct(StringComparer.Ordinal).Count()).IsEqualTo(53);
+        foreach ((string file, string variable) in new[]
+        {
+            ("assert-volume-camera-evidence.ps1", "expectedCases"),
+            ("test-silk-cubic-shadow-report.ps1", "cameraCases"),
+        })
+        {
+            string script = await File.ReadAllTextAsync(Path.Combine(root, "eng", file));
+            Match manifest = Regex.Match(script, $@"\${variable}\s*=\s*@\((?<items>[^)]*)\)");
+            await Assert.That(manifest.Success).IsTrue();
+            string[] consumed = Regex.Matches(manifest.Groups["items"].Value, "'(?<id>[^']+)'")
+                .Select(match => match.Groups["id"].Value).ToArray();
+            await Assert.That(string.Join('\n', consumed)).IsEqualTo(string.Join('\n', produced));
+        }
+    }
+
     /// <summary>Matches a job header: two spaces, a name, a colon, nothing else.</summary>
     private static readonly Regex JobHeader = new(
         @"^  (?<name>[A-Za-z0-9_-]+):\s*$",
@@ -235,6 +402,86 @@ public sealed class WorkflowStructureContractTests
                     "package.yml triggers on the native pipeline by title, and a " +
                     "title that no longer matches never fires and never reports why");
         }
+    }
+
+    [Test]
+    public async Task PackageWorkflowRequiresEverySilkCaptureCaseFromTheLinuxReleaseShape()
+    {
+        string root = FindRepositoryRoot();
+        string workflow = await File.ReadAllTextAsync(
+            Path.Combine(root, ".github", "workflows", "package.yml"));
+        string triggers = ReadTriggerBlock(workflow);
+        foreach (string input in new[]
+        {
+            "src/OpenUsd/**",
+            "src/OpenUsd.Interop/**",
+            "src/OpenUsd.Rendering/**",
+            "src/OpenUsd.Rendering.Silk*/**",
+            "eng/managed-workflow-reports.ps1",
+            "eng/run-managed-tests.ps1",
+            "eng/shaders/checked/**",
+            "tests/OpenUsd.Package.Tests/**",
+            "Directory.Build.props",
+            "Directory.Packages.props",
+            "global.json",
+            "version.json"
+        })
+        {
+            await Assert.That(triggers).Contains(input, StringComparison.Ordinal);
+        }
+
+        string job = ReadJob(workflow, "package-execution");
+        string step = ReadStep(job, "Execute required Silk capture package surface");
+        string captureCondition = step.Split('\n')
+            .Single(line => line.StartsWith("        if:", StringComparison.Ordinal)).Trim();
+        await Assert.That(captureCondition).IsEqualTo("if: runner.os == 'Linux'");
+        await Assert.That(step).DoesNotContain("steps.native-ready.outputs.ready", StringComparison.Ordinal);
+        string buildCondition = ReadStep(job, "Build package tests").Split('\n')
+            .Single(line => line.StartsWith("        if:", StringComparison.Ordinal)).Trim();
+        await Assert.That(buildCondition)
+            .IsEqualTo("if: steps.native-ready.outputs.ready == 'true' || runner.os == 'Linux'");
+        string command = ReadRunCommand(step);
+        foreach (string required in new[]
+        {
+            "'OpenUsd.Interop', 'OpenUsd', 'OpenUsd.Rendering', 'OpenUsd.Rendering.Silk'",
+            "-p:PublicRelease=true",
+            "OPENUSD_SILK_HDR_PACKAGE",
+            "OPENUSD_SILK_DEPTH_PACKAGE",
+            "OPENUSD_SILK_GPU_HDR_PACKAGE",
+            "PackedHdrCaptureCarriesReviewedSurfaceDefaultsAndXmlForEveryProductionFramework",
+            "PackageOnlyConsumerCompilesEveryHdrOverloadWithNullableTrimAndAotAnalysis",
+            "PackedDepthCaptureExposesTheReviewedSurfaceForEveryProductionFramework",
+            "PackedGpuHdrDocumentsCompletedFrameOnlyFailureAndUnchangedPixelQuota",
+            "Invoke-ManagedWorkflowScenario",
+            "-RequireNoSkips $true",
+            "'--treenode-filter', \"/*/*/$($case.Class)/$($case.Method)\"",
+            "$result.passed -ne 1",
+            "$tests[0].status -cne 'passed'",
+            "$tests[0].methodName -cne $case.Method",
+            "$report.publicationGeneration",
+            "$caseStart.UtcDateTime -lt $started",
+            "$caseEnd.UtcDateTime -gt $finished",
+            "git rev-parse HEAD",
+            "git status --porcelain --untracked-files=all",
+            "$repository.Attribute('commit').Value -cne $source",
+            "Get-FileHash",
+            "receipt.json"
+        })
+        {
+            await Assert.That(command).Contains(required, StringComparison.Ordinal);
+        }
+        int packIndex = command.IndexOf("& dotnet pack", StringComparison.Ordinal);
+        int runIndex = command.IndexOf("Invoke-ManagedWorkflowScenario", StringComparison.Ordinal);
+        const string checkoutStatus = "git status --porcelain --untracked-files=all";
+        int initialStatusIndex = command.IndexOf(checkoutStatus, StringComparison.Ordinal);
+        int finalStatusIndex = command.LastIndexOf(checkoutStatus, StringComparison.Ordinal);
+        await Assert.That(packIndex).IsGreaterThanOrEqualTo(0);
+        await Assert.That(runIndex).IsGreaterThan(packIndex);
+        await Assert.That(initialStatusIndex).IsGreaterThanOrEqualTo(0);
+        await Assert.That(initialStatusIndex).IsLessThan(packIndex);
+        await Assert.That(finalStatusIndex).IsGreaterThan(runIndex);
+        await Assert.That(ReadStep(job, "Upload package test results"))
+            .Contains("artifacts/silk-capture-package", StringComparison.Ordinal);
     }
 
     [Test]
@@ -1398,7 +1645,6 @@ public sealed class WorkflowStructureContractTests
             "Build Cesium shim",
             "Execute managed NativeAOT probe",
             "Execute hdSilk NativeAOT probe",
-            "Build package tests",
             "Verify Metal package staging",
             "Run required package execution gates",
             "Require Linux ABI-9 SONAME topology and package-only evidence",

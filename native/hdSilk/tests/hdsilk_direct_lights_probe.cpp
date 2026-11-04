@@ -26,7 +26,7 @@ namespace
 {
 using namespace hdsilk_direct_lights_test;
 
-static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 34u);
+static_assert(OPENUSD_SILK_PAGE_ABI_VERSION == 35u);
 static_assert(OPENUSD_SILK_SESSION_ABI_VERSION == 7u);
 static_assert(OPENUSD_SILK_SCENE_INGESTION_VERSION == 1u);
 static_assert(OPENUSD_SILK_MAX_FRAME_LIGHTS == 128u);
@@ -3572,6 +3572,389 @@ void VerifyPointInsideBoundsPublishesSixFaces()
     }
 }
 
+void VerifyFiniteAreaEmitterSamplesPublishAndUpdatePerspectiveGroups()
+{
+    struct EmitterCase
+    {
+        const char* name;
+        uint32_t type;
+        float radius;
+        float shapeX;
+        float shapeY;
+        std::array<std::array<double, 3>, 5> offsets;
+    };
+    const EmitterCase cases[] = {
+        {"finite sphere", OPENUSD_SILK_LIGHT_SPHERE, 0.5f, 0.0f, 0.0f,
+            {{{0.0, 0.0, -0.5}, {0.5, 0.0, 0.0}, {-0.5, 0.0, 0.0},
+              {0.0, 0.5, 0.0}, {0.0, -0.5, 0.0}}}},
+        {"rect", OPENUSD_SILK_LIGHT_RECT, 0.0f, 4.0f, 6.0f,
+            {{{0.0, 0.0, 0.0}, {2.0, 3.0, 0.0}, {2.0, -3.0, 0.0},
+              {-2.0, 3.0, 0.0}, {-2.0, -3.0, 0.0}}}},
+        {"disk", OPENUSD_SILK_LIGHT_DISK, 0.5f, 0.0f, 0.0,
+            {{{0.0, 0.0, 0.0}, {0.5, 0.0, 0.0}, {-0.5, 0.0, 0.0},
+              {0.0, 0.5, 0.0}, {0.0, -0.5, 0.0}}}},
+        {"cylinder", OPENUSD_SILK_LIGHT_CYLINDER, 0.5f, 8.0f, 0.0f,
+            {{{0.5, 0.0, -4.0}, {0.5, 0.0, 4.0}, {-0.5, 0.0, -4.0},
+              {-0.5, 0.0, 4.0}, {0.0, 0.5, 0.0}}}}};
+
+    for (const EmitterCase& row : cases)
+    {
+        HdSilkSceneState state;
+        HdSilkLightRecord light;
+        light.path = "/Lights/FiniteArea";
+        light.type = row.type;
+        light.shadowEnabled = 1u;
+        light.radius = row.radius;
+        light.shapeX = row.shapeX;
+        light.shapeY = row.shapeY;
+        light.transform[14] = 10.0;
+        state.ReplaceLight(light);
+
+        HdSilkMeshRecord mesh;
+        mesh.path = "/Geom/FiniteAreaCaster";
+        mesh.primId = 106;
+        mesh.topologyRevision = 1;
+        mesh.points = CasterPoints3;
+        mesh.indices = {0u, 1u, 2u};
+        mesh.triangleSubprims = {0u};
+        state.ReplaceMeshInstances(mesh.path, {mesh});
+
+        uint64_t revision = 0;
+        uint32_t count = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+        const RetainedPage baseline = ReadRetainedPage(bytes, count);
+        const std::string label = std::string(row.name) + " emitter samples";
+        RequireOrder(baseline, {1u, 9u, 2u}, label);
+        Require(revision == 1u && baseline.frame.directLightCount == 1u &&
+                baseline.frame.directLights[0].type == row.type &&
+                baseline.frame.directLights[0].shadowEnabled == 1u &&
+                baseline.frame.directLights[0].radius == row.radius,
+            label + ": area-light identity or geometry changed in FRAME");
+        RequireShadowHeader(baseline, 5u, 1u, 0u, label);
+
+        for (size_t sample = 0; sample < row.offsets.size(); ++sample)
+        {
+            const ShadowView& map = baseline.shadows.maps[sample];
+            Require(map.lightIndex == 0u && map.mapIndex == sample &&
+                    map.resolution == OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION &&
+                    map.flags == OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE,
+                label + ": the map group must identify all five perspective emitter samples");
+            const std::array<double, 3> eye{
+                row.offsets[sample][0],
+                row.offsets[sample][1],
+                10.0 + row.offsets[sample][2]};
+            const std::array<double, 3> eyeInView{
+                (eye[0] * map.view[0]) + (eye[1] * map.view[4]) +
+                    (eye[2] * map.view[8]) + map.view[12],
+                (eye[0] * map.view[1]) + (eye[1] * map.view[5]) +
+                    (eye[2] * map.view[9]) + map.view[13],
+                (eye[0] * map.view[2]) + (eye[1] * map.view[6]) +
+                    (eye[2] * map.view[10]) + map.view[14]};
+            for (double coordinate : eyeInView)
+            {
+                Require(std::abs(coordinate) < 1e-10,
+                    label + ": the sampled emitter point must be the perspective eye");
+            }
+            RequirePointBoundsInside(
+                std::vector<ShadowView>{map},
+                {-1.0, -2.0, -2.0},
+                {1.0, 2.0, 2.0},
+                label + " sample " + std::to_string(sample));
+        }
+
+        const std::vector<uint8_t> quietBytes = state.BuildPage(&revision, &count);
+        const RetainedPage quiet = ReadRetainedPage(quietBytes, count);
+        RequireOrder(quiet, {1u}, label + " unchanged");
+        Require(revision == 2u && !quiet.hasShadows,
+            label + ": unchanged descriptors must not be republished");
+
+        light.transform[14] = 12.0;
+        state.ReplaceLight(light);
+        const std::vector<uint8_t> movedBytes = state.BuildPage(&revision, &count);
+        const RetainedPage moved = ReadRetainedPage(movedBytes, count);
+        RequireShadowHeader(moved, 5u, 1u, 0u, label + " moved");
+        Require(moved.shadowBytes != baseline.shadowBytes,
+            label + ": moving the emitter must update every sample projection");
+
+        light.transform[14] = 10.0;
+        if (row.type == OPENUSD_SILK_LIGHT_RECT ||
+            row.type == OPENUSD_SILK_LIGHT_CYLINDER)
+        {
+            light.shapeX *= 1.25f;
+        }
+        else
+        {
+            light.radius *= 1.25f;
+        }
+        state.ReplaceLight(light);
+        const std::vector<uint8_t> editedBytes = state.BuildPage(&revision, &count);
+        const RetainedPage edited = ReadRetainedPage(editedBytes, count);
+        RequireShadowHeader(edited, 5u, 1u, 0u, label + " edited geometry");
+        Require(edited.shadowBytes != baseline.shadowBytes,
+            label + ": changing emitter geometry must update the sample projections");
+
+        light.radius = row.radius;
+        light.shapeX = row.shapeX;
+        light.shapeY = row.shapeY;
+        state.ReplaceLight(light);
+        const std::vector<uint8_t> restoredBytes = state.BuildPage(&revision, &count);
+        const RetainedPage restored = ReadRetainedPage(restoredBytes, count);
+        RequireShadowHeader(restored, 5u, 1u, 0u, label + " restored");
+        Require(restored.shadowBytes == baseline.shadowBytes,
+            label + ": restoring the emitter must restore the original projection group");
+
+        light.transform[14] = 2.0;
+        state.ReplaceLight(light);
+        const std::vector<uint8_t> refusedBytes = state.BuildPage(&revision, &count);
+        const RetainedPage refused = ReadRetainedPage(refusedBytes, count);
+        RequireShadowHeader(refused, 0u, 1u,
+            OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE, label + " intersecting bounds");
+        Require(refused.shadows.maps.empty(),
+            label + ": a sample inside the caster bound must not fall back to a point map");
+    }
+}
+
+void VerifyFiniteAreaEmitterSamplesPreserveAuthoredTransform()
+{
+    struct TransformCase
+    {
+        const char* name;
+        std::array<double, 16> transform;
+        std::array<std::array<double, 3>, 5> offsets;
+    };
+    const double thresholdCosine = 0.9999999999995;
+    const TransformCase cases[] = {
+        {"rotated",
+            {0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0},
+            {{{0.0, 0.0, 0.0}, {-3.0, 2.0, 0.0}, {3.0, 2.0, 0.0},
+              {-3.0, -2.0, 0.0}, {3.0, -2.0, 0.0}}}},
+        {"nonuniform scale",
+            {2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0},
+            {{{0.0, 0.0, 0.0}, {4.0, 9.0, 0.0}, {4.0, -9.0, 0.0},
+              {-4.0, 9.0, 0.0}, {-4.0, -9.0, 0.0}}}},
+        {"shear",
+            {1.0, 0.0, 0.0, 0.0, 0.5, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0},
+            {{{0.0, 0.0, 0.0}, {3.5, 3.0, 0.0}, {0.5, -3.0, 0.0},
+              {-0.5, 3.0, 0.0}, {-3.5, -3.0, 0.0}}}},
+        {"reflection",
+            {-1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0},
+            {{{0.0, 0.0, 0.0}, {-2.0, 3.0, 0.0}, {-2.0, -3.0, 0.0},
+              {2.0, 3.0, 0.0}, {2.0, -3.0, 0.0}}}},
+        {"relative determinant at threshold",
+            {1.0, 0.0, 0.0, 0.0, thresholdCosine, 1e-6, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0},
+            {{{0.0, 0.0, 0.0},
+              {2.0 + (3.0 * thresholdCosine), 3e-6, 0.0},
+              {2.0 - (3.0 * thresholdCosine), -3e-6, 0.0},
+              {-2.0 + (3.0 * thresholdCosine), 3e-6, 0.0},
+              {-2.0 - (3.0 * thresholdCosine), -3e-6, 0.0}}}},
+        {"projective term at affine tolerance",
+            {1.0, 0.0, 0.0, 1e-12, 0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0},
+            {{{0.0, 0.0, 0.0}, {2.0, 3.0, 0.0}, {2.0, -3.0, 0.0},
+              {-2.0, 3.0, 0.0}, {-2.0, -3.0, 0.0}}}},
+        {"basis length above floor",
+            {2e-15, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0},
+            {{{0.0, 0.0, 0.0}, {4e-15, 3.0, 0.0}, {4e-15, -3.0, 0.0},
+              {-4e-15, 3.0, 0.0}, {-4e-15, -3.0, 0.0}}}};
+
+    for (const TransformCase& row : cases)
+    {
+        HdSilkSceneState state;
+        HdSilkLightRecord light;
+        light.path = "/Lights/TransformedRect";
+        light.type = OPENUSD_SILK_LIGHT_RECT;
+        light.shadowEnabled = 1u;
+        light.shapeX = 4.0f;
+        light.shapeY = 6.0f;
+        std::copy(row.transform.begin(), row.transform.end(), light.transform);
+        state.ReplaceLight(light);
+
+        HdSilkMeshRecord mesh;
+        mesh.path = "/Geom/TransformedRectCaster";
+        mesh.primId = 108;
+        mesh.topologyRevision = 1;
+        mesh.points = CasterPoints3;
+        mesh.indices = {0u, 1u, 2u};
+        mesh.triangleSubprims = {0u};
+        state.ReplaceMeshInstances(mesh.path, {mesh});
+
+        uint64_t revision = 0;
+        uint32_t count = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+        const RetainedPage page = ReadRetainedPage(bytes, count);
+        const std::string label = std::string(row.name) + " finite-area transform";
+        RequireOrder(page, {1u, 9u, 2u}, label);
+        Require(revision == 1u && page.frame.directLightCount == 1u &&
+                page.frame.directLights[0].type == OPENUSD_SILK_LIGHT_RECT &&
+                page.frame.directLights[0].transform == row.transform,
+            label + ": authored FRAME matrix was not retained exactly");
+        RequireShadowHeader(page, 5u, 1u, 0u, label);
+        RequireTriangle(page.meshes[0], mesh.path, 108, 1, CasterPoints3,
+            IdentityTransform, "", 0u, label + " shared ABI-35 triangle control");
+
+        for (size_t sample = 0; sample < row.offsets.size(); ++sample)
+        {
+            const ShadowView& map = page.shadows.maps[sample];
+            const std::array<double, 3> eye{
+                row.offsets[sample][0],
+                row.offsets[sample][1],
+                10.0 + row.offsets[sample][2]};
+            const std::array<double, 3> eyeInView{
+                (eye[0] * map.view[0]) + (eye[1] * map.view[4]) +
+                    (eye[2] * map.view[8]) + map.view[12],
+                (eye[0] * map.view[1]) + (eye[1] * map.view[5]) +
+                    (eye[2] * map.view[9]) + map.view[13],
+                (eye[0] * map.view[2]) + (eye[1] * map.view[6]) +
+                    (eye[2] * map.view[10]) + map.view[14]};
+            for (double coordinate : eyeInView)
+            {
+                Require(std::abs(coordinate) < 1e-8,
+                    label + ": shadow eye disagrees with the transformed local surface point");
+            }
+        }
+    }
+}
+
+void VerifyUnrepresentableFiniteAreaTransformsAreRefused()
+{
+    struct InvalidTransform
+    {
+        const char* name;
+        std::array<double, 16> transform;
+    };
+    const InvalidTransform cases[] = {
+        {"projective",
+            {1.0, 0.0, 0.0, 0.25, 0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0}},
+        {"projective term beyond affine tolerance",
+            {1.0, 0.0, 0.0, 1.1e-12, 0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0}},
+        {"zero basis row",
+            {0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0}},
+        {"basis row below length threshold",
+            {1e-16, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0}},
+        {"basis row at length threshold",
+            {1e-15, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0}},
+        {"relative determinant below threshold",
+            {1.0, 0.0, 0.0, 0.0, 1.0, 1e-8, 0.0, 0.0,
+             0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 1.0}}};
+
+    for (const InvalidTransform& row : cases)
+    {
+        HdSilkSceneState state;
+        HdSilkLightRecord light;
+        light.path = "/Lights/RejectedTransform";
+        light.type = OPENUSD_SILK_LIGHT_RECT;
+        light.shadowEnabled = 1u;
+        light.shapeX = 4.0f;
+        light.shapeY = 6.0f;
+        std::copy(IdentityTransform.begin(), IdentityTransform.end(), light.transform);
+        light.transform[14] = 10.0;
+        state.ReplaceLight(light);
+        HdSilkMeshRecord mesh;
+        mesh.path = "/Geom/RejectedTransformCaster";
+        mesh.primId = 109;
+        mesh.topologyRevision = 1;
+        mesh.points = CasterPoints3;
+        mesh.indices = {0u, 1u, 2u};
+        mesh.triangleSubprims = {0u};
+        state.ReplaceMeshInstances(mesh.path, {mesh});
+
+        uint64_t revision = 0;
+        uint32_t count = 0;
+        const std::vector<uint8_t> baselineBytes = state.BuildPage(&revision, &count);
+        const RetainedPage baseline = ReadRetainedPage(baselineBytes, count);
+        RequireShadowHeader(baseline, 5u, 1u, 0u,
+            std::string(row.name) + " valid-transform control");
+
+        std::copy(row.transform.begin(), row.transform.end(), light.transform);
+        state.ReplaceLight(light);
+        const std::vector<uint8_t> refusedBytes = state.BuildPage(&revision, &count);
+        const RetainedPage refused = ReadRetainedPage(refusedBytes, count);
+        const std::string label = std::string(row.name) + " invalid finite-area transform";
+        Require(revision == 2u && refused.frame.directLightCount == 1u &&
+                refused.frame.directLights[0].type == OPENUSD_SILK_LIGHT_RECT &&
+                refused.frame.directLights[0].shadowEnabled == 1u &&
+                refused.frame.directLights[0].transform == row.transform,
+            label + ": refusing the projection must not drop or rewrite the authored light");
+        RequireShadowHeader(
+            refused,
+            0u,
+            1u,
+            OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
+            label);
+        Require(refused.shadows.maps.empty(),
+            label + ": an unrepresentable surface must not fall back to another projection");
+    }
+}
+
+void VerifyInvalidEmitterDimensionsAreRefusedWithoutFallback()
+{
+    struct EmitterCase
+    {
+        const char* name;
+        uint32_t type;
+        float radius;
+        float shapeX;
+        float shapeY;
+    };
+    const EmitterCase cases[] = {
+        {"zero-width rect", OPENUSD_SILK_LIGHT_RECT, 0.0f, 0.0f, 1.0f},
+        {"zero-height rect", OPENUSD_SILK_LIGHT_RECT, 0.0f, 1.0f, 0.0f},
+        {"zero-radius disk", OPENUSD_SILK_LIGHT_DISK, 0.0f, 0.0f, 0.0f},
+        {"zero-radius cylinder", OPENUSD_SILK_LIGHT_CYLINDER, 0.0f, 1.0f, 0.0f},
+        {"zero-length cylinder", OPENUSD_SILK_LIGHT_CYLINDER, 0.5f, 0.0f, 0.0f}};
+
+    for (const EmitterCase& row : cases)
+    {
+        HdSilkSceneState state;
+        HdSilkLightRecord light;
+        light.path = "/Lights/InvalidArea";
+        light.type = row.type;
+        light.shadowEnabled = 1u;
+        light.radius = row.radius;
+        light.shapeX = row.shapeX;
+        light.shapeY = row.shapeY;
+        light.transform[14] = 10.0;
+        state.ReplaceLight(light);
+
+        HdSilkMeshRecord mesh;
+        mesh.path = "/Geom/InvalidAreaCaster";
+        mesh.primId = 107;
+        mesh.topologyRevision = 1;
+        mesh.points = CasterPoints3;
+        mesh.indices = {0u, 1u, 2u};
+        mesh.triangleSubprims = {0u};
+        state.ReplaceMeshInstances(mesh.path, {mesh});
+
+        uint64_t revision = 0;
+        uint32_t count = 0;
+        const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+        const RetainedPage page = ReadRetainedPage(bytes, count);
+        Require(revision == 1u && page.frame.directLightCount == 1u &&
+                page.frame.directLights[0].type == row.type &&
+                page.frame.directLights[0].shadowEnabled == 1u,
+            std::string(row.name) + ": invalid dimensions changed the direct-light record");
+        RequireShadowHeader(
+            page,
+            0u,
+            1u,
+            OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
+            row.name);
+        Require(page.shadows.maps.empty(),
+            std::string(row.name) + ": invalid dimensions must not fall back to another projection");
+    }
+}
+
 void VerifyZeroRadiusSpherePerspectiveConeBoundaries()
 {
     for (const float cone : {0.0f})
@@ -3935,7 +4318,7 @@ void VerifyBoundedPointShadowBudgetAndPublicationRetry()
         retry.shadows.maps, {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, "point retry");
 }
 
-void VerifyShadowBudgetAndUnsupportedTypes()
+void VerifyShadowBudgetAndAreaTypes()
 {
     static_assert(OPENUSD_SILK_MAX_SHADOW_MAPS == 24u);
     static_assert(OPENUSD_SILK_MAX_SHADOW_LIGHTS == 4u);
@@ -4071,14 +4454,44 @@ void VerifyShadowBudgetAndUnsupportedTypes()
                         page.frame.directLights[0].shapeX == (shape.wireType == 3u ? 4.0f : (shape.wireType == 5u ? 8.0f : 0.0f)) &&
                         page.frame.directLights[0].shapeY == (shape.wireType == 3u ? 6.0f : 0.0f),
                     label + ": unsupported SHADOW shape must remain an intact direct wire light");
-                const uint32_t reasons = (enabled ? 1u : 0u) | (fifth ? 2u : 0u);
-                RequireShadowHeader(page, 4, 128u, reasons, label);
-                const std::array<uint32_t, 4> winners = fifth
-                    ? std::array<uint32_t, 4>{30u, 31u, 64u, 96u}
-                    : std::array<uint32_t, 4>{31u, 64u, 96u, 127u};
-                for (size_t map = 0; map < 4; ++map)
+                const bool mapBudgetExceeded = enabled || fifth;
+                const uint32_t reasons = mapBudgetExceeded
+                    ? OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET
+                    : OPENUSD_SILK_SHADOW_UNSUPPORTED_NONE;
+                std::vector<uint32_t> winners;
+                if (enabled)
                 {
-                    RequireShadow(page.shadows.maps[map], winners[map], static_cast<uint32_t>(map), 1u, Z3, label);
+                    winners = fifth
+                        ? std::vector<uint32_t>{0u, 0u, 0u, 0u, 0u, 30u, 31u, 64u}
+                        : std::vector<uint32_t>{0u, 0u, 0u, 0u, 0u, 31u, 64u, 96u};
+                }
+                else
+                {
+                    winners = fifth
+                        ? std::vector<uint32_t>{30u, 31u, 64u, 96u}
+                        : std::vector<uint32_t>{31u, 64u, 96u, 127u};
+                }
+                RequireShadowHeader(page, winners.size(), 128u, reasons, label);
+                for (size_t map = 0; map < winners.size(); ++map)
+                {
+                    if (enabled && map < 5)
+                    {
+                        const ShadowView& emitterMap = page.shadows.maps[map];
+                        Require(emitterMap.lightIndex == 0u && emitterMap.mapIndex == map &&
+                                emitterMap.flags == OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE,
+                            label + ": the admitted area light must keep its five sample maps");
+                    }
+                    else
+                    {
+                        const uint32_t expectedLight = winners[map];
+                        RequireShadow(
+                            page.shadows.maps[map],
+                            expectedLight,
+                            static_cast<uint32_t>(map),
+                            enabled ? OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC : 1u,
+                            Z3,
+                            label);
+                    }
                 }
             }
         }
@@ -4340,6 +4753,14 @@ int main(int argc, char* argv[])
             VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow},
         {"domes-shadows", "VerifyPointInsideBoundsPublishesSixFaces",
             VerifyPointInsideBoundsPublishesSixFaces},
+        {"domes-shadows", "VerifyFiniteAreaEmitterSamplesPublishAndUpdatePerspectiveGroups",
+            VerifyFiniteAreaEmitterSamplesPublishAndUpdatePerspectiveGroups},
+        {"domes-shadows", "VerifyFiniteAreaEmitterSamplesPreserveAuthoredTransform",
+            VerifyFiniteAreaEmitterSamplesPreserveAuthoredTransform},
+        {"domes-shadows", "VerifyUnrepresentableFiniteAreaTransformsAreRefused",
+            VerifyUnrepresentableFiniteAreaTransformsAreRefused},
+        {"domes-shadows", "VerifyInvalidEmitterDimensionsAreRefusedWithoutFallback",
+            VerifyInvalidEmitterDimensionsAreRefusedWithoutFallback},
         {"domes-shadows", "VerifyZeroRadiusSpherePerspectiveConeBoundaries",
             VerifyZeroRadiusSpherePerspectiveConeBoundaries},
         {"domes-shadows", "VerifyBoundedPointShadowProjectionAndLifecycle",
@@ -4348,7 +4769,7 @@ int main(int argc, char* argv[])
             VerifyBoundedPointShadowFrustumAndRefusal},
         {"domes-shadows", "VerifyBoundedPointShadowBudgetAndPublicationRetry",
             VerifyBoundedPointShadowBudgetAndPublicationRetry},
-        {"domes-shadows", "VerifyShadowBudgetAndUnsupportedTypes", VerifyShadowBudgetAndUnsupportedTypes},
+        {"domes-shadows", "VerifyShadowBudgetAndAreaTypes", VerifyShadowBudgetAndAreaTypes},
         {"domes-shadows", "VerifyShadowEligibilityBoundaries", VerifyShadowEligibilityBoundaries}};
 
     const std::string selector = argv[1];

@@ -460,7 +460,8 @@ internal static class SilkDomeLinkConformance
         byte[] expected = ReadPixels(cleanColor);
         await AssertLit(expected, LeftX, red: true, blue: false, "rebuilt reference");
 
-        foreach (FailurePoint failure in new[] { FailurePoint.Submit, FailurePoint.Wait })
+        foreach (FailurePoint failure in new[]
+            { FailurePoint.Submit, FailurePoint.Wait, FailurePoint.WaitAndDispose })
         {
             using var failing = new FailingSubmissionDevice(device);
             using ISilkGraphicsTexture color = CreateColorTarget(failing);
@@ -490,8 +491,15 @@ internal static class SilkDomeLinkConformance
             {
                 _ = renderer.Render(color, depth);
             }
-            catch (SilkSubmissionFailure)
+            catch (SilkSubmissionFailure) when (failure != FailurePoint.WaitAndDispose)
             {
+                threw = true;
+            }
+            catch (AggregateException exception) when (failure == FailurePoint.WaitAndDispose)
+            {
+                await Assert.That(exception.InnerExceptions.Count).IsEqualTo(2);
+                await Assert.That(exception.InnerExceptions[0].Message).IsEqualTo("The injected wait failed.");
+                await Assert.That(exception.InnerExceptions[1].Message).IsEqualTo("The injected disposal failed.");
                 threw = true;
             }
 
@@ -539,6 +547,7 @@ internal static class SilkDomeLinkConformance
         None,
         Submit,
         Wait,
+        WaitAndDispose,
     }
 
     /// <summary>The injected device failure, distinguishable from a real one.</summary>
@@ -619,13 +628,14 @@ internal static class SilkDomeLinkConformance
                 throw new SilkSubmissionFailure("The injected submission failed.");
             }
             ISilkGraphicsSubmission submission = inner.Submit(commandList);
-            if (_armed != FailurePoint.Wait)
+            FailurePoint armed = _armed;
+            if (armed != FailurePoint.Wait && armed != FailurePoint.WaitAndDispose)
             {
                 return submission;
             }
 
             _armed = FailurePoint.None;
-            return new FailingWaitSubmission(submission);
+            return new FailingWaitSubmission(submission, armed == FailurePoint.WaitAndDispose);
         }
 
         public void WaitIdle() => inner.WaitIdle();
@@ -637,7 +647,7 @@ internal static class SilkDomeLinkConformance
     }
 
     /// <summary>A real submission whose wait is reported as failed exactly once.</summary>
-    private sealed class FailingWaitSubmission(ISilkGraphicsSubmission inner)
+    private sealed class FailingWaitSubmission(ISilkGraphicsSubmission inner, bool failDispose)
         : ISilkGraphicsSubmission
     {
         public bool IsCompleted => inner.IsCompleted;
@@ -650,7 +660,14 @@ internal static class SilkDomeLinkConformance
             throw new SilkSubmissionFailure("The injected wait failed.");
         }
 
-        public void Dispose() => inner.Dispose();
+        public void Dispose()
+        {
+            inner.Dispose();
+            if (failDispose)
+            {
+                throw new SilkSubmissionFailure("The injected disposal failed.");
+            }
+        }
     }
 
     /// <summary>Maps each instance's world X onto the texel column at its centre.</summary>

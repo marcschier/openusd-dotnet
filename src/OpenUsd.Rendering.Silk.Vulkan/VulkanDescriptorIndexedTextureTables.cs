@@ -137,7 +137,9 @@ internal sealed unsafe class VulkanDescriptorIndexedTextureTables : IDisposable
         {
             if (_pool.Handle != 0)
             {
-                _api.FreeDescriptorSets(_device, _pool, 1, &descriptorSet);
+                VulkanSilkGraphicsDevice.ThrowIfFailed(
+                    _api.FreeDescriptorSets(_device, _pool, 1, &descriptorSet),
+                    "vkFreeDescriptorSets(descriptor indexed materials)");
             }
         }
     }

@@ -30,6 +30,11 @@ internal static class D3D12ShaderRegisters
     /// </remarks>
     internal static uint Map(SilkBindingSlot slot)
     {
+        if (slot.Kind == SilkBindingKind.StorageBuffer &&
+            slot.Binding == SilkPtexCandidateBinding.Binding)
+        {
+            return SilkPtexCandidateBinding.HlslRegister;
+        }
         if (slot.Kind == SilkBindingKind.Sampler)
         {
             return slot.Binding switch
@@ -77,7 +82,11 @@ internal static class D3D12ShaderRegisters
                 SilkBindingLayoutDescriptor.DetailNormalValuesTextureBinding => 21,
                 SilkBindingLayoutDescriptor.DiffuseValuesTextureBinding => 22,
                 SilkBindingLayoutDescriptor.EmissiveValuesTextureBinding => 23,
+                >= SilkBindingLayoutDescriptor.ShadowTransmissionTextureBinding and
+                    < SilkBindingLayoutDescriptor.ShadowTransmissionTextureBinding + 4 =>
+                    slot.Binding - SilkBindingLayoutDescriptor.ShadowTransmissionTextureBinding + 24,
                 SilkBindingLayoutDescriptor.VolumeDensityTextureBinding => 9,
+                SilkBindingLayoutDescriptor.VolumeOpaqueDepthTextureBinding => 28,
                 _ => slot.Binding >= 2 ? slot.Binding - 2 : slot.Binding
             };
         }

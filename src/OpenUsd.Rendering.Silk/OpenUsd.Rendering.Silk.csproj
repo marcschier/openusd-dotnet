@@ -8,16 +8,11 @@
   <ItemGroup>
     <PackageReference Include="Silk.NET.Core" />
     <PackageReference Include="System.IO.Hashing" />
-    <PackageReference Include="SPIRV-Cross.NET" GeneratePathProperty="true" PrivateAssets="all" />
+    <PackageReference Include="Silk.NET.SPIRV.Cross.Native" />
     <PackageReference Include="Microsoft.Direct3D.DXC" GeneratePathProperty="true" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
-    <Content Include="$(NuGetPackageRoot)spirv-cross.net\1.0.2\content\spirv-cross.dll"
-             Link="spirv-cross.dll"
-             CopyToOutputDirectory="PreserveNewest"
-             Pack="true"
-             PackagePath="runtimes/win-x64/native/spirv-cross.dll" />
     <Content Include="$(PkgMicrosoft_Direct3D_DXC)\build\native\bin\x64\dxc.exe"
              Link="dxc.exe"
              CopyToOutputDirectory="PreserveNewest"
@@ -134,6 +129,18 @@
     <EmbeddedResource Include="..\..\eng\shaders\checked\shadow.mask.*.spv"
                       LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\eng\shaders\checked\shadow.mask.*.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\shadow.transmission.*.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\shadow.transmission.*.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\shadow.transmission.*.reflection.json"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\volume.camera.*.dxil"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\volume.camera.*.spv"
+                      LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\eng\shaders\checked\volume.camera.*.reflection.json"
                       LogicalName="OpenUsd.Rendering.Silk.Shaders.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\eng\shaders\checked\normal.vertex.dxil"
                       LogicalName="OpenUsd.Rendering.Silk.Shaders.normal.vertex.dxil" />

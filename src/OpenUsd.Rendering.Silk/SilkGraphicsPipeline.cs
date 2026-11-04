@@ -15,6 +15,7 @@ public abstract class SilkGraphicsResourceBase : IDisposable
     private int _leaseCount;
     private bool _disposeRequested;
     private bool _nativeReleased;
+    private bool _releaseInProgress;
     private IDisposable? _bufferReservation;
 
     internal void OwnBufferReservation(IDisposable? reservation)
@@ -36,8 +37,40 @@ public abstract class SilkGraphicsResourceBase : IDisposable
 
     private void ReleaseNativeAndReservation()
     {
-        ReleaseNative();
-        Interlocked.Exchange(ref _bufferReservation, null)?.Dispose();
+        try
+        {
+            if (!_nativeReleased)
+            {
+                ReleaseNative();
+                lock (_lifetimeGate)
+                {
+                    _nativeReleased = true;
+                }
+            }
+            _bufferReservation?.Dispose();
+            lock (_lifetimeGate)
+            {
+                _bufferReservation = null;
+            }
+        }
+        finally
+        {
+            lock (_lifetimeGate)
+            {
+                _releaseInProgress = false;
+            }
+        }
+    }
+
+    private bool BeginRelease()
+    {
+        if (!_disposeRequested || _leaseCount != 0 || _releaseInProgress ||
+            (_nativeReleased && _bufferReservation is null))
+        {
+            return false;
+        }
+        _releaseInProgress = true;
+        return true;
     }
 
     /// <inheritdoc/>
@@ -47,16 +80,8 @@ public abstract class SilkGraphicsResourceBase : IDisposable
         bool release;
         lock (_lifetimeGate)
         {
-            if (_disposeRequested)
-            {
-                return;
-            }
             _disposeRequested = true;
-            release = _leaseCount == 0;
-            if (release)
-            {
-                _nativeReleased = true;
-            }
+            release = BeginRelease();
         }
         if (release)
         {
@@ -87,30 +112,43 @@ public abstract class SilkGraphicsResourceBase : IDisposable
     /// <summary>Releases the native resource after disposal and all leases.</summary>
     protected abstract void ReleaseNative();
 
-    private void ReleaseLease()
+    private void ReleaseLease(ResourceLease lease)
     {
         bool release;
         lock (_lifetimeGate)
         {
-            _leaseCount--;
-            release = _disposeRequested && _leaseCount == 0 && !_nativeReleased;
-            if (release)
+            if (lease.Resource is null)
             {
-                _nativeReleased = true;
+                return;
+            }
+            if (!lease.CountReleased)
+            {
+                _leaseCount--;
+                lease.CountReleased = true;
+            }
+            release = BeginRelease();
+            if (!release && !_releaseInProgress)
+            {
+                lease.Resource = null;
             }
         }
         if (release)
         {
             ReleaseNativeAndReservation();
+            lock (_lifetimeGate)
+            {
+                lease.Resource = null;
+            }
         }
     }
 
     private sealed class ResourceLease(SilkGraphicsResourceBase resource) : IDisposable
     {
-        private SilkGraphicsResourceBase? _resource = resource;
+        internal SilkGraphicsResourceBase? Resource = resource;
+        internal bool CountReleased;
 
         public void Dispose() =>
-            Interlocked.Exchange(ref _resource, null)?.ReleaseLease();
+            Volatile.Read(ref Resource)?.ReleaseLease(this);
     }
 }
 
@@ -631,6 +669,9 @@ public readonly record struct SilkBindingLayoutDescriptor(
 
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
+    internal const uint VolumeOpaqueDepthTextureBinding = 45;
+    internal const uint VolumeCameraFieldBufferBinding = 6;
+    internal const uint VolumeCameraParameterByteSize = 32;
 
     // Normal-mapped surfaces and density volumes use disjoint shader permutations.
     internal const uint DetailNormalSamplerBinding = VolumeSamplerBinding;
@@ -669,6 +710,13 @@ public readonly record struct SilkBindingLayoutDescriptor(
         0,
         SilkShaderStageVisibility.Fragment);
 
+    private static SilkBindingSlot VolumeOpaqueDepthTextureSlot => new(
+        0,
+        VolumeOpaqueDepthTextureBinding,
+        SilkBindingKind.SampledTexture,
+        0,
+        SilkShaderStageVisibility.Fragment);
+
     /// <summary>Creates the checked mesh SceneParameters layout.</summary>
     public static SilkBindingLayoutDescriptor SceneParameters => new(
         0,
@@ -696,10 +744,42 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 0,
                 SilkShaderStageVisibility.Fragment),
             VolumeDensityTextureSlot,
+            VolumeOpaqueDepthTextureSlot,
             .. ShadowAtlasSlots,
             .. EnvironmentSlots
         ]
     };
+
+    internal static SilkBindingLayoutDescriptor VolumeCameraParameters(bool densityAtlas)
+    {
+        var slots = new List<SilkBindingSlot>
+        {
+            new(0, VolumeCameraFieldBufferBinding, SilkBindingKind.StorageBuffer, 0,
+                SilkShaderStageVisibility.Fragment),
+            new(0, FrameParametersBinding, SilkBindingKind.StorageBuffer, 0,
+                SilkShaderStageVisibility.Fragment),
+            VolumeOpaqueDepthTextureSlot
+        };
+        if (densityAtlas)
+        {
+            slots.Add(new SilkBindingSlot(
+                0,
+                VolumeSamplerBinding,
+                SilkBindingKind.Sampler,
+                0,
+                SilkShaderStageVisibility.Fragment));
+            slots.Add(VolumeDensityTextureSlot);
+        }
+
+        return new SilkBindingLayoutDescriptor(
+            0,
+            0,
+            VolumeCameraParameterByteSize,
+            SilkShaderStageVisibility.Fragment)
+        {
+            MaterialSlots = slots
+        };
+    }
 
     /// <summary>The sampler the checked mesh fragment reads the shadow atlas through.</summary>
     internal const uint ShadowSamplerBinding = 30;
@@ -715,6 +795,7 @@ public readonly record struct SilkBindingLayoutDescriptor(
     /// every permutation, exactly as it does for the composite material image.
     /// </remarks>
     internal const uint ShadowAtlasTextureBinding = 31;
+    internal const uint ShadowTransmissionTextureBinding = 41;
 
     private static IReadOnlyList<SilkBindingSlot> ShadowAtlasSlots =>
     [
@@ -729,7 +810,11 @@ public readonly record struct SilkBindingLayoutDescriptor(
             ShadowAtlasTextureBinding,
             SilkBindingKind.SampledTexture,
             0,
-            SilkShaderStageVisibility.Fragment)
+            SilkShaderStageVisibility.Fragment),
+        new(0, 41, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+        new(0, 42, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+        new(0, 43, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment),
+        new(0, 44, SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment)
     ];
 
     /// <summary>
@@ -847,6 +932,16 @@ public readonly record struct SilkBindingLayoutDescriptor(
         ]
     };
 
+    internal static SilkBindingLayoutDescriptor ShadowConstantParameters => ShadowParameters with
+    {
+        MaterialSlots =
+        [
+            .. ShadowParameters.MaterialSlots,
+            new(0, SurfaceParametersBinding, SilkBindingKind.StorageBuffer, 0,
+                SilkShaderStageVisibility.Fragment)
+        ]
+    };
+
     /// <summary>
     /// Creates the world-space normal capture layout.
     /// </summary>
@@ -960,20 +1055,25 @@ public readonly record struct SilkBindingLayoutDescriptor(
         {
             throw new ArgumentException("SceneParameters must use set 0, binding 0.");
         }
-        if (UniformByteSize != 80)
+        IReadOnlyList<SilkBindingSlot> slots = MaterialSlots ?? [];
+        bool volumeCamera = IsVolumeCameraLayout(slots);
+        if (!volumeCamera && UniformByteSize != SilkSceneUniformWriter.ByteSize)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(UniformByteSize),
                 "SceneParameters must contain exactly 80 bytes.");
         }
-        if (Visibility !=
-            (SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment))
+        SilkShaderStageVisibility expectedVisibility = volumeCamera
+            ? SilkShaderStageVisibility.Fragment
+            : SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment;
+        if (Visibility != expectedVisibility)
         {
             throw new ArgumentException(
-                "SceneParameters must be visible to vertex and fragment stages.",
+                volumeCamera
+                    ? "VolumeCameraParameters must be visible to the fragment stage."
+                    : "SceneParameters must be visible to vertex and fragment stages.",
                 nameof(Visibility));
         }
-        IReadOnlyList<SilkBindingSlot> slots = MaterialSlots ?? [];
         for (int index = 0; index < slots.Count; index++)
         {
             SilkBindingSlot slot = slots[index];
@@ -1000,6 +1100,39 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 }
             }
         }
+    }
+
+    private bool IsVolumeCameraLayout(IReadOnlyList<SilkBindingSlot> slots)
+    {
+        if (UniformByteSize != VolumeCameraParameterByteSize || slots.Count is not (3 or 5))
+        {
+            return false;
+        }
+
+        int found = 0;
+        foreach (SilkBindingSlot slot in slots)
+        {
+            if (slot.Set != 0 || slot.UniformByteSize != 0 ||
+                slot.Visibility != SilkShaderStageVisibility.Fragment)
+            {
+                return false;
+            }
+            int bit = (slot.Binding, slot.Kind) switch
+            {
+                (VolumeCameraFieldBufferBinding, SilkBindingKind.StorageBuffer) => 1,
+                (FrameParametersBinding, SilkBindingKind.StorageBuffer) => 2,
+                (VolumeOpaqueDepthTextureBinding, SilkBindingKind.SampledTexture) => 4,
+                (VolumeSamplerBinding, SilkBindingKind.Sampler) => 8,
+                (VolumeDensityTextureBinding, SilkBindingKind.SampledTexture) => 16,
+                _ => 0
+            };
+            if (bit == 0 || (found & bit) != 0)
+            {
+                return false;
+            }
+            found |= bit;
+        }
+        return found is 7 or 31;
     }
 
     /// <summary>
@@ -1033,6 +1166,20 @@ public readonly record struct SilkBindingLayoutDescriptor(
         }
         throw new InvalidOperationException(
             $"The bound pipeline declares no material slot at set {set}, binding {binding}.");
+    }
+
+    internal bool DeclaresMaterialSlot(uint set, uint binding, SilkBindingKind kind)
+    {
+        IReadOnlyList<SilkBindingSlot> slots = MaterialSlots ?? [];
+        for (int index = 0; index < slots.Count; index++)
+        {
+            SilkBindingSlot slot = slots[index];
+            if (slot.Set == set && slot.Binding == binding && slot.Kind == kind)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }
 
@@ -1450,18 +1597,27 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
         SilkCullMode cullMode = SilkCullMode.None,
-        bool masked = false)
+        bool masked = false,
+        SilkShadowTransmissionPass? transmissionPass = null,
+        bool constantOpacity = false)
     {
+        if (constantOpacity && !transmissionPass.HasValue)
+        {
+            throw new ArgumentException("Constant opacity requires a transmission pass.", nameof(constantOpacity));
+        }
+        masked |= transmissionPass.HasValue;
         DeviceGenerationKey generation = ReadDeviceGeneration(_device);
         PipelineCacheKey key = new(
-            masked ? "shadow-caster-masked" : "shadow-caster-depth-only",
+            transmissionPass.HasValue ? $"shadow-transmission-{transmissionPass}-{constantOpacity}" :
+                masked ? "shadow-caster-masked" : "shadow-caster-depth-only",
             CreateVertexLayoutKey(vertexLayout),
             colorFormat,
             depthFormat,
             cullMode,
             SilkTopologyKind.TriangleList,
-            SilkBlendMode.None,
-            DepthWriteEnabled: true,
+            transmissionPass == SilkShadowTransmissionPass.EqualDepthProbe
+                ? SilkBlendMode.StraightAlphaOver : SilkBlendMode.None,
+            DepthWriteEnabled: transmissionPass != SilkShadowTransmissionPass.EqualDepthProbe,
             _shaderFormat,
             generation);
 
@@ -1476,7 +1632,8 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
 
             if (!_entries.TryGetValue(key, out CachedPipelineEntry? entry))
             {
-                entry = CreateShadowEntry(vertexLayout, colorFormat, depthFormat, cullMode, masked);
+                entry = CreateShadowEntry(
+                    vertexLayout, colorFormat, depthFormat, cullMode, masked, transmissionPass, constantOpacity);
                 _entries.Add(key, entry);
             }
 
@@ -1614,7 +1771,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         try
         {
             vertexShader = _device.CreateShaderModule(
-                SilkCheckedShaderAssets.LoadMeshVertex(_shaderFormat, permutation));
+                sampledVolumeFragment
+                    ? SilkCheckedShaderAssets.LoadMeshVolumeVertex(_shaderFormat)
+                    : SilkCheckedShaderAssets.LoadMeshVertex(_shaderFormat, permutation));
             // The sampled density volume is its own checked fragment program rather
             // than a switch inside the shared mesh permutation. A backend root
             // signature or pipeline layout must declare every resource its shader
@@ -1664,7 +1823,9 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         SilkTextureFormat colorFormat,
         SilkTextureFormat depthFormat,
         SilkCullMode cullMode,
-        bool masked)
+        bool masked,
+        SilkShadowTransmissionPass? transmissionPass,
+        bool constantOpacity)
     {
         ISilkGraphicsShaderModule? vertexShader = null;
         ISilkGraphicsShaderModule? fragmentShader = null;
@@ -1674,17 +1835,31 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
         try
         {
             vertexShader = _device.CreateShaderModule(
-                masked
+                masked && !constantOpacity
                     ? SilkCheckedShaderAssets.LoadMaskedShadowVertex(_shaderFormat)
                     : SilkCheckedShaderAssets.LoadShadowVertex(_shaderFormat));
             fragmentShader = _device.CreateShaderModule(
-                masked
+                transmissionPass.HasValue
+                    ? SilkCheckedShaderAssets.LoadTransmissionShadowFragment(
+                        _shaderFormat, transmissionPass.Value, constantOpacity)
+                    : masked
                     ? SilkCheckedShaderAssets.LoadMaskedShadowFragment(_shaderFormat)
                     : SilkCheckedShaderAssets.LoadShadowFragment(_shaderFormat));
-            bindingLayout = _device.CreateBindingLayout(
-                masked
-                    ? SilkBindingLayoutDescriptor.ShadowMaskedParameters
-                    : SilkBindingLayoutDescriptor.ShadowParameters);
+            SilkBindingLayoutDescriptor layout = constantOpacity
+                ? SilkBindingLayoutDescriptor.ShadowConstantParameters
+                : masked
+                ? SilkBindingLayoutDescriptor.ShadowMaskedParameters
+                : SilkBindingLayoutDescriptor.ShadowParameters;
+            if (transmissionPass.HasValue)
+            {
+                layout = layout with
+                {
+                    MaterialSlots = [.. layout.MaterialSlots,
+                        new SilkBindingSlot(0, SilkBindingLayoutDescriptor.ShadowTransmissionTextureBinding,
+                            SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment)],
+                };
+            }
+            bindingLayout = _device.CreateBindingLayout(layout);
             program = _device.CreateShaderProgram(new SilkShaderProgramDescriptor(
                 vertexShader,
                 fragmentShader,
@@ -1697,7 +1872,10 @@ public sealed class SilkGraphicsPipelineCache : IDisposable
                 cullMode,
                 SilkTopologyKind.TriangleList)
             {
-                DepthOnly = true,
+                DepthOnly = !transmissionPass.HasValue,
+                BlendMode = transmissionPass == SilkShadowTransmissionPass.EqualDepthProbe
+                    ? SilkBlendMode.StraightAlphaOver : SilkBlendMode.None,
+                DepthWriteEnabled = transmissionPass != SilkShadowTransmissionPass.EqualDepthProbe,
             });
             return new CachedPipelineEntry(
                 vertexShader,
@@ -2099,6 +2277,36 @@ public static partial class SilkCheckedShaderAssets
             format,
             "volumeFragmentMain");
 
+    /// <summary>Loads the checked sampled-density-volume mesh vertex module.</summary>
+    internal static SilkShaderModuleDescriptor LoadMeshVolumeVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModuleByName(
+            "mesh.volume.vertex",
+            SilkShaderStage.Vertex,
+            format,
+            "volumeVertexMain");
+
+    internal static SilkShaderModuleDescriptor LoadVolumeCameraVertex(
+        SilkShaderBinaryFormat format) =>
+        LoadGraphicsModuleByName(
+            "volume.camera.vertex",
+            SilkShaderStage.Vertex,
+            format,
+            "volumeCameraVertexMain");
+
+    internal static SilkShaderModuleDescriptor LoadVolumeCameraFragment(
+        SilkShaderBinaryFormat format,
+        bool densityAtlas) =>
+        LoadGraphicsModuleByName(
+            densityAtlas
+                ? "volume.camera.fragment.atlas"
+                : "volume.camera.fragment.uniform",
+            SilkShaderStage.Fragment,
+            format,
+            densityAtlas
+                ? "volumeCameraAtlasFragmentMain"
+                : "volumeCameraUniformFragmentMain");
+
     /// <summary>Loads the checked pick vertex module.</summary>
     public static SilkShaderModuleDescriptor LoadPickVertex(
         SilkShaderBinaryFormat format) =>
@@ -2190,6 +2398,32 @@ public static partial class SilkCheckedShaderAssets
             SilkShaderStage.Fragment,
             format,
             "shadowMaskedFragmentMain");
+
+    internal static SilkShaderModuleDescriptor LoadTransmissionShadowFragment(
+        SilkShaderBinaryFormat format, SilkShadowTransmissionPass pass, bool constantOpacity = false) =>
+        LoadGraphicsModule(
+            (constantOpacity, pass) switch
+            {
+                (true, SilkShadowTransmissionPass.FirstPeel) => "shadow.transmission.constant.first",
+                (true, SilkShadowTransmissionPass.Peel) => "shadow.transmission.constant",
+                (true, SilkShadowTransmissionPass.EqualDepthProbe) => "shadow.transmission.constant.probe",
+                (false, SilkShadowTransmissionPass.FirstPeel) => "shadow.transmission.first",
+                (false, SilkShadowTransmissionPass.Peel) => "shadow.transmission",
+                (false, SilkShadowTransmissionPass.EqualDepthProbe) => "shadow.transmission.probe",
+                _ => throw new ArgumentOutOfRangeException(nameof(pass)),
+            },
+            SilkShaderStage.Fragment,
+            format,
+            (constantOpacity, pass) switch
+            {
+                (true, SilkShadowTransmissionPass.FirstPeel) => "shadowTransmissionConstantFirstFragmentMain",
+                (true, SilkShadowTransmissionPass.Peel) => "shadowTransmissionConstantFragmentMain",
+                (true, SilkShadowTransmissionPass.EqualDepthProbe) => "shadowTransmissionConstantProbeFragmentMain",
+                (false, SilkShadowTransmissionPass.FirstPeel) => "shadowTransmissionFirstFragmentMain",
+                (false, SilkShadowTransmissionPass.Peel) => "shadowTransmissionFragmentMain",
+                (false, SilkShadowTransmissionPass.EqualDepthProbe) => "shadowTransmissionProbeFragmentMain",
+                _ => throw new ArgumentOutOfRangeException(nameof(pass)),
+            });
 
     /// <summary>Loads the checked world-space normal capture vertex module.</summary>
     public static SilkShaderModuleDescriptor LoadNormalVertex(

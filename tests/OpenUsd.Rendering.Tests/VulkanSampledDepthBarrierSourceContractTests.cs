@@ -26,6 +26,46 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class VulkanSampledDepthBarrierSourceContractTests
 {
     [Test]
+    public async Task SameLayoutTransferWritesStillRecordAnImageMemoryBarrier()
+    {
+        string source = await ReadOffscreenSourceAsync();
+        string transition = Slice(source,
+            "internal void Transition(",
+            "internal static void GetTransitionMasks(");
+        await Assert.That(transition)
+            .Contains("if (before == after && after != ImageLayout.TransferDstOptimal)");
+        await Assert.That(transition).Contains("GetTransitionMasks(");
+        await Assert.That(transition).Contains("_api.CmdPipelineBarrier(");
+        await Assert.That(transition).DoesNotContain("if (before == after)");
+    }
+
+    [Test]
+    public async Task RenderTargetCopyRetainsTransferWriteStateUntilTheNextConsumer()
+    {
+        string source = await ReadOffscreenSourceAsync();
+        string copy = Slice(source,
+            "case SilkGraphicsCommandKind.CopyRenderTarget:",
+            "case SilkGraphicsCommandKind.UploadTexture:");
+        await Assert.That(copy).Contains("GetCurrentLayout(finalLayouts, copySource), ImageLayout.TransferSrcOptimal");
+        await Assert.That(copy).Contains("GetCurrentLayout(finalLayouts, copyDestination), ImageLayout.TransferDstOptimal");
+        await Assert.That(copy).Contains("copySource.AspectMask");
+        await Assert.That(copy).Contains("copyDestination.AspectMask");
+        await Assert.That(copy).Contains("finalLayouts[copySource] = ImageLayout.TransferSrcOptimal;");
+        await Assert.That(copy).Contains("finalLayouts[copyDestination] = ImageLayout.TransferDstOptimal;");
+        await Assert.That(copy).DoesNotContain("ImageLayout.TransferDstOptimal, ImageLayout.TransferSrcOptimal");
+        await Assert.That(copy.IndexOf("_api.CmdCopyImage(", StringComparison.Ordinal))
+            .IsLessThan(copy.IndexOf("finalLayouts[copyDestination]", StringComparison.Ordinal));
+
+        string sampling = Slice(source,
+            "case SilkGraphicsCommandKind.SetTexture:",
+            "case SilkGraphicsCommandKind.SetSampler:");
+        await Assert.That(sampling).Contains("GetCurrentLayout(finalLayouts, materialTexture)");
+        await Assert.That(sampling).Contains("ImageLayout.ShaderReadOnlyOptimal");
+        await Assert.That(sampling.IndexOf("Transition(", StringComparison.Ordinal))
+            .IsLessThan(sampling.IndexOf("RecordMaterialBinding(", StringComparison.Ordinal));
+    }
+
+    [Test]
     public async Task BindingATextureForSamplingTransitionsWithTheTexturesOwnAspect()
     {
         string source = await ReadOffscreenSourceAsync();

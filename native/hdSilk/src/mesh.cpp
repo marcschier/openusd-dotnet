@@ -6,6 +6,7 @@
 #include "openusd_hdsilk.h"
 
 #include "instancer.h"
+#include "nurbsSceneIndexPlugin.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
 
@@ -165,9 +166,8 @@ bool HasMatchingUsdPtexDefaultOne(
         return false;
     }
 
-    const float sceneTime = scope.time.IsDefault()
-        ? 0.0F
-        : static_cast<float>(scope.time.GetValue());
+    // Scene-index sample times are offsets from the current stage time.
+    constexpr float shutterOffset = 0.0F;
     const HdTokenDataSourceHandle sceneInterpolation =
         scenePrimvar.GetInterpolation();
     const HdSampledDataSourceHandle sceneValue =
@@ -176,10 +176,10 @@ bool HasMatchingUsdPtexDefaultOne(
             : scenePrimvar.GetPrimvarValue();
     VtValue usdValueAtTime;
     if (!sceneInterpolation || !sceneValue ||
-        sceneInterpolation->GetTypedValue(sceneTime) !=
+        sceneInterpolation->GetTypedValue(shutterOffset) !=
             usdPrimvar.GetInterpolation() ||
         !usdPrimvar.Get(&usdValueAtTime, scope.time) ||
-        sceneValue->GetValue(sceneTime) != usdValueAtTime)
+        sceneValue->GetValue(shutterOffset) != usdValueAtTime)
     {
         return false;
     }
@@ -193,7 +193,7 @@ bool HasMatchingUsdPtexDefaultOne(
     VtIntArray usdIndices;
     return sceneIndices &&
         usdPrimvar.GetIndices(&usdIndices, scope.time) &&
-        sceneIndices->GetTypedValue(sceneTime) == usdIndices;
+        sceneIndices->GetTypedValue(shutterOffset) == usdIndices;
 }
 
 HdSilkPtexMappingStatus BuildPtexTriangleMappings(
@@ -1901,6 +1901,57 @@ HdSilkMesh::_InitRepr(TfToken const& reprToken, HdDirtyBits* /*dirtyBits*/)
     }
 }
 
+// Generated NURBS patches publish their output sizes as a topology-only plan
+// primvar. Planning here never requests points, normals, topology, or vertex
+// primvars, because each of those requests evaluates the patch.
+static HdSilkMeshPreparationPlan
+PlanNurbsMeshPreparation(
+    HdSceneDelegate* sceneDelegate,
+    SdfPath const& id,
+    const HdSilkNurbsGeneratedGeometryPlan& nurbs)
+{
+    HdSilkMeshPreparationPlan plan(
+        nurbs.points, HdSilkMeshPreparationPlan::Multiply(nurbs.elements, 2));
+    for (const auto& primvar :
+        sceneDelegate->GetPrimvarDescriptors(id, HdInterpolationVertex))
+    {
+        if (primvar.name == HdTokens->points)
+        {
+            continue;
+        }
+        // Retained vertex primvars carry at most four float components.
+        plan.Attribute(
+            nurbs.points, primvar.name == HdTokens->normals ? 3u : 4u, false);
+    }
+    for (const auto& primvar :
+        sceneDelegate->GetPrimvarDescriptors(id, HdInterpolationConstant))
+    {
+        const VtValue value = sceneDelegate->Get(id, primvar.name);
+        const void* source = nullptr;
+        int elements = 0;
+        HdType type = HdTypeInvalid;
+        if (GetFloatArraySource(value, &source, &elements, &type))
+        {
+            const uint32_t components = type == HdTypeFloat ? 1u :
+                type == HdTypeFloatVec2 ? 2u : type == HdTypeFloatVec3 ? 3u : 4u;
+            plan.Attribute(static_cast<uint64_t>(elements), components, true);
+        }
+        else if (value.IsHolding<float>() || value.IsHolding<GfVec2f>() ||
+            value.IsHolding<GfVec3f>() || value.IsHolding<GfVec4f>())
+        {
+            const uint32_t components = value.IsHolding<float>() ? 1u :
+                value.IsHolding<GfVec2f>() ? 2u : value.IsHolding<GfVec3f>() ? 3u : 4u;
+            plan.Attribute(1, components, true);
+        }
+        else if (value.IsHolding<VtFloatArray>() || value.IsHolding<VtVec2fArray>() ||
+            value.IsHolding<VtVec3fArray>() || value.IsHolding<VtVec4fArray>())
+        {
+            throw std::length_error("The bounded hdSilk primvar exceeds the supported element range.");
+        }
+    }
+    return plan;
+}
+
 HdSilkMeshPreparationPlan
 HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) const
 {
@@ -1912,6 +1963,11 @@ HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) 
             throw std::invalid_argument(
                 "The bounded hdSilk mesh preparation profile does not admit computed primvars.");
         }
+    }
+    HdSilkNurbsGeneratedGeometryPlan nurbs;
+    if (HdSilkGetNurbsGeneratedGeometryPlan(sceneDelegate, id, &nurbs))
+    {
+        return PlanNurbsMeshPreparation(sceneDelegate, id, nurbs);
     }
     const HdMeshTopology topology = sceneDelegate->GetMeshTopology(id);
     uint64_t triangles = 0;
@@ -2083,6 +2139,8 @@ void
 HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, HdDirtyBits* dirtyBits)
 {
     SdfPath const& id = GetId();
+    const bool generatedNurbsGeometry =
+        HdSilkHasNurbsGeneratedGeometry(sceneDelegate, id);
     const auto& preparationBudget = static_cast<HdSilkRenderParam*>(renderParam)
         ->GetSceneState().MeshPreparationBudget();
     const bool visibilityDirty =
@@ -2624,6 +2682,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         record.triangleSubprims = _EmittedTriangleSubprims();
         const bool smoothFallback = _topology.GetScheme() == UsdGeomTokens->catmullClark ||
             _topology.GetScheme() == UsdGeomTokens->loop;
+        record.triangleLocalNormalFallback = !smoothFallback;
         const bool hasAuthoredNormals = std::any_of(_attributes.begin(), _attributes.end(),
             [](const HdSilkMeshAttribute& attribute)
             {
@@ -2762,127 +2821,138 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         // generated and its edges are refined edges; neither corresponds to an
         // authored component, and returning the emitted index as authored
         // identity would name a component the stage does not have.
-        record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_FACE;
-        record.subprimUnsupported = OPENUSD_SILK_SUBPRIM_UNSUPPORTED_NONE;
-        if (_subdivision.IsRefined())
+        // A sampled NURBS patch has no authored polygon faces or emitted mesh
+        // points, so none of its generated indices are USD subprim identities.
+        if (generatedNurbsGeometry)
         {
-            record.subprimUnsupported |=
-                OPENUSD_SILK_SUBPRIM_UNSUPPORTED_REFINED_SUBDIVISION;
+            record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_NONE;
+            record.subprimUnsupported =
+                OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
         }
         else
         {
-            const size_t emittedPointCount = record.points.size() / 3;
-            if (emittedPointCount >
-                static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+            record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_FACE;
+            record.subprimUnsupported = OPENUSD_SILK_SUBPRIM_UNSUPPORTED_NONE;
+            if (_subdivision.IsRefined())
             {
-                throw std::overflow_error(
-                    "The hdSilk emitted point count overflows uint32.");
-            }
-
-            // The budget is checked from the sizes the tables WOULD have, before
-            // anything is reserved or copied. Checking after building them would
-            // make an oversized mesh pay the whole allocation the budget exists
-            // to refuse, which is exactly the cost a hostile or merely enormous
-            // stage would impose.
-            const size_t plannedCornerEdgeCount =
-                (!_coarseCornerEdges.empty() &&
-                 _coarseCornerEdges.size() == triangleIndices.size())
-                    ? _coarseCornerEdges.size()
-                    : 0;
-            if (HdSilkSubprimIdentityExceedsBudget(
-                    emittedPointCount,
-                    plannedCornerEdgeCount))
-            {
-                record.RejectSubprimIdentity(
-                    OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET);
+                record.subprimUnsupported |=
+                    OPENUSD_SILK_SUBPRIM_UNSUPPORTED_REFINED_SUBDIVISION;
             }
             else
             {
-                // A corner-derived layout shares vertices only when their
-                // authored point and every attribute agree. An unexpanded record
-                // emits the authored points themselves, so the mapping is the
-                // identity for every point the topology actually references.
-                // A face-varying mesh that duplicates one authored point across
-                // several corners still answers a point pick with the one index
-                // the stage authored.
-                //
-                // An authored point no index references is emitted -- USD lets a
-                // mesh carry stray points -- but it is never rasterized by any
-                // primitive, so it is not a pick target and must not be named as
-                // one. It publishes the sentinel instead, which also keeps
-                // authored_point_count honest: a trailing run of stray points
-                // does not inflate the authored space a consumer is handed.
-                bool pointOriginsResolved = true;
-                if (_attributesRequireExpandedTopology)
+                const size_t emittedPointCount = record.points.size() / 3;
+                if (emittedPointCount >
+                    static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
                 {
-                    const VtArray<uint32_t>& origins = _attributePointIndices.empty()
-                        ? triangleIndices : _attributePointIndices;
-                    if (origins.size() != emittedPointCount)
+                    throw std::overflow_error(
+                        "The hdSilk emitted point count overflows uint32.");
+                }
+
+                // The budget is checked from the sizes the tables WOULD have, before
+                // anything is reserved or copied. Checking after building them would
+                // make an oversized mesh pay the whole allocation the budget exists
+                // to refuse, which is exactly the cost a hostile or merely enormous
+                // stage would impose.
+                const size_t plannedCornerEdgeCount =
+                    (!_coarseCornerEdges.empty() &&
+                     _coarseCornerEdges.size() == triangleIndices.size())
+                        ? _coarseCornerEdges.size()
+                        : 0;
+                if (HdSilkSubprimIdentityExceedsBudget(
+                        emittedPointCount,
+                        plannedCornerEdgeCount))
+                {
+                    record.RejectSubprimIdentity(
+                        OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET);
+                }
+                else
+                {
+                    // A corner-derived layout shares vertices only when their
+                    // authored point and every attribute agree. An unexpanded record
+                    // emits the authored points themselves, so the mapping is the
+                    // identity for every point the topology actually references.
+                    // A face-varying mesh that duplicates one authored point across
+                    // several corners still answers a point pick with the one index
+                    // the stage authored.
+                    //
+                    // An authored point no index references is emitted -- USD lets a
+                    // mesh carry stray points -- but it is never rasterized by any
+                    // primitive, so it is not a pick target and must not be named as
+                    // one. It publishes the sentinel instead, which also keeps
+                    // authored_point_count honest: a trailing run of stray points
+                    // does not inflate the authored space a consumer is handed.
+                    bool pointOriginsResolved = true;
+                    if (_attributesRequireExpandedTopology)
                     {
-                        pointOriginsResolved = false;
+                        const VtArray<uint32_t>& origins = _attributePointIndices.empty()
+                            ? triangleIndices : _attributePointIndices;
+                        if (origins.size() != emittedPointCount)
+                        {
+                            pointOriginsResolved = false;
+                        }
+                        else
+                        {
+                            record.pointOrigins = origins;
+                        }
                     }
                     else
                     {
-                        record.pointOrigins = origins;
-                    }
-                }
-                else
-                {
-                    record.pointOrigins.reserve(emittedPointCount);
-                    std::vector<bool> referenced(emittedPointCount, false);
-                    for (uint32_t index : triangleIndices)
-                    {
-                        if (index < emittedPointCount)
+                        record.pointOrigins.reserve(emittedPointCount);
+                        std::vector<bool> referenced(emittedPointCount, false);
+                        for (uint32_t index : triangleIndices)
                         {
-                            referenced[index] = true;
+                            if (index < emittedPointCount)
+                            {
+                                referenced[index] = true;
+                            }
+                        }
+                        for (uint32_t point = 0;
+                             point < static_cast<uint32_t>(emittedPointCount);
+                             ++point)
+                        {
+                            record.pointOrigins.push_back(
+                                referenced[point]
+                                    ? point
+                                    : OPENUSD_SILK_SUBPRIM_NONE);
                         }
                     }
-                    for (uint32_t point = 0;
-                         point < static_cast<uint32_t>(emittedPointCount);
-                         ++point)
+
+                    if (pointOriginsResolved)
                     {
-                        record.pointOrigins.push_back(
-                            referenced[point]
-                                ? point
-                                : OPENUSD_SILK_SUBPRIM_NONE);
+                        // The ABI defines authored_point_count as one past the
+                        // largest authored index the table names, not as the size
+                        // of the authored array: a consumer must never be handed an
+                        // authored space larger than the entries it read, and an
+                        // authored point no emitted vertex references is not named
+                        // at all.
+                        record.authoredPointCount =
+                            OneePastLargestNamed(record.pointOrigins);
+                        record.subprimIdentity |=
+                            OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
                     }
-                }
+                    else
+                    {
+                        VtArray<uint32_t>().swap(record.pointOrigins);
+                        record.subprimUnsupported |=
+                            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
+                    }
 
-                if (pointOriginsResolved)
-                {
-                    // The ABI defines authored_point_count as one past the
-                    // largest authored index the table names, not as the size
-                    // of the authored array: a consumer must never be handed an
-                    // authored space larger than the entries it read, and an
-                    // authored point no emitted vertex references is not named
-                    // at all.
-                    record.authoredPointCount =
-                        OneePastLargestNamed(record.pointOrigins);
-                    record.subprimIdentity |=
-                        OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
-                }
-                else
-                {
-                    VtArray<uint32_t>().swap(record.pointOrigins);
-                    record.subprimUnsupported |=
-                        OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
-                }
-
-                // The corner-edge table indexes the coarse triangulation, whose
-                // corner order the expanded record preserves, so it needs no
-                // remapping for expansion.
-                if (plannedCornerEdgeCount != 0)
-                {
-                    record.cornerEdges = _coarseCornerEdges;
-                    record.authoredEdgeCount =
-                        OneePastLargestNamed(record.cornerEdges);
-                    record.subprimIdentity |=
-                        OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE;
-                }
-                else
-                {
-                    record.subprimUnsupported |=
-                        OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
+                    // The corner-edge table indexes the coarse triangulation, whose
+                    // corner order the expanded record preserves, so it needs no
+                    // remapping for expansion.
+                    if (plannedCornerEdgeCount != 0)
+                    {
+                        record.cornerEdges = _coarseCornerEdges;
+                        record.authoredEdgeCount =
+                            OneePastLargestNamed(record.cornerEdges);
+                        record.subprimIdentity |=
+                            OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE;
+                    }
+                    else
+                    {
+                        record.subprimUnsupported |=
+                            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
+                    }
                 }
             }
         }

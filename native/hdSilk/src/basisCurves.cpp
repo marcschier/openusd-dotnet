@@ -5,11 +5,14 @@
 #include "openusd_hdsilk.h"
 
 #include "instancer.h"
+#include "nurbsSceneIndexPlugin.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
 
 #include "pxr/base/gf/half.h"
+#include "pxr/base/gf/vec2f.h"
 #include "pxr/base/gf/vec3d.h"
+#include "pxr/base/gf/vec4f.h"
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/vt/value.h"
 #include "pxr/imaging/hd/changeTracker.h"
@@ -113,6 +116,73 @@ uint64_t CountWidthValues(const VtValue& value)
         return value.UncheckedGet<VtHalfArray>().size();
     }
     return 1;
+}
+
+template <typename Element>
+bool FlattenNurbsAttribute(const VtValue& value, uint32_t components, HdSilkMeshAttribute* out)
+{
+    if (!value.IsHolding<VtArray<Element>>())
+    {
+        return false;
+    }
+    const auto& source = value.UncheckedGet<VtArray<Element>>();
+    out->componentCount = components;
+    out->data.reserve(source.size() * components);
+    for (const Element& element : source)
+    {
+        for (size_t component = 0; component < components; ++component)
+        {
+            out->data.push_back(element[component]);
+        }
+    }
+    return true;
+}
+
+bool ReadNurbsVertexAttributes(
+    HdSceneDelegate* sceneDelegate,
+    const SdfPath& id,
+    std::vector<HdSilkMeshAttribute>* attributes)
+{
+    for (const auto& descriptor :
+        sceneDelegate->GetPrimvarDescriptors(id, HdInterpolationVertex))
+    {
+        if (descriptor.name == HdTokens->points || descriptor.name == HdTokens->normals ||
+            descriptor.name == HdTokens->widths)
+        {
+            continue;
+        }
+        const VtValue value = sceneDelegate->Get(id, descriptor.name);
+        HdSilkMeshAttribute attribute;
+        attribute.name = descriptor.name.GetString();
+        attribute.interpolation = OPENUSD_SILK_INTERPOLATION_VERTEX;
+        if (value.IsHolding<VtFloatArray>())
+        {
+            const auto& source = value.UncheckedGet<VtFloatArray>();
+            attribute.componentCount = 1;
+            attribute.data.assign(source.begin(), source.end());
+        }
+        else if (!FlattenNurbsAttribute<GfVec2f>(value, 2, &attribute) &&
+            !FlattenNurbsAttribute<GfVec3f>(value, 3, &attribute) &&
+            !FlattenNurbsAttribute<GfVec4f>(value, 4, &attribute))
+        {
+            return false;
+        }
+        if (descriptor.name == HdTokens->displayColor)
+        {
+            attribute.semantic = OPENUSD_SILK_ATTRIBUTE_COLOR;
+        }
+        else if (descriptor.role == HdPrimvarRoleTokens->textureCoordinate ||
+            (attribute.componentCount == 2 && attribute.name.rfind("st", 0) == 0))
+        {
+            attribute.semantic = OPENUSD_SILK_ATTRIBUTE_TEXCOORD;
+        }
+        else
+        {
+            attribute.semantic = OPENUSD_SILK_ATTRIBUTE_CUSTOM;
+        }
+        attributes->push_back(std::move(attribute));
+    }
+    return true;
 }
 
 constexpr size_t BezierLineSegmentsPerSpan = 8;
@@ -682,6 +752,37 @@ HdSilkBasisCurves::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath cons
                 "The bounded hdSilk curve preparation profile does not admit computed primvars.");
         }
     }
+    HdSilkNurbsGeneratedGeometryPlan nurbs;
+    if (HdSilkGetNurbsGeneratedGeometryPlan(sceneDelegate, id, &nurbs))
+    {
+        // Generated NURBS curves are linear polylines sized by a topology-only
+        // plan. Points, topology, and vertex widths are not requested here,
+        // because each of those requests evaluates the curves.
+        const HdPrimvarDescriptorVector vertexPrimvars =
+            sceneDelegate->GetPrimvarDescriptors(id, HdInterpolationVertex);
+        const bool vertexWidths = std::any_of(
+            vertexPrimvars.begin(), vertexPrimvars.end(),
+            [](const HdPrimvarDescriptor& primvar) {
+                return primvar.name == HdTokens->widths;
+            });
+        const uint64_t widths = vertexWidths
+            ? nurbs.points
+            : CountWidthValues(sceneDelegate->Get(id, HdTokens->widths));
+        HdSilkCurvePreparationPlan plan(nurbs.points, widths, nurbs.elements);
+        for (const auto& primvar : vertexPrimvars)
+        {
+            if (primvar.name == HdTokens->points || primvar.name == HdTokens->normals ||
+                primvar.name == HdTokens->widths)
+            {
+                continue;
+            }
+            using Plan = HdSilkMeshPreparationPlan;
+            const uint64_t endpoints = Plan::Multiply(nurbs.elements, 2);
+            plan.bytes = Plan::Add(plan.bytes, Plan::Multiply(
+                Plan::Add(nurbs.points, Plan::Multiply(endpoints, 3)), 4 * sizeof(float)));
+        }
+        return plan.bytes;
+    }
 
     const HdBasisCurvesTopology topology = GetBasisCurvesTopology(sceneDelegate);
     const bool bezier = SupportsBezierTopology(topology);
@@ -966,13 +1067,16 @@ HdSilkBasisCurves::_Sync(
 
         // Cubic spans use fixed line chords; widths remain attributes, not ribbons.
         const bool bezier = SupportsBezierTopology(_topology);
-        const bool built = bezier
+        std::vector<HdSilkMeshAttribute> vertexAttributes;
+        const bool attributesRead = !HdSilkHasNurbsGeneratedGeometry(sceneDelegate, id) ||
+            ReadNurbsVertexAttributes(sceneDelegate, id, &vertexAttributes);
+        const bool built = attributesRead && (bezier
             ? BuildBezierCurveLines(_topology, _points, _widths, _cubicWidthsVarying, &record)
-            : HdSilkBuildLinearCurveLines(_topology, _points, _widths, &record);
+            : HdSilkBuildLinearCurveLines(_topology, _points, _widths, &record, vertexAttributes));
         if (!built)
         {
             TF_WARN(
-                "hdSilk skipped basisCurves '%s': invalid or empty %s topology or control points",
+                "hdSilk skipped basisCurves '%s': invalid or empty %s topology, control points or vertex attributes",
                 id.GetText(), bezier ? "cubic Bezier" : "linear");
             silkRenderParam->GetSceneState().RemoveMesh(id.GetString());
             if (preparation) { preparation->Complete(); }

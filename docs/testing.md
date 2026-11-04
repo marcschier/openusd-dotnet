@@ -284,6 +284,10 @@ for commit `4df16ccb1da5907704ea7118bafd1d58a57f5502`; all four jobs completed w
 is important structurally as well as tactically: render defects are now discovered by push or native
 archive publication, not for the first time inside a tag release.
 
+`eng/test-silk-cubic-shadow-report.ps1` checks shadow and volume-camera evidence using disposable
+fixtures. Set `OPENUSD_TEST_WORK_ROOT` to place those fixtures in a scratch directory; otherwise the
+script uses the `silk-cubic-shadow-report-test` directory under `artifacts`.
+
 ## Managed test runner
 
 Earlier `dotnet test` integrations with .NET 10 Microsoft.Testing.Platform and TUnit could launch test DLLs
@@ -1591,7 +1595,7 @@ case verifies replay does not hold the native-session lock. Vulkan uses SwiftSha
 ## hdSilk command-page probe
 
 `native/hdSilk/tests/hdsilk_probe.cpp` is the CTest that pins the pointer-free command page.
-It asserts page ABI 34 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
+It asserts page ABI 35 and the exact byte offsets of `FRAME`, `MESH_UPSERT`, and the 24-byte
 `MESH_REMOVE` command, including the `instance_index` field that ABI 3 added to removals.
 
 `hdsilk_publication_allocation` compiles the retained publisher into a dedicated executable
@@ -1620,7 +1624,7 @@ preserve earlier records. The probe links the pinned native SDK for its copy-on-
 buffer owners, while `IdentityRetirementReleasesOnlyTheRetiredOwner` checks zero retained
 capacity and exact refusal flags without invalidating another record.
 `SilkVertexCompactionNativeTests` follows actual Hydra publication through continuous UVs,
-UV seams, layout-changing edits and the unchanged missing-normal fallback. Its D3D12/Vulkan
+UV seams, layout-changing edits and the emitted-corner layout when normals are absent. Its D3D12/Vulkan
 pixel cases compare against an independently vertex-indexed textured scene.
 Run it with `OPENUSD_VERTEX_COMPACTION_REQUIRED=1` and matching native plugin paths.
 

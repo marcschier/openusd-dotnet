@@ -232,6 +232,7 @@ struct HdSilkMeshRecord
     VtArray<uint32_t> normalIdentities;
     VtArray<uint32_t> normalCorners;
     std::vector<float> normalExtraPoints;
+    bool triangleLocalNormalFallback = false;
     // ABI v22 subprim identity. `pointOrigins` is the authored point index of
     // every emitted vertex, and `cornerEdges` is the authored mesh edge index
     // of every emitted primitive corner, both using OPENUSD_SILK_SUBPRIM_NONE
@@ -297,6 +298,7 @@ struct HdSilkMeshRecord
         VtArray<uint32_t>().swap(normalIdentities);
         VtArray<uint32_t>().swap(normalCorners);
         std::vector<float>().swap(normalExtraPoints);
+        triangleLocalNormalFallback = false;
         VtArray<uint32_t>().swap(pointOrigins);
         VtArray<uint32_t>().swap(cornerEdges);
         authoredPointCount = 0;

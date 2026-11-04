@@ -243,7 +243,7 @@ public sealed class RenderProductJobPlanTests
     {
         if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Core native runtime for this host.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         string root = Directory.CreateTempSubdirectory("product-manifest-").FullName;
@@ -376,7 +376,7 @@ public sealed class RenderProductJobPlanTests
     {
         if (Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Core native runtime for this host.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         string root = Directory.CreateTempSubdirectory("product-exr-window-").FullName;
@@ -445,7 +445,7 @@ public sealed class RenderProductJobPlanTests
     {
         if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Core native runtime for this host.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         string root = Directory.CreateTempSubdirectory("product-exposure-").FullName;
@@ -517,7 +517,7 @@ public sealed class RenderProductJobPlanTests
     {
         if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Core native runtime for this host.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         string root = Directory.CreateTempSubdirectory("product-exposure-overflow-").FullName;
@@ -826,7 +826,7 @@ public sealed class RenderProductJobPlanTests
     {
         if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Core native runtime for this host.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         string root = Directory.CreateTempSubdirectory("product-prim-id-").FullName;
@@ -1031,7 +1031,7 @@ public sealed class RenderProductJobPlanTests
     {
         if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Core native runtime for this host.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         string root = Directory.CreateTempSubdirectory("product-instance-id-").FullName;
@@ -1212,7 +1212,7 @@ public sealed class RenderProductJobPlanTests
     {
         if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Core native runtime for this host.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         string root = Directory.CreateTempSubdirectory("product-normal-").FullName;
@@ -1398,7 +1398,7 @@ public sealed class RenderProductJobPlanTests
     {
         if (exr && Environment.GetEnvironmentVariable("OPENUSD_EXR_EXECUTION_REQUIRED") != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Windows x64 native runtime.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 with the matching Core native runtime for this host.");
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
         string root = Directory.CreateTempSubdirectory("product-element-id-").FullName;

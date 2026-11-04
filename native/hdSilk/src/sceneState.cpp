@@ -13,6 +13,7 @@
 #include "pxr/usd/usdLux/blackbody.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstring>
@@ -599,6 +600,7 @@ HdSilkMeshRecord ApplyDrawMode(const HdSilkMeshRecord& record, uint32_t drawMode
     result.normalIdentities.clear();
     result.normalCorners.clear();
     result.normalExtraPoints.clear();
+    result.triangleLocalNormalFallback = false;
     const size_t pointCount = result.points.size() / 3;
     result.materialPath.clear();
     result.attributes.clear();
@@ -1384,10 +1386,13 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
     size_t payloadSize = MeshFixedPayloadSize;
     if ((!record.normalIdentities.empty() &&
          (record.normalIdentities.size() != pointCount ||
-          record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST)) ||
+          record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ||
+          record.normalIdentities.size() >
+              static_cast<size_t>(std::numeric_limits<int32_t>::max()))) ||
         record.normalCorners.size() % 3 != 0 || record.normalExtraPoints.size() % 3 != 0 ||
         (record.normalIdentities.empty() &&
-         (!record.normalCorners.empty() || !record.normalExtraPoints.empty())))
+         (!record.normalCorners.empty() || !record.normalExtraPoints.empty() ||
+          record.triangleLocalNormalFallback)))
     {
         throw std::invalid_argument("An hdSilk normal correspondence table is malformed.");
     }
@@ -2188,7 +2193,9 @@ void AppendMeshUpsert(
 
     if (counts.normalIdentityCount != 0)
     {
-        AppendU32(payload, counts.normalIdentityCount);
+        AppendU32(payload, counts.normalIdentityCount |
+            (complexRecord.triangleLocalNormalFallback
+                ? OPENUSD_SILK_NORMAL_IDENTITY_TRIANGLE_LOCAL : 0u));
         AppendU32(payload, counts.normalCornerCount);
         AppendU32(payload, counts.normalExtraPointCount);
     }
@@ -2874,6 +2881,165 @@ bool BuildPerspectiveSpotShadowProjection(
         nearPlane, farPlane, std::tan(coneHalfAngleDegrees * (pi / 180.0)), outProjection);
 }
 
+bool IsRepresentableEmitterTransform(const HdSilkLightRecord& light)
+{
+    constexpr double minimumRelativeVolume = 1e-6;
+    constexpr double affineTolerance = 1e-12;
+    if (!std::isfinite(light.transform[3]) || !std::isfinite(light.transform[7]) ||
+        !std::isfinite(light.transform[11]) || !std::isfinite(light.transform[15]) ||
+        std::abs(light.transform[3]) > affineTolerance ||
+        std::abs(light.transform[7]) > affineTolerance ||
+        std::abs(light.transform[11]) > affineTolerance ||
+        std::abs(light.transform[15] - 1.0) > affineTolerance)
+    {
+        return false;
+    }
+
+    GfVec3d xAxis(light.transform[0], light.transform[1], light.transform[2]);
+    GfVec3d yAxis(light.transform[4], light.transform[5], light.transform[6]);
+    GfVec3d zAxis(light.transform[8], light.transform[9], light.transform[10]);
+    const double xLengthSquared = GfDot(xAxis, xAxis);
+    const double yLengthSquared = GfDot(yAxis, yAxis);
+    const double zLengthSquared = GfDot(zAxis, zAxis);
+    if (!std::isfinite(xLengthSquared) || !std::isfinite(yLengthSquared) ||
+        !std::isfinite(zLengthSquared) || xLengthSquared <= 1e-30 ||
+        yLengthSquared <= 1e-30 || zLengthSquared <= 1e-30)
+    {
+        return false;
+    }
+
+    xAxis = xAxis / std::sqrt(xLengthSquared);
+    yAxis = yAxis / std::sqrt(yLengthSquared);
+    zAxis = zAxis / std::sqrt(zLengthSquared);
+    const double relativeVolume = GfDot(xAxis, GfCross(yAxis, zAxis));
+    return std::isfinite(relativeVolume) &&
+        std::abs(relativeVolume) >= minimumRelativeVolume;
+}
+
+bool BuildEmitterSampleOffsets(
+    const HdSilkLightRecord& light,
+    std::array<GfVec3d, 5>& offsets)
+{
+    if (!IsRepresentableEmitterTransform(light))
+    {
+        return false;
+    }
+    const GfVec3d tangent(light.transform[0], light.transform[1], light.transform[2]);
+    const GfVec3d bitangent(light.transform[4], light.transform[5], light.transform[6]);
+    const GfVec3d direction(light.transform[8], light.transform[9], light.transform[10]);
+    const double radius = light.radius;
+    switch (light.type)
+    {
+        case OPENUSD_SILK_LIGHT_SPHERE:
+            if (!std::isfinite(radius) || radius <= 0.0)
+            {
+                return false;
+            }
+            offsets = {
+                -direction * radius,
+                tangent * radius,
+                -tangent * radius,
+                bitangent * radius,
+                -bitangent * radius};
+            break;
+        case OPENUSD_SILK_LIGHT_RECT:
+            if (!std::isfinite(light.shapeX) || !std::isfinite(light.shapeY) ||
+                light.shapeX <= 0.0f || light.shapeY <= 0.0f)
+            {
+                return false;
+            }
+            {
+                const GfVec3d halfWidth = tangent * (light.shapeX * 0.5);
+                const GfVec3d halfHeight = bitangent * (light.shapeY * 0.5);
+                offsets = {
+                    GfVec3d(0.0),
+                    halfWidth + halfHeight,
+                    halfWidth - halfHeight,
+                    -halfWidth + halfHeight,
+                    -halfWidth - halfHeight};
+            }
+            break;
+        case OPENUSD_SILK_LIGHT_DISK:
+            if (!std::isfinite(radius) || radius <= 0.0)
+            {
+                return false;
+            }
+            offsets = {
+                GfVec3d(0.0),
+                tangent * radius,
+                -tangent * radius,
+                bitangent * radius,
+                -bitangent * radius};
+            break;
+        case OPENUSD_SILK_LIGHT_CYLINDER:
+            if (!std::isfinite(radius) || radius <= 0.0 ||
+                !std::isfinite(light.shapeX) || light.shapeX <= 0.0f)
+            {
+                return false;
+            }
+            {
+                const GfVec3d halfLength = direction * (light.shapeX * 0.5);
+                offsets = {
+                    tangent * radius - halfLength,
+                    tangent * radius + halfLength,
+                    -tangent * radius - halfLength,
+                    -tangent * radius + halfLength,
+                    bitangent * radius};
+            }
+            break;
+        default:
+            return false;
+    }
+    return std::all_of(offsets.begin(), offsets.end(), [](const GfVec3d& offset)
+    {
+        return std::isfinite(offset[0]) && std::isfinite(offset[1]) &&
+            std::isfinite(offset[2]);
+    });
+}
+
+bool BuildEmitterSampleShadowProjection(
+    const GfVec3d& eye,
+    const GfVec3d& center,
+    double radius,
+    uint32_t resolution,
+    double (&outView)[16],
+    double (&outProjection)[16],
+    double* outFarPlane,
+    double* outTangent)
+{
+    const GfVec3d towardBounds = center - eye;
+    const double distanceSquared = GfDot(towardBounds, towardBounds);
+    if (!std::isfinite(distanceSquared) || distanceSquared <= 0.0 ||
+        !std::isfinite(radius) || radius <= 0.0)
+    {
+        return false;
+    }
+    const double distance = std::sqrt(distanceSquared);
+    const double padding = std::max(radius / 512.0, 1e-6);
+    const double nearPlane = distance - radius - padding;
+    if (!std::isfinite(nearPlane) || nearPlane <= 1e-6)
+    {
+        return false;
+    }
+    const double farPlane = distance + radius + padding;
+    const double tangentDenominator = std::sqrt(
+        (distance - radius) * (distance + radius));
+    const double tangent =
+        (radius / tangentDenominator) *
+        (1.0 + (2.0 / static_cast<double>(resolution)));
+    if (!std::isfinite(farPlane) || !std::isfinite(tangent) ||
+        !BuildPerspectiveShadowProjection(
+            nearPlane, farPlane, tangent, outProjection))
+    {
+        return false;
+    }
+    BuildPerspectiveShadowView(
+        -towardBounds / distance, eye, outView);
+    *outFarPlane = farPlane;
+    *outTangent = tangent;
+    return true;
+}
+
 bool BuildPointShadowFace(
     const GfVec3d& eye,
     uint32_t face,
@@ -3436,7 +3602,12 @@ HdSilkSceneState::_ResolveShadowTable(
             light.radius == 0.0f && coneHalfAngle > 0.0f && coneHalfAngle < 90.0f;
         const bool point = light.type == OPENUSD_SILK_LIGHT_SPHERE &&
             light.radius == 0.0f && coneHalfAngle >= 90.0f;
-        if (!distant && !spot && !point)
+        const bool emitter = (light.type == OPENUSD_SILK_LIGHT_SPHERE &&
+                light.radius > 0.0f) ||
+            light.type == OPENUSD_SILK_LIGHT_RECT ||
+            light.type == OPENUSD_SILK_LIGHT_DISK ||
+            light.type == OPENUSD_SILK_LIGHT_CYLINDER;
+        if (!distant && !spot && !point && !emitter)
         {
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
             continue;
@@ -3446,7 +3617,7 @@ HdSilkSceneState::_ResolveShadowTable(
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS;
             continue;
         }
-        const uint32_t mapCount = point ? 6u : 1u;
+        const uint32_t mapCount = point ? 6u : emitter ? 5u : 1u;
         if (admittedLights >= OPENUSD_SILK_MAX_SHADOW_LIGHTS ||
             table.descriptors.size() + mapCount > OPENUSD_SILK_MAX_SHADOW_MAPS)
         {
@@ -3459,8 +3630,14 @@ HdSilkSceneState::_ResolveShadowTable(
             light.transform[9],
             light.transform[10]);
         const double directionLengthSquared = GfDot(direction, direction);
-        if (!point &&
+        if (!point && !emitter &&
             (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1e-12))
+        {
+            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+            continue;
+        }
+        std::array<GfVec3d, 5> emitterOffsets{};
+        if (emitter && !BuildEmitterSampleOffsets(light, emitterOffsets))
         {
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
             continue;
@@ -3476,7 +3653,26 @@ HdSilkSceneState::_ResolveShadowTable(
                 static_cast<uint32_t>(table.descriptors.size()) + face;
             descriptor.resolution = OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION;
             double texelWorldSize = 0.0;
-            if (distant)
+            if (emitter)
+            {
+                descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE;
+                const GfVec3d eye(
+                    light.transform[12] + emitterOffsets[face][0],
+                    light.transform[13] + emitterOffsets[face][1],
+                    light.transform[14] + emitterOffsets[face][2]);
+                double farPlane = 0.0;
+                double tangent = 0.0;
+                if (!BuildEmitterSampleShadowProjection(
+                    eye, center, radius, descriptor.resolution,
+                    descriptor.view, descriptor.projection, &farPlane, &tangent))
+                {
+                    flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                    continue;
+                }
+                texelWorldSize = (2.0 * farPlane * tangent) /
+                    static_cast<double>(descriptor.resolution);
+            }
+            else if (distant)
             {
                 descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC;
                 double eyeDistance = 0.0;

@@ -296,7 +296,7 @@ public sealed class SilkPickIdentityTable
                     // old tokens would answer a pick with an instancing chain the
                     // scene no longer contains, and a readback already in flight
                     // must be recognised as stale rather than re-resolved.
-                    if (!instancerMoved)
+                    if (!instancerMoved && previous.HasSameDrawIdentity(mesh))
                     {
                         return existing.Range;
                     }
@@ -1001,6 +1001,8 @@ public sealed class SilkPickIdentityTable
         private readonly int[] _primitiveSubprims;
         private readonly int[] _edgeSubprims;
         private readonly int[] _pointSubprims;
+        private readonly int[] _canonicalEdgeSubprims;
+        private readonly int[] _canonicalPointSubprims;
         private readonly SilkInstancerContextEntry[] _instancerContext;
         private readonly bool _hasAuthoredFaces;
 
@@ -1016,6 +1018,8 @@ public sealed class SilkPickIdentityTable
             int[] primitiveSubprims,
             int[] edgeSubprims,
             int[] pointSubprims,
+            int[] canonicalEdgeSubprims,
+            int[] canonicalPointSubprims,
             bool hasAuthoredFaces,
             ulong topologyFingerprint,
             SilkSubprimIdentity subprimIdentity,
@@ -1032,6 +1036,8 @@ public sealed class SilkPickIdentityTable
             _primitiveSubprims = primitiveSubprims;
             _edgeSubprims = edgeSubprims;
             _pointSubprims = pointSubprims;
+            _canonicalEdgeSubprims = canonicalEdgeSubprims;
+            _canonicalPointSubprims = canonicalPointSubprims;
             _hasAuthoredFaces = hasAuthoredFaces;
             TopologyFingerprint = topologyFingerprint;
             SubprimIdentity = subprimIdentity;
@@ -1120,6 +1126,8 @@ public sealed class SilkPickIdentityTable
                 mesh.TriangleSubprimArray,
                 tables.AuthoredEdges,
                 tables.AuthoredPoints,
+                tables.CanonicalEdges,
+                tables.CanonicalPoints,
                 mesh.TopologyKind == SilkTopologyKind.TriangleList,
                 mesh.TopologyFingerprint,
                 mesh.SubprimIdentity,
@@ -1168,6 +1176,13 @@ public sealed class SilkPickIdentityTable
             {
                 return false;
             }
+            SilkSubprimTables tables = mesh.SubprimTables;
+            return _canonicalEdgeSubprims.AsSpan().SequenceEqual(tables.CanonicalEdges) &&
+                _canonicalPointSubprims.AsSpan().SequenceEqual(tables.CanonicalPoints);
+        }
+
+        internal bool HasSameDrawIdentity(SilkMeshData mesh)
+        {
             SilkSubprimTables tables = mesh.SubprimTables;
             return _edgeSubprims.AsSpan().SequenceEqual(tables.AuthoredEdges) &&
                 _pointSubprims.AsSpan().SequenceEqual(tables.AuthoredPoints);

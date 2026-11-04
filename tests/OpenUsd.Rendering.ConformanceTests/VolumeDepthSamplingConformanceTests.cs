@@ -11,11 +11,13 @@ namespace OpenUsd.Rendering.ConformanceTests;
 /// Gates the sampled density integration against the grid's own Z resolution.
 /// </summary>
 /// <remarks>
-/// The shader integrates the density column with one sample per voxel layer. It used to
-/// take a fixed 32 steps, which reconstructs the column exactly only when the sample
-/// lattice happens to align with the layers -- and the one checked-in VDB is 32 deep, so
-/// the constant was right by coincidence and no gate could see the defect. Modelling the
-/// two integrators over a two-layer slab shows what a differently sized grid costs: at
+/// For the full Z-aligned chords in this fixture, the sampled shader selects each layer at its
+/// centre. The uniform reference still uses a legacy thickness of two, so this comparison
+/// must not be used as evidence until uniform volumes share the camera-ray integration.
+/// The earlier sampled shader used a fixed 32 steps, which reconstructs the column exactly only
+/// when the sample lattice happens to align with the layers -- and the one checked-in VDB
+/// is 32 deep, so the constant was right by coincidence and no gate could see the defect.
+/// Modelling the two integrators over a two-layer slab shows what a differently sized grid costs: at
 /// depth 96 the fixed lattice steps straight over the slab and integrates it to exactly
 /// zero, while sampling at layer centres recovers the exact mean of 2/96. The volume still
 /// rendered; it had simply lost the structure.
@@ -253,10 +255,7 @@ public sealed class VolumeDepthSamplingConformanceTests
         SilkMeshRendererConformance.Apply(
             renderer,
             revision: 1,
-            SilkMeshRendererConformance.CreateFrameCommand(
-                Width,
-                Height,
-                SilkMeshRendererConformance.Identity()),
+            VolumeCommandAuthoring.CreateVolumeSamplingFrameCommand(Width, Height),
             materialCommand,
             VolumeCommandAuthoring.CreateVolumeProxyMeshCommand(MeshPath, MaterialPath));
 

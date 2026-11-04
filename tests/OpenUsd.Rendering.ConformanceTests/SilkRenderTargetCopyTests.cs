@@ -9,6 +9,56 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class SilkRenderTargetCopyTests
 {
     [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true)]
+    [Arguments(SilkGraphicsBackend.Metal, false)]
+    [Arguments(SilkGraphicsBackend.Metal, true)]
+    public async Task ConsecutiveCopiesToOneDestinationPublishTheLastWrite(
+        SilkGraphicsBackend backend, bool depth)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        SilkTextureDescriptor descriptor = depth
+            ? SilkTextureDescriptor.DepthTarget(4, 3)
+            : SilkTextureDescriptor.ColorTarget(4, 3);
+        using ISilkGraphicsTexture first = device.CreateTexture2D(descriptor);
+        using ISilkGraphicsTexture last = device.CreateTexture2D(descriptor);
+        using ISilkGraphicsTexture destination = device.CreateTexture2D(descriptor);
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            if (depth)
+            {
+                commands.ClearDepth(first, 0.875f);
+                commands.ClearDepth(last, 0.375f);
+            }
+            else
+            {
+                commands.ClearColor(first, new(1, 0, 0, 1));
+                commands.ClearColor(last, new(0, 1, 0, 1));
+            }
+            var copies = (ISilkTextureCopyGraphicsCommandList)commands;
+            copies.CopyRenderTarget(first, destination);
+            copies.CopyRenderTarget(last, destination);
+            using ISilkGraphicsSubmission submission = device.Submit(commands);
+            submission.Wait();
+        }
+        if (depth)
+        {
+            var actual = new float[12];
+            destination.ReadbackForTesting(actual);
+            await Assert.That(actual.All(value => value == 0.375f)).IsTrue();
+        }
+        else
+        {
+            var actual = new byte[4 * 3 * 4];
+            destination.ReadbackForTesting(actual);
+            byte[] expected = [.. Enumerable.Range(0, 12).SelectMany(_ => new byte[] { 0, 255, 0, 255 })];
+            await Assert.That(actual.SequenceEqual(expected)).IsTrue();
+        }
+    }
+
+    [Test]
     [Arguments(SilkGraphicsBackend.D3D12, SilkTextureFormat.Rgba8Unorm)]
     [Arguments(SilkGraphicsBackend.Vulkan, SilkTextureFormat.Rgba8Unorm)]
     [Arguments(SilkGraphicsBackend.Metal, SilkTextureFormat.Rgba8Unorm)]

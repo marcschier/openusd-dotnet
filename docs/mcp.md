@@ -939,11 +939,13 @@ planes count toward the existing output quotas. This is raw HDR data, not an EXR
 
 To encode that plane as lossless half EXR, add `"hdrColorFormat":"exr"` alongside
 `"includeHdrColor":true`. The default is `"raw"`; other values, or EXR without HDR, are
-invalid before scene inspection. EXR currently requires Windows x64 and the matching Data ABI 26
-Core runtime. It preserves the same working values and stored alpha, with origin-zero equal
-windows, square pixels and unspecified primaries/alpha association. It neither applies a display
-transform nor uses scene-authored product filenames. PNG, depth and the actual EXR encoded extent
-share the existing byte quotas; those quotas do not cover native codec scratch or kernel cache.
+invalid before scene inspection. EXR requires the matching Data ABI 26 Core runtime on Windows x64
+or little-endian Linux/macOS x64/ARM64. Windows execution has prior evidence; the POSIX profiles still
+need hosted native and package-only execution. It preserves the same working values and stored
+alpha, with origin-zero equal windows, square pixels and unspecified primaries/alpha association.
+It neither applies a display transform nor uses scene-authored product filenames. PNG, depth and
+the actual EXR encoded extent share the existing byte quotas; those quotas do not cover native
+codec scratch or kernel cache.
 
 Use `read_sequence_frame` to inspect a chosen output without loading the whole sequence:
 

@@ -33,6 +33,14 @@
                         "loadWithRenderer": "Silk.NET",
                         "priority": 0,
                         "displayName": "Scene index to resolve UsdLux light and shadow linking collections for hdSilk"
+                    },
+                    "HdSilk_NurbsSceneIndexPlugin": {
+                        "bases": [
+                            "HdSceneIndexPlugin"
+                        ],
+                        "loadWithRenderer": "Silk.NET",
+                        "priority": 0,
+                        "displayName": "Scene index to tessellate rational NURBS curves and untrimmed patches for hdSilk"
                     }
                 }
             },

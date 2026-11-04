@@ -127,6 +127,47 @@ public sealed class SilkGraphicsPipelineTests
     }
 
     [Test]
+    [Arguments(SilkShaderBinaryFormat.Dxil)]
+    [Arguments(SilkShaderBinaryFormat.SpirV)]
+    public async Task CheckedVolumeCameraProgramsAreEmbeddedAndSelectTheirOwnEntryPoints(
+        SilkShaderBinaryFormat format)
+    {
+        HashSet<string> resources = typeof(SilkCheckedShaderAssets).Assembly
+            .GetManifestResourceNames().ToHashSet(StringComparer.Ordinal);
+        string extension = format == SilkShaderBinaryFormat.Dxil ? "dxil" : "spv";
+        foreach (string program in new[]
+        {
+            "volume.camera.vertex",
+            "volume.camera.fragment.uniform",
+            "volume.camera.fragment.atlas",
+        })
+        {
+            AssertEmbeddedResourceExists(resources, $"{program}.{extension}");
+            AssertEmbeddedResourceExists(resources, $"{program}.reflection.json");
+        }
+
+        SilkShaderModuleDescriptor vertex = SilkCheckedShaderAssets.LoadVolumeCameraVertex(format);
+        SilkShaderModuleDescriptor uniform =
+            SilkCheckedShaderAssets.LoadVolumeCameraFragment(format, densityAtlas: false);
+        SilkShaderModuleDescriptor atlas =
+            SilkCheckedShaderAssets.LoadVolumeCameraFragment(format, densityAtlas: true);
+        await Assert.That(vertex.Stage).IsEqualTo(SilkShaderStage.Vertex);
+        await Assert.That(uniform.Stage).IsEqualTo(SilkShaderStage.Fragment);
+        await Assert.That(atlas.Stage).IsEqualTo(SilkShaderStage.Fragment);
+        await Assert.That(vertex.Code.Length).IsEqualTo(ManifestArtifactSize("volume.camera.vertex", extension));
+        await Assert.That(uniform.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("volume.camera.fragment.uniform", extension));
+        await Assert.That(atlas.Code.Length)
+            .IsEqualTo(ManifestArtifactSize("volume.camera.fragment.atlas", extension));
+        await Assert.That(vertex.EntryPoint)
+            .IsEqualTo(format == SilkShaderBinaryFormat.Dxil ? "volumeCameraVertexMain" : "main");
+        await Assert.That(uniform.EntryPoint)
+            .IsEqualTo(format == SilkShaderBinaryFormat.Dxil ? "volumeCameraUniformFragmentMain" : "main");
+        await Assert.That(atlas.EntryPoint)
+            .IsEqualTo(format == SilkShaderBinaryFormat.Dxil ? "volumeCameraAtlasFragmentMain" : "main");
+    }
+
+    [Test]
     public async Task CheckedSampledVolumeFragmentIsItsOwnProgram()
     {
         // The volume density texture and its sampler exist in exactly one checked

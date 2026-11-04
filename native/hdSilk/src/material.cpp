@@ -2468,10 +2468,6 @@ bool _TryCreateTextureEntry(
         entry.sourceKind = OPENUSD_SILK_TEXTURE_SOURCE_PTEX;
         entry.sourceColorSpace = _ReadColorSpace(texture.parameters);
         entry.asset = asset;
-        TF_DIAGNOSTIC_WARNING(
-            "hdSilk material '%s' input '%s' uses a Ptex texture; Ptex sampling is "
-            "not available, so the input remains at its default.",
-            materialPath.c_str(), input.name.GetText());
         return true;
     }
     if (_IsMaterialXImage(texture))

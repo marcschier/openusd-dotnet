@@ -26,6 +26,10 @@ set(OPENUSD_HDSILK_SOURCES
     src/mdlAdapter.cpp
     src/mdlMaterialSceneIndexPlugin.h
     src/mdlMaterialSceneIndexPlugin.cpp
+    src/nurbsGeometry.h
+    src/nurbsGeometry.cpp
+    src/nurbsSceneIndexPlugin.h
+    src/nurbsSceneIndexPlugin.cpp
     src/mesh.h
     src/mesh.cpp
     src/meshVertexLayout.h
@@ -204,6 +208,7 @@ if(OPENUSD_HDSILK_BUILD_TESTS)
             tests/curve_sync_test_hook.cpp
             tests/geometry_sync_test_hook.cpp
             tests/mesh_sync_test_hook.cpp
+            tests/nurbs_sync_test_hook.cpp
             tests/ptex_sync_test_hook.cpp)
     target_compile_definitions(
         openusd_hdsilk_test

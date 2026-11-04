@@ -25,10 +25,37 @@ public sealed class SilkShadowWireTests
     private const int DescriptorSize = 288;
 
     [Test]
+    public async Task TransmissionBindingEncodesPresenceWithoutChangingPublishedDescriptors()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateWideShadowFrame(1), 1, 0);
+        _ = scene.Apply(CreateShadow(1,
+            [new Descriptor(0, 0, 256, SilkShadowDescriptorOptions.Orthographic, 0.1f, 0.2f, 2f)]), 1, 1);
+        SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!;
+        SilkShadowFrameBinding opaque = SilkShadowFrameBinding.Create(scene.Shadows.Descriptors, layout);
+        SilkShadowFrameBinding transmissive = SilkShadowFrameBinding.Create(
+            scene.Shadows.Descriptors, layout, transmission: true);
+        await Assert.That(opaque.GetControls(0).Z).IsEqualTo(2f);
+        await Assert.That(transmissive.GetControls(0).Z).IsEqualTo(-3f);
+        await Assert.That(transmissive.GetControls(0).X).IsEqualTo(opaque.GetControls(0).X);
+        await Assert.That(transmissive.GetControls(0).Y).IsEqualTo(opaque.GetControls(0).Y);
+        await Assert.That(transmissive.GetControls(0).W).IsEqualTo(opaque.GetControls(0).W);
+        await Assert.That(transmissive.GetWorldToLightClip(0)).IsEqualTo(opaque.GetWorldToLightClip(0));
+        await Assert.That(transmissive.GetTile(0)).IsEqualTo(opaque.GetTile(0));
+        await Assert.That(scene.Shadows.Descriptors[0].PcfRadius).IsEqualTo(2f);
+    }
+
+    [Test]
     public async Task SixFaceGroupsRetainTheirFirstSlotAcrossReplacementAndRetirement()
     {
         var scene = new SilkSceneState();
-        _ = scene.Apply(CreateWideShadowFrame(128), 1, 0);
+        byte[] frame = CreateWideShadowFrame(128);
+        for (int light = 124; light < 128; light++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                frame.AsSpan(552 + (light * 176)), 2u);
+        }
+        _ = scene.Apply(frame, 1, 0);
         Descriptor[] descriptors = Enumerable.Range(0, 24).Select(index => new Descriptor(
             (uint)(124 + (index / 6)), (uint)index, 256,
             SilkShadowDescriptorOptions.CubeFace | SilkShadowDescriptorOptions.CasterLinked)).ToArray();
@@ -60,12 +87,15 @@ public sealed class SilkShadowWireTests
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(14884 + 127 * 16)))
             .IsEqualTo(6f);
 
-        _ = scene.Apply(CreateShadow(128,
-            [new Descriptor(127, 0, 256, SilkShadowDescriptorOptions.Orthographic)]), 1, 2);
+        _ = scene.Apply(
+            [.. CreateWideShadowFrame(128), .. CreateShadow(128,
+                [new Descriptor(127, 0, 256, SilkShadowDescriptorOptions.Orthographic)])],
+            2,
+            2);
         await Assert.That(scene.Shadows.Count).IsEqualTo(1);
         await Assert.That(scene.Shadows.ResolveSlot(124)).IsEqualTo(-1);
         await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(0);
-        _ = scene.Apply(cube, 1, 3);
+        _ = scene.Apply([.. frame, .. cube], 2, 3);
         await Assert.That(scene.Shadows.Count).IsEqualTo(24);
         await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(18);
         _ = scene.Apply(CreateShadow(0, []), 1, 4);
@@ -117,6 +147,120 @@ public sealed class SilkShadowWireTests
         };
         await Assert.That(() => ValidateShadow(CreateShadow(2, descriptors)))
             .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task FivePerspectiveEmitterSamplesApplyAsOneFiniteAreaLightGroup()
+    {
+        Descriptor[] descriptors = Enumerable.Range(0, 5).Select(index =>
+            new Descriptor(
+                0,
+                (uint)index,
+                512,
+                SilkShadowDescriptorOptions.EmitterSample |
+                    SilkShadowDescriptorOptions.CasterLinked,
+                0.125f,
+                0.25f,
+                1.5f)).ToArray();
+        var scene = new SilkSceneState();
+
+        _ = scene.Apply(CreateAreaEmitterShadowFrame(1.25f, 0.75f), 1, 0);
+        _ = scene.Apply(CreateShadow(1, descriptors), 1, 1);
+
+        await Assert.That(scene.Frame.LightCount).IsEqualTo(1u);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(5);
+        await Assert.That(scene.Shadows.ResolveSlot(0)).IsEqualTo(0);
+        for (int map = 0; map < descriptors.Length; map++)
+        {
+            SilkShadowDescriptor retained = scene.Shadows.Descriptors[map];
+            await Assert.That(retained.LightIndex).IsEqualTo(0u);
+            await Assert.That(retained.MapIndex).IsEqualTo((uint)map);
+            await Assert.That(retained.Resolution).IsEqualTo(512u);
+            await Assert.That(retained.Flags).IsEqualTo(
+                SilkShadowDescriptorOptions.EmitterSample |
+                SilkShadowDescriptorOptions.CasterLinked);
+            await Assert.That(retained.DepthBias).IsEqualTo(0.125f);
+            await Assert.That(retained.NormalBias).IsEqualTo(0.25f);
+            await Assert.That(retained.PcfRadius).IsEqualTo(1.5f);
+        }
+    }
+
+    [Test]
+    [Arguments(1)]
+    [Arguments(4)]
+    [Arguments(6)]
+    public async Task IncompleteOrOverlongEmitterSampleGroupsAreRejected(int count)
+    {
+        Descriptor[] descriptors = Enumerable.Range(0, count).Select(index =>
+            new Descriptor(0, (uint)index, 256, SilkShadowDescriptorOptions.EmitterSample))
+            .ToArray();
+
+        await Assert.That(() => ValidateShadow(CreateShadow(1, descriptors)))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(2)]
+    [Arguments(3)]
+    [Arguments(4)]
+    public async Task MixedOrMismatchedEmitterSampleGroupsAreRejected(int changedField)
+    {
+        Descriptor[] descriptors = Enumerable.Range(0, 5).Select(index =>
+            new Descriptor(0, (uint)index, 256, SilkShadowDescriptorOptions.EmitterSample))
+            .ToArray();
+        descriptors[3] = changedField switch
+        {
+            0 => descriptors[3] with { LightIndex = 1 },
+            1 => descriptors[3] with { Resolution = 512 },
+            2 => descriptors[3] with { Flags = SilkShadowDescriptorOptions.None },
+            3 => descriptors[3] with
+            {
+                Flags = SilkShadowDescriptorOptions.EmitterSample |
+                    SilkShadowDescriptorOptions.Orthographic,
+            },
+            _ => descriptors[3] with
+            {
+                Flags = SilkShadowDescriptorOptions.EmitterSample |
+                    SilkShadowDescriptorOptions.CubeFace,
+            },
+        };
+
+        await Assert.That(() => ValidateShadow(CreateShadow(2, descriptors)))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task EmitterSampleGroupForNonAreaFrameLightIsRejectedWithoutReplacingTheShadowTable()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateWideShadowFrame(1), 1, 0);
+        _ = scene.Apply(
+            CreateShadow(
+                1,
+                [new Descriptor(0, 0, 1024, SilkShadowDescriptorOptions.Orthographic)]),
+            1,
+            1);
+        IReadOnlyList<SilkShadowDescriptor> retained = scene.Shadows.Descriptors;
+        ulong revision = scene.Shadows.Revision;
+        Descriptor[] emitterSamples = Enumerable.Range(0, 5).Select(index =>
+            new Descriptor(0, (uint)index, 512, SilkShadowDescriptorOptions.EmitterSample))
+            .ToArray();
+
+        await Assert.That(() => scene.Apply(
+                [.. CreateWideShadowFrame(1), .. CreateShadow(1, emitterSamples)],
+                2,
+                2))
+            .Throws<InvalidDataException>();
+
+        await Assert.That(scene.Shadows.Descriptors).IsSameReferenceAs(retained);
+        await Assert.That(scene.Shadows.Revision).IsEqualTo(revision);
+        await Assert.That(scene.Shadows.Count).IsEqualTo(1);
+        await Assert.That(scene.Shadows.ResolveSlot(0)).IsEqualTo(0);
+        await Assert.That(retained[0].Resolution).IsEqualTo(1024u);
+        await Assert.That(retained[0].Flags)
+            .IsEqualTo(SilkShadowDescriptorOptions.Orthographic);
     }
 
     [Test]
@@ -440,7 +584,7 @@ public sealed class SilkShadowWireTests
     }
 
     [Test]
-    public async Task ConstantOpacityThresholdDistinguishesSolidInvisibleAndUnsupportedCasters()
+    public async Task ConstantOpacityThresholdDistinguishesSolidInvisibleTransmissiveAndUnsupportedCasters()
     {
         await Assert.That(Classify(null)).IsEqualTo(SilkShadowOpacityCoverage.Solid);
         await Assert.That(Classify([(SilkMaterialParameter.Opacity, 1f)]))
@@ -454,13 +598,15 @@ public sealed class SilkShadowWireTests
         await Assert.That(Classify([(SilkMaterialParameter.OpacityThreshold, MathF.BitIncrement(1f))]))
             .IsEqualTo(SilkShadowOpacityCoverage.Invisible);
         await Assert.That(Classify([(SilkMaterialParameter.Opacity, 0.5f)]))
-            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+            .IsEqualTo(SilkShadowOpacityCoverage.Transmissive);
         await Assert.That(Classify(
             [(SilkMaterialParameter.Opacity, 0.5f), (SilkMaterialParameter.OpacityThreshold, 0f)]))
-            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+            .IsEqualTo(SilkShadowOpacityCoverage.Transmissive);
         await Assert.That(Classify(
             [(SilkMaterialParameter.Opacity, 0.5f), (SilkMaterialParameter.OpacityThreshold, -0.5f)]))
-            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+            .IsEqualTo(SilkShadowOpacityCoverage.Transmissive);
+        await Assert.That(Classify([(SilkMaterialParameter.Opacity, 0f)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Invisible);
         await Assert.That(Classify(
             [(SilkMaterialParameter.Opacity, 1f), (SilkMaterialParameter.OpacityThreshold, 0f)]))
             .IsEqualTo(SilkShadowOpacityCoverage.Solid);
@@ -500,6 +646,23 @@ public sealed class SilkShadowWireTests
             .Throws<InvalidDataException>();
         await Assert.That(() => Classify([(SilkMaterialParameter.OpacityThreshold, float.PositiveInfinity)]))
             .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    [Arguments(0f)]
+    [Arguments(0.5f)]
+    [Arguments(1f)]
+    public async Task DensityVolumeIsAnUnsupportedShadowCasterUnlessSceneMaterialsAreDisabled(float density)
+    {
+        (SilkMaterialParameter Parameter, float Value)[] scalars =
+            [(SilkMaterialParameter.VolumeDensity, density)];
+        await Assert.That(Classify(scalars, SilkSurfaceKind.VolumeDensity))
+            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+        await Assert.That(Classify(scalars, SilkSurfaceKind.VolumeDensity, useSceneMaterials: false))
+            .IsEqualTo(SilkShadowOpacityCoverage.Solid);
+        await Assert.That(Classify(
+            [.. scalars, (SilkMaterialParameter.Opacity, 1f)], SilkSurfaceKind.VolumeDensity))
+            .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
     }
 
     [Test]
@@ -572,7 +735,8 @@ public sealed class SilkShadowWireTests
     /// </summary>
     private static SilkShadowOpacityCoverage Classify(
         (SilkMaterialParameter Parameter, float Value)[]? scalars,
-        SilkSurfaceKind kind = SilkSurfaceKind.PreviewSurface)
+        SilkSurfaceKind kind = SilkSurfaceKind.PreviewSurface,
+        bool useSceneMaterials = true)
     {
         const string meshPath = "/World/Caster";
         const string materialPath = "/World/Materials/Caster";
@@ -591,10 +755,10 @@ public sealed class SilkShadowWireTests
         }
         _ = scene.Apply(bytes.ToArray(), (uint)page.Count, 1);
         SilkMeshData mesh = scene.MeshesByPath[(meshPath, 0)];
-        return SilkShadowMapCache.ClassifyOpacity(scene, mesh);
+        return SilkShadowMapCache.ClassifyOpacity(scene, mesh, useSceneMaterials);
     }
 
-    private static byte[] CreateMaterial(
+    internal static byte[] CreateMaterial(
         string path,
         (SilkMaterialParameter Parameter, float Value)[] scalars,
         SilkSurfaceKind kind = SilkSurfaceKind.PreviewSurface)
@@ -637,7 +801,7 @@ public sealed class SilkShadowWireTests
         return bytes;
     }
 
-    private static byte[] CreateMesh(string path, string materialPath)
+    internal static byte[] CreateMesh(string path, string materialPath)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         byte[] materialBytes = Encoding.UTF8.GetBytes(materialPath);
@@ -1012,6 +1176,16 @@ public sealed class SilkShadowWireTests
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 164), 1f);
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(entry + 168), 1f);
         }
+        return bytes;
+    }
+
+    private static byte[] CreateAreaEmitterShadowFrame(float shapeX, float shapeY)
+    {
+        byte[] bytes = CreateWideShadowFrame(1);
+        const int firstLight = 552;
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(firstLight), 3u);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(firstLight + 8), shapeX);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(firstLight + 12), shapeY);
         return bytes;
     }
 }

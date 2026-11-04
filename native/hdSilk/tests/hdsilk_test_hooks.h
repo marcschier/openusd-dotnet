@@ -37,6 +37,9 @@ OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_mesh_computed_points(void);
 
 OPENUSD_HDSILK_API int32_t
+openusd_hdsilk_test_nurbs_sync(const char* pluginPath, int32_t scenario);
+
+OPENUSD_HDSILK_API int32_t
 openusd_hdsilk_test_mesh_skel_normals_recovery(const char* stagePath, int32_t fallbackKind);
 
 typedef struct openusd_hdsilk_test_ptex_observation

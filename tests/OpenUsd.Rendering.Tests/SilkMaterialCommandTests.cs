@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using OpenUsd.Rendering.Silk;
@@ -998,12 +999,12 @@ public sealed class SilkMaterialCommandTests
             .IsEqualTo(SilkTextureSourceKind.Standard);
         await Assert.That(material.GetPrimaryUvPrimvar()).IsEqualTo("st1");
         await Assert.That(material.GetTextureFeatures())
-            .IsEqualTo(SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv);
+            .IsEqualTo(SilkShaderFeatures.BaseColorMap | SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv);
         byte[] constants = new byte[SilkSurfaceUniformWriter.ByteSize];
         SilkSurfaceUniformWriter.Write(material, RenderHeadlight.Deterministic, constants);
         await Assert.That(ReadSingle(constants, 0)).IsEqualTo(0.18f);
         await Assert.That((uint)ReadSingle(constants, 128))
-            .IsEqualTo((uint)(SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv));
+            .IsEqualTo((uint)(SilkShaderFeatures.BaseColorMap | SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv));
 
         using var device = new TextureGraphicsDevice();
         var gpuBudget = new SilkGpuTextureBudget(64);
@@ -1043,7 +1044,7 @@ public sealed class SilkMaterialCommandTests
         _ = renderer.GpuResources.RequireSurfaceBuffer(
             renderer.Scene, renderer.Scene.Meshes.Values.Single(), RenderHeadlight.Deterministic);
         await Assert.That(renderer.Scene.Materials["/Material"].GetTextureFeatures())
-            .IsEqualTo(SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv);
+            .IsEqualTo(SilkShaderFeatures.BaseColorMap | SilkShaderFeatures.EmissiveMap | SilkShaderFeatures.Uv);
         await Assert.That(renderer.GpuResources.Diagnostics.Entries.Count(
             entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsEqualTo(1);
     }
@@ -4005,7 +4006,272 @@ public sealed class SilkMaterialCommandTests
     }
 
     [Test]
-    public async Task SampledVolumeDepthIsWrittenAndTheExactIntegrationLimitIsEnforced()
+    public async Task ReplaySnapshotCleanupGuardsPhysicsCheckpointConstruction()
+    {
+        string source = await File.ReadAllTextAsync(Path.Combine(
+            FindRepositoryRoot(), "src", "OpenUsd.Rendering.Silk", "SilkMeshRenderer.cs"));
+        int capture = source.IndexOf(
+            "OpenUsdSilkPage.ReplaySnapshot snapshot = page.CaptureReplay();", StringComparison.Ordinal);
+        await Assert.That(capture).IsGreaterThanOrEqualTo(0);
+        int guardedTry = source.IndexOf("try", capture, StringComparison.Ordinal);
+        int checkpoint = source.IndexOf("pendingOverrides.PrepareState()", capture, StringComparison.Ordinal);
+        int prepareScene = source.IndexOf("Scene.PreparePage(page)", capture, StringComparison.Ordinal);
+        await Assert.That(guardedTry).IsGreaterThan(capture);
+        await Assert.That(checkpoint).IsGreaterThan(guardedTry);
+        await Assert.That(prepareScene).IsGreaterThan(checkpoint);
+        await Assert.That(source[prepareScene..]).Contains("snapshot.Dispose();");
+    }
+
+    [Test]
+    [Arguments(3, 0.1, false)]
+    [Arguments(7, 0.1, false)]
+    [Arguments(11, 0.1, false)]
+    [Arguments(15, 2.0, false)]
+    [Arguments(3, 0.1, true)]
+    [Arguments(7, 0.1, true)]
+    [Arguments(11, 0.1, true)]
+    [Arguments(15, 2.0, true)]
+    public async Task ProjectiveVolumeRefusalDoesNotBlockCorrectedRendererPages(
+        int element, double value, bool stored)
+    {
+        byte[] material = AdmissionVolumeMaterial();
+        byte[] mesh = CreateMeshUpsert("/Volume", "/AdmissionVolume");
+        using var device = new TextureGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using var initial = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, [.. material, .. mesh], 2);
+        renderer.ApplyPage(initial, useSceneMaterials: false);
+        byte[] invalid = (byte[])mesh.Clone();
+        BinaryPrimitives.WriteDoubleLittleEndian(invalid.AsSpan(80 + element * sizeof(double)), value);
+        SilkCommandStorageTests.MemoryStorage? storage = null;
+        using OpenUsdSilkPage bad = stored
+            ? SilkCommandStorageTests.Stored(invalid, 1, 31, out storage)
+            : new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 7, invalid, 1);
+        InvalidDataException? error = await Assert.That(() => renderer.ApplyPage(bad, useSceneMaterials: false))
+            .Throws<InvalidDataException>();
+        await Assert.That(error!.Message).Contains("affine matrix");
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
+        bad.Dispose();
+        if (storage is not null)
+        {
+            await Assert.That(storage.Disposals).IsEqualTo(1);
+        }
+        using var repaired = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 8, mesh, 1);
+        renderer.ApplyPage(repaired, useSceneMaterials: false);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(8UL);
+    }
+
+    [Test]
+    public async Task RendererPhysicsRefusalAndLaterGpuFailureRestoreOverridesAndPermitCorrectedPages()
+    {
+        using var device = new TextureGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using var initial = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            [.. AdmissionVolumeMaterial(), .. CreateMeshUpsert("/Volume", "/AdmissionVolume")], 2);
+        renderer.ApplyPage(initial, useSceneMaterials: false);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBind(id, "/Volume");
+        var overrides = new SilkPhysicsTransformOverrides(1);
+        renderer.PhysicsOverrides = overrides;
+        PhysicsRenderOverrideView Pose(double x, ulong revision) => new(
+            new[] { new PhysicsRenderTransformOverride(
+                id, new UsdVec3d(x, 0, 0), PhysicsRenderOrientation.Identity, true) }, revision);
+        _ = overrides.Refresh(renderer.Scene, bindings, Pose(1, 1));
+        ulong overrideRevision = overrides.Revision;
+        overrides.Stage(bindings, Pose(double.MaxValue, 2));
+        using var bad = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [], 0);
+        await Assert.That(() => renderer.ApplyPage(bad, useSceneMaterials: false))
+            .Throws<InvalidDataException>();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
+        await Assert.That(overrides.Revision).IsEqualTo(overrideRevision);
+
+        overrides.Stage(bindings, Pose(2, 3));
+        using var corrected = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
+            CreateMeshUpsert("/Added", "/AdmissionVolume", 8), 1);
+        device.RefuseBufferSize = SilkSceneUniformWriter.ByteSize;
+        await Assert.That(() => renderer.ApplyPage(corrected, useSceneMaterials: false))
+            .Throws<InvalidOperationException>();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
+        await Assert.That(overrides.Revision).IsEqualTo(overrideRevision);
+        await Assert.That(overrides.SourceRevision).IsEqualTo(1UL);
+        await Assert.That(overrides.GetTransform(renderer.Scene.Meshes.Values.Single().Id)[12]).IsEqualTo(1.0);
+        device.RefuseBufferSize = null;
+        renderer.ApplyPage(corrected, useSceneMaterials: false);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(3UL);
+        await Assert.That(overrides.SourceRevision).IsEqualTo(3UL);
+        await Assert.That(overrides.GetTransform(renderer.Scene.MeshesByPath[("/Volume", 0)].Id)[12])
+            .IsEqualTo(2.0);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DroppedOrSupersededInvalidVolumeOverridesDoNotRefuseAcceptedResults(bool duplicate)
+    {
+        using var scene = new SilkSceneState();
+        _ = scene.Apply(
+            [.. AdmissionVolumeMaterial(), .. CreateMeshUpsert("/First", "/AdmissionVolume", 7),
+             .. CreateMeshUpsert("/Second", "/AdmissionVolume", 8)], 3, 1);
+        var first = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var second = new PhysicsRenderObjectId(102, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(2);
+        _ = bindings.TryBind(first, "/First");
+        _ = bindings.TryBind(second, "/Second");
+        static PhysicsRenderTransformOverride Pose(PhysicsRenderObjectId id, double x) =>
+            new(id, new UsdVec3d(x, 0, 0), PhysicsRenderOrientation.Identity, true);
+        PhysicsRenderTransformOverride[] values = duplicate
+            ? [Pose(first, double.MaxValue), Pose(first, 1)]
+            : [Pose(first, 1), Pose(second, double.MaxValue)];
+        var overrides = new SilkPhysicsTransformOverrides(1);
+        _ = overrides.Refresh(scene, bindings, new PhysicsRenderOverrideView(values, 1));
+        await Assert.That(overrides.Count).IsEqualTo(1);
+        await Assert.That(overrides.GetTransform(7)[12]).IsEqualTo(1.0);
+        await Assert.That(overrides.Contains(8)).IsFalse();
+        await Assert.That(overrides.DroppedOverrides).IsEqualTo(duplicate ? 0L : 1L);
+    }
+
+    private static byte[] AdmissionVolumeMaterial() => CreateMaterialUpsert(
+        "/AdmissionVolume", SilkSurfaceKind.VolumeDensity, scalars: [],
+        textures: [new TextureSpec(
+            SilkMaterialParameter.VolumeDensity, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp,
+            SilkColorSpace.Raw, ComponentCount: 1,
+            Scale: [1f, 1f, 1f, 1f], Bias: [0f, 0f, 0f, 0f],
+            Fallback: [0f, 0f, 0f, 1f], Asset: "density.raw", UvPrimvar: "4,4,4")]);
+
+    [Test]
+    [Arguments(0, false)]
+    [Arguments(3, false)]
+    [Arguments(0, true)]
+    public async Task VolumePhysicsRefusalPreservesOverrideStateAndAllowsRetryAndReversion(
+        int instanceIndex, bool subtree)
+    {
+        const string path = "/World/PhysicsVolume";
+        const string materialPath = "/World/PhysicsMaterial";
+        byte[] material = CreateMaterialUpsert(
+            materialPath, SilkSurfaceKind.VolumeDensity, scalars: [],
+            textures: [new TextureSpec(
+                SilkMaterialParameter.VolumeDensity, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp,
+                SilkColorSpace.Raw, ComponentCount: 1,
+                Scale: [1f, 1f, 1f, 1f], Bias: [0f, 0f, 0f, 0f],
+                Fallback: [0f, 0f, 0f, 1f], Asset: "density.raw", UvPrimvar: "4,4,4")]);
+        byte[] mesh = CreateMeshUpsert(path, materialPath);
+        BinaryPrimitives.WriteInt32LittleEndian(mesh.AsSpan(24), instanceIndex);
+        using var scene = new SilkSceneState();
+        _ = scene.Apply([.. material, .. mesh], 2, 1);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        if (subtree)
+        {
+            _ = bindings.TryBindSubtree(id, "/World", default, PhysicsRenderOrientation.Identity);
+        }
+        else
+        {
+            _ = bindings.TryBind(id, path, instanceIndex);
+        }
+        PhysicsRenderOverrideView View(double x, ulong revision) => new(
+            new[] { new PhysicsRenderTransformOverride(
+                id, new UsdVec3d(x, 0, 0), PhysicsRenderOrientation.Identity, true) }, revision);
+        var overrides = new SilkPhysicsTransformOverrides(1);
+        _ = overrides.Refresh(scene, bindings, View(1, 1));
+        double[] before = overrides.GetTransform(scene.Meshes.Values.Single().Id).ToArray();
+        ulong beforeRevision = overrides.Revision;
+        overrides.Stage(bindings, View(double.MaxValue, 2));
+        await Assert.That(() => overrides.RefreshStaged(scene)).Throws<InvalidDataException>();
+        await Assert.That(overrides.Revision).IsEqualTo(beforeRevision);
+        await Assert.That(overrides.SourceRevision).IsEqualTo(1UL);
+        await Assert.That(overrides.GetTransform(scene.Meshes.Values.Single().Id).ToArray())
+            .IsEquivalentTo(before);
+        overrides.Stage(bindings, View(2, 3));
+        _ = overrides.RefreshStaged(scene);
+        scene.ValidateVolumeTransforms(overrides);
+        await Assert.That(overrides.GetTransform(scene.Meshes.Values.Single().Id)[12]).IsEqualTo(2.0);
+        _ = overrides.Refresh(scene, bindings, new PhysicsRenderOverrideView(
+            ReadOnlyMemory<PhysicsRenderTransformOverride>.Empty, 4));
+        scene.ValidateVolumeTransforms(overrides);
+        await Assert.That(overrides.Count).IsEqualTo(0);
+        await Assert.That(scene.Meshes.Values.Single().Transform.Span[12]).IsEqualTo(0.0);
+    }
+
+    [Test]
+    [Arguments(false, 0, 0.5)]
+    [Arguments(false, 3, 0.5)]
+    [Arguments(true, 0, 0.5)]
+    [Arguments(true, 3, 0.5)]
+    [Arguments(false, 0, 0.0)]
+    [Arguments(true, 3, 0.0)]
+    public async Task UnstableVolumeTransformsRefuseUpdatesAndMaterialChangesTransactionally(
+        bool materialChange, int instanceIndex, double thickness)
+    {
+        const string path = "/World/UnstableVolume";
+        const string materialPath = "/World/VolumeMaterial";
+        byte[] Material(SilkSurfaceKind kind) => CreateMaterialUpsert(
+            materialPath, kind, scalars: [], textures: kind == SilkSurfaceKind.VolumeDensity
+                ? [new TextureSpec(
+                    SilkMaterialParameter.VolumeDensity, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp,
+                    SilkColorSpace.Raw, ComponentCount: 1,
+                    Scale: [1f, 1f, 1f, 1f], Bias: [0f, 0f, 0f, 0f],
+                    Fallback: [0f, 0f, 0f, 1f], Asset: "density.raw", UvPrimvar: "4,4,4")]
+                : []);
+        byte[] Mesh(bool unstable)
+        {
+            byte[] command = CreateMeshUpsert(path, materialPath);
+            BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(24), instanceIndex);
+            if (unstable)
+            {
+                // A nonzero world volume with x/y extent around one million and
+                // thickness 0.5: its angular basis ratio is still below 1e-6.
+                double[] basis = [1e6, 0, 0, 0, 1e6, thickness, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+                for (int i = 0; i < basis.Length; i++)
+                {
+                    BinaryPrimitives.WriteDoubleLittleEndian(command.AsSpan(80 + i * sizeof(double)), basis[i]);
+                }
+            }
+            return command;
+        }
+
+        using var scene = new SilkSceneState();
+        _ = scene.Apply(
+            [.. Material(materialChange ? SilkSurfaceKind.PreviewSurface : SilkSurfaceKind.VolumeDensity),
+             .. Mesh(materialChange)], 2, 1);
+        SilkMeshData retainedMesh = scene.Meshes.Values.Single();
+        SilkMaterialData retainedMaterial = scene.Materials[materialPath];
+        ulong geometryRevision = scene.GeometryRevision;
+        ulong materialRevision = scene.MaterialRevision;
+        InvalidDataException? refusal = await Assert.That(() => scene.Apply(
+            materialChange ? Material(SilkSurfaceKind.VolumeDensity) : Mesh(true), 1, 2))
+            .Throws<InvalidDataException>();
+        await Assert.That(refusal!.Message).Contains(path);
+        await Assert.That(refusal.Message).Contains($"instance {instanceIndex}");
+        await Assert.That(refusal.Message).Contains(materialPath);
+        await Assert.That(refusal.Message).Contains("bake the transform");
+        await Assert.That(scene.Revision).IsEqualTo(1UL);
+        await Assert.That(scene.GeometryRevision).IsEqualTo(geometryRevision);
+        await Assert.That(scene.MaterialRevision).IsEqualTo(materialRevision);
+        await Assert.That(scene.Meshes.Values.Single()).IsSameReferenceAs(retainedMesh);
+        await Assert.That(scene.Materials[materialPath]).IsSameReferenceAs(retainedMaterial);
+        await Assert.That(scene.MeshesByPath[(path, instanceIndex)]).IsSameReferenceAs(retainedMesh);
+
+        using var empty = new SilkSceneState();
+        await Assert.That(() => empty.Apply(
+            [.. Mesh(true), .. Material(SilkSurfaceKind.VolumeDensity)], 2, 1))
+            .Throws<InvalidDataException>();
+        await Assert.That(empty.Meshes.Count).IsEqualTo(0);
+        await Assert.That(empty.Materials.Count).IsEqualTo(0);
+        await Assert.That(empty.Revision).IsEqualTo(0UL);
+
+        byte[] repaired = Mesh(true);
+        BinaryPrimitives.WriteDoubleLittleEndian(repaired.AsSpan(80 + 5 * sizeof(double)), 2.0);
+        _ = scene.Apply([.. repaired, .. Material(SilkSurfaceKind.VolumeDensity)], 2, 3);
+        await Assert.That(scene.Revision).IsEqualTo(3UL);
+        await Assert.That(scene.Meshes.Values.Single().Transform.Span[5]).IsEqualTo(2.0);
+    }
+
+    [Test]
+    [Arguments("513,4,4")]
+    [Arguments("4,513,4")]
+    [Arguments("4,4,513")]
+    [Arguments("2048,1,1")]
+    public async Task SampledVolumeResolutionIsWrittenAndEveryAxisLimitIsEnforced(string rejectedExtent)
     {
         SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
             "/World/Materials/Volume",
@@ -4050,7 +4316,7 @@ public sealed class SilkMaterialCommandTests
                     Bias: [0f, 0f, 0f, 0f],
                     Fallback: [0f, 0f, 0f, 1f],
                     Asset: "density.raw",
-                    UvPrimvar: "4,4,513"),
+                    UvPrimvar: rejectedExtent),
             ]));
 
         await Assert.That(() => SilkSurfaceUniformWriter.Write(
@@ -4298,6 +4564,2914 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(() => CopyMaterial(unknownChannel)).Throws<InvalidDataException>();
         await Assert.That(() => CopyMaterial(rgbOnScalar)).Throws<InvalidDataException>();
         await Assert.That(() => CopyMaterial(scalarOnColour)).Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task PtexThirdUvRefusalPreservesStandardPrimaryAndSecondaryCoordinates()
+    {
+        TextureSpec ptex = new(
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: 3,
+            Scale: [1f, 0.8f, 0.6f, 1f],
+            Bias: [0.1f, 0.2f, 0.3f, 0f],
+            Fallback: [0.25f, 0.5f, 0.75f, 1f],
+            Asset: "shared.ptx",
+            UvPrimvar: "",
+            SourceKind: SilkTextureSourceKind.Ptex);
+        TextureSpec roughness = ScalarTexture(
+            SilkMaterialParameter.Roughness, "shared.ptx", SilkTextureChannel.R) with
+        {
+            UvPrimvar = "st",
+            Scale = [0.75f, 0.75f, 0.75f, 1f],
+            Bias = [0.125f, 0.125f, 0.125f, 0f],
+        };
+        TextureSpec normal = new(
+            SilkMaterialParameter.Normal,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: 3,
+            Scale: [1f, 1f, 1f, 1f],
+            Bias: [0f, 0f, 0f, 0f],
+            Fallback: [0.5f, 0.5f, 1f, 1f],
+            Asset: "shared.ptx",
+            UvPrimvar: "st1");
+        float[] primaryTransform = [2f, 0f, 0f, 3f, -0.25f, 0.5f];
+        float[] secondaryTransform = [0.5f, 0f, 0f, 0.25f, 0.125f, -0.5f];
+        byte[] materialCommand = CreateMaterialUpsert(
+            "/Material",
+            SilkSurfaceKind.PreviewSurface,
+            scalars: [],
+            textures: [ptex, roughness, normal],
+            uvTransform: primaryTransform,
+            alternateUvMask: 1u << (int)SilkMaterialParameter.Normal,
+            alternateUvTransform: secondaryTransform);
+
+        using var scene = new SilkSceneState();
+        using var page = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion,
+            1,
+            [.. materialCommand, .. CreateMeshUpsert("/Mesh", "/Material")],
+            2);
+        _ = scene.Apply(page);
+        SilkMaterialData material = scene.Materials["/Material"];
+        SilkMaterialTexture retainedPtex = material.GetTexture(SilkMaterialParameter.DiffuseColor)!;
+        SilkMaterialTexture retainedRoughness = material.GetTexture(SilkMaterialParameter.Roughness)!;
+        SilkMaterialTexture retainedNormal = material.GetTexture(SilkMaterialParameter.Normal)!;
+
+        await Assert.That(scene.Revision).IsEqualTo(1ul);
+        await Assert.That(scene.Meshes.Values.Single().MaterialPath).IsEqualTo("/Material");
+        await Assert.That(retainedPtex.SourceKind).IsEqualTo(SilkTextureSourceKind.Ptex);
+        await Assert.That(retainedPtex.Asset).IsEqualTo("shared.ptx");
+        await Assert.That(material.GetPtexUnsupportedReason(retainedPtex))
+            .IsEqualTo("Ptex sampling cannot use a third surface texture-coordinate set.");
+        await Assert.That(material.GetRenderableSurfaceTexture(SilkMaterialParameter.DiffuseColor)).IsNotNull();
+        await Assert.That(material.GetPrimaryUvPrimvar()).IsEqualTo("st");
+        await Assert.That(material.GetSecondaryUvPrimvar()).IsEqualTo("st1");
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.Uv |
+            SilkShaderFeatures.BaseColorMap |
+            SilkShaderFeatures.RoughnessMetallicMap |
+            SilkShaderFeatures.NormalMap);
+        await Assert.That(material.GetSecondaryUvTextureMask()).IsEqualTo(SilkShaderFeatures.NormalMap);
+        await Assert.That(material.TangentsFromSecondaryUv()).IsTrue();
+        using var fallbackDevice = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var fallbackResources = new SilkSceneGpuResources(fallbackDevice,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+        using var fallbackCommands = new TextureCommandList();
+        fallbackResources.BindMaterialTexture(
+            fallbackCommands, material, SilkMaterialParameter.DiffuseColor, SilkMaterialParameter.DiffuseColor,
+            scene.Meshes.Values.Single());
+        float[] expectedFallback = new float[4];
+        for (int component = 0; component < expectedFallback.Length; component++)
+        {
+            expectedFallback[component] =
+                (retainedPtex.Fallback[component] * retainedPtex.Scale[component]) +
+                retainedPtex.Bias[component];
+        }
+        byte[] fallbackBytes = fallbackCommands.Uploads.Single();
+        float[] actualFallback = new float[4];
+        for (int component = 0; component < actualFallback.Length; component++)
+        {
+            actualFallback[component] = BitConverter.ToSingle(fallbackBytes, component * sizeof(float));
+        }
+        await Assert.That(actualFallback.SequenceEqual(expectedFallback)).IsTrue();
+        await Assert.That(material.GetUvTransformFor(SilkMaterialParameter.Roughness).SequenceEqual(primaryTransform))
+            .IsTrue();
+        await Assert.That(material.GetUvTransformFor(SilkMaterialParameter.Normal).SequenceEqual(secondaryTransform))
+            .IsTrue();
+        await Assert.That(retainedRoughness.Channel).IsEqualTo(SilkTextureChannel.R);
+        await Assert.That(retainedRoughness.Scale.SequenceEqual(roughness.Scale)).IsTrue();
+        await Assert.That(retainedRoughness.Bias.SequenceEqual(roughness.Bias)).IsTrue();
+        await Assert.That(retainedNormal.Channel).IsEqualTo(SilkTextureChannel.Rgb);
+        await Assert.That(retainedNormal.UvPrimvar).IsEqualTo("st1");
+    }
+
+    [Test]
+    public async Task PtexOnlyMaterialRetainsItsSupportedSurfaceSourceWithoutClaimingOrdinaryUvNames()
+    {
+        TextureSpec ptex = new(
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: 3,
+            Scale: [1f, 0.75f, 0.5f, 1f],
+            Bias: [0.125f, 0.25f, 0.375f, 0f],
+            Fallback: [0.2f, 0.4f, 0.6f, 1f],
+            Asset: "faces.ptx",
+            UvPrimvar: "",
+            SourceKind: SilkTextureSourceKind.Ptex);
+        using var scene = new SilkSceneState();
+        using var page = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion,
+            1,
+            [
+                .. CreateMaterialUpsert(
+                    "/Material/PtexOnly",
+                    SilkSurfaceKind.PreviewSurface,
+                    scalars: [],
+                    textures: [ptex]),
+                .. CreateMeshUpsert("/Mesh/PtexOnly", "/Material/PtexOnly"),
+            ],
+            2);
+        _ = scene.Apply(page);
+        SilkMaterialData material = scene.Materials["/Material/PtexOnly"];
+        SilkMaterialTexture retained = material.GetTexture(SilkMaterialParameter.DiffuseColor)!;
+
+        await Assert.That(scene.Revision).IsEqualTo(1ul);
+        await Assert.That(scene.Meshes.Values.Single().MaterialPath).IsEqualTo("/Material/PtexOnly");
+        await Assert.That(retained.SourceKind).IsEqualTo(SilkTextureSourceKind.Ptex);
+        await Assert.That(retained.Asset).IsEqualTo("faces.ptx");
+        await Assert.That(material.GetPtexUnsupportedReason(retained)).IsNull();
+        await Assert.That(ReferenceEquals(
+            material.GetRenderableSurfaceTexture(SilkMaterialParameter.DiffuseColor), retained)).IsTrue();
+        await Assert.That(material.GetRenderableTexture(SilkMaterialParameter.DiffuseColor)).IsNull();
+        await Assert.That(material.GetPrimaryUvPrimvar()).IsEqualTo(string.Empty);
+        await Assert.That(material.GetSecondaryUvPrimvar()).IsEqualTo(string.Empty);
+        await Assert.That(material.PtexUsesSecondaryUv).IsFalse();
+        await Assert.That(material.GetTextureFeatures()).IsEqualTo(
+            SilkShaderFeatures.BaseColorMap | SilkShaderFeatures.Uv);
+        await Assert.That(retained.Scale.SequenceEqual(ptex.Scale)).IsTrue();
+        await Assert.That(retained.Bias.SequenceEqual(ptex.Bias)).IsTrue();
+    }
+
+    [Test]
+    [Arguments(SilkPtexMappingStatus.NotRequested)]
+    [Arguments(SilkPtexMappingStatus.TextureFaceOutOfRange)]
+    public async Task UnmappedPtexSamplingBindsAuthoredFallbackAndDeduplicatesContextualDiagnostics(
+        SilkPtexMappingStatus status)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(status);
+        _ = scene.Apply(page);
+        SilkMaterialData material = scene.Materials["/Material/PtexFallback"];
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        int imageDecodes = 0;
+        using var resources = new SilkSceneGpuResources(device, (_, _) =>
+        {
+            imageDecodes++;
+            throw new InvalidOperationException("Ptex must not enter the ordinary image decoder.");
+        });
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor,
+            SilkMaterialParameter.DiffuseColor, mesh);
+        resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor,
+            SilkMaterialParameter.DiffuseColor, mesh);
+
+        await Assert.That(imageDecodes).IsEqualTo(0);
+        await Assert.That(commands.UploadCount).IsEqualTo(1);
+        await Assert.That(commands.Uploads.Single().SequenceEqual(new byte[] { 255, 0, 255, 255 })).IsTrue();
+        await Assert.That(device.CreatedTextures.Single().Width).IsEqualTo(1u);
+        await Assert.That(device.CreatedTextures.Single().Height).IsEqualTo(1u);
+        await Assert.That(commands.TextureBindings.Count).IsEqualTo(4);
+        RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported);
+        await Assert.That(diagnostic.Message).Contains("/Material/PtexFallback")
+            .And.Contains("/Mesh/PtexFallback").And.Contains("unmapped.ptx")
+            .And.Contains("DiffuseColor").And.Contains(status.ToString());
+    }
+
+    [Test]
+    public async Task PtexFallbackKeepsConstantDisplacementThroughRemovalAndRestoration()
+    {
+        using var scene = new SilkSceneState();
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex fallback must not decode an ordinary image."));
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(
+            SilkPtexMappingStatus.NotRequested, displacement: 0.5f);
+        SilkSceneDelta initial = scene.Apply(page);
+        resources.Apply(scene, initial);
+
+        await assertVertices(-0.5f);
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsTrue();
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.DisplacementApplied)).IsTrue();
+
+        byte[] undisplacedMaterial = CreatePtexFallbackMaterial("unmapped.ptx", displacement: 0);
+        resources.Apply(scene, scene.Apply(undisplacedMaterial, 1, 2));
+        await assertVertices(0f);
+
+        byte[] restoredMaterial = CreatePtexFallbackMaterial("unmapped.ptx", displacement: 0.5f);
+        resources.Apply(scene, scene.Apply(restoredMaterial, 1, 3));
+        await assertVertices(-0.5f);
+        await Assert.That(resources.Diagnostics.Entries.Count(
+            entry => entry.Code == SilkRenderDiagnosticCodes.DisplacementApplied)).IsEqualTo(1);
+
+        async Task assertVertices(float expectedZ)
+        {
+            SilkMeshGpuResource mesh = resources.Meshes.Values.Single();
+            byte[] data = new byte[checked((int)mesh.VertexBuffer.Size)];
+            mesh.VertexBuffer.ReadbackForTesting(data);
+            for (int corner = 0; corner < 3; corner++)
+            {
+                int offset = corner * 8 * sizeof(float);
+                await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(offset + 8)))
+                    .IsEqualTo(expectedZ);
+                await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(offset + 24)))
+                    .IsEqualTo(0.5f);
+                await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(offset + 28)))
+                    .IsEqualTo(0.5f);
+            }
+        }
+    }
+
+    [Test]
+    public async Task ApplyingPtexMaterialRetainsFallbackDiagnosticWithoutTextureAdmission()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(SilkPtexMappingStatus.NotRequested);
+        SilkSceneDelta delta = scene.Apply(page);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+
+        resources.Apply(scene, delta);
+
+        RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported);
+        await Assert.That(diagnostic.Message).Contains("/Material/PtexFallback")
+            .And.Contains("/Mesh/PtexFallback").And.Contains("unmapped.ptx");
+    }
+
+    [Test]
+    public async Task FailedPtexMeshPreparationRollsBackItsTextureAndDiagnostic()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(SilkPtexMappingStatus.NotRequested);
+        SilkSceneDelta delta = scene.Apply(page);
+        using var device = new TextureGraphicsDevice
+        {
+            MaxTextureDimension2D = 4096,
+            RefuseBufferSize = 80,
+        };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+
+        await Assert.That(() => resources.Apply(scene, delta)).Throws<InvalidOperationException>();
+
+        await Assert.That(resources.MeshValues).IsEmpty();
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsFalse();
+        await Assert.That(device.TextureOwners.All(static texture => texture.Released)).IsTrue();
+    }
+
+    [Test]
+    public async Task ParameterlessPtexRetryRebuildsGeometryOnTheNextSceneApply()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(SilkPtexMappingStatus.NotRequested);
+        SilkSceneDelta delta = scene.Apply(page);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+        resources.Apply(scene, delta);
+        SilkMeshGpuResource previous = resources.MeshValues.Single();
+        await Assert.That(previous.Geometry.Key.PtexSamplingIdentity).IsNotEqualTo(0ul);
+
+        resources.RetryFailedTextures();
+        await Assert.That(resources.TextureRetryRevision).IsEqualTo(1ul);
+        resources.SynchronizePtexRetries(scene);
+
+        SilkMeshGpuResource firstRetry = resources.MeshValues.Single();
+        await Assert.That(ReferenceEquals(firstRetry, previous)).IsFalse();
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsTrue();
+
+        resources.RetryFailedTextures();
+        resources.SynchronizePtexRetries(scene);
+        await Assert.That(resources.TextureRetryRevision).IsEqualTo(2ul);
+        await Assert.That(ReferenceEquals(resources.MeshValues.Single(), firstRetry)).IsFalse();
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsTrue();
+    }
+
+    [Test]
+    public async Task SceneAwarePtexRetryRebuildsGeometryAndRestoresUnsupportedDiagnostic()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(SilkPtexMappingStatus.NotRequested);
+        SilkSceneDelta delta = scene.Apply(page);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+        resources.Apply(scene, delta);
+        SilkMeshGpuResource previous = resources.MeshValues.Single();
+
+        resources.RetryFailedTextures(scene);
+
+        await Assert.That(ReferenceEquals(resources.MeshValues.Single(), previous)).IsFalse();
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsTrue();
+    }
+
+    [Test]
+    public async Task FailedSceneAwarePtexRetryRestoresTextureGeometryAndDiagnostic()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(SilkPtexMappingStatus.NotRequested);
+        SilkSceneDelta delta = scene.Apply(page);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+        resources.Apply(scene, delta);
+        SilkMeshGpuResource previous = resources.MeshValues.Single();
+        Texture retainedFallback = device.TextureOwners.Single();
+        ulong revision = resources.Revision;
+        ulong retryRevision = resources.TextureRetryRevision;
+        device.RefuseBufferSize = 80;
+
+        await Assert.That(() => resources.RetryFailedTextures(scene)).Throws<InvalidOperationException>();
+
+        await Assert.That(ReferenceEquals(resources.MeshValues.Single(), previous)).IsTrue();
+        await Assert.That(resources.Revision).IsEqualTo(revision);
+        await Assert.That(resources.TextureRetryRevision).IsEqualTo(retryRevision);
+        await Assert.That(retainedFallback.Released).IsFalse();
+        await Assert.That(device.TextureOwners.Skip(1).All(static texture => texture.Released)).IsTrue();
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsTrue();
+    }
+
+    [Test]
+    public async Task ReplacingPtexSourceRebuildsGeometryAndRetainsTheNewDiagnostic()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage first = CreateUnmappedPtexPage(SilkPtexMappingStatus.NotRequested, "before.ptx");
+        using OpenUsdSilkPage replacement = CreateUnmappedPtexPage(
+            SilkPtexMappingStatus.NotRequested, "after.ptx", revision: 2);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+        resources.Apply(scene, scene.Apply(first));
+        SilkMeshGpuResource previous = resources.MeshValues.Single();
+
+        resources.Apply(scene, scene.Apply(replacement));
+
+        SilkMeshGpuResource current = resources.MeshValues.Single();
+        RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported);
+        await Assert.That(ReferenceEquals(current, previous)).IsFalse();
+        await Assert.That(current.Geometry.Key.PtexSamplingIdentity)
+            .IsNotEqualTo(previous.Geometry.Key.PtexSamplingIdentity);
+        await Assert.That(diagnostic.Message).Contains("after.ptx").And.DoesNotContain("before.ptx");
+    }
+
+    [Test]
+    public async Task PtexCornerMappingChangesAndRestorationRebuildRetainedGeometry()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage first = CreateUnmappedPtexPage(
+            SilkPtexMappingStatus.Mapped, revision: 1, faceIndex: 0);
+        using OpenUsdSilkPage replacement = CreateUnmappedPtexPage(
+            SilkPtexMappingStatus.Mapped, revision: 2, faceIndex: 1,
+            coordinates: [0.1f, 0.2f, 0.6f, 0.8f, 0.9f, 0.3f]);
+        using OpenUsdSilkPage restored = CreateUnmappedPtexPage(
+            SilkPtexMappingStatus.Mapped, revision: 3, faceIndex: 0);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+
+        resources.Apply(scene, scene.Apply(first));
+        SilkMeshGpuResource original = resources.MeshValues.Single();
+        resources.Apply(scene, scene.Apply(replacement));
+        SilkMeshGpuResource changed = resources.MeshValues.Single();
+        resources.Apply(scene, scene.Apply(restored));
+        SilkMeshGpuResource current = resources.MeshValues.Single();
+
+        await Assert.That(ReferenceEquals(changed, original)).IsFalse();
+        await Assert.That(changed.Geometry.Key.PtexSamplingIdentity)
+            .IsNotEqualTo(original.Geometry.Key.PtexSamplingIdentity);
+        await Assert.That(ReferenceEquals(current, changed)).IsFalse();
+        await Assert.That(current.Geometry.Key.PtexSamplingIdentity)
+            .IsEqualTo(original.Geometry.Key.PtexSamplingIdentity);
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsTrue();
+    }
+
+    [Test]
+    public async Task NormalCorrespondenceChangesAndRestorationRebuildGeometryButMetadataDoesNot()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage first = CreateMeshPage(
+            CreateMeshUpsert("/Mesh/NormalCorrespondence", ""), 1);
+        using OpenUsdSilkPage polygonNormals = CreateMeshPage(
+            WithNormalCorrespondence(
+                CreateMeshUpsert("/Mesh/NormalCorrespondence", ""),
+                [0, 1, 2], [0, 1, 2]), 2);
+        using OpenUsdSilkPage changedIdentity = CreateMeshPage(
+            WithNormalCorrespondence(
+                CreateMeshUpsert("/Mesh/NormalCorrespondence", ""),
+                [0, 0, 2], [0, 1, 2]), 3);
+        using OpenUsdSilkPage changedCorners = CreateMeshPage(
+            WithNormalCorrespondence(
+                CreateMeshUpsert("/Mesh/NormalCorrespondence", ""),
+                [0, 0, 2], [0, 2, 1]), 4);
+        using OpenUsdSilkPage changedExtraPoint = CreateMeshPage(
+            WithNormalCorrespondence(
+                CreateMeshUpsert("/Mesh/NormalCorrespondence", ""),
+                [0, 0, 2], [0, 1, 3], [0.25f, 0.25f, 0]), 5);
+        byte[] restoredMesh = CreateMeshUpsert("/Mesh/NormalCorrespondence", "");
+        using OpenUsdSilkPage restored = CreateMeshPage(restoredMesh, 6);
+        byte[] metadataMesh = CreateMeshUpsert("/Mesh/NormalCorrespondence", "");
+        BinaryPrimitives.WriteDoubleLittleEndian(metadataMesh.AsSpan(80), 2);
+        using OpenUsdSilkPage metadataOnly = CreateMeshPage(metadataMesh, 7);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("No image texture is expected."));
+
+        resources.Apply(scene, scene.Apply(first));
+        SilkMeshGpuResource previous = resources.MeshValues.Single();
+        resources.Apply(scene, scene.Apply(polygonNormals));
+        SilkMeshGpuResource current = resources.MeshValues.Single();
+        await Assert.That(ReferenceEquals(current, previous)).IsFalse();
+
+        previous = current;
+        resources.Apply(scene, scene.Apply(changedIdentity));
+        current = resources.MeshValues.Single();
+        await Assert.That(ReferenceEquals(current, previous)).IsFalse();
+
+        previous = current;
+        resources.Apply(scene, scene.Apply(changedCorners));
+        current = resources.MeshValues.Single();
+        await Assert.That(ReferenceEquals(current, previous)).IsFalse();
+
+        previous = current;
+        resources.Apply(scene, scene.Apply(changedExtraPoint));
+        current = resources.MeshValues.Single();
+        await Assert.That(ReferenceEquals(current, previous)).IsFalse();
+
+        previous = current;
+        resources.Apply(scene, scene.Apply(restored));
+        current = resources.MeshValues.Single();
+        await Assert.That(ReferenceEquals(current, previous)).IsFalse();
+
+        resources.Apply(scene, scene.Apply(metadataOnly));
+        await Assert.That(ReferenceEquals(resources.MeshValues.Single(), current)).IsTrue();
+        await Assert.That(resources.MeshValues.Single().Mesh.Transform.Span[0]).IsEqualTo(2d);
+    }
+
+    [Test]
+    public async Task NormalFallbackModeChangesAndRestorationRebuildGeometry()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage polygonNormals = CreateMeshPage(
+            WithNormalCorrespondence(
+                CreateMeshUpsert("/Mesh/NormalMode", ""), [0, 1, 2], [0, 1, 2]), 1);
+        using OpenUsdSilkPage triangleNormals = CreateMeshPage(
+            WithNormalCorrespondence(
+                CreateMeshUpsert("/Mesh/NormalMode", ""), [0, 1, 2], [0, 1, 2],
+                triangleLocal: true), 2);
+        using OpenUsdSilkPage restored = CreateMeshPage(
+            WithNormalCorrespondence(
+                CreateMeshUpsert("/Mesh/NormalMode", ""), [0, 1, 2], [0, 1, 2]), 3);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("No image texture is expected."));
+
+        resources.Apply(scene, scene.Apply(polygonNormals));
+        SilkMeshGpuResource original = resources.MeshValues.Single();
+        await Assert.That(original.Geometry.DerivedCornerVertices).IsFalse();
+
+        resources.Apply(scene, scene.Apply(triangleNormals));
+        SilkMeshGpuResource changed = resources.MeshValues.Single();
+        await Assert.That(ReferenceEquals(changed, original)).IsFalse();
+        await Assert.That(changed.Geometry.DerivedCornerVertices).IsTrue();
+
+        resources.Apply(scene, scene.Apply(restored));
+        SilkMeshGpuResource current = resources.MeshValues.Single();
+        await Assert.That(ReferenceEquals(current, changed)).IsFalse();
+        await Assert.That(current.Geometry.DerivedCornerVertices).IsFalse();
+    }
+
+    [Test]
+    public async Task TextureRetryDoesNotRebuildAnUntexturedMeshOnMetadataUpdate()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage first = CreateMeshPage(
+            CreateMeshUpsert("/Mesh/Untextured", ""), 1);
+        byte[] updatedMesh = CreateMeshUpsert("/Mesh/Untextured", "");
+        BinaryPrimitives.WriteDoubleLittleEndian(updatedMesh.AsSpan(80), 2);
+        using OpenUsdSilkPage updated = CreateMeshPage(updatedMesh, 2);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("No image texture is expected."));
+        resources.Apply(scene, scene.Apply(first));
+        SilkMeshGpuResource original = resources.MeshValues.Single();
+
+        resources.RetryFailedTextures();
+        resources.Apply(scene, scene.Apply(updated));
+
+        await Assert.That(ReferenceEquals(resources.MeshValues.Single(), original)).IsTrue();
+        await Assert.That(original.Mesh.Transform.Span[0]).IsEqualTo(2d);
+    }
+
+    [Test]
+    [Arguments(SilkMaterialParameter.Normal)]
+    [Arguments(SilkMaterialParameter.Opacity)]
+    public async Task UnsupportedPtexInputSamplesItsNonDefaultAuthoredFallback(
+        SilkMaterialParameter parameter)
+    {
+        TextureSpec expected = new(
+            parameter,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: parameter == SilkMaterialParameter.Normal ? 3 : 4,
+            Scale: [1, 1, 1, 1],
+            Bias: [0, 0, 0, 0],
+            Fallback: [0.11f, 0.23f, 0.47f, 0.71f],
+            Asset: $"unsupported-{parameter}.ptx",
+            UvPrimvar: "",
+            SourceKind: SilkTextureSourceKind.Ptex);
+        using var scene = new SilkSceneState();
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            [.. CreateMaterialUpsert("/Material/UnsupportedPtex", SilkSurfaceKind.PreviewSurface, [], [expected]),
+             .. CreateMeshUpsert("/Mesh/UnsupportedPtex", "/Material/UnsupportedPtex")], 2);
+        _ = scene.Apply(page);
+        SilkMaterialData material = scene.Materials["/Material/UnsupportedPtex"];
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, expected.Parameter, expected.Parameter, mesh);
+
+        SilkShaderFeatures expectedFeature = parameter == SilkMaterialParameter.Normal
+            ? SilkShaderFeatures.NormalMap : SilkShaderFeatures.OpacityMap;
+        await Assert.That(material.GetRenderableSurfaceTexture(parameter)).IsNotNull();
+        await Assert.That(material.GetTextureFeatures().HasFlag(expectedFeature)).IsTrue();
+        await Assert.That(commands.Uploads.Single().SequenceEqual(new byte[] { 28, 59, 120, 181 })).IsTrue();
+        await Assert.That(resources.Diagnostics.Entries.Any(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported &&
+            entry.Message.Contains($"unsupported-{parameter}.ptx", StringComparison.Ordinal))).IsTrue();
+    }
+
+    [Test]
+    public async Task SecondPtexInputUsesItsOwnAuthoredFallbackInsteadOfFirstAtlas()
+    {
+        TextureSpec first = new(
+            SilkMaterialParameter.DiffuseColor,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: 4,
+            Scale: [1, 1, 1, 1],
+            Bias: [0, 0, 0, 0],
+            Fallback: [0.8f, 0.2f, 0.1f, 1],
+            Asset: "first.ptx",
+            UvPrimvar: "",
+            SourceKind: SilkTextureSourceKind.Ptex);
+        TextureSpec second = new(
+            SilkMaterialParameter.Roughness,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: 1,
+            Scale: [1, 1, 1, 1],
+            Bias: [0, 0, 0, 0],
+            Fallback: [0.17f, 0.34f, 0.51f, 0.68f],
+            Asset: "second.ptx",
+            UvPrimvar: "",
+            SourceKind: SilkTextureSourceKind.Ptex);
+        using var scene = new SilkSceneState();
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            [.. CreateMaterialUpsert("/Material/MultiplePtex", SilkSurfaceKind.PreviewSurface, [],
+                  [first, second]),
+             .. CreateMeshUpsert("/Mesh/MultiplePtex", "/Material/MultiplePtex")], 2);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMaterialData material = scene.Materials["/Material/MultiplePtex"];
+        SilkMaterialTexture retainedSecond = material.GetTexture(second.Parameter)!;
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+        using var commands = new TextureCommandList();
+
+        resources.BindMaterialTexture(commands, material, second.Parameter, second.Parameter, mesh);
+
+        await Assert.That(material.GetPtexUnsupportedReason(retainedSecond))
+            .Contains("only one Ptex input");
+        await Assert.That(material.GetTextureFeatures().HasFlag(SilkShaderFeatures.RoughnessMetallicMap))
+            .IsTrue();
+        await Assert.That(commands.Uploads.Single().SequenceEqual(new byte[] { 43, 43, 43, 43 })).IsTrue();
+        await Assert.That(resources.Diagnostics.Entries.Any(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported &&
+            entry.Message.Contains("second.ptx", StringComparison.Ordinal) &&
+            entry.Message.Contains("only one Ptex input", StringComparison.Ordinal))).IsTrue();
+    }
+
+    [Test]
+    [Arguments(3ul, 4ul, false)]
+    [Arguments(4ul, 3ul, false)]
+    [Arguments(4ul, 4ul, true)]
+    public async Task PtexFallbackAdmissionIsBoundedAndRetryDisposesCachedResources(
+        ulong cpuMaximum, ulong gpuMaximum, bool admitted)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(SilkPtexMappingStatus.NotRequested);
+        _ = scene.Apply(page);
+        SilkMaterialData material = scene.Materials["/Material/PtexFallback"];
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        var cpu = new SilkCpuTextureBudget(cpuMaximum);
+        var gpu = new SilkGpuTextureBudget(gpuMaximum);
+        cpu.ConfigureDevice(device);
+        gpu.ConfigureDevice(device);
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."),
+            cpuTextureBudget: cpu,
+            ownedImageDecoder: (_, _, _) =>
+                throw new InvalidOperationException("Ptex fallback must not decode an ordinary image."));
+        using var commands = new TextureCommandList();
+
+        void bind() => resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor,
+            SilkMaterialParameter.DiffuseColor, mesh);
+        if (!admitted)
+        {
+            if (cpuMaximum < 4)
+            {
+                await Assert.That(bind).Throws<SilkCpuTextureBudgetExceededException>();
+            }
+            else
+            {
+                await Assert.That(bind).Throws<SilkGpuTextureBudgetExceededException>();
+            }
+            await Assert.That(commands.UploadCount).IsEqualTo(0);
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That(gpu.Usage.ReservedBytes).IsEqualTo(0ul);
+            return;
+        }
+
+        bind();
+        Texture first = device.TextureOwners.Single();
+        await Assert.That(gpu.Usage.ReservedBytes).IsEqualTo(4ul);
+        await Assert.That(commands.Uploads.Single().SequenceEqual(new byte[] { 255, 0, 255, 255 })).IsTrue();
+        resources.RetryFailedTextures();
+        await Assert.That(first.Released).IsTrue();
+        await Assert.That(gpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsFalse();
+
+        bind();
+        await Assert.That(device.TextureOwners.Count).IsEqualTo(2);
+        await Assert.That(commands.UploadCount).IsEqualTo(2);
+        await Assert.That(resources.Diagnostics.Entries.Count(
+            entry => entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsEqualTo(1);
+        resources.Dispose();
+        await Assert.That(device.TextureOwners.All(static texture => texture.Released)).IsTrue();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(gpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(cpu.Usage.ReservationCount).IsEqualTo(0ul);
+        await Assert.That(gpu.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ProductionGeometryMapsPtexCornersWithoutChangingTheOrdinaryUvSet(bool ptexSecondary)
+    {
+        const uint face = 16777217;
+        byte[] meshCommand = CreateMeshUpsert("/MappedGeometry", "");
+        using var stream = new MemoryStream();
+        stream.Write(meshCommand);
+        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write((uint)SilkAttributeSemantic.TexCoord);
+            writer.Write(2u);
+            writer.Write((uint)SilkAttributeInterpolation.Vertex);
+            writer.Write(2u);
+            writer.Write(3u);
+            writer.Write(Encoding.UTF8.GetBytes("st"));
+            foreach (float component in new float[] { 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f })
+            {
+                writer.Write(component);
+            }
+            writer.Write(face);
+            foreach (float component in new float[] { 0, 1, 0.25f, 0.5f, 1, 0 })
+            {
+                writer.Write(component);
+            }
+        }
+        byte[] command = stream.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(command.AsSpan(4), checked((uint)command.Length));
+        BinaryPrimitives.WriteUInt32LittleEndian(command.AsSpan(220), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(command.AsSpan(268), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(command.AsSpan(272), (uint)SilkPtexMappingStatus.Mapped);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, command, 1);
+        using var scene = new SilkSceneState();
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        var tile = new SilkPtexAtlasTile(face, 1, 2, 4, 4, 0.125f, 0.25f, 0.625f, 0.75f,
+            -1, -1, -1, -1, 0, 0, 0, 0);
+        var layout = new SilkPtexAtlasLayout(8, 8, new Dictionary<uint, SilkPtexAtlasTile> { [face] = tile });
+
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh,
+            ptexSecondary ? "st" : "",
+            requireTextureCoordinates: true,
+            secondaryUvPrimvar: ptexSecondary ? "" : "st",
+            ptexAtlas: layout,
+            ptexAsSecondary: ptexSecondary);
+
+        await Assert.That(geometry.VertexLayout.Stride).IsEqualTo(40u);
+        await Assert.That(geometry.VertexCount).IsEqualTo(3u);
+        await Assert.That(geometry.Indices.SequenceEqual(new uint[] { 0, 1, 2 })).IsTrue();
+        await Assert.That(geometry.DerivedCornerVertices).IsTrue();
+        await Assert.That(geometry.PtexUvSecondary).IsEqualTo(ptexSecondary);
+        int ptexOffset = ptexSecondary ? 8 : 6;
+        int uvOffset = ptexSecondary ? 6 : 8;
+        float[] expectedPtex = [0.125f, 0.75f, 0.25f, 0.5f, 0.625f, 0.25f];
+        float[] expectedUv = [0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f];
+        for (int corner = 0; corner < 3; corner++)
+        {
+            await Assert.That(geometry.Vertices[(corner * 10) + ptexOffset])
+                .IsEqualTo(expectedPtex[corner * 2]);
+            await Assert.That(geometry.Vertices[(corner * 10) + ptexOffset + 1])
+                .IsEqualTo(expectedPtex[(corner * 2) + 1]);
+            await Assert.That(geometry.Vertices[(corner * 10) + uvOffset])
+                .IsEqualTo(expectedUv[corner * 2]);
+            await Assert.That(geometry.Vertices[(corner * 10) + uvOffset + 1])
+                .IsEqualTo(expectedUv[(corner * 2) + 1]);
+            await Assert.That(geometry.Vertices.AsSpan(corner * 10, 3)
+                .SequenceEqual(mesh.Points.Span.Slice(corner * 3, 3))).IsTrue();
+        }
+    }
+
+    [Test]
+    [Arguments(252ul, 143ul, false)]
+    [Arguments(251ul, 144ul, false)]
+    [Arguments(252ul, 144ul, true)]
+    public async Task MappedPtexAtlasAdmissionRollsBackAtCpuAndGpuBoundaries(
+        ulong cpuMaximum, ulong gpuMaximum, bool admitted)
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1 with the matching native Ptex runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OpenUsd.slnx")))
+        {
+            directory = directory.Parent;
+        }
+        string asset = Path.Combine(directory?.FullName ??
+            throw new DirectoryNotFoundException("Could not locate the OpenUsd repository root."),
+            "test-assets", "native-profile", "ptex", "quad-colors.ptx");
+        using var page = CreateUnmappedPtexPage(SilkPtexMappingStatus.Mapped, asset);
+        using var scene = new SilkSceneState();
+        _ = scene.Apply(page);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        var gpu = new SilkGpuTextureBudget(gpuMaximum);
+        // Eight bytes retained selection + 196 encoded fixture bytes + 48
+        // decoded RGB bytes coexist at the decode peak. The final 6x6 RGBA
+        // atlas is 144 bytes and is retained independently on CPU and GPU.
+        var cpu = new SilkCpuTextureBudget(cpuMaximum);
+        gpu.ConfigureDevice(device);
+        cpu.ConfigureDevice(device);
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."),
+            cpuTextureBudget: cpu,
+            ownedImageDecoder: (_, _, _) =>
+                throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+        using var commands = new TextureCommandList();
+        RenderDiagnosticsState expectedDiagnostics = resources.Diagnostics;
+        await Assert.That(expectedDiagnostics.Entries.Select(static entry => entry.Code).SequenceEqual(
+            ["HDSILK_CPU_TEXTURE_ADMISSION", "HDSILK_GPU_TEXTURE_ADMISSION"])).IsTrue();
+        await Assert.That(expectedDiagnostics.Entries.All(
+            static entry => entry.Severity == RenderDiagnosticSeverity.Information)).IsTrue();
+        SilkMaterialData material = scene.Materials["/Material/PtexFallback"];
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        void bind() => resources.BindMaterialTexture(commands, material, SilkMaterialParameter.DiffuseColor,
+            SilkMaterialParameter.DiffuseColor, mesh);
+
+        if (!admitted)
+        {
+            if (cpuMaximum < 252)
+            {
+                await Assert.That(bind).Throws<SilkCpuTextureBudgetExceededException>();
+            }
+            else
+            {
+                await Assert.That(bind).Throws<SilkGpuTextureBudgetExceededException>();
+            }
+            await Assert.That(commands.UploadCount).IsEqualTo(0);
+            await Assert.That(gpu.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That(resources.Diagnostics).IsEqualTo(expectedDiagnostics);
+            return;
+        }
+        bind();
+        bind();
+        SilkTextureDescriptor descriptor = device.CreatedTextures.Single();
+        await Assert.That(descriptor.Width).IsEqualTo(6u);
+        await Assert.That(descriptor.Height).IsEqualTo(6u);
+        await Assert.That(descriptor.MipLevelCount).IsEqualTo(1u);
+        await Assert.That(commands.UploadCount).IsEqualTo(1);
+        await Assert.That(commands.Uploads.Single().Length).IsEqualTo(144);
+        await Assert.That(commands.Uploads.Single().AsSpan(((2 * 6) + 2) * 4, 4)
+            .SequenceEqual(new byte[] { 255, 255, 255, 255 })).IsTrue();
+        await Assert.That(gpu.Usage.ReservedBytes).IsEqualTo(144ul);
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(144ul);
+        await Assert.That(cpu.Usage.PeakReservedBytes).IsEqualTo(252ul);
+        await Assert.That(resources.Diagnostics).IsEqualTo(expectedDiagnostics);
+        resources.Dispose();
+        await Assert.That(device.TextureOwners.Single().Released).IsTrue();
+        await Assert.That(gpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(gpu.Usage.ReservationCount).IsEqualTo(0ul);
+        await Assert.That(cpu.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task CandidatePtexSlotLookupMapsIndependentLayoutsWithoutChangingOrdinaryGeometry()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(
+            SilkPtexMappingStatus.Mapped, faceIndex: 7);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry before = SilkMeshGeometryBuilder.Build(mesh);
+        var budget = new SilkCpuTextureBudget(1000);
+        SilkPtexSlotLayout[] slots =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, CreateLookupLayout(0, 0, 0.5f, 0.5f)),
+            new(SilkMaterialParameter.Roughness, 2, CreateLookupLayout(0.5f, 0.25f, 1, 0.5f)),
+        ];
+        using SilkPtexSlotLookup lookup = SilkPtexSlotLookup.Prepare(mesh, slots, budget);
+
+        await Assert.That(lookup.FaceCount).IsEqualTo(1);
+        await Assert.That(lookup.SlotCount).IsEqualTo(2);
+        using (SilkPtexSlotLookup.Lease lease = lookup.AcquireLease())
+        {
+            uint[] cornerFaces = new uint[3];
+            lease.CopyCornerFaces(cornerFaces);
+            await Assert.That(cornerFaces.AsSpan().SequenceEqual(new uint[] { 0, 0, 0 })).IsTrue();
+        }
+        for (int corner = 0; corner < 3; corner++)
+        {
+            float u = mesh.PtexCoordinates[corner * 2];
+            float v = mesh.PtexCoordinates[corner * 2 + 1];
+            await Assert.That(lookup.MapCorner(0, corner)).IsEqualTo((u * 0.5f, v * 0.5f));
+            await Assert.That(lookup.MapCorner(1, corner)).IsEqualTo((0.5f + u * 0.5f, 0.25f + v * 0.25f));
+        }
+        SilkMeshGeometry after = SilkMeshGeometryBuilder.Build(mesh);
+        await Assert.That(after.Vertices.AsSpan().SequenceEqual(before.Vertices)).IsTrue();
+        await Assert.That(after.Indices.AsSpan().SequenceEqual(before.Indices)).IsTrue();
+        await Assert.That(lookup.HasSameSources(slots)).IsTrue();
+        lookup.Dispose();
+        lookup.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(() => lookup.MapCorner(0, 0)).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    [Arguments(119ul, false)]
+    [Arguments(120ul, true)]
+    public async Task CandidatePtexSlotLookupAdmitsCompletePayloadBeforeAllocation(
+        ulong limit, bool accepted)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(SilkPtexMappingStatus.Mapped, faceIndex: 7);
+        _ = scene.Apply(page);
+        var budget = new SilkCpuTextureBudget(limit);
+        SilkPtexSlotLayout[] slots =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, CreateLookupLayout(0, 0, 1, 1)),
+            new(SilkMaterialParameter.Roughness, 2, CreateLookupLayout(0, 0, 1, 1)),
+        ];
+        if (accepted)
+        {
+            using SilkPtexSlotLookup lookup = SilkPtexSlotLookup.Prepare(
+                scene.Meshes.Values.Single(), slots, budget);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(120ul);
+        }
+        else
+        {
+            await Assert.That(() => SilkPtexSlotLookup.Prepare(
+                scene.Meshes.Values.Single(), slots, budget)).Throws<SilkCpuTextureBudgetExceededException>();
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task CandidatePtexSlotLookupFailedReplacementPreservesPreviousOwnerAndRetryCanRecover()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(SilkPtexMappingStatus.Mapped, faceIndex: 7);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        var budget = new SilkCpuTextureBudget(1000);
+        SilkPtexSlotLayout[] original =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, CreateLookupLayout(0, 0, 1, 1)),
+            new(SilkMaterialParameter.Roughness, 2, SilkPtexAtlasLayout.Fallback),
+        ];
+        using SilkPtexSlotLookup previous = SilkPtexSlotLookup.Prepare(mesh, original, budget);
+        SilkPtexSlotLayout[] broken =
+        [
+            original[0],
+            new(SilkMaterialParameter.Roughness, 3,
+                new SilkPtexAtlasLayout(1, 1, new Dictionary<uint, SilkPtexAtlasTile>())),
+        ];
+        await Assert.That(() => SilkPtexSlotLookup.Prepare(mesh, broken, budget))
+            .Throws<InvalidDataException>();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(120ul);
+        await Assert.That(previous.MapCorner(1, 0)).IsEqualTo((0.5f, 0.5f));
+        await Assert.That(previous.HasSameSources(broken)).IsFalse();
+        SilkPtexSlotLayout[] repaired =
+        [
+            original[0],
+            new(SilkMaterialParameter.Roughness, 4, CreateLookupLayout(0.5f, 0, 1, 1)),
+        ];
+        using SilkPtexSlotLookup replacement = SilkPtexSlotLookup.Prepare(mesh, repaired, budget);
+        await Assert.That(replacement.MapCorner(1, 0)).IsEqualTo((0.625f, 0.25f));
+        await Assert.That(previous.MapCorner(1, 0)).IsEqualTo((0.5f, 0.5f));
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(240ul);
+        previous.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(120ul);
+    }
+
+    [Test]
+    public async Task CandidatePtexLookupLeaseRetainsAdmissionUntilLastConsumerReleases()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateUnmappedPtexPage(SilkPtexMappingStatus.Mapped, faceIndex: 7);
+        _ = scene.Apply(page);
+        var budget = new SilkCpuTextureBudget(120);
+        SilkPtexSlotLayout[] slots =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, CreateLookupLayout(0, 0, 1, 1)),
+            new(SilkMaterialParameter.Roughness, 2, CreateLookupLayout(0.5f, 0, 1, 1)),
+        ];
+        using SilkPtexSlotLookup lookup = SilkPtexSlotLookup.Prepare(
+            scene.Meshes.Values.Single(), slots, budget);
+        using SilkPtexSlotLookup.Lease first = lookup.AcquireLease();
+        using SilkPtexSlotLookup.Lease second = lookup.AcquireLease();
+        lookup.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(120ul);
+        await Assert.That(() => lookup.AcquireLease()).Throws<ObjectDisposedException>();
+        float[] transforms = new float[8];
+        second.CopyTransforms(transforms);
+        await Assert.That(transforms.AsSpan().SequenceEqual(
+            new float[] { 0, 0, 1, 1, 0.5f, 0, 0.5f, 1 })).IsTrue();
+        first.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(120ul);
+        float[] coordinates = new float[6];
+        second.CopyCornerCoordinates(coordinates);
+        await Assert.That(coordinates.AsSpan().SequenceEqual(
+            scene.Meshes.Values.Single().PtexCoordinates)).IsTrue();
+        second.Dispose();
+        second.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(() => second.CopyTransforms(transforms)).Throws<ObjectDisposedException>();
+        await Assert.That(transforms[4]).IsEqualTo(0.5f);
+    }
+
+    [Test]
+    public async Task CandidatePtexVertexIdWirePayloadCarriesTypedFacesAndIndependentSlotTransforms()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        using SilkDecodedPtexFaces first = CreateCandidateDecoded(1, 2);
+        using SilkDecodedPtexFaces second = CreateCandidateDecoded(4, 1);
+        SilkPtexSlotSource[] sources =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, first),
+            new(SilkMaterialParameter.Roughness, 2, second),
+        ];
+        var budget = new SilkCpuTextureBudget(8192);
+        using var cache = new SilkPtexSlotCandidateCache();
+        using var update = cache.Prepare(mesh, SilkMeshGeometryBuilder.Build(mesh), sources, 16, budget, 0);
+        SilkPtexSlotCandidateCache.Candidate candidate = update.Value;
+        using SilkPtexSlotLookup.Lease lease = candidate.Lookup.AcquireLease();
+        using IDisposable copyReservation = budget.Reserve(checked((ulong)lease.ShaderWordCount * sizeof(uint)));
+        uint[] words = new uint[lease.ShaderWordCount];
+        lease.CopyShaderWords(words);
+        await Assert.That(words.AsSpan(0, 4).SequenceEqual(new uint[] { 6, 2, 2, 28 })).IsTrue();
+        await Assert.That(words.Length).IsEqualTo(44);
+        for (int corner = 0; corner < 6; corner++)
+        {
+            int record = 4 + corner * 4;
+            await Assert.That(words[record]).IsEqualTo((uint)(corner / 3));
+            await Assert.That(BitConverter.UInt32BitsToSingle(words[record + 1]))
+                .IsEqualTo(mesh.PtexCoordinates[corner * 2]);
+            await Assert.That(BitConverter.UInt32BitsToSingle(words[record + 2]))
+                .IsEqualTo(mesh.PtexCoordinates[corner * 2 + 1]);
+            await Assert.That(words[record + 3]).IsEqualTo(0u);
+            for (int slot = 0; slot < 2; slot++)
+            {
+                int transform = 28 + (slot * 2 + corner / 3) * 4;
+                float u = BitConverter.UInt32BitsToSingle(words[record + 1]);
+                float v = BitConverter.UInt32BitsToSingle(words[record + 2]);
+                var mapped = (
+                    BitConverter.UInt32BitsToSingle(words[transform]) +
+                        u * BitConverter.UInt32BitsToSingle(words[transform + 2]),
+                    BitConverter.UInt32BitsToSingle(words[transform + 1]) +
+                        v * BitConverter.UInt32BitsToSingle(words[transform + 3]));
+                await Assert.That(mapped).IsEqualTo(candidate.Lookup.MapCorner(slot, corner));
+            }
+        }
+        await Assert.That(() => lease.CopyShaderWords(new uint[43])).Throws<ArgumentException>();
+        await Assert.That(() => lease.CopyShaderWords(new uint[45])).Throws<ArgumentException>();
+        await Assert.That(() => SilkPtexCandidateBinding.GetWordCount(int.MaxValue, 2, 2))
+            .Throws<OverflowException>();
+        SilkPtexCandidateBinding.ValidateDraw(candidate.Geometry, 6, 0, 0, 0, false);
+        await Assert.That(() => SilkPtexCandidateBinding.ValidateDraw(candidate.Geometry, 6, 1, 0, 0, false))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => SilkPtexCandidateBinding.ValidateDraw(candidate.Geometry, 6, 0, 1, 0, false))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => SilkPtexCandidateBinding.ValidateDraw(candidate.Geometry, 6, 0, 0, 1, false))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => SilkPtexCandidateBinding.ValidateDraw(candidate.Geometry, 6, 0, 0, 0, true))
+            .Throws<InvalidDataException>();
+        SilkMeshGeometry reordered = candidate.Geometry with { Indices = [1, 0, 2, 3, 4, 5] };
+        await Assert.That(() => SilkPtexCandidateBinding.ValidateDraw(reordered, 6, 0, 0, 0, false))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CandidatePtexPublicationPreservesIndexedAndExpandedCorners(bool expandedSource)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(expandedSource);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry ordinary = SilkMeshGeometryBuilder.Build(mesh,
+            requireTangents: true,
+            displacementAmounts: Enumerable.Repeat(0.125f, mesh.Points.Length / 3).ToArray(),
+            requireTextureCoordinates: true,
+            secondaryUvPrimvar: "candidateSecondUv");
+        int stride = checked((int)(ordinary.VertexLayout.Stride / sizeof(float)));
+        for (int point = 0; point < ordinary.Vertices.Length / stride; point++)
+        {
+            ordinary.Vertices[point * stride + 6] = 0.1f * (point + 1);
+            ordinary.Vertices[point * stride + 7] = 0.9f - 0.1f * point;
+            ordinary.Vertices[(point + 1) * stride - 2] = 0.8f - 0.1f * point;
+            ordinary.Vertices[(point + 1) * stride - 1] = 0.2f + 0.1f * point;
+        }
+        using SilkDecodedPtexFaces first = CreateCandidateDecoded(1, 2);
+        using SilkDecodedPtexFaces second = CreateCandidateDecoded(4, 1);
+        SilkPtexSlotSource[] sources =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, first),
+            new(SilkMaterialParameter.Roughness, 2, second),
+        ];
+        var budget = new SilkCpuTextureBudget(4096);
+        using var cache = new SilkPtexSlotCandidateCache();
+        using var update = cache.Prepare(mesh, ordinary, sources, 16, budget, 0);
+        SilkPtexSlotCandidateCache.Candidate candidate = update.Value;
+        await Assert.That(cache.Current).IsNull();
+        await Assert.That(candidate.Geometry.DerivedCornerVertices).IsTrue();
+        using (SilkPtexSlotLookup.Lease lease = candidate.Lookup.AcquireLease())
+        {
+            uint[] cornerFaces = new uint[6];
+            lease.CopyCornerFaces(cornerFaces);
+            await Assert.That(cornerFaces.AsSpan().SequenceEqual(
+                new uint[] { 0, 0, 0, 1, 1, 1 })).IsTrue();
+        }
+        await Assert.That(candidate.Geometry.Displaced).IsTrue();
+        await Assert.That(candidate.Geometry.HasTangents).IsTrue();
+        await Assert.That(candidate.Geometry.MaximumDisplacement).IsEqualTo(ordinary.MaximumDisplacement);
+        for (int corner = 0; corner < 6; corner++)
+        {
+            int source = checked((int)mesh.Indices.Span[corner]);
+            await Assert.That(candidate.Geometry.Vertices.AsSpan(corner * stride, stride)
+                .SequenceEqual(ordinary.Vertices.AsSpan(source * stride, stride))).IsTrue();
+            await Assert.That(candidate.Geometry.Indices[corner]).IsEqualTo((uint)corner);
+            uint face = checked((uint)mesh.PtexFaceIndices[corner / 3]);
+            for (int slot = 0; slot < sources.Length; slot++)
+            {
+                (float U, float V) expected = candidate.GetAtlas(slot).Layout.Map(face,
+                    mesh.PtexCoordinates[corner * 2], mesh.PtexCoordinates[corner * 2 + 1]);
+                await Assert.That(candidate.Lookup.MapCorner(slot, corner)).IsEqualTo(expected);
+            }
+        }
+        await Assert.That(candidate.GetAtlas(0).Tiles[7].U1)
+            .IsNotEqualTo(candidate.GetAtlas(1).Tiles[7].U1);
+        update.Commit();
+        await Assert.That(ReferenceEquals(cache.Current, candidate)).IsTrue();
+        using var reused = cache.Prepare(mesh, ordinary, sources, 16, budget, 0);
+        await Assert.That(ReferenceEquals(reused.Value, candidate)).IsTrue();
+        reused.Commit();
+        cache.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CandidatePtexPublicationPreservesUnreferencedAuthoredPointForPicking(bool derivedSource)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(
+            false, triangleLocal: derivedSource, tail: true, withUv: true);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        var budget = new SilkCpuTextureBudget(16384);
+        var built = SilkPtexCornerCertificate.BuildCandidateGeometry(
+            mesh, budget, "st", requireTextureCoordinates: true);
+        using SilkPtexCornerCertificate? certificate = built.Certificate;
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(1, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        using var cache = new SilkPtexSlotCandidateCache();
+        using var update = cache.Prepare(mesh, built.Geometry, sources, 16, budget, 0, certificate);
+        SilkMeshGeometry candidate = update.Value.Geometry;
+
+        await Assert.That(SilkSubprimPickGeometry.TryResolveCornerPoints(
+            mesh, true, out int[] authoredPoints, out uint[] pointIndices)).IsTrue();
+        await Assert.That(authoredPoints[^1]).IsEqualTo(mesh.Points.Length / 3 - 1);
+        await Assert.That(pointIndices[^1]).IsEqualTo((uint)mesh.Indices.Length);
+        await Assert.That(candidate.VertexCount).IsGreaterThan(pointIndices[^1]);
+        int stride = checked((int)(candidate.VertexLayout.Stride / sizeof(float)));
+        int picked = checked((int)pointIndices[^1] * stride);
+        await Assert.That(candidate.Vertices.AsSpan(picked, 3)
+            .SequenceEqual(mesh.Points.Span[^3..])).IsTrue();
+        await Assert.That(candidate.Indices.SequenceEqual(new uint[] { 0, 1, 2, 3, 4, 5 })).IsTrue();
+        SilkPtexCandidateBinding.ValidateDraw(candidate, mesh.Indices.Length, 0, 0, 0, false);
+        uint[] invalidIndices = candidate.Indices.ToArray();
+        invalidIndices[^1] = pointIndices[^1];
+        await Assert.That(() => SilkPtexCandidateBinding.ValidateDraw(
+            candidate with { Indices = invalidIndices }, mesh.Indices.Length, 0, 0, 0, false))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => SilkPtexCandidateBinding.ValidateDraw(
+            candidate with { Vertices = candidate.Vertices[..((mesh.Indices.Length - 1) * stride)] },
+            mesh.Indices.Length, 0, 0, 0, false)).Throws<InvalidDataException>();
+        await Assert.That(() => SilkPtexCandidateBinding.ValidateDraw(
+            candidate with { Vertices = candidate.Vertices[..^1] },
+            mesh.Indices.Length, 0, 0, 0, false)).Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task PtexSourceSnapshotDetectsPointOriginMutation()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false, tail: true);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
+        var budget = new SilkCpuTextureBudget(4096);
+        using var snapshot = SilkPtexSourceSnapshot.Capture(mesh, geometry, budget);
+        if (!MemoryMarshal.TryGetArray(mesh.PointOrigins, out ArraySegment<int> origins) ||
+            origins.Array is null)
+        {
+            throw new InvalidOperationException("The point-origin fixture does not have an accessible backing array.");
+        }
+        int index = origins.Offset + origins.Count - 1;
+        int original = origins.Array[index];
+        origins.Array[index] = -1;
+        await Assert.That(snapshot.Matches(mesh, geometry)).IsFalse();
+        origins.Array[index] = original;
+        await Assert.That(snapshot.Matches(mesh, geometry)).IsTrue();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CandidatePtexPointOriginsInvalidatePublicationWithoutLosingPrevious(bool derivedSource)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(
+            false, triangleLocal: derivedSource, tail: true);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        var budget = new SilkCpuTextureBudget(16384);
+        var built = SilkPtexCornerCertificate.BuildCandidateGeometry(mesh, budget);
+        using SilkPtexCornerCertificate? certificate = built.Certificate;
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(1, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        using var cache = new SilkPtexSlotCandidateCache();
+        using (var initial = cache.Prepare(mesh, built.Geometry, sources, 16, budget, 0, certificate))
+        {
+            initial.Commit();
+        }
+        SilkPtexSlotCandidateCache.Candidate previous = cache.Current!;
+        ulong retainedBytes = budget.Usage.ReservedBytes;
+        if (!MemoryMarshal.TryGetArray(mesh.PointOrigins, out ArraySegment<int> origins) ||
+            origins.Array is null)
+        {
+            throw new InvalidOperationException("The point-origin fixture does not have an accessible backing array.");
+        }
+        int index = origins.Offset + origins.Count - 1;
+        int original = origins.Array[index];
+        origins.Array[index] = -1;
+        if (derivedSource)
+        {
+            await Assert.That(() => cache.Prepare(mesh, built.Geometry, sources, 16, budget, 0, certificate))
+                .Throws<InvalidDataException>();
+        }
+        else
+        {
+            using var changed = cache.Prepare(mesh, built.Geometry, sources, 16, budget, 0, certificate);
+            await Assert.That(ReferenceEquals(changed.Value, previous)).IsFalse();
+            await Assert.That(changed.Value.Geometry.VertexCount).IsEqualTo((uint)mesh.Indices.Length);
+        }
+        await Assert.That(ReferenceEquals(cache.Current, previous)).IsTrue();
+        await Assert.That(previous.Geometry.VertexCount).IsEqualTo((uint)mesh.Indices.Length + 1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(retainedBytes);
+        origins.Array[index] = original;
+        using (var retry = cache.Prepare(mesh, built.Geometry, sources, 16, budget, 0, certificate))
+        {
+            await Assert.That(ReferenceEquals(retry.Value, previous)).IsTrue();
+            retry.Commit();
+        }
+        cache.Dispose();
+        certificate?.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task CandidatePtexPickTailHonorsExactCpuAdmissionAndRollback()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(
+            false, tail: true, tailCount: 3, lastTailHasNoOrigin: true);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(1, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        var sizing = new SilkCpuTextureBudget(16384);
+        ulong peak;
+        using (var cache = new SilkPtexSlotCandidateCache())
+        using (var pending = cache.Prepare(mesh, geometry, sources, 16, sizing, 0))
+        {
+            await Assert.That(pending.Value.Geometry.VertexCount).IsEqualTo(8u);
+            peak = sizing.Usage.PeakReservedBytes;
+        }
+        await Assert.That(sizing.Usage.ReservedBytes).IsEqualTo(0ul);
+        var insufficient = new SilkCpuTextureBudget(peak - 1);
+        using (var cache = new SilkPtexSlotCandidateCache())
+        {
+            await Assert.That(() => cache.Prepare(mesh, geometry, sources, 16, insufficient, 0))
+                .Throws<SilkCpuTextureBudgetExceededException>();
+            await Assert.That(cache.Current).IsNull();
+        }
+        await Assert.That(insufficient.Usage.ReservedBytes).IsEqualTo(0ul);
+        var exact = new SilkCpuTextureBudget(peak);
+        using (var cache = new SilkPtexSlotCandidateCache())
+        using (var pending = cache.Prepare(mesh, geometry, sources, 16, exact, 0))
+        {
+            await Assert.That(pending.Value.Geometry.VertexCount).IsEqualTo(8u);
+            await Assert.That(exact.Usage.PeakReservedBytes).IsEqualTo(peak);
+        }
+        await Assert.That(exact.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CertifiedPtexCornerPrefixPreservesFramesUvsAndPickTail(bool tail)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(
+            false, triangleLocal: true, tail: tail, withUv: true);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        var budget = new SilkCpuTextureBudget(16384);
+        var built = SilkPtexCornerCertificate.BuildCandidateGeometry(
+            mesh, budget, "st", requireTangents: true, requireTextureCoordinates: true);
+        SilkMeshGeometry derived = built.Geometry;
+        using var certificate = built.Certificate ??
+            throw new InvalidOperationException("The producer did not certify the derived corner stream.");
+        float[] vertices = derived.Vertices;
+        uint[] indices = derived.Indices;
+        int stride = checked((int)(derived.VertexLayout.Stride / sizeof(float)));
+        await Assert.That(derived.DerivedCornerVertices).IsTrue();
+        await Assert.That(derived.VertexCount).IsEqualTo((uint)(indices.Length + (tail ? 1 : 0)));
+        await Assert.That(indices.SequenceEqual(new uint[] { 0, 1, 2, 3, 4, 5 })).IsTrue();
+        for (int corner = 0; corner < indices.Length; corner++)
+        {
+            int point = checked((int)mesh.Indices.Span[corner]);
+            await Assert.That(vertices.AsSpan(corner * stride, 3)
+                .SequenceEqual(mesh.Points.Span.Slice(point * 3, 3))).IsTrue();
+            await Assert.That(vertices[corner * stride + 5]).IsEqualTo(corner < 3 ? -1f : 1f);
+            await Assert.That(vertices[corner * stride + 6])
+                .IsEqualTo(mesh.Points.Span[point * 3] + 0.5f);
+            await Assert.That(vertices[corner * stride + 7])
+                .IsEqualTo(mesh.Points.Span[point * 3 + 1] + 0.5f);
+        }
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(4, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        using var cache = new SilkPtexSlotCandidateCache();
+        await Assert.That(() => cache.Prepare(mesh, derived, sources, 16, budget, 0))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => cache.Prepare(mesh, derived,
+            [new(SilkMaterialParameter.Normal, 1, decoded)], 16, budget, 0, certificate))
+            .Throws<NotSupportedException>();
+        using (var update = cache.Prepare(mesh, derived, sources, 16, budget, 0, certificate))
+        {
+            await Assert.That(update.Value.Geometry.Vertices.AsSpan()
+                .SequenceEqual(vertices)).IsTrue();
+            await Assert.That(update.Value.Geometry.Indices.AsSpan().SequenceEqual(indices)).IsTrue();
+            update.Commit();
+        }
+        using (var reuse = cache.Prepare(mesh, derived, sources, 16, budget, 0, certificate))
+        {
+            await Assert.That(ReferenceEquals(reuse.Value, cache.Current)).IsTrue();
+            reuse.Commit();
+        }
+        float saved = vertices[3];
+        vertices[3] = -7;
+        await Assert.That(() => cache.Prepare(mesh, derived, sources, 16, budget, 0, certificate))
+            .Throws<InvalidDataException>();
+        await Assert.That(cache.Current!.Geometry.Vertices[3]).IsEqualTo(saved);
+        vertices[3] = saved;
+        using (var restored = cache.Prepare(mesh, derived, sources, 16, budget, 0, certificate))
+        {
+            await Assert.That(ReferenceEquals(restored.Value, cache.Current)).IsTrue();
+        }
+        float local = mesh.PtexCoordinates[0];
+        (float U, float V) originalMapping = cache.Current!.Lookup.MapCorner(0, 0);
+        mesh.PtexCoordinates[0] = local + 0.125f;
+        var rebuilt = SilkPtexCornerCertificate.BuildCandidateGeometry(
+            mesh, budget, "st", requireTangents: true, requireTextureCoordinates: true);
+        using (var renewed = rebuilt.Certificate ??
+            throw new InvalidOperationException("The rebuilt corner stream was not certified."))
+        using (var changed = cache.Prepare(mesh, rebuilt.Geometry, sources, 16, budget, 0, renewed))
+        {
+            await Assert.That(ReferenceEquals(changed.Value, cache.Current)).IsFalse();
+            await Assert.That(changed.Value.Lookup.MapCorner(0, 0))
+                .IsNotEqualTo(cache.Current!.Lookup.MapCorner(0, 0));
+            changed.Commit();
+        }
+        mesh.PtexCoordinates[0] = local;
+        using (var restored = cache.Prepare(mesh, derived, sources, 16, budget, 0, certificate))
+        {
+            await Assert.That(ReferenceEquals(restored.Value, cache.Current)).IsFalse();
+            await Assert.That(restored.Value.Lookup.MapCorner(0, 0)).IsEqualTo(originalMapping);
+            restored.Commit();
+        }
+        cache.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes)
+            .IsEqualTo(SilkPtexCornerCertificate.RequiredBytes(mesh, derived));
+        certificate.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task PtexCornerCertificateRejectsReplacementReorderingMutationAndReleasedOwnership()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false, triangleLocal: true, tail: true);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry sizing = SilkMeshGeometryBuilder.Build(mesh);
+        ulong bytes = SilkPtexCornerCertificate.RequiredBytes(mesh, sizing);
+        var insufficient = new SilkCpuTextureBudget(bytes - 1);
+        await Assert.That(() =>
+            SilkPtexCornerCertificate.BuildCandidateGeometry(mesh, insufficient))
+            .Throws<SilkCpuTextureBudgetExceededException>();
+        await Assert.That(insufficient.Usage.ReservedBytes).IsEqualTo(0ul);
+        var budget = new SilkCpuTextureBudget(bytes);
+        var built = SilkPtexCornerCertificate.BuildCandidateGeometry(mesh, budget);
+        SilkMeshGeometry derived = built.Geometry;
+        using var certificate = built.Certificate ??
+            throw new InvalidOperationException("The producer did not certify the derived corner stream.");
+        float[] vertices = derived.Vertices;
+        uint[] indices = derived.Indices;
+        int stride = checked((int)(derived.VertexLayout.Stride / sizeof(float)));
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(bytes);
+        certificate.Validate(mesh, derived, budget);
+        await Assert.That(() => certificate.Validate(mesh,
+            derived with { Vertices = (float[])vertices.Clone() }, budget)).Throws<InvalidDataException>();
+        await Assert.That(() => certificate.Validate(mesh,
+            derived with { Indices = (uint[])indices.Clone() }, budget)).Throws<InvalidDataException>();
+        await Assert.That(() => certificate.Validate(mesh, derived, new SilkCpuTextureBudget(bytes)))
+            .Throws<InvalidDataException>();
+        (indices[0], indices[1]) = (indices[1], indices[0]);
+        await Assert.That(() => certificate.Validate(mesh, derived, budget)).Throws<InvalidDataException>();
+        (indices[0], indices[1]) = (indices[1], indices[0]);
+        for (int component = 0; component < stride; component++)
+        {
+            (vertices[component], vertices[stride * 3 + component]) =
+                (vertices[stride * 3 + component], vertices[component]);
+        }
+        await Assert.That(() => certificate.Validate(mesh, derived, budget)).Throws<InvalidDataException>();
+        for (int component = 0; component < stride; component++)
+        {
+            (vertices[component], vertices[stride * 3 + component]) =
+                (vertices[stride * 3 + component], vertices[component]);
+        }
+        float tail = vertices[^1];
+        vertices[^1] = tail + 9;
+        await Assert.That(() => certificate.Validate(mesh, derived, budget)).Throws<InvalidDataException>();
+        vertices[^1] = tail;
+        float coordinate = mesh.PtexCoordinates[0];
+        mesh.PtexCoordinates[0] = coordinate + 0.125f;
+        await Assert.That(() => certificate.Validate(mesh, derived, budget)).Throws<InvalidDataException>();
+        mesh.PtexCoordinates[0] = coordinate;
+        certificate.Validate(mesh, derived, budget);
+        using var replacementScene = new SilkSceneState();
+        using OpenUsdSilkPage replacementPage = CreateCandidateTwoFacePage(
+            false, triangleLocal: true, tail: true);
+        _ = replacementScene.Apply(replacementPage);
+        await Assert.That(() => certificate.Validate(
+            replacementScene.Meshes.Values.Single(), derived, budget)).Throws<InvalidDataException>();
+        certificate.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(() => certificate.Validate(mesh, derived, budget)).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    [Arguments("semantic")]
+    [Arguments("location")]
+    [Arguments("offset")]
+    [Arguments("format")]
+    [Arguments("count")]
+    public async Task PtexSourceSnapshotDetectsVertexLayoutMutation(string change)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry ordinary = SilkMeshGeometryBuilder.Build(mesh);
+        int stride = checked((int)(ordinary.VertexLayout.Stride / sizeof(float)));
+        (float[] vertices, uint[] indices) = SilkMeshGeometryBuilder.ExpandTriangleCorners(
+            ordinary.Vertices, ordinary.Indices, stride);
+        List<SilkVertexAttributeDescriptor> attributes = [.. ordinary.VertexLayout.Attributes];
+        SilkMeshGeometry derived = ordinary with
+        {
+            Vertices = vertices,
+            Indices = indices,
+            VertexLayout = ordinary.VertexLayout with { Attributes = attributes },
+            DerivedCornerVertices = true,
+        };
+        var budget = new SilkCpuTextureBudget(16384);
+        using var snapshot = SilkPtexSourceSnapshot.Capture(mesh, derived, budget);
+        SilkVertexAttributeDescriptor original = attributes[0];
+        try
+        {
+            attributes[0] = change switch
+            {
+                "semantic" => original with { Semantic = SilkVertexSemantic.Normal },
+                "location" => original with { Location = original.Location + 4 },
+                "offset" => original with { Offset = original.Offset + 4 },
+                "format" => original with { Format = SilkVertexFormat.Float2 },
+                "count" => original,
+                _ => throw new InvalidOperationException($"Unexpected layout change '{change}'."),
+            };
+            if (change == "count")
+            {
+                attributes.Add(original);
+            }
+            await Assert.That(snapshot.Matches(mesh, derived)).IsFalse();
+        }
+        finally
+        {
+            if (change == "count")
+            {
+                attributes.RemoveAt(attributes.Count - 1);
+            }
+            attributes[0] = original;
+        }
+        await Assert.That(snapshot.Matches(mesh, derived)).IsTrue();
+        await Assert.That(snapshot.Matches(mesh, derived with
+        {
+            VertexLayout = derived.VertexLayout with { Stride = derived.VertexLayout.Stride + sizeof(float) },
+        })).IsFalse();
+        snapshot.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task PtexProducerBuildKeepsOrdinaryGeometryUncertified()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        var budget = new SilkCpuTextureBudget(16384);
+        var built = SilkPtexCornerCertificate.BuildCandidateGeometry(mesh, budget);
+
+        await Assert.That(built.Geometry.DerivedCornerVertices).IsFalse();
+        await Assert.That(built.Geometry.Indices.AsSpan().SequenceEqual(mesh.Indices.Span)).IsTrue();
+        await Assert.That(built.Certificate).IsNull();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task PtexCandidateRetainsVertexLayoutAndDetectsSourceLayoutMutation()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry built = SilkMeshGeometryBuilder.Build(mesh);
+        SilkVertexAttributeDescriptor[] attributes = built.VertexLayout.Attributes.ToArray();
+        SilkMeshGeometry geometry = built with
+        {
+            VertexLayout = built.VertexLayout with { Attributes = attributes },
+        };
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(4, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        var budget = new SilkCpuTextureBudget(16384);
+        using var cache = new SilkPtexSlotCandidateCache();
+        using (var initial = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
+        {
+            initial.Commit();
+        }
+        SilkPtexSlotCandidateCache.Candidate original = cache.Current!;
+        SilkVertexAttributeDescriptor previous = attributes[0];
+        SilkVertexAttributeDescriptor changed = previous with { Location = previous.Location + 4 };
+        try
+        {
+            attributes[0] = changed;
+            await Assert.That(original.Geometry.VertexLayout.Attributes[0]).IsEqualTo(previous);
+            await Assert.That(() => cache.Prepare(mesh, geometry, sources, 16, budget, 0))
+                .Throws<ArgumentException>();
+            await Assert.That(ReferenceEquals(cache.Current, original)).IsTrue();
+            attributes[0] = previous;
+            using var restored = cache.Prepare(mesh, geometry, sources, 16, budget, 0);
+            await Assert.That(ReferenceEquals(restored.Value, original)).IsTrue();
+        }
+        finally
+        {
+            attributes[0] = previous;
+        }
+        cache.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments("coordinate")]
+    [Arguments("face")]
+    [Arguments("vertex")]
+    public async Task UncertifiedPtexReuseDetectsSameObjectMutationAndRestoration(string change)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
+        ulong snapshotBytes = SilkPtexSourceSnapshot.RequiredBytes(mesh, geometry);
+        var shortBudget = new SilkCpuTextureBudget(snapshotBytes - 1);
+        await Assert.That(() => SilkPtexSourceSnapshot.Capture(mesh, geometry, shortBudget))
+            .Throws<SilkCpuTextureBudgetExceededException>();
+        await Assert.That(shortBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        var exactBudget = new SilkCpuTextureBudget(snapshotBytes);
+        using (var snapshot = SilkPtexSourceSnapshot.Capture(mesh, geometry, exactBudget))
+        {
+            await Assert.That(snapshot.Matches(mesh, geometry)).IsTrue();
+            await Assert.That(exactBudget.Usage.ReservedBytes).IsEqualTo(snapshotBytes);
+        }
+        await Assert.That(exactBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(4, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        var budget = new SilkCpuTextureBudget(16384);
+        using var cache = new SilkPtexSlotCandidateCache();
+        using (var initial = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
+        {
+            initial.Commit();
+        }
+        SilkPtexSlotCandidateCache.Candidate original = cache.Current!;
+        (float U, float V) originalUv = original.Lookup.MapCorner(0, 0);
+        float originalVertex = original.Geometry.Vertices[0];
+        ulong originalBytes = budget.Usage.ReservedBytes;
+        float coordinate = mesh.PtexCoordinates[0];
+        int face = mesh.PtexFaceIndices[0];
+        float vertex = geometry.Vertices[0];
+        void SetChanged(bool changed)
+        {
+            mesh.PtexCoordinates[0] = changed && change == "coordinate" ? coordinate + 0.125f : coordinate;
+            mesh.PtexFaceIndices[0] = changed && change == "face" ? 11 : face;
+            geometry.Vertices[0] = changed && change == "vertex" ? vertex + 0.25f : vertex;
+        }
+        SetChanged(true);
+        using (budget.Reserve(budget.MaximumBytes - originalBytes))
+        {
+            await Assert.That(() => cache.Prepare(mesh, geometry, sources, 16, budget, 0))
+                .Throws<SilkCpuTextureBudgetExceededException>();
+        }
+        await Assert.That(ReferenceEquals(cache.Current, original)).IsTrue();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(originalBytes);
+        await Assert.That(original.Lookup.MapCorner(0, 0)).IsEqualTo(originalUv);
+        await Assert.That(original.Geometry.Vertices[0]).IsEqualTo(originalVertex);
+        using (var abandoned = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
+        {
+            await Assert.That(ReferenceEquals(abandoned.Value, original)).IsFalse();
+        }
+        await Assert.That(ReferenceEquals(cache.Current, original)).IsTrue();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(originalBytes);
+        SetChanged(false);
+        using (var unchanged = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
+        {
+            await Assert.That(ReferenceEquals(unchanged.Value, original)).IsTrue();
+            unchanged.Commit();
+        }
+        SetChanged(true);
+        using (var update = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
+        {
+            await Assert.That(ReferenceEquals(update.Value, original)).IsFalse();
+            if (change == "vertex")
+            {
+                await Assert.That(update.Value.Geometry.Vertices[0]).IsEqualTo(vertex + 0.25f);
+            }
+            else
+            {
+                await Assert.That(update.Value.Lookup.MapCorner(0, 0)).IsNotEqualTo(originalUv);
+            }
+            update.Commit();
+        }
+        SilkPtexSlotCandidateCache.Candidate changedPublication = cache.Current!;
+        SetChanged(false);
+        using (var restored = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
+        {
+            await Assert.That(ReferenceEquals(restored.Value, changedPublication)).IsFalse();
+            await Assert.That(restored.Value.Lookup.MapCorner(0, 0)).IsEqualTo(originalUv);
+            await Assert.That(restored.Value.Geometry.Vertices[0]).IsEqualTo(originalVertex);
+            restored.Commit();
+        }
+        cache.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task PtexSameIdentityDecodedChangesReplaceOwnedPublication(bool layout, bool replacement)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(4, 2);
+        using SilkDecodedPtexFaces other = CreateCandidateDecoded(4, 2);
+        var budget = new SilkCpuTextureBudget(16384);
+        ulong bytes = SilkPtexDecodedSnapshot.RequiredBytes(decoded);
+        var shortBudget = new SilkCpuTextureBudget(bytes - 1);
+        await Assert.That(() => SilkPtexDecodedSnapshot.Capture(decoded, shortBudget))
+            .Throws<SilkCpuTextureBudgetExceededException>();
+        await Assert.That(shortBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        var exactBudget = new SilkCpuTextureBudget(bytes);
+        using (var snapshot = SilkPtexDecodedSnapshot.Capture(decoded, exactBudget))
+        {
+            await Assert.That(snapshot.Matches(other)).IsTrue();
+            await Assert.That(exactBudget.Usage.ReservedBytes).IsEqualTo(bytes);
+        }
+        await Assert.That(exactBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        using var cache = new SilkPtexSlotCandidateCache();
+        using (var initial = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
+        {
+            initial.Commit();
+        }
+        SilkPtexSlotCandidateCache.Candidate original = cache.Current!;
+        ulong retained = budget.Usage.ReservedBytes;
+        using (var equivalent = cache.Prepare(mesh, geometry,
+            [new(SilkMaterialParameter.DiffuseColor, 1, other)], 16, budget, 0))
+        {
+            await Assert.That(ReferenceEquals(equivalent.Value, original)).IsTrue();
+        }
+        SilkDecodedPtexFaces changed = replacement ? other : decoded;
+        if (layout)
+        {
+            changed.Faces[0].Width = 2;
+            changed.Faces[0].Height = 2;
+            changed.Faces[0].RowStrideBytes = 8;
+        }
+        else
+        {
+            changed.Pixels.AsSpan().Fill(255);
+        }
+        SilkPtexSlotSource[] changedSources = [new(SilkMaterialParameter.DiffuseColor, 1, changed)];
+        using (var abandoned = cache.Prepare(mesh, geometry, changedSources, 16, budget, 0))
+        {
+            await Assert.That(ReferenceEquals(abandoned.Value, original)).IsFalse();
+        }
+        await Assert.That(ReferenceEquals(cache.Current, original)).IsTrue();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(retained);
+        using (var update = cache.Prepare(mesh, geometry, changedSources, 16, budget, 0))
+        {
+            if (layout)
+            {
+                await Assert.That(update.Value.GetAtlas(0).Layout.Map(7, 1, 0))
+                    .IsNotEqualTo(original.GetAtlas(0).Layout.Map(7, 1, 0));
+            }
+            else
+            {
+                await Assert.That(update.Value.GetAtlas(0).Pixels.AsSpan().Contains((byte)255)).IsTrue();
+                await Assert.That(original.GetAtlas(0).Pixels.AsSpan().Contains((byte)255)).IsFalse();
+            }
+            update.Commit();
+        }
+        if (layout)
+        {
+            changed.Faces[0].Width = 4;
+            changed.Faces[0].Height = 1;
+            changed.Faces[0].RowStrideBytes = 16;
+        }
+        else
+        {
+            changed.Pixels.AsSpan().Clear();
+        }
+        SilkPtexSlotCandidateCache.Candidate changedPublication = cache.Current!;
+        using (var restored = cache.Prepare(mesh, geometry, changedSources, 16, budget, 0))
+        {
+            await Assert.That(ReferenceEquals(restored.Value, changedPublication)).IsFalse();
+            restored.Commit();
+        }
+        SilkPtexSlotCandidateCache.Candidate restoredPublication = cache.Current!;
+        byte[] retainedPixels = changed.Pixels;
+        SilkPtexFaceLayout[] retainedFaces = changed.Faces;
+        changed.Dispose();
+        using (var disposedTemporary = cache.Prepare(mesh, geometry, changedSources, 16, budget, 0))
+        {
+            await Assert.That(ReferenceEquals(disposedTemporary.Value, restoredPublication)).IsTrue();
+        }
+        if (layout)
+        {
+            retainedFaces[0].Flags ^= 1;
+        }
+        else
+        {
+            retainedPixels[0] = 123;
+        }
+        await Assert.That(() => cache.Prepare(mesh, geometry, changedSources, 16, budget, 0))
+            .Throws<ObjectDisposedException>();
+        await Assert.That(ReferenceEquals(cache.Current, restoredPublication)).IsTrue();
+        if (layout)
+        {
+            retainedFaces[0].Flags ^= 1;
+        }
+        else
+        {
+            retainedPixels[0] = 0;
+        }
+        using (var restoredAlias = cache.Prepare(mesh, geometry, changedSources, 16, budget, 0))
+        {
+            await Assert.That(ReferenceEquals(restoredAlias.Value, restoredPublication)).IsTrue();
+        }
+        cache.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task CandidatePtexPublicationRollsBackPartialAtlasesAndUncommittedRetry()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry ordinary = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces first = CreateCandidateDecoded(1, 2);
+        using SilkDecodedPtexFaces second = CreateCandidateDecoded(4, 1);
+        using SilkDecodedPtexFaces oversized = CreateCandidateDecoded(16, 1);
+        SilkPtexSlotSource[] sources =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, first),
+            new(SilkMaterialParameter.Roughness, 2, second),
+        ];
+        var budget = new SilkCpuTextureBudget(8192);
+        using var cache = new SilkPtexSlotCandidateCache();
+        using (var initial = cache.Prepare(mesh, ordinary, sources, 16, budget, 0))
+        {
+            initial.Commit();
+        }
+        SilkPtexSlotCandidateCache.Candidate previous = cache.Current!;
+        ulong retainedBytes = budget.Usage.ReservedBytes;
+        SilkPtexSlotSource[] broken = [sources[0], new(SilkMaterialParameter.Roughness, 3, oversized)];
+        await Assert.That(() => cache.Prepare(mesh, ordinary, broken, 16, budget, 0))
+            .Throws<InvalidOperationException>();
+        await Assert.That(ReferenceEquals(cache.Current, previous)).IsTrue();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(retainedBytes);
+        using (var abandoned = cache.Prepare(mesh, ordinary, sources, 16, budget, 1))
+        {
+            await Assert.That(ReferenceEquals(abandoned.Value, previous)).IsFalse();
+            await Assert.That(ReferenceEquals(cache.Current, previous)).IsTrue();
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(retainedBytes);
+        using (var retry = cache.Prepare(mesh, ordinary, sources, 16, budget, 1))
+        {
+            retry.Commit();
+        }
+        await Assert.That(ReferenceEquals(cache.Current, previous)).IsFalse();
+        await Assert.That(() => previous.GetAtlas(0)).Throws<ObjectDisposedException>();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(retainedBytes);
+        SilkPtexSlotCandidateCache.Candidate repaired = cache.Current!;
+        SilkPtexSlotSource[] replacement = [sources[0], new(SilkMaterialParameter.Roughness, 4, second)];
+        using (var changedSource = cache.Prepare(mesh, ordinary, replacement, 16, budget, 1))
+        {
+            await Assert.That(ReferenceEquals(changedSource.Value, repaired)).IsFalse();
+            changedSource.Commit();
+        }
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(retainedBytes);
+        cache.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task CandidatePtexPublicationRejectsUnprovenDerivedCompositionAndShadowContracts()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry ordinary = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(1, 1);
+        SilkPtexSlotSource[] surface = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        var budget = new SilkCpuTextureBudget(4096);
+        using var cache = new SilkPtexSlotCandidateCache();
+        await Assert.That(() => cache.Prepare(mesh, ordinary with { DerivedCornerVertices = true },
+            surface, 16, budget, 0)).Throws<InvalidDataException>();
+        foreach (SilkMaterialParameter parameter in new[]
+        {
+            SilkMaterialParameter.Normal, SilkMaterialParameter.DetailNormal,
+            SilkMaterialParameter.Displacement, SilkMaterialParameter.Opacity,
+            SilkMaterialParameter.VolumeDensity,
+        })
+        {
+            SilkPtexSlotSource[] refused = [new(parameter, 1, decoded)];
+            await Assert.That(() => cache.Prepare(mesh, ordinary, refused, 16, budget, 0))
+                .Throws<NotSupportedException>();
+        }
+        await Assert.That(cache.Current).IsNull();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(SilkColorSpace.Auto, SilkMaterialParameter.DiffuseColor, SilkTextureChannel.Rgb)]
+    [Arguments(SilkColorSpace.Raw, SilkMaterialParameter.DiffuseColor, SilkTextureChannel.Rgb)]
+    [Arguments(SilkColorSpace.Srgb, SilkMaterialParameter.Roughness, SilkTextureChannel.G)]
+    [Arguments(SilkColorSpace.Auto, SilkMaterialParameter.Roughness, SilkTextureChannel.A)]
+    public async Task CandidatePtexMaterialValuesApplyColorThenScaleBiasThenChannel(
+        SilkColorSpace colorSpace, SilkMaterialParameter parameter, SilkTextureChannel channel)
+    {
+        var texture = new SilkMaterialTexture(parameter,
+            SilkTextureWrap.Repeat, SilkTextureWrap.Black, colorSpace,
+            channel == SilkTextureChannel.Rgb ? 3 : 1, channel,
+            [0.5f, 0.75f, 1.25f, 0.5f], [0.1f, 0.05f, -0.1f, 0.2f],
+            [0, 0, 0, 1], "candidate.ptx", "", SilkCompositeOperator.None, 0,
+            sourceKind: SilkTextureSourceKind.Ptex);
+        byte[] pixels = [128, 64, 192, 100, 255, 0, 32, 200];
+        byte[] expected = pixels.ToArray();
+        bool srgb = colorSpace == SilkColorSpace.Srgb ||
+            (colorSpace == SilkColorSpace.Auto && parameter == SilkMaterialParameter.DiffuseColor);
+        for (int texel = 0; texel < expected.Length; texel += 4)
+        {
+            for (int component = 0; component < 4; component++)
+            {
+                float value = expected[texel + component] / 255f;
+                if (srgb && component < 3)
+                {
+                    value = value <= 0.04045f ? value / 12.92f :
+                        MathF.Pow((value + 0.055f) / 1.055f, 2.4f);
+                    value = MathF.Round(value * 255f) / 255f;
+                }
+                expected[texel + component] = (byte)Math.Clamp(MathF.Round(
+                    (value * texture.Scale[component] + texture.Bias[component]) * 255f), 0, 255);
+            }
+            if (channel != SilkTextureChannel.Rgb)
+            {
+                expected.AsSpan(texel, 4).Fill(expected[texel + (int)channel]);
+            }
+        }
+        SilkSceneGpuResources.PreparePtexMaterialPixels(pixels, texture);
+        await Assert.That(pixels.SequenceEqual(expected)).IsTrue();
+        await Assert.That(SilkSceneGpuResources.PtexMaterialSampler.MinFilter).IsEqualTo(SilkSamplerFilter.Linear);
+        await Assert.That(SilkSceneGpuResources.PtexMaterialSampler.AddressU).IsEqualTo(SilkSamplerAddressMode.ClampToEdge);
+    }
+
+    [Test]
+    public async Task CandidatePtexMaterialValuesRejectUnestablishedProcessingWithoutTouchingPixels()
+    {
+        static SilkMaterialTexture Texture(
+            SilkTextureSourceKind kind = SilkTextureSourceKind.Ptex,
+            SilkCompositeOperator composite = SilkCompositeOperator.None,
+            SilkTextureChannel channel = SilkTextureChannel.Rgb,
+            float scale = 1,
+            float luminance = 0) => new(
+                SilkMaterialParameter.DiffuseColor, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp,
+                SilkColorSpace.Raw, 3, channel,
+                [scale, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 1],
+                "candidate.ptx", "", composite, 0,
+                new System.Numerics.Vector4(0, 0, 0, luminance), kind);
+        foreach (SilkMaterialTexture texture in new[]
+        {
+            Texture(kind: SilkTextureSourceKind.Standard),
+            Texture(composite: SilkCompositeOperator.Mix),
+            Texture(channel: SilkTextureChannel.LuminanceRgb),
+            Texture(luminance: 1),
+        })
+        {
+            byte[] pixels = [12, 34, 56, 78];
+            await Assert.That(() => SilkSceneGpuResources.PreparePtexMaterialPixels(pixels, texture))
+                .Throws<NotSupportedException>();
+            await Assert.That(pixels.SequenceEqual(new byte[] { 12, 34, 56, 78 })).IsTrue();
+        }
+        await Assert.That(() => SilkSceneGpuResources.CapturePtexMaterialValue(Texture(scale: float.NaN)))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task CandidatePtexGpuMaterialValueChangeReprocessesWithoutMutatingPackedAtlas()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry ordinary = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces first = CreateCandidateDecoded(1, 2);
+        using SilkDecodedPtexFaces second = CreateCandidateDecoded(4, 1);
+        first.Pixels.AsSpan().Fill(128);
+        second.Pixels.AsSpan().Fill(192);
+        SilkPtexSlotSource[] sources =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, first),
+            new(SilkMaterialParameter.Roughness, 2, second),
+        ];
+        static SilkMaterialTexture Material(SilkMaterialParameter parameter, float scale) => new(
+            parameter, SilkTextureWrap.Repeat, SilkTextureWrap.Mirror, SilkColorSpace.Raw,
+            parameter == SilkMaterialParameter.DiffuseColor ? 3 : 1,
+            parameter == SilkMaterialParameter.DiffuseColor ? SilkTextureChannel.Rgb : SilkTextureChannel.G,
+            [scale, scale, scale, 1], [0.1f, 0.2f, 0.3f, 0],
+            [0, 0, 0, 1], "candidate.ptx", "", SilkCompositeOperator.None, 0,
+            sourceKind: SilkTextureSourceKind.Ptex);
+        SilkMaterialTexture[] materials =
+        [
+            Material(SilkMaterialParameter.DiffuseColor, 0.5f),
+            Material(SilkMaterialParameter.Roughness, 0.75f),
+        ];
+        var cpu = new SilkCpuTextureBudget(65536);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
+        cpu.ConfigureDevice(device);
+        new SilkGpuBufferBudget(65536).ConfigureDevice(device);
+        new SilkGpuTextureBudget(65536).ConfigureDevice(device);
+        new SilkGpuStagingBudget(65536).ConfigureDevice(device);
+        using var cache = new SilkPtexSlotGpuCandidateCache(device);
+        using (var pending = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0, materials))
+        {
+            pending.Commit();
+        }
+        byte[][] before = device.LastSubmittedUploads.Select(bytes => bytes.ToArray()).ToArray();
+        using (var lease = cache.AcquireLease())
+        using (var commands = new PtexCandidateCommandList())
+        {
+            lease.BindAndDraw(commands, 1);
+            await Assert.That(commands.SamplerBindings.Select(binding => binding.Binding)
+                .SequenceEqual(new uint[] { 1, 11 })).IsTrue();
+            await Assert.That(commands.SamplerBindings.All(binding =>
+                binding.Descriptor == SilkSceneGpuResources.PtexMaterialSampler)).IsTrue();
+        }
+        materials[1] = Material(SilkMaterialParameter.Roughness, 0.25f);
+        using (var pending = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0, materials))
+        {
+            pending.Commit();
+        }
+        await Assert.That(device.Submissions).IsEqualTo(2);
+        await Assert.That(device.LastSubmittedUploads[0].SequenceEqual(before[0])).IsTrue();
+        await Assert.That(device.LastSubmittedUploads[1].SequenceEqual(before[1])).IsFalse();
+        materials[1] = Material(SilkMaterialParameter.Roughness, 0.75f);
+        using (var pending = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0, materials))
+        {
+            pending.Commit();
+        }
+        await Assert.That(device.LastSubmittedUploads[0].SequenceEqual(before[0])).IsTrue();
+        await Assert.That(device.LastSubmittedUploads[1].SequenceEqual(before[1])).IsTrue();
+        cache.Dispose();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task CandidatePtexGpuPublicationUploadsMatchingGeometryLookupAndIndependentAtlases()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry ordinary = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces first = CreateCandidateDecoded(1, 2);
+        using SilkDecodedPtexFaces second = CreateCandidateDecoded(4, 1);
+        SilkPtexSlotSource[] sources =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, first),
+            new(SilkMaterialParameter.Roughness, 2, second),
+        ];
+        var cpu = new SilkCpuTextureBudget(65536);
+        byte[][] expectedUploads;
+        uint[] expectedWords;
+        byte[] expectedVertices;
+        using (var sizing = new SilkPtexSlotCandidateCache())
+        using (var candidate = sizing.Prepare(mesh, ordinary, sources, 16, cpu, 0))
+        {
+            expectedUploads =
+            [
+                candidate.Value.GetAtlas(0).Pixels.ToArray(),
+                candidate.Value.GetAtlas(1).Pixels.ToArray(),
+            ];
+            using var lookup = candidate.Value.Lookup.AcquireLease();
+            expectedWords = new uint[lookup.ShaderWordCount];
+            lookup.CopyShaderWords(expectedWords);
+            expectedVertices = MemoryMarshal.AsBytes(candidate.Value.Geometry.Vertices.AsSpan()).ToArray();
+        }
+        var buffers = new SilkGpuBufferBudget(65536);
+        var textures = new SilkGpuTextureBudget(65536);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
+        cpu.ConfigureDevice(device);
+        buffers.ConfigureDevice(device);
+        textures.ConfigureDevice(device);
+        new SilkGpuStagingBudget(65536).ConfigureDevice(device);
+        using var cache = new SilkPtexSlotGpuCandidateCache(device);
+        await Assert.That(() => cache.AcquireLease()).Throws<InvalidOperationException>();
+        using (var pending = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0))
+        {
+            await Assert.That(() => cache.AcquireLease()).Throws<InvalidOperationException>();
+            await Assert.That(device.Submissions).IsEqualTo(1);
+            await Assert.That(device.TextureOwners.Count).IsEqualTo(2);
+            await Assert.That(device.Buffers.Count).IsEqualTo(3);
+            await Assert.That(device.LastSubmittedUploads.Count).IsEqualTo(2);
+            await Assert.That(device.LastSubmittedUploads[0].SequenceEqual(expectedUploads[0])).IsTrue();
+            await Assert.That(device.LastSubmittedUploads[1].SequenceEqual(expectedUploads[1])).IsTrue();
+            await Assert.That(() => cache.Prepare(mesh, ordinary, sources, 16, cpu, 0))
+                .Throws<InvalidOperationException>();
+            pending.Commit();
+        }
+        using var lease = cache.AcquireLease();
+        await Assert.That(lease.SlotCount).IsEqualTo(2);
+        await Assert.That(lease.VertexLayout.Matches(ordinary.VertexLayout)).IsTrue();
+        await Assert.That(ReferenceEquals(
+            lease.VertexLayout.Attributes, ordinary.VertexLayout.Attributes)).IsFalse();
+        await Assert.That(lease.GetParameter(0)).IsEqualTo(SilkMaterialParameter.DiffuseColor);
+        await Assert.That(lease.GetParameter(1)).IsEqualTo(SilkMaterialParameter.Roughness);
+        using var commands = new PtexCandidateCommandList();
+        lease.BindAndDraw(commands, 3);
+        await Assert.That(commands.LookupBinding).IsEqualTo(49u);
+        await Assert.That(commands.IndexCount).IsEqualTo(6u);
+        await Assert.That(commands.InstanceCount).IsEqualTo(3u);
+        await Assert.That(commands.TextureBindings.SequenceEqual(new uint[] { 2, 4 })).IsTrue();
+        uint[] words = new uint[44];
+        commands.Lookup!.ReadbackForTesting(MemoryMarshal.AsBytes(words.AsSpan()));
+        await Assert.That(words.SequenceEqual(expectedWords)).IsTrue();
+        await Assert.That(words.AsSpan(0, 4).SequenceEqual(new uint[] { 6, 2, 2, 28 })).IsTrue();
+        await Assert.That(new[] { words[4], words[8], words[12], words[16], words[20], words[24] }
+            .SequenceEqual(new uint[] { 0, 0, 0, 1, 1, 1 })).IsTrue();
+        uint[] indices = new uint[6];
+        commands.Indices!.ReadbackForTesting(MemoryMarshal.AsBytes(indices.AsSpan()));
+        await Assert.That(indices.SequenceEqual(new uint[] { 0, 1, 2, 3, 4, 5 })).IsTrue();
+        byte[] vertexBytes = new byte[expectedVertices.Length];
+        commands.Vertices!.ReadbackForTesting(vertexBytes);
+        await Assert.That(vertexBytes.SequenceEqual(expectedVertices)).IsTrue();
+        using (var reused = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0))
+        {
+            reused.Commit();
+        }
+        await Assert.That(device.Submissions).IsEqualTo(1);
+        await Assert.That(device.Buffers.Count).IsEqualTo(3);
+        cache.Dispose();
+        await Assert.That(device.Buffers.All(buffer => !buffer.Released)).IsTrue();
+        await Assert.That(device.TextureOwners.All(texture => !texture.Released)).IsTrue();
+        // The publication retains only GPU payloads and its bounded slot metadata,
+        // not an old CPU candidate's geometry or atlas arrays.
+        await Assert.That(cpu.Usage.ReservedBytes)
+            .IsEqualTo(64ul * ((ulong)IntPtr.Size + sizeof(byte)) +
+                2ul * ((ulong)IntPtr.Size + sizeof(uint)) +
+                (ulong)lease.VertexLayout.Attributes.Count *
+                    (ulong)Unsafe.SizeOf<SilkVertexAttributeDescriptor>());
+        lease.BindAndDraw(commands, 2);
+        lease.Dispose();
+        await Assert.That(() => lease.BindAndDraw(commands, 2)).Throws<ObjectDisposedException>();
+        await Assert.That(device.Buffers.All(buffer => buffer.Released)).IsTrue();
+        await Assert.That(device.TextureOwners.All(texture => texture.Released)).IsTrue();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CandidatePtexGpuPublishesProducerCertifiedCornersAndPreservesPreviousOnMutation(bool tail)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(
+            false, triangleLocal: true, tail: tail, withUv: true);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        var cpu = new SilkCpuTextureBudget(65536);
+        var built = SilkPtexCornerCertificate.BuildCandidateGeometry(
+            mesh, cpu, "st", requireTangents: true, requireTextureCoordinates: true);
+        SilkMeshGeometry geometry = built.Geometry;
+        using var certificate = built.Certificate ??
+            throw new InvalidOperationException("The producer did not certify the derived corner stream.");
+        using SilkDecodedPtexFaces first = CreateCandidateDecoded(1, 2);
+        using SilkDecodedPtexFaces second = CreateCandidateDecoded(4, 1);
+        SilkPtexSlotSource[] sources =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, first),
+            new(SilkMaterialParameter.Roughness, 2, second),
+        ];
+        var buffers = new SilkGpuBufferBudget(65536);
+        var textures = new SilkGpuTextureBudget(65536);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
+        cpu.ConfigureDevice(device);
+        buffers.ConfigureDevice(device);
+        textures.ConfigureDevice(device);
+        new SilkGpuStagingBudget(65536).ConfigureDevice(device);
+        using var cache = new SilkPtexSlotGpuCandidateCache(device);
+        using (var pending = cache.Prepare(mesh, geometry, sources, 16, cpu, 0,
+            cornerCertificate: certificate))
+        {
+            pending.Commit();
+        }
+
+        using var lease = cache.AcquireLease();
+        using var commands = new PtexCandidateCommandList();
+        lease.BindAndDraw(commands, 3);
+        await Assert.That(commands.IndexCount).IsEqualTo(6u);
+        await Assert.That(commands.InstanceCount).IsEqualTo(3u);
+        await Assert.That(commands.TextureBindings.SequenceEqual(new uint[] { 2, 4 })).IsTrue();
+        byte[] expected = MemoryMarshal.AsBytes(geometry.Vertices.AsSpan()).ToArray();
+        byte[] actual = new byte[expected.Length];
+        commands.Vertices!.ReadbackForTesting(actual);
+        await Assert.That(actual.SequenceEqual(expected)).IsTrue();
+        uint[] indices = new uint[6];
+        commands.Indices!.ReadbackForTesting(MemoryMarshal.AsBytes(indices.AsSpan()));
+        await Assert.That(indices.SequenceEqual(new uint[] { 0, 1, 2, 3, 4, 5 })).IsTrue();
+        uint[] words = new uint[44];
+        commands.Lookup!.ReadbackForTesting(MemoryMarshal.AsBytes(words.AsSpan()));
+        await Assert.That(new[] { words[4], words[8], words[12], words[16], words[20], words[24] }
+            .SequenceEqual(new uint[] { 0, 0, 0, 1, 1, 1 })).IsTrue();
+
+        float saved = geometry.Vertices[0];
+        geometry.Vertices[0] = saved + 0.25f;
+        await Assert.That(() => cache.Prepare(mesh, geometry, sources, 16, cpu, 0,
+            cornerCertificate: certificate)).Throws<InvalidDataException>();
+        await Assert.That(device.Submissions).IsEqualTo(1);
+        commands.Vertices.ReadbackForTesting(actual);
+        await Assert.That(actual.SequenceEqual(expected)).IsTrue();
+        geometry.Vertices[0] = saved;
+        using (var reuse = cache.Prepare(mesh, geometry, sources, 16, cpu, 0,
+            cornerCertificate: certificate))
+        {
+            reuse.Commit();
+        }
+        await Assert.That(device.Submissions).IsEqualTo(1);
+        certificate.Dispose();
+        await Assert.That(() => cache.Prepare(mesh, geometry, sources, 16, cpu, 0,
+            cornerCertificate: certificate)).Throws<ObjectDisposedException>();
+        cache.Dispose();
+        lease.BindAndDraw(commands, 1);
+        lease.Dispose();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CandidatePtexGpuRetainsMultiplePickVerticesAcrossReplacement(bool derivedSource)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(
+            false, triangleLocal: derivedSource, tail: true, withUv: true,
+            tailCount: 3, lastTailHasNoOrigin: true);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        var cpu = new SilkCpuTextureBudget(65536);
+        var built = SilkPtexCornerCertificate.BuildCandidateGeometry(
+            mesh, cpu, "st", requireTextureCoordinates: true);
+        using SilkPtexCornerCertificate? certificate = built.Certificate;
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(1, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        var buffers = new SilkGpuBufferBudget(65536);
+        var textures = new SilkGpuTextureBudget(65536);
+        var staging = new SilkGpuStagingBudget(65536);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
+        cpu.ConfigureDevice(device);
+        buffers.ConfigureDevice(device);
+        textures.ConfigureDevice(device);
+        staging.ConfigureDevice(device);
+        using var cache = new SilkPtexSlotGpuCandidateCache(device);
+        using (var pending = cache.Prepare(mesh, built.Geometry, sources, 16, cpu, 0,
+            cornerCertificate: certificate))
+        {
+            pending.Commit();
+        }
+
+        using var previous = cache.AcquireLease();
+        using var commands = new PtexCandidateCommandList();
+        previous.BindAndDraw(commands, 2);
+        await Assert.That(commands.IndexCount).IsEqualTo(6u);
+        await Assert.That(commands.InstanceCount).IsEqualTo(2u);
+        await Assert.That(SilkSubprimPickGeometry.TryResolveCornerPoints(
+            mesh, true, out int[] authoredPoints, out uint[] pointIndices)).IsTrue();
+        await Assert.That(pointIndices.AsSpan(^2..).SequenceEqual(new uint[] { 6, 7 })).IsTrue();
+        await Assert.That(authoredPoints.AsSpan(^2..).SequenceEqual(new int[] { 3, 4 })).IsTrue();
+        int stride = checked((int)(previous.VertexLayout.Stride / sizeof(float)));
+        float[] vertices = new float[8 * stride];
+        await Assert.That(commands.Vertices!.Size).IsEqualTo((nuint)(vertices.Length * sizeof(float)));
+        commands.Vertices.ReadbackForTesting(MemoryMarshal.AsBytes(vertices.AsSpan()));
+        for (int point = 0; point < 2; point++)
+        {
+            int vertex = checked((int)pointIndices[^(2 - point)] * stride);
+            int source = authoredPoints[^(2 - point)] * 3;
+            await Assert.That(vertices.AsSpan(vertex, 3)
+                .SequenceEqual(mesh.Points.Span.Slice(source, 3))).IsTrue();
+        }
+
+        using (var pending = cache.Prepare(mesh, built.Geometry, sources, 16, cpu, 1,
+            cornerCertificate: certificate))
+        {
+            pending.Commit();
+        }
+        using var current = cache.AcquireLease();
+        await Assert.That(ReferenceEquals(
+            previous.VertexLayout.Attributes, current.VertexLayout.Attributes)).IsFalse();
+        cache.Dispose();
+        previous.BindAndDraw(commands, 1);
+        commands.Vertices!.ReadbackForTesting(MemoryMarshal.AsBytes(vertices.AsSpan()));
+        current.BindAndDraw(commands, 1);
+        commands.Vertices!.ReadbackForTesting(MemoryMarshal.AsBytes(vertices.AsSpan()));
+        previous.Dispose();
+        current.Dispose();
+        certificate?.Dispose();
+        await Assert.That(device.Buffers.All(buffer => buffer.Released)).IsTrue();
+        await Assert.That(device.TextureOwners.All(texture => texture.Released)).IsTrue();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments("replacement")]
+    [Arguments("abandonment")]
+    [Arguments("lease")]
+    [Arguments("write")]
+    [Arguments("wait")]
+    public async Task CandidatePtexCleanupRetainsFailedOwnersAndRetriesWithoutRepeatingSuccess(string failure)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(1, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        var cpu = new SilkCpuTextureBudget(65536);
+        var buffers = new SilkGpuBufferBudget(65536);
+        var textures = new SilkGpuTextureBudget(65536);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
+        cpu.ConfigureDevice(device);
+        buffers.ConfigureDevice(device);
+        textures.ConfigureDevice(device);
+        new SilkGpuStagingBudget(65536).ConfigureDevice(device);
+        using var cache = new SilkPtexSlotGpuCandidateCache(device);
+        using (var initial = cache.Prepare(mesh, geometry, sources, 16, cpu, 0))
+        {
+            initial.Commit();
+        }
+        ulong initialBuffers = buffers.Usage.ReservedBytes;
+        using var lease = cache.AcquireLease();
+        if (failure is "write" or "wait")
+        {
+            lease.Dispose();
+            device.RefuseBufferWrites = failure == "write";
+            device.RefuseWait = failure == "wait";
+            device.RefuseNewBufferDisposal = true;
+            AggregateException? reported = null;
+            try
+            {
+                using var unexpected = cache.Prepare(mesh, geometry, sources, 16, cpu, 1);
+            }
+            catch (AggregateException error)
+            {
+                reported = error;
+            }
+            await Assert.That(reported).IsNotNull();
+            await Assert.That(reported!.InnerExceptions[0].Message)
+                .IsEqualTo(failure == "write"
+                    ? "Injected Ptex candidate buffer write failure."
+                    : "Injected Ptex candidate upload wait failure.");
+            await Assert.That(reported.InnerExceptions[1].Message)
+                .IsEqualTo("Injected Ptex candidate buffer disposal failure.");
+            await Assert.That(buffers.Usage.ReservedBytes).IsGreaterThan(initialBuffers);
+            using var preserved = cache.AcquireLease();
+            await Assert.That(preserved.SlotCount).IsEqualTo(1);
+        }
+        else
+        {
+            var update = cache.Prepare(mesh, geometry, sources, 16, cpu, 1);
+            TextureGraphicsBuffer failed = failure == "abandonment"
+                ? device.Buffers[^1] : device.Buffers[2];
+            failed.RefuseDisposal = true;
+            if (failure == "abandonment")
+            {
+                await Assert.That(() => update.Dispose()).Throws<InvalidOperationException>();
+            }
+            else if (failure == "replacement")
+            {
+                lease.Dispose();
+                await Assert.That(() => update.Commit()).Throws<InvalidOperationException>();
+            }
+            else
+            {
+                update.Commit();
+                await Assert.That(() => lease.Dispose()).Throws<InvalidOperationException>();
+            }
+            await Assert.That(failed.Released).IsFalse();
+            await Assert.That(buffers.Usage.ReservedBytes).IsGreaterThan(initialBuffers);
+        }
+        int[] completed = device.Buffers.Select(buffer => buffer.SuccessfulDisposals).ToArray();
+        device.RefuseWait = false;
+        device.RefuseBufferWrites = false;
+        device.RefuseNewBufferDisposal = false;
+        foreach (TextureGraphicsBuffer buffer in device.Buffers)
+        {
+            buffer.RefuseDisposal = false;
+            buffer.DisposalCallback = () => cache.RetryCleanup();
+        }
+        await Assert.That(() => cache.RetryCleanup()).Throws<InvalidOperationException>();
+        foreach (TextureGraphicsBuffer buffer in device.Buffers)
+        {
+            buffer.DisposalCallback = null;
+        }
+        cache.RetryCleanup();
+        for (int index = 0; index < completed.Length; index++)
+        {
+            if (completed[index] != 0)
+            {
+                await Assert.That(device.Buffers[index].SuccessfulDisposals).IsEqualTo(completed[index]);
+            }
+        }
+        using (var retry = cache.Prepare(mesh, geometry, sources, 16, cpu, 2))
+        {
+            retry.Commit();
+        }
+        lease.Dispose();
+        cache.Dispose();
+        cache.RetryCleanup();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task PtexCleanupOwnerPreservesFailedAndUnvisitedStepsAndRejectsReentry()
+    {
+        var owner = new SilkPtexCleanupOwner();
+        var first = owner.Own(new PtexCleanupTestResource());
+        var failed = owner.Own(new PtexCleanupTestResource { Fail = true });
+        var last = owner.Own(new PtexCleanupTestResource());
+        owner.Retire();
+        await Assert.That(() => owner.Drain()).Throws<InvalidOperationException>();
+        await Assert.That(last.Successes).IsEqualTo(1);
+        var prioritized = new SilkPtexCleanupOwner();
+        var payload = prioritized.Own(new PtexCleanupTestResource());
+        var command = prioritized.Own(new PtexCleanupTestResource { Fail = true }, beforePayload: true);
+        prioritized.Retire();
+        await Assert.That(() => prioritized.Drain()).Throws<InvalidOperationException>();
+        await Assert.That(payload.Successes).IsEqualTo(0);
+        command.Fail = false;
+        await Assert.That(prioritized.Drain()).IsTrue();
+        await Assert.That(command.Successes).IsEqualTo(1);
+        await Assert.That(payload.Successes).IsEqualTo(1);
+        await Assert.That(failed.Successes).IsEqualTo(0);
+        await Assert.That(first.Successes).IsEqualTo(0);
+        failed.Fail = false;
+        failed.Callback = () => owner.Drain();
+        await Assert.That(() => owner.Drain()).Throws<InvalidOperationException>();
+        failed.Callback = null;
+        await Assert.That(owner.Drain()).IsTrue();
+        await Assert.That(owner.Drain()).IsTrue();
+        await Assert.That(first.Successes).IsEqualTo(1);
+        await Assert.That(failed.Successes).IsEqualTo(1);
+        await Assert.That(last.Successes).IsEqualTo(1);
+    }
+
+    private sealed class PtexCleanupTestResource : IDisposable
+    {
+        internal bool Fail { get; set; }
+        internal Action? Callback { get; set; }
+        internal int Successes { get; private set; }
+        public void Dispose()
+        {
+            Callback?.Invoke();
+            if (Fail)
+            {
+                throw new InvalidOperationException("Injected cleanup failure.");
+            }
+            Successes++;
+        }
+    }
+
+    [Test]
+    public async Task CandidatePtexGpuDuplicateBindingsRefuseBeforeAllocationAndAllowRetry()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry geometry = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(1, 2);
+        var cpu = new SilkCpuTextureBudget(65536);
+        var buffers = new SilkGpuBufferBudget(65536);
+        var textures = new SilkGpuTextureBudget(65536);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
+        cpu.ConfigureDevice(device);
+        buffers.ConfigureDevice(device);
+        textures.ConfigureDevice(device);
+        new SilkGpuStagingBudget(65536).ConfigureDevice(device);
+        using var cache = new SilkPtexSlotGpuCandidateCache(device);
+        SilkPtexSlotSource[] valid =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, decoded),
+            new(SilkMaterialParameter.Roughness, 2, decoded),
+        ];
+        using (var initial = cache.Prepare(mesh, geometry, valid, 16, cpu, 0))
+        {
+            initial.Commit();
+        }
+        using var oldLease = cache.AcquireLease();
+        using var oldCommands = new PtexCandidateCommandList();
+        oldLease.BindAndDraw(oldCommands, 1);
+        ulong cpuBytes = cpu.Usage.ReservedBytes;
+        ulong cpuPeak = cpu.Usage.PeakReservedBytes;
+        ulong bufferBytes = buffers.Usage.ReservedBytes;
+        ulong textureBytes = textures.Usage.ReservedBytes;
+        int bufferCount = device.Buffers.Count;
+        int textureCount = device.TextureOwners.Count;
+        int submissions = device.Submissions;
+        await Assert.That(() => cache.Prepare(mesh, geometry,
+            [valid[0], new(SilkMaterialParameter.DiffuseColor, 3, decoded)], 16, cpu, 1))
+            .Throws<InvalidDataException>();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(cpuBytes);
+        await Assert.That(cpu.Usage.PeakReservedBytes).IsEqualTo(cpuPeak);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(bufferBytes);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(textureBytes);
+        await Assert.That(device.Buffers.Count).IsEqualTo(bufferCount);
+        await Assert.That(device.TextureOwners.Count).IsEqualTo(textureCount);
+        await Assert.That(device.Submissions).IsEqualTo(submissions);
+        using (var preserved = cache.AcquireLease())
+        using (var commands = new PtexCandidateCommandList())
+        {
+            preserved.BindAndDraw(commands, 1);
+            await Assert.That(commands.Lookup).IsSameReferenceAs(oldCommands.Lookup);
+        }
+        using (var retry = cache.Prepare(mesh, geometry, valid, 16, cpu, 1))
+        {
+            retry.Commit();
+        }
+        oldLease.Dispose();
+        cache.Dispose();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CandidatePtexGpuPublicationRollbackAndRetryPreserveLeasedPreviousResources(bool failOnWait)
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry ordinary = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(1, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        var cpu = new SilkCpuTextureBudget(65536);
+        var buffers = new SilkGpuBufferBudget(65536);
+        var textures = new SilkGpuTextureBudget(65536);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
+        cpu.ConfigureDevice(device);
+        buffers.ConfigureDevice(device);
+        textures.ConfigureDevice(device);
+        new SilkGpuStagingBudget(65536).ConfigureDevice(device);
+        using var cache = new SilkPtexSlotGpuCandidateCache(device);
+        using (var initial = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0))
+        {
+            initial.Commit();
+        }
+        using var oldLease = cache.AcquireLease();
+        using var oldCommands = new PtexCandidateCommandList();
+        oldLease.BindAndDraw(oldCommands, 1);
+        ulong cpuBytes = cpu.Usage.ReservedBytes;
+        ulong bufferBytes = buffers.Usage.ReservedBytes;
+        ulong textureBytes = textures.Usage.ReservedBytes;
+        device.RefuseSubmission = !failOnWait;
+        device.RefuseWait = failOnWait;
+        if (failOnWait)
+        {
+            await Assert.That(() => cache.Prepare(mesh, ordinary, sources, 16, cpu, 1))
+                .Throws<InvalidOperationException>();
+        }
+        else
+        {
+            await Assert.That(() => cache.Prepare(mesh, ordinary, sources, 16, cpu, 1))
+                .Throws<SilkGpuStagingBudgetExceededException>();
+        }
+        device.RefuseSubmission = false;
+        device.RefuseWait = false;
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(cpuBytes);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(bufferBytes);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(textureBytes);
+        using (var abandoned = cache.Prepare(mesh, ordinary, sources, 16, cpu, 1))
+        {
+            await Assert.That(cpu.Usage.ReservedBytes).IsGreaterThan(cpuBytes);
+        }
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(cpuBytes);
+        using (var unchanged = cache.AcquireLease())
+        {
+            using var commands = new PtexCandidateCommandList();
+            unchanged.BindAndDraw(commands, 1);
+            await Assert.That(commands.Lookup).IsSameReferenceAs(oldCommands.Lookup);
+        }
+        using (var retry = cache.Prepare(mesh, ordinary, sources, 16, cpu, 1))
+        {
+            retry.Commit();
+        }
+        using (var replacement = cache.AcquireLease())
+        {
+            using var commands = new PtexCandidateCommandList();
+            replacement.BindAndDraw(commands, 2);
+            await Assert.That(ReferenceEquals(commands.Lookup, oldCommands.Lookup)).IsFalse();
+        }
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(2 * bufferBytes);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(2 * textureBytes);
+        oldLease.BindAndDraw(oldCommands, 2);
+        oldLease.Dispose();
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(bufferBytes);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(textureBytes);
+        int bufferCreations = device.Buffers.Count;
+        using (var changedSource = cache.Prepare(mesh, ordinary,
+            [new SilkPtexSlotSource(SilkMaterialParameter.DiffuseColor, 2, decoded)], 16, cpu, 1))
+        {
+            changedSource.Commit();
+        }
+        await Assert.That(device.Buffers.Count).IsEqualTo(bufferCreations + 3);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(bufferBytes);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(textureBytes);
+        cache.Dispose();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task CandidatePtexGpuPartialAtlasAdmissionRefusalPreservesCurrentAndReleasesReplacement()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry ordinary = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces first = CreateCandidateDecoded(1, 2);
+        using SilkDecodedPtexFaces second = CreateCandidateDecoded(4, 1);
+        SilkPtexSlotSource[] sources =
+        [
+            new(SilkMaterialParameter.DiffuseColor, 1, first),
+            new(SilkMaterialParameter.Roughness, 2, second),
+        ];
+        var cpu = new SilkCpuTextureBudget(65536);
+        ulong atlasBytes;
+        using (var sizing = new SilkPtexSlotCandidateCache())
+        using (var candidate = sizing.Prepare(mesh, ordinary, sources, 16, cpu, 0))
+        {
+            atlasBytes = checked((ulong)candidate.Value.GetAtlas(0).Pixels.Length +
+                (ulong)candidate.Value.GetAtlas(1).Pixels.Length);
+        }
+        var buffers = new SilkGpuBufferBudget(65536);
+        var textures = new SilkGpuTextureBudget(2 * atlasBytes - 1);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
+        cpu.ConfigureDevice(device);
+        buffers.ConfigureDevice(device);
+        textures.ConfigureDevice(device);
+        new SilkGpuStagingBudget(65536).ConfigureDevice(device);
+        using var cache = new SilkPtexSlotGpuCandidateCache(device);
+        using (var initial = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0))
+        {
+            initial.Commit();
+        }
+        ulong cpuBytes = cpu.Usage.ReservedBytes;
+        ulong bufferBytes = buffers.Usage.ReservedBytes;
+        await Assert.That(() => cache.Prepare(mesh, ordinary, sources, 16, cpu, 1))
+            .Throws<SilkGpuTextureBudgetExceededException>();
+        await Assert.That(device.TextureOwners.Count).IsEqualTo(3);
+        await Assert.That(device.TextureOwners[0].Released).IsFalse();
+        await Assert.That(device.TextureOwners[1].Released).IsFalse();
+        await Assert.That(device.TextureOwners[2].Released).IsTrue();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(cpuBytes);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(bufferBytes);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(atlasBytes);
+        using (var reused = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0))
+        {
+            reused.Commit();
+        }
+        await Assert.That(device.Submissions).IsEqualTo(1);
+        cache.Dispose();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    public async Task CandidatePtexGpuPublicationRequiresAllAdmissionPoolsBeforeAllocation()
+    {
+        using var scene = new SilkSceneState();
+        using OpenUsdSilkPage page = CreateCandidateTwoFacePage(false);
+        _ = scene.Apply(page);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMeshGeometry ordinary = SilkMeshGeometryBuilder.Build(mesh);
+        using SilkDecodedPtexFaces decoded = CreateCandidateDecoded(1, 2);
+        SilkPtexSlotSource[] sources = [new(SilkMaterialParameter.DiffuseColor, 1, decoded)];
+        var cpu = new SilkCpuTextureBudget(65536);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
+        using var cache = new SilkPtexSlotGpuCandidateCache(device);
+        for (int pool = 0; pool < 4; pool++)
+        {
+            await Assert.That(() => cache.Prepare(mesh, ordinary, sources, 16, cpu, 0))
+                .Throws<InvalidOperationException>();
+            await Assert.That(device.Buffers.Count).IsEqualTo(0);
+            await Assert.That(device.TextureOwners.Count).IsEqualTo(0);
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+            switch (pool)
+            {
+                case 0:
+                    cpu.ConfigureDevice(device);
+                    break;
+                case 1:
+                    new SilkGpuBufferBudget(65536).ConfigureDevice(device);
+                    break;
+                case 2:
+                    new SilkGpuTextureBudget(65536).ConfigureDevice(device);
+                    break;
+                case 3:
+                    new SilkGpuStagingBudget(65536).ConfigureDevice(device);
+                    break;
+            }
+        }
+        await Assert.That(() => cache.Prepare(mesh, ordinary, sources, 32, cpu, 0))
+            .Throws<InvalidOperationException>();
+        using var pending = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0);
+        cache.Dispose();
+        await Assert.That(() => pending.Commit()).Throws<ObjectDisposedException>();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(device.Buffers.All(buffer => buffer.Released)).IsTrue();
+        await Assert.That(device.TextureOwners.All(texture => texture.Released)).IsTrue();
+    }
+
+    private static OpenUsdSilkPage CreateCandidateTwoFacePage(
+        bool expanded, bool triangleLocal = false, bool tail = false, bool withUv = false,
+        int tailCount = 1, bool lastTailHasNoOrigin = false)
+    {
+        byte[] mesh = CreateMeshUpsert("/Candidate", "");
+        int pathLength = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(48)));
+        int start = 276 + pathLength;
+        float[] sharedPoints = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
+        uint[] sharedIndices = [0, 1, 2, 2, 1, 0];
+        float[] points = expanded
+            ? sharedIndices.SelectMany(index => sharedPoints.Skip((int)index * 3).Take(3)).ToArray()
+            : sharedPoints;
+        if (tail)
+        {
+            for (int point = 0; point < tailCount; point++)
+            {
+                points = [.. points, 0.25f + (point * 0.125f), 0.25f, 0.5f];
+            }
+        }
+        int pointCount = points.Length / 3;
+        int uvBytes = withUv ? 20 + 2 + (pointCount * 2 * sizeof(float)) : 0;
+        int originBytes = tail ? pointCount * sizeof(uint) : 0;
+        int normalBytes = triangleLocal ? 12 + (pointCount * sizeof(uint)) : 0;
+        Array.Resize(ref mesh, start + points.Length * 4 + 6 * 4 + 2 * 4 +
+            uvBytes + originBytes + 2 * 28 + normalBytes);
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(4), (uint)mesh.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(52), (uint)pointCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(56), 6);
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(60), 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(220), withUv ? 1u : 0u);
+        if (tail)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(236), (uint)SilkSubprimIdentity.Point);
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(244), (uint)pointCount);
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(256),
+                (uint)(pointCount - (lastTailHasNoOrigin ? 1 : 0)));
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(268), 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(272), (uint)SilkPtexMappingStatus.Mapped);
+        int cursor = start;
+        foreach (float component in points)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(mesh.AsSpan(cursor), component);
+            cursor += 4;
+        }
+        for (int corner = 0; corner < 6; corner++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                mesh.AsSpan(cursor), expanded ? (uint)corner : sharedIndices[corner]);
+            cursor += 4;
+        }
+        mesh.AsSpan(cursor, 8).Clear();
+        cursor += 8;
+        if (withUv)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor), (uint)SilkAttributeSemantic.TexCoord);
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor + 4), 2);
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor + 8), (uint)SilkAttributeInterpolation.Vertex);
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor + 12), 2);
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor + 16), (uint)pointCount);
+            cursor += 20;
+            mesh[cursor++] = (byte)'s';
+            mesh[cursor++] = (byte)'t';
+            for (int point = 0; point < pointCount; point++)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(mesh.AsSpan(cursor), points[point * 3] + 0.5f);
+                BinaryPrimitives.WriteSingleLittleEndian(mesh.AsSpan(cursor + 4), points[point * 3 + 1] + 0.5f);
+                cursor += 8;
+            }
+        }
+        if (tail)
+        {
+            for (int point = 0; point < pointCount; point++)
+            {
+                uint origin = lastTailHasNoOrigin && point == pointCount - 1 ? uint.MaxValue : (uint)point;
+                BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor), origin);
+                cursor += sizeof(uint);
+            }
+        }
+        foreach (uint face in new uint[] { 7, 11 })
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor), face);
+            cursor += 4;
+            foreach (float coordinate in new float[] { 0.25f, 0.25f, 0.5f, 0.75f, 0.75f, 0.25f })
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(mesh.AsSpan(cursor), coordinate);
+                cursor += 4;
+            }
+        }
+        if (triangleLocal)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor), 0x80000000u | (uint)pointCount);
+            cursor += 12;
+            for (int point = 0; point < pointCount; point++)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor), (uint)point);
+                cursor += sizeof(uint);
+            }
+        }
+        return CreateMeshPage(mesh, 1);
+    }
+
+    private static SilkDecodedPtexFaces CreateCandidateDecoded(uint firstWidth, uint secondWidth)
+    {
+        uint count = firstWidth + secondWidth;
+        var info = new SilkPtexDecodeInfo
+        {
+            StructSize = (uint)Marshal.SizeOf<SilkPtexDecodeInfo>(),
+            Version = 1,
+            MeshType = 1,
+            DataType = 0,
+            ChannelCount = 4,
+            AlphaChannel = 3,
+            FileFaceCount = 12,
+            RequestedFaceCount = 2,
+            RequiredByteCount = count * 4,
+        };
+        static SilkPtexFaceLayout face(uint id, uint width, ulong offset) => new()
+        {
+            StructSize = (uint)Marshal.SizeOf<SilkPtexFaceLayout>(),
+            FaceId = id,
+            Width = width,
+            Height = 1,
+            RowStrideBytes = width * 4,
+            DataOffsetBytes = offset,
+            AdjacentFaceId0 = -1,
+            AdjacentFaceId1 = -1,
+            AdjacentFaceId2 = -1,
+            AdjacentFaceId3 = -1,
+        };
+        return new(info, [face(7, firstWidth, 0), face(11, secondWidth, firstWidth * 4)],
+            new byte[checked((int)(count * 4))], null);
+    }
+
+    private static SilkPtexAtlasLayout CreateLookupLayout(float u0, float v0, float u1, float v1) =>
+        new(16, 16, new Dictionary<uint, SilkPtexAtlasTile>
+        {
+            [7] = new(7, 0, 0, 1, 1, u0, v0, u1, v1, -1, -1, -1, -1, 0, 0, 0, 0)
+        });
+
+    private static OpenUsdSilkPage CreateUnmappedPtexPage(
+        SilkPtexMappingStatus status,
+        string asset = "unmapped.ptx",
+        float? displacement = null,
+        ulong revision = 1,
+        int faceIndex = 0,
+        float[]? coordinates = null)
+    {
+        byte[] mesh = CreateMeshUpsert("/Mesh/PtexFallback", "/Material/PtexFallback");
+        if (status == SilkPtexMappingStatus.Mapped)
+        {
+            int offset = mesh.Length;
+            Array.Resize(ref mesh, mesh.Length + 28);
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(4), checked((uint)mesh.Length));
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(268), 1);
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(offset), checked((uint)faceIndex));
+            // The three corners cover the face interior.
+            float[] mappingCoordinates = coordinates ?? [0.25f, 0.25f, 0.5f, 0.75f, 0.75f, 0.25f];
+            for (int component = 0; component < mappingCoordinates.Length; component++)
+            {
+                BinaryPrimitives.WriteSingleLittleEndian(
+                    mesh.AsSpan(offset + 4 + (component * 4)), mappingCoordinates[component]);
+            }
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(272), (uint)status);
+        return new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, revision,
+            [
+                .. CreatePtexFallbackMaterial(asset, displacement),
+                .. mesh
+            ], 2);
+    }
+
+    private static byte[] CreatePtexFallbackMaterial(string asset, float? displacement)
+    {
+        (SilkMaterialParameter Parameter, float[] Values)[] scalars = displacement is { } amount
+            ? [(SilkMaterialParameter.Displacement, [amount])]
+            : [];
+        return CreateMaterialUpsert("/Material/PtexFallback", SilkSurfaceKind.PreviewSurface, scalars,
+            [new TextureSpec(SilkMaterialParameter.DiffuseColor,
+                SilkTextureWrap.Repeat, SilkTextureWrap.Repeat, SilkColorSpace.Raw,
+                3, [1, 1, 1, 1], [0, 0, 0, 0], [1, 0, 1, 1], asset, "",
+                SourceKind: SilkTextureSourceKind.Ptex)]);
+    }
+
+    private static OpenUsdSilkPage CreateMeshPage(byte[] mesh, ulong revision) =>
+        new(SilkCommandParser.PageAbiVersion, revision, mesh, 1);
+
+    private static byte[] WithNormalCorrespondence(
+        byte[] mesh,
+        int[] identities,
+        int[] corners,
+        float[]? extraPoints = null,
+        bool triangleLocal = false)
+    {
+        extraPoints ??= [];
+        int offset = mesh.Length;
+        Array.Resize(ref mesh, checked(offset + 12 +
+            (identities.Length * sizeof(uint)) +
+            (corners.Length * sizeof(uint)) +
+            (extraPoints.Length * sizeof(float))));
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(4), checked((uint)mesh.Length));
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            mesh.AsSpan(offset),
+            checked((uint)identities.Length) | (triangleLocal ? 0x80000000u : 0));
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            mesh.AsSpan(offset + 4), checked((uint)(corners.Length / 3)));
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            mesh.AsSpan(offset + 8), checked((uint)(extraPoints.Length / 3)));
+        int cursor = offset + 12;
+        foreach (int identity in identities)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor), checked((uint)identity));
+            cursor += sizeof(uint);
+        }
+        foreach (int corner in corners)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(cursor), checked((uint)corner));
+            cursor += sizeof(uint);
+        }
+        foreach (float component in extraPoints)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(mesh.AsSpan(cursor), component);
+            cursor += sizeof(float);
+        }
+        return mesh;
     }
 
     private static float ReadSingle(byte[] constants, int offset) =>
@@ -4603,7 +7777,8 @@ public sealed class SilkMaterialCommandTests
     }
 
     private sealed class TextureGraphicsDevice :
-        SilkGraphicsDeviceLifetimeBase, ISilkGraphicsDevice, ISilkTextureAdmissionDevice, ISilkCpuTextureAdmissionDevice
+        SilkGraphicsDeviceLifetimeBase, ISilkGraphicsDevice, ISilkTextureAdmissionDevice,
+        ISilkCpuTextureAdmissionDevice, ISilkStagingAdmissionDevice
     {
         internal List<SilkTextureFormat> CreatedTextureFormats { get; } = [];
         internal List<SilkTextureDescriptor> CreatedTextures { get; } = [];
@@ -4612,7 +7787,11 @@ public sealed class SilkMaterialCommandTests
         internal bool SupportsRowUploads { get; set; }
         internal List<(SilkTextureRowUpload Region, byte[] Pixels)> RowUploads { get; } = [];
         internal bool RefuseSubmission { get; set; }
+        internal bool RefuseWait { get; set; }
+        internal bool RefuseBufferWrites { get; set; }
+        internal bool RefuseNewBufferDisposal { get; set; }
         internal int Submissions { get; private set; }
+        internal List<byte[]> LastSubmittedUploads { get; } = [];
         internal nuint? RefuseBufferSize { get; set; }
         internal List<TextureGraphicsBuffer> Buffers { get; } = [];
 
@@ -4660,7 +7839,21 @@ public sealed class SilkMaterialCommandTests
             {
                 throw new InvalidOperationException("Injected surface buffer allocation refusal.");
             }
-            var buffer = new TextureGraphicsBuffer(size, usage);
+            IDisposable? reservation = ReserveBufferAllocation(size);
+            TextureGraphicsBuffer buffer;
+            try
+            {
+                buffer = new TextureGraphicsBuffer(size, usage, reservation)
+                {
+                    RefuseWrite = RefuseBufferWrites,
+                    RefuseDisposal = RefuseNewBufferDisposal,
+                };
+            }
+            catch
+            {
+                reservation?.Dispose();
+                throw;
+            }
             Buffers.Add(buffer);
             return buffer;
         }
@@ -4705,13 +7898,24 @@ public sealed class SilkMaterialCommandTests
             {
                 throw new SilkGpuStagingBudgetExceededException(16, 0, 15);
             }
-            return new TextureSubmission();
+            LastSubmittedUploads.Clear();
+            if (commandList is TextureCommandList textures)
+            {
+                LastSubmittedUploads.AddRange(textures.Uploads);
+            }
+            return new TextureSubmission(this);
         }
 
-        private sealed class TextureSubmission : ISilkGraphicsSubmission
+        private sealed class TextureSubmission(TextureGraphicsDevice device) : ISilkGraphicsSubmission
         {
             public bool IsCompleted => true;
-            public void Wait() { }
+            public void Wait()
+            {
+                if (device.RefuseWait)
+                {
+                    throw new InvalidOperationException("Injected Ptex candidate upload wait failure.");
+                }
+            }
             public void Dispose() { }
         }
 
@@ -4746,12 +7950,17 @@ public sealed class SilkMaterialCommandTests
         protected override void ReleaseNative() => Released = true;
     }
 
-    private sealed class TextureGraphicsBuffer(nuint size, SilkBufferUsage usage)
+    private sealed class TextureGraphicsBuffer(nuint size, SilkBufferUsage usage, IDisposable? reservation = null)
         : ISilkGraphicsBuffer
     {
         private readonly byte[] _bytes = new byte[checked((int)size)];
+        private IDisposable? _reservation = reservation;
         internal bool Released { get; private set; }
         internal int Writes { get; private set; }
+        internal bool RefuseWrite { get; set; }
+        internal bool RefuseDisposal { get; set; }
+        internal int SuccessfulDisposals { get; private set; }
+        internal Action? DisposalCallback { get; set; }
 
         public nuint Size => size;
 
@@ -4759,6 +7968,10 @@ public sealed class SilkMaterialCommandTests
 
         public void Write(ReadOnlySpan<byte> data, nuint offset = 0)
         {
+            if (RefuseWrite)
+            {
+                throw new InvalidOperationException("Injected Ptex candidate buffer write failure.");
+            }
             data.CopyTo(_bytes.AsSpan(checked((int)offset)));
             Writes++;
         }
@@ -4768,7 +7981,14 @@ public sealed class SilkMaterialCommandTests
 
         public void Dispose()
         {
+            DisposalCallback?.Invoke();
+            if (RefuseDisposal)
+            {
+                throw new InvalidOperationException("Injected Ptex candidate buffer disposal failure.");
+            }
             Released = true;
+            SuccessfulDisposals++;
+            Interlocked.Exchange(ref _reservation, null)?.Dispose();
         }
     }
 
@@ -4807,6 +8027,29 @@ public sealed class SilkMaterialCommandTests
         }
     }
 
+    private sealed class PtexCandidateCommandList : TextureCommandList
+    {
+        internal ISilkGraphicsBuffer? Lookup { get; private set; }
+        internal ISilkGraphicsBuffer? Vertices { get; private set; }
+        internal ISilkGraphicsBuffer? Indices { get; private set; }
+        internal uint LookupBinding { get; private set; }
+        internal uint IndexCount { get; private set; }
+        internal uint InstanceCount { get; private set; }
+
+        public override void SetVertexBuffer(ISilkGraphicsBuffer buffer) => Vertices = buffer;
+        public override void SetIndexBuffer(ISilkGraphicsBuffer buffer) => Indices = buffer;
+        public override void SetStorageBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer)
+        {
+            LookupBinding = binding;
+            Lookup = buffer;
+        }
+        public override void DrawIndexedInstanced(uint indexCount, uint instanceCount)
+        {
+            IndexCount = indexCount;
+            InstanceCount = instanceCount;
+        }
+    }
+
     private class TextureCommandList : ISilkGraphicsCommandList
     {
         internal List<byte[]> Uploads { get; } = [];
@@ -4839,10 +8082,10 @@ public sealed class SilkMaterialCommandTests
         public void SetScissor(SilkScissor scissor) =>
             throw new NotSupportedException();
 
-        public void SetVertexBuffer(ISilkGraphicsBuffer buffer) =>
+        public virtual void SetVertexBuffer(ISilkGraphicsBuffer buffer) =>
             throw new NotSupportedException();
 
-        public void SetIndexBuffer(ISilkGraphicsBuffer buffer) =>
+        public virtual void SetIndexBuffer(ISilkGraphicsBuffer buffer) =>
             throw new NotSupportedException();
 
         public void SetUniformBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer) =>
@@ -4857,7 +8100,7 @@ public sealed class SilkMaterialCommandTests
         public void DrawIndexed(uint indexCount) =>
             throw new NotSupportedException();
 
-        public void DrawIndexedInstanced(uint indexCount, uint instanceCount) =>
+        public virtual void DrawIndexedInstanced(uint indexCount, uint instanceCount) =>
             throw new NotSupportedException();
 
         public void EndRendering() =>
@@ -4866,7 +8109,7 @@ public sealed class SilkMaterialCommandTests
         public void SetComputePipeline(ISilkComputePipeline pipeline) =>
             throw new NotSupportedException();
 
-        public void SetStorageBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer) =>
+        public virtual void SetStorageBuffer(uint setIndex, uint binding, ISilkGraphicsBuffer buffer) =>
             throw new NotSupportedException();
 
         public void SetComputeUniformBuffer(

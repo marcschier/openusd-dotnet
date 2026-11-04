@@ -903,6 +903,182 @@
       }
     },
     {
+      "name": "shadowTransmission0",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 24,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 41,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "shadowTransmission1",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 25,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 42,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "shadowTransmission2",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 26,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 43,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
+      "name": "shadowTransmission3",
+      "bindings": {
+        "d3d": {
+          "registerClass": "t",
+          "register": 27,
+          "space": 0
+        },
+        "vulkan": {
+          "binding": 44,
+          "set": 0
+        }
+      },
+      "shape": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      },
+      "vulkanLayout": {
+        "kind": "texture2D",
+        "access": "read",
+        "arrayCount": null,
+        "elementType": {
+          "kind": "vector",
+          "elementCount": 4,
+          "elementType": {
+            "kind": "scalar",
+            "scalarType": "float32"
+          }
+        },
+        "elementStride": null,
+        "size": null
+      }
+    },
+    {
       "name": "environmentSampler",
       "bindings": {
         "d3d": {

@@ -18,9 +18,11 @@ internal sealed class SilkDecodedPtexFaces(
     internal SilkPtexDecodeInfo Info { get; } = info;
     internal SilkPtexFaceLayout[] Faces { get; private set; } = faces;
     internal byte[] Pixels { get; private set; } = pixels;
+    internal bool IsDisposed { get; private set; }
 
     public void Dispose()
     {
+        IsDisposed = true;
         Faces = [];
         Pixels = [];
         Interlocked.Exchange(ref _reservation, null)?.Dispose();

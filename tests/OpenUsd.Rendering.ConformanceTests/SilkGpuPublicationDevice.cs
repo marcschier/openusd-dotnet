@@ -11,12 +11,16 @@ internal class SilkGpuPublicationDevice(ISilkGraphicsDevice inner)
 {
     protected ISilkGraphicsDevice Inner => inner;
     internal int? RefuseBufferAfter { get; set; }
+    internal int? RefuseTextureAfter { get; set; }
     internal int CreatedBuffers { get; private set; }
     internal int CreatedUniformBuffers { get; private set; }
     internal List<SilkTextureDescriptor> CreatedTextures { get; } = [];
     internal bool RefuseSubmission { get; set; }
     internal int? RefuseSubmissionAfter { get; set; }
     internal int? FailSubmissionCleanupAfter { get; set; }
+    internal HashSet<SilkTextureDescriptor> FailTextureDisposals { get; } = [];
+    internal int FailingTextureDisposals { get; private set; }
+    internal int TextureDisposalAttempts { get; private set; }
     internal bool FailSamplerDisposal { get; set; }
     internal int FailingSamplers { get; private set; }
     internal CancellationTokenSource? CancelAfterSubmission { get; set; }
@@ -124,8 +128,26 @@ internal class SilkGpuPublicationDevice(ISilkGraphicsDevice inner)
 
     public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor)
     {
+        if (RefuseTextureAfter is { } count)
+        {
+            RefuseTextureAfter = count - 1;
+            if (count == 0)
+            {
+                throw new InvalidOperationException("Injected GPU texture preparation refusal.");
+            }
+        }
         CreatedTextures.Add(descriptor);
-        return inner.CreateTexture2D(descriptor);
+        ISilkGraphicsTexture texture = inner.CreateTexture2D(descriptor);
+        if (FailTextureDisposals.Remove(descriptor))
+        {
+            if (GpuTextureBudget is not null || texture is not SilkGraphicsTextureBase concrete)
+            {
+                texture.Dispose();
+                throw new InvalidOperationException("Texture disposal injection requires an unbudgeted native texture.");
+            }
+            concrete.OwnTextureReservation(new CleanupFailureTextureReservation(this, descriptor));
+        }
+        return texture;
     }
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor)
     {
@@ -210,6 +232,24 @@ internal class SilkGpuPublicationDevice(ISilkGraphicsDevice inner)
             _disposed = true;
             inner.Dispose();
             throw new InvalidOperationException("Injected publication cleanup failure.");
+        }
+    }
+
+    private sealed class CleanupFailureTextureReservation(
+        SilkGpuPublicationDevice owner, SilkTextureDescriptor descriptor) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            owner.TextureDisposalAttempts++;
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            owner.FailingTextureDisposals++;
+            throw new InvalidOperationException($"Injected texture cleanup failure: {descriptor.Usage}.");
         }
     }
 

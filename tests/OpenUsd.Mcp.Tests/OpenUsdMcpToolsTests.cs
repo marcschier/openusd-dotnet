@@ -674,8 +674,11 @@ public sealed class OpenUsdMcpToolsTests
                 .GetProperty("properties").EnumerateObject().Select(static property => property.Name))
                 .IsEquivalentTo(["request"]);
         }
-        await Assert.That(tools.Single(static tool => tool.Name == "render_sequence")
-            .ProtocolTool.InputSchema.GetRawText()).Contains("\"hdrColorFormat\"");
+        string sequenceSchema = tools.Single(static tool => tool.Name == "render_sequence")
+            .ProtocolTool.InputSchema.GetRawText();
+        await Assert.That(sequenceSchema).Contains("\"hdrColorFormat\"");
+        await Assert.That(sequenceSchema).Contains("Windows x64");
+        await Assert.That(sequenceSchema).Contains("Linux/macOS x64/ARM64");
         await Assert.That(tools.Single(static tool => tool.Name == "render_physics_sequence")
             .ProtocolTool.InputSchema.GetRawText()).Contains("\"expectedMetersPerUnit\"");
         await Assert.That(tools.Single(static tool => tool.Name == "open_scene")

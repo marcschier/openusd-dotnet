@@ -2,7 +2,7 @@
 (
     defaultPrim = "World"
     startTimeCode = 0
-    endTimeCode = 1
+    endTimeCode = 2
     upAxis = "Z"
 )
 
@@ -31,7 +31,7 @@ def Xform "World"
         int[] faceVertexCounts = [3, 3]
         int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
         int[] primvars:ptexFaceOffset (interpolation = "uniform")
-        int[] primvars:ptexFaceOffset.timeSamples = { 0: [2, 3], 1: [4, 1] }
+        int[] primvars:ptexFaceOffset.timeSamples = { 0: [2, 3], 1: [4, 1], 2: [2, 3] }
     }
     def Mesh "IndexedDefault" (
         prepend apiSchemas = ["MaterialBindingAPI"]
@@ -43,8 +43,8 @@ def Xform "World"
         int[] faceVertexCounts = [3, 3]
         int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
         int[] primvars:ptexFaceOffset (interpolation = "uniform")
-        int[] primvars:ptexFaceOffset.timeSamples = { 0: [7, 2], 1: [9, 4] }
-        int[] primvars:ptexFaceOffset:indices.timeSamples = { 0: [1, 0], 1: [0, 1] }
+        int[] primvars:ptexFaceOffset.timeSamples = { 0: [7, 2], 1: [9, 4], 2: [9, 4] }
+        int[] primvars:ptexFaceOffset:indices.timeSamples = { 0: [1, 0], 1: [0, 1], 2: [1, 0] }
     }
     def Mesh "MaterialOnly" (
         prepend apiSchemas = ["MaterialBindingAPI"]
@@ -57,8 +57,11 @@ def Xform "World"
         int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
         int[] primvars:ptexFaceOffset = [2, 3] (interpolation = "uniform")
     }
-    def Mesh "Grouped"
+    def Mesh "Grouped" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
     {
+        rel material:binding = </World/UnsupportedPtexMaterial>
         uniform token subdivisionScheme = "none"
         point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
         int[] faceVertexCounts = [3, 3]
@@ -119,6 +122,23 @@ def Xform "World"
         {
             uniform token info:id = "UsdUVTexture"
             asset inputs:file = @native-profile/ptex/tetrahedron.ptx@
+            float3 outputs:rgb
+        }
+    }
+    def Material "UnsupportedPtexMaterial"
+    {
+        token outputs:surface.connect = </World/UnsupportedPtexMaterial/Surface.outputs:surface>
+        def Shader "Surface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:emissiveColor.connect = </World/UnsupportedPtexMaterial/Texture.outputs:rgb>
+            token outputs:surface
+        }
+        def Shader "Texture"
+        {
+            uniform token info:id = "HwPtexTexture_1"
+            asset inputs:file = @native-profile/ptex/tetrahedron.ptx@
+            float inputs:frame = 1
             float3 outputs:rgb
         }
     }

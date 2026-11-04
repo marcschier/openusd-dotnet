@@ -261,7 +261,8 @@ HdSilkBuildLinearCurveLines(
     const HdBasisCurvesTopology& topology,
     const VtVec3fArray& points,
     const HdSilkCurveWidths& widths,
-    HdSilkMeshRecord* record)
+    HdSilkMeshRecord* record,
+    const std::vector<HdSilkMeshAttribute>& vertexAttributes)
 {
     const VtIntArray& counts = topology.GetCurveVertexCounts();
     const VtIntArray& indices = topology.GetCurveIndices();
@@ -279,6 +280,26 @@ HdSilkBuildLinearCurveLines(
             widths.values.size() < counts.size()))
     {
         return false;
+    }
+
+    const size_t attributeStart = record->attributes.size();
+    for (const HdSilkMeshAttribute& source : vertexAttributes)
+    {
+        if (source.componentCount < 1 || source.componentCount > 4 ||
+            source.interpolation != OPENUSD_SILK_INTERPOLATION_VERTEX ||
+            source.data.size() / source.componentCount != points.size() ||
+            source.data.size() % source.componentCount != 0 ||
+            !std::all_of(source.data.begin(), source.data.end(),
+                [](float value) { return std::isfinite(value); }))
+        {
+            return false;
+        }
+        HdSilkMeshAttribute emitted;
+        emitted.name = source.name;
+        emitted.semantic = source.semantic;
+        emitted.componentCount = source.componentCount;
+        emitted.interpolation = source.interpolation;
+        record->attributes.push_back(std::move(emitted));
     }
 
     size_t vertexCursor = 0;
@@ -378,6 +399,19 @@ HdSilkBuildLinearCurveLines(
             emittedWidths.push_back(
                 ResolveWidthAt(
                     widths, curveIndex, static_cast<size_t>(secondIndex)));
+            for (size_t attribute = 0; attribute < vertexAttributes.size(); ++attribute)
+            {
+                const HdSilkMeshAttribute& source = vertexAttributes[attribute];
+                auto& emitted = record->attributes[attributeStart + attribute].data;
+                for (int pointIndex : {firstIndex, secondIndex})
+                {
+                    for (size_t component = 0; component < source.componentCount; ++component)
+                    {
+                        emitted.push_back(source.data[
+                            static_cast<size_t>(pointIndex) * source.componentCount + component]);
+                    }
+                }
+            }
             record->triangleSubprims.push_back(static_cast<uint32_t>(segmentIndex));
             ++segmentIndex;
         }

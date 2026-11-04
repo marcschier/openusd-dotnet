@@ -376,12 +376,12 @@ public sealed class SilkPageAbiVersionContractTests
     }
 
     [Test]
-    public async Task DeclaredPageAndSessionAbiContractsAre34And7()
+    public async Task DeclaredPageAndSessionAbiContractsAre35And7()
     {
         uint page = SilkCommandParser.PageAbiVersion;
         uint session = RenderNativeAbiVersions.SilkSessionAbi;
         uint loader = OpenUsdSilkRuntime.RequiredSilkSessionAbiVersion;
-        await Assert.That(page).IsEqualTo(34u);
+        await Assert.That(page).IsEqualTo(35u);
         await Assert.That(session).IsEqualTo(7u);
         await Assert.That(loader).IsEqualTo(7u);
     }
@@ -399,6 +399,7 @@ public sealed class SilkPageAbiVersionContractTests
     [Arguments(31u)]
     [Arguments(32u)]
     [Arguments(33u)]
+    [Arguments(34u)]
     public async Task ParserRejectsAdjacentAndStalePageAbiVersions(uint rejectedVersion)
     {
         byte[] page = new byte[272];

@@ -30,9 +30,28 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     private readonly VulkanDescriptorIndexingFeatures _descriptorIndexingFeatures;
     private readonly VulkanDescriptorIndexedTextureTables? _materialDescriptorTables;
     private readonly bool _ownsNativeObjects;
+    private readonly SilkPendingSubmissionRetirements _pendingSubmissions = new();
     private long _deviceLossGeneration = 1;
     private int _nextOffscreenSubmitDeviceLossForTesting;
+    private int _nextIdleDeviceLossForTesting;
+    private int _nextReadbackFenceFailureForTesting;
     private bool _disposed;
+
+    internal Action<bool>? SubmissionOwnerCreationProbeForTesting { get; set; }
+
+    internal Action? ReadbackBufferCreationProbeForTesting { get; set; }
+
+    internal void InjectNextIdleDeviceLossForTesting() =>
+        Interlocked.Exchange(ref _nextIdleDeviceLossForTesting, 1);
+
+    internal void FailNextReadbackFenceForTesting() =>
+        Interlocked.Exchange(ref _nextReadbackFenceFailureForTesting, 1);
+
+    internal void InjectNextReadbackDeviceLossForTesting() =>
+        Interlocked.Exchange(ref _nextReadbackFenceFailureForTesting, 2);
+
+    internal VulkanSilkReadbackRetirement CreateReadbackRetirementForTesting() =>
+        new(this, _api, _device);
 
     /// <inheritdoc/>
     public ulong DeviceLossGeneration =>
@@ -69,10 +88,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     /// Arms the next offscreen queue submission to report a lost device.
     /// </summary>
     /// <remarks>
-    /// The injection substitutes the driver's result, not the handling: the
-    /// submission still runs the production path that records the loss and
-    /// raises the failure, which is what a conformance case has to exercise if
-    /// it is to prove anything about that path.
+    /// The injected failure runs the normal loss handling without submitting
+    /// work to the healthy test device.
     /// </remarks>
     internal void InjectNextOffscreenSubmitDeviceLossForTesting() =>
         Interlocked.Exchange(ref _nextOffscreenSubmitDeviceLossForTesting, 1);
@@ -418,12 +435,24 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     public void WaitIdle()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ThrowIfDeviceCallFailed(_api.DeviceWaitIdle(_device), "vkDeviceWaitIdle");
+        Result result = WaitIdleAndRetirePending(_pendingSubmissions.Snapshot());
+        ThrowIfFailed(result, "vkDeviceWaitIdle");
     }
 
     /// <inheritdoc/>
     public void Dispose()
     {
+        Result pendingResult = Result.Success;
+        SilkPendingSubmissionRetirement[] pending = _pendingSubmissions.Snapshot();
+        if (pending.Length != 0)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            pendingResult = WaitIdleAndRetirePending(pending);
+            if (pendingResult != Result.Success && pendingResult != Result.ErrorDeviceLost)
+            {
+                ThrowIfFailed(pendingResult, "vkDeviceWaitIdle");
+            }
+        }
         if (!TryBeginDispose())
         {
             return;
@@ -431,7 +460,13 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         bool idle = false;
         try
         {
-            WaitIdle();
+            Result result = pendingResult == Result.ErrorDeviceLost
+                ? pendingResult
+                : WaitIdleAndRetirePending(_pendingSubmissions.Snapshot());
+            if (result != Result.Success && result != Result.ErrorDeviceLost)
+            {
+                ThrowIfFailed(result, "vkDeviceWaitIdle");
+            }
             idle = true;
             _materialDescriptorTables?.Dispose();
             if (_ownsNativeObjects)
@@ -441,6 +476,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 _api.Dispose();
             }
             _disposed = true;
+            ThrowIfFailed(result, "vkDeviceWaitIdle");
         }
         finally
         {
@@ -459,7 +495,51 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
 
     internal void ReleaseDependentObject() => ReleaseDependentLifetime();
 
+    internal void RetainPendingSubmission(SilkPendingSubmissionRetirement submission) =>
+        _pendingSubmissions.Retain(submission);
+
+    internal void RemovePendingSubmission(SilkPendingSubmissionRetirement submission) =>
+        _pendingSubmissions.Remove(submission);
+
     internal IDisposable? ReservePickStaging(ulong bytes) => ReserveStagingAllocation(bytes);
+
+    private Result WaitIdleAndRetirePending(SilkPendingSubmissionRetirement[] pending)
+    {
+        Result result = _api.DeviceWaitIdle(_device);
+        if (Interlocked.Exchange(ref _nextIdleDeviceLossForTesting, 0) != 0 &&
+            result == Result.Success)
+        {
+            result = Result.ErrorDeviceLost;
+        }
+        if (result == Result.ErrorDeviceLost)
+        {
+            NotifyDeviceLost();
+            InvalidatePickDeviceAfterLoss();
+            InvalidateSelectionOutlineAfterLoss();
+        }
+        if (result == Result.Success || result == Result.ErrorDeviceLost)
+        {
+            try
+            {
+                SilkPendingSubmissionRetirements.Retire(pending);
+            }
+            catch (Exception cleanup) when (result == Result.ErrorDeviceLost)
+            {
+                try
+                {
+                    ThrowIfFailed(result, "vkDeviceWaitIdle");
+                }
+                catch (Exception failure)
+                {
+                    throw new AggregateException(
+                        "Vulkan device wait and pending submission retirement failed.",
+                        failure, cleanup);
+                }
+                throw;
+            }
+        }
+        return result;
+    }
 
     private static VulkanDescriptorIndexingFeatures QueryDescriptorIndexingFeatures(
         Vk api,

@@ -1075,6 +1075,130 @@
       }
     },
     {
+      "name": "mesh.volume.vertex",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "volumeVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "volumeVertexMain",
+            "-DVERTEX_ENTRY_POINT=volumeVertexMain",
+            "-DVERTEX_STAGE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "vs_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.volume.vertex.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.volume.vertex.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "volumeVertexMain",
+            "-DVERTEX_ENTRY_POINT=volumeVertexMain",
+            "-DVERTEX_STAGE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "vs_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.volume.vertex.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.volume.vertex.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/mesh.slang",
+            "-entry",
+            "volumeVertexMain",
+            "-DVERTEX_ENTRY_POINT=volumeVertexMain",
+            "-DVERTEX_STAGE=1",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=1",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "vs_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/mesh.volume.vertex.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.volume.vertex.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/mesh.volume.vertex.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/mesh.volume.vertex.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "mesh.volume.vertex"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/mesh.volume.vertex.spv"
+          ]
+        }
+      }
+    },
+    {
       "name": "mesh.volume.fragment",
       "source": "eng/shaders/sources/mesh.slang",
       "entryPoint": "volumeFragmentMain",
@@ -1678,6 +1802,750 @@
             "--target-env",
             "vulkan1.2",
             "eng/shaders/.cache/checked-build/shadow.mask.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shadow.transmission.first.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.first.fragment.slang",
+      "entryPoint": "shadowTransmissionFirstFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.first.fragment.slang",
+            "-entry",
+            "shadowTransmissionFirstFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.first.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.first.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.first.fragment.slang",
+            "-entry",
+            "shadowTransmissionFirstFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.first.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.first.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.first.fragment.slang",
+            "-entry",
+            "shadowTransmissionFirstFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.first.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.first.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.first.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/shadow.transmission.first.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "shadow.transmission.first.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/shadow.transmission.first.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shadow.transmission.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.fragment.slang",
+      "entryPoint": "shadowTransmissionFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.fragment.slang",
+            "-entry",
+            "shadowTransmissionFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.fragment.slang",
+            "-entry",
+            "shadowTransmissionFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.fragment.slang",
+            "-entry",
+            "shadowTransmissionFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/shadow.transmission.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "shadow.transmission.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/shadow.transmission.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shadow.transmission.probe.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.fragment.slang",
+      "entryPoint": "shadowTransmissionProbeFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.fragment.slang",
+            "-entry",
+            "shadowTransmissionProbeFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.probe.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.probe.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.fragment.slang",
+            "-entry",
+            "shadowTransmissionProbeFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.probe.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.probe.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.fragment.slang",
+            "-entry",
+            "shadowTransmissionProbeFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.probe.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.probe.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.probe.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/shadow.transmission.probe.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "shadow.transmission.probe.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/shadow.transmission.probe.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shadow.transmission.constant.first.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.constant.first.fragment.slang",
+      "entryPoint": "shadowTransmissionConstantFirstFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.constant.first.fragment.slang",
+            "-entry",
+            "shadowTransmissionConstantFirstFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.first.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.first.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.constant.first.fragment.slang",
+            "-entry",
+            "shadowTransmissionConstantFirstFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.first.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.first.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.constant.first.fragment.slang",
+            "-entry",
+            "shadowTransmissionConstantFirstFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.first.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.first.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.first.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.first.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "shadow.transmission.constant.first.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.first.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shadow.transmission.constant.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+      "entryPoint": "shadowTransmissionConstantFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+            "-entry",
+            "shadowTransmissionConstantFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+            "-entry",
+            "shadowTransmissionConstantFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+            "-entry",
+            "shadowTransmissionConstantFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "shadow.transmission.constant.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "shadow.transmission.constant.probe.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+      "entryPoint": "shadowTransmissionConstantProbeFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+            "-entry",
+            "shadowTransmissionConstantProbeFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.probe.fragment.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.probe.fragment.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+            "-entry",
+            "shadowTransmissionConstantProbeFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.probe.fragment.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.probe.fragment.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+            "-entry",
+            "shadowTransmissionConstantProbeFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.probe.fragment.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.probe.fragment.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/shadow.transmission.constant.probe.fragment.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.probe.fragment.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "shadow.transmission.constant.probe.fragment"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/shadow.transmission.constant.probe.fragment.spv"
           ]
         }
       }
@@ -3448,6 +4316,372 @@
             "--target-env",
             "vulkan1.2",
             "eng/shaders/.cache/checked-build/display.transform.fragment.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "volume.camera.vertex",
+      "source": "eng/shaders/sources/volume.camera.vertex.slang",
+      "entryPoint": "volumeCameraVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/volume.camera.vertex.slang",
+            "-entry",
+            "volumeCameraVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "vs_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/volume.camera.vertex.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.vertex.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/volume.camera.vertex.slang",
+            "-entry",
+            "volumeCameraVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "vs_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/volume.camera.vertex.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.vertex.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/volume.camera.vertex.slang",
+            "-entry",
+            "volumeCameraVertexMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "vs_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/volume.camera.vertex.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.vertex.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.vertex.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/volume.camera.vertex.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "volume.camera.vertex"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/volume.camera.vertex.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "volume.camera.fragment.uniform",
+      "source": "eng/shaders/sources/volume.camera.fragment.uniform.slang",
+      "entryPoint": "volumeCameraUniformFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/volume.camera.fragment.uniform.slang",
+            "-entry",
+            "volumeCameraUniformFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.uniform.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.fragment.uniform.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/volume.camera.fragment.uniform.slang",
+            "-entry",
+            "volumeCameraUniformFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.uniform.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.fragment.uniform.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/volume.camera.fragment.uniform.slang",
+            "-entry",
+            "volumeCameraUniformFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.uniform.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.fragment.uniform.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.fragment.uniform.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.uniform.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "volume.camera.fragment.uniform"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.uniform.spv"
+          ]
+        }
+      }
+    },
+    {
+      "name": "volume.camera.fragment.atlas",
+      "source": "eng/shaders/sources/volume.camera.fragment.atlas.slang",
+      "entryPoint": "volumeCameraAtlasFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "commands": {
+        "dxil": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/volume.camera.fragment.atlas.slang",
+            "-entry",
+            "volumeCameraAtlasFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=1",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "dxil",
+            "-profile",
+            "ps_6_0",
+            "-o",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.atlas.dxil",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.fragment.atlas.dxil.json"
+          ]
+        },
+        "spirv": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/volume.camera.fragment.atlas.slang",
+            "-entry",
+            "volumeCameraAtlasFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=1",
+            "-DOPENUSD_TARGET_METAL=0",
+            "-target",
+            "spirv",
+            "-profile",
+            "ps_6_0+spirv_1_5",
+            "-o",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.atlas.spv",
+            "-reflection-json",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.fragment.atlas.spirv.json"
+          ]
+        },
+        "metal": {
+          "executable": "slangc",
+          "arguments": [
+            "eng/shaders/sources/volume.camera.fragment.atlas.slang",
+            "-entry",
+            "volumeCameraAtlasFragmentMain",
+            "-matrix-layout-row-major",
+            "-warnings-as-errors",
+            "all",
+            "-g0",
+            "-line-directive-mode",
+            "none",
+            "-source-embed-style",
+            "none",
+            "-O2",
+            "-fp-mode",
+            "precise",
+            "-DVOLUME_DENSITY_TEXTURES=0",
+            "-DOPENUSD_TARGET_DXIL=0",
+            "-DOPENUSD_TARGET_SPIRV=0",
+            "-DOPENUSD_TARGET_METAL=1",
+            "-target",
+            "metal",
+            "-profile",
+            "ps_6_0+METAL_2_4",
+            "-o",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.atlas.metal"
+          ]
+        },
+        "reflection": {
+          "executable": "python",
+          "arguments": [
+            "eng/shaders/scripts/normalize-reflection.py",
+            "--dxil-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.fragment.atlas.dxil.json",
+            "--spirv-input",
+            "eng/shaders/.cache/checked-build/.raw-reflection/volume.camera.fragment.atlas.spirv.json",
+            "--output",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.atlas.reflection.json",
+            "--manifest",
+            "eng/shaders/shader-manifest.json",
+            "--program",
+            "volume.camera.fragment.atlas"
+          ]
+        },
+        "spirvValidation": {
+          "executable": "spirv-val",
+          "arguments": [
+            "--target-env",
+            "vulkan1.2",
+            "eng/shaders/.cache/checked-build/volume.camera.fragment.atlas.spv"
           ]
         }
       }

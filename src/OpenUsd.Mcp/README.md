@@ -22,6 +22,17 @@ Repository builds should use `eng/run-mcp.ps1`, which verifies
 those variables. `eng/publish-mcp-bundle.ps1` remains the RID-specific,
 self-contained distribution alternative.
 
+On Windows, hdSilk's D3D12 backend also needs `spirv-cross` and `dxc.exe` with
+its matching runtime libraries to compile generated MaterialX shaders. The
+`OpenUsd.Rendering.Silk` package brings `spirv-cross` as a NuGet dependency, but
+this tool package strips native assets, so neither file ships with the tool.
+Put `spirv-cross.dll` on the native loader path and set `OPENUSD_DXC_PATH` to
+the `dxc.exe` file, or put `dxc.exe` in the application directory or on `PATH`.
+If compilation fails, the renderer draws a checked mesh shader instead and adds
+an `OPENUSD_SILK_MATERIAL_SHADER_COMPILATION_FAILED` warning to the capture
+diagnostics. Restart the tool after installing the dependencies so it can queue
+the failed shader again.
+
 `render_physics_sequence` additionally requires the matching CPU `openusd_physx` shim on the
 native loader path (`native/install/shim/<rid>-physx/bin` on repository Windows builds, `lib`
 on Linux). No macOS physics runtime is supplied. The command records fresh nonlooping CPU
@@ -50,6 +61,8 @@ Common server configuration:
 | `OPENUSD_PLUGIN_PATH` | Verified OpenUSD and hdSilk plug-in root. |
 | `OPENUSD_MCP_VIEWER_ROOT` | Optional root containing a compatible Viewer bundle. |
 | `OPENUSD_MCP_VIEWER_PATH` | Optional path to the Viewer executable. |
+| `OPENUSD_DXC_PATH` | Optional path to `dxc.exe` for generated D3D12 MaterialX shaders. |
+| `OPENUSD_SILK_SHADER_CACHE_DIR` | Optional absolute directory for the default shader cache and D3D12 compiler scratch. |
 | `OPENUSD_SILK_MESH_RESERVATION_BYTES` | Optional logical coarse-mesh reservation ceiling; requires the page ceiling. |
 | `OPENUSD_SILK_MAX_PAGE_BYTES` | Optional positive `Int32` serialized-page byte ceiling; requires the mesh ceiling. |
 | `OPENUSD_SILK_GPU_BUFFER_BYTES` | Optional shared logical RHI buffer payload ceiling; independent of native limits. |

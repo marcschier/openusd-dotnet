@@ -9,13 +9,17 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     // Keep the original declarations unless every use of the removed builtin is accounted for.
     private static void RemoveUnusedDrawParameters(
         ref byte[] code,
-        uint baseInstanceVariable,
-        uint baseInstanceValue)
+        uint baseVariable,
+        uint baseValue,
+        uint baseBuiltin,
+        uint permittedOtherVariable = 0,
+        uint permittedOtherBuiltin = 0)
     {
         const ushort opName = 5;
         const ushort opEntryPoint = 15;
         const ushort opCapability = 17;
         const ushort opTypePointer = 32;
+        const ushort opConstant = 43;
         const ushort opVariable = 59;
         const ushort opLoad = 61;
         const ushort opDecorate = 71;
@@ -73,12 +77,12 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     for (int index = interfaceStart; index < offset + length; index++)
                     {
                         uint value = ReadWord(code, index);
-                        if (value == baseInstanceValue ||
-                            (value == baseInstanceVariable && interfaceWord >= 0))
+                        if (value == baseValue ||
+                            (value == baseVariable && interfaceWord >= 0))
                         {
                             return;
                         }
-                        if (value == baseInstanceVariable)
+                        if (value == baseVariable)
                         {
                             interfaceWord = index;
                         }
@@ -94,7 +98,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     {
                         return;
                     }
-                    if (ReadWord(code, offset + 1) == capabilityDrawParameters)
+                    if (ReadWord(code, offset + 1) == capabilityDrawParameters &&
+                        permittedOtherVariable == 0)
                     {
                         removals.Add((offset, length));
                     }
@@ -109,13 +114,22 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     }
                     break;
 
+                case opConstant:
+                    if (length < 4 ||
+                        isTracked(ReadWord(code, offset + 1)) ||
+                        isTracked(ReadWord(code, offset + 2)))
+                    {
+                        return;
+                    }
+                    break;
+
                 case opVariable:
                     if (length < 4 || isTracked(ReadWord(code, offset + 1)))
                     {
                         return;
                     }
                     uint variable = ReadWord(code, offset + 2);
-                    if (variable == baseInstanceVariable)
+                    if (variable == baseVariable)
                     {
                         if (foundVariable || length != 4)
                         {
@@ -138,7 +152,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     }
                     uint result = ReadWord(code, offset + 2);
                     uint pointer = ReadWord(code, offset + 3);
-                    if (pointer == baseInstanceVariable && result == baseInstanceValue)
+                    if (pointer == baseVariable && result == baseValue)
                     {
                         if (foundLoad || length != 4)
                         {
@@ -164,16 +178,23 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     if (isTracked(target))
                     {
                         if (decoration == decorationBuiltIn &&
-                            (length != 4 || target != baseInstanceVariable ||
-                                ReadWord(code, offset + 3) != builtInBaseInstance))
+                            (length != 4 || target != baseVariable ||
+                                ReadWord(code, offset + 3) != baseBuiltin))
                         {
                             return;
                         }
                         removals.Add((offset, length));
                     }
-                    else if (usesDrawBuiltin(code, offset, length, 2) ||
-                        (!hasLiteralDecorationOperands(decoration) &&
-                            containsTrackedWords(code, offset + 2, offset + length)))
+                    else if (usesDrawBuiltin(code, offset, length, 2))
+                    {
+                        if (target != permittedOtherVariable || length != 4 ||
+                            ReadWord(code, offset + 3) != permittedOtherBuiltin)
+                        {
+                            return;
+                        }
+                    }
+                    else if (!hasLiteralDecorationOperands(decoration) &&
+                        containsTrackedWords(code, offset + 3, offset + length))
                     {
                         return;
                     }
@@ -187,7 +208,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     uint memberDecoration = ReadWord(code, offset + 3);
                     if (usesDrawBuiltin(code, offset, length, 3) ||
                         (!hasLiteralDecorationOperands(memberDecoration) &&
-                            containsTrackedWords(code, offset + 3, offset + length)))
+                            containsTrackedWords(code, offset + 4, offset + length)))
                     {
                         return;
                     }
@@ -262,7 +283,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
         code = rewritten;
 
-        bool isTracked(uint value) => value == baseInstanceVariable || value == baseInstanceValue;
+        bool isTracked(uint value) => value == baseVariable || value == baseValue;
 
         bool containsTrackedWords(ReadOnlySpan<byte> bytes, int first, int end)
         {
@@ -283,7 +304,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 builtInBaseVertex or builtInBaseInstance or builtInDrawIndex;
 
         static bool hasLiteralDecorationOperands(uint decoration) =>
-            decoration is 6 or decorationBuiltIn or 33 or 35;
+            decoration is 6 or 7 or decorationBuiltIn or 33 or 35;
 
         static bool containsStringTerminator(uint word) =>
             (word & 0x000000ff) == 0 ||

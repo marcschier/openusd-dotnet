@@ -1477,6 +1477,523 @@ public sealed class SilkTextureResidencyTests
     }
 
     [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task AdmittedFrameResolvesPhysicsOnceAndRestoresCountersOnRefusal(bool deformation, bool authoredPage)
+    {
+        using var device = new RenderPipelineDevice();
+        new SilkGpuBufferBudget(1024 * 1024).ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.SpirV);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(4, 4));
+        using var initial = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            Concat(CreateFrameCommand(4, 4), CreateMeshUpsert("/World/Mesh", string.Empty, 7)), 2);
+        renderer.ApplyPage(initial, SilkMeshRenderOptions.Default);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var unbound = new PhysicsRenderObjectId(102, PhysicsRenderObjectKind.RigidBody);
+        var bindings = new PhysicsRenderBindingTable(1);
+        _ = bindings.TryBind(id, "/World/Mesh");
+        var overrides = new SilkPhysicsTransformOverrides(2);
+        overrides.Stage(bindings, new PhysicsRenderOverrideView(new PhysicsRenderTransformOverride[]
+        {
+            new(id, new UsdVec3d(0.25, 0, 0), PhysicsRenderOrientation.Identity, false),
+            new(unbound, default, PhysicsRenderOrientation.Identity, false),
+        }, 19));
+        renderer.PhysicsOverrides = overrides;
+        if (deformation)
+        {
+            var deformations = new SilkPhysicsDeformations();
+            _ = deformations.Stage(bindings, PhysicsRenderDeformationView.Empty);
+            renderer.PhysicsDeformations = deformations;
+        }
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [], 0);
+        void Render()
+        {
+            if (authoredPage)
+            {
+                _ = renderer.ApplyAndRender(page, color, depth);
+            }
+            else
+            {
+                _ = renderer.Render(color, depth);
+            }
+        }
+        device.RefuseSubmission = true;
+        await Assert.That(() => Render()).Throws<InvalidOperationException>();
+        await Assert.That(overrides.Revision).IsEqualTo(0UL);
+        await Assert.That(overrides.SourceRevision).IsEqualTo(0UL);
+        await Assert.That(overrides.UnresolvedOverrides).IsEqualTo(0L);
+        await Assert.That(overrides.Count).IsEqualTo(0);
+        device.RefuseSubmission = false;
+        Render();
+        await Assert.That(overrides.Revision).IsEqualTo(1UL);
+        await Assert.That(overrides.SourceRevision).IsEqualTo(19UL);
+        await Assert.That(overrides.UnresolvedOverrides).IsEqualTo(1L);
+        await Assert.That(overrides.GetTransform(7)[12]).IsEqualTo(0.25);
+        Render();
+        await Assert.That(overrides.Revision).IsEqualTo(2UL);
+        await Assert.That(overrides.UnresolvedOverrides).IsEqualTo(2L);
+    }
+
+    [Test]
+    [Arguments(float.NaN)]
+    [Arguments(float.PositiveInfinity)]
+    [Arguments(float.NegativeInfinity)]
+    public async Task CameraFieldCopyRejectsNonfiniteR32AndAcceptsCorrectedRetry(float sample)
+    {
+        string asset = Path.Combine(Path.GetTempPath(), $"camera-density-{Guid.NewGuid():N}.raw");
+        try
+        {
+            byte[] bytes = new byte[2 * sizeof(float)];
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(sizeof(float)), sample);
+            await File.WriteAllBytesAsync(asset, bytes);
+            SilkMaterialData material = CreateOneTextureMaterial(
+                "/density", SilkMaterialParameter.VolumeDensity, asset, uvPrimvar: "2,1,1");
+            SilkMaterialTexture texture = material.GetTexture(SilkMaterialParameter.VolumeDensity) ??
+                throw new InvalidOperationException("The density fixture requires a texture.");
+            await Assert.That(() => SilkSceneGpuResources.CopyVolumeCameraField(
+                    texture, new SilkVolumeTextureExtent(2, 1, 1)))
+                .Throws<InvalidDataException>().WithMessageContaining("voxel 1");
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(sizeof(float)), 200);
+            await File.WriteAllBytesAsync(asset, bytes);
+            byte[] copied = SilkSceneGpuResources.CopyVolumeCameraField(
+                texture, new SilkVolumeTextureExtent(2, 1, 1));
+            await Assert.That(copied.AsSpan().SequenceEqual(bytes)).IsTrue();
+        }
+        finally
+        {
+            File.Delete(asset);
+        }
+    }
+
+    [Test]
+    public async Task CameraDensityProductRefusalRechecksPublishedAtlasAndAllowsCorrectedRetry()
+    {
+        string asset = Path.Combine(Path.GetTempPath(), $"camera-product-{Guid.NewGuid():N}.raw");
+        try
+        {
+            byte[] bytes = new byte[sizeof(float)];
+            BinaryPrimitives.WriteSingleLittleEndian(bytes, 1e30f);
+            await File.WriteAllBytesAsync(asset, bytes);
+            using var device = new CameraAdmissionDevice { AllowAtlasAllocations = true };
+            using var scene = new SilkSceneState();
+            var cpu = new SilkCpuTextureBudget(1024);
+            using var resources = new SilkSceneGpuResources(device, SilkTextureResidencyOptions.Default, cpu);
+            using var pass = new SilkVolumeCameraPass(device, SilkShaderBinaryFormat.SpirV, resources);
+            const string materialPath = "/density";
+            byte[] command = CreateMaterialUpsert(materialPath, SilkSurfaceKind.VolumeDensity,
+                [new(SilkMaterialParameter.VolumeDensity, asset, "1,1,1",
+                    ComponentCount: 1, Channel: SilkTextureChannel.R)],
+                [(SilkMaterialParameter.VolumeDensity, [1f])]);
+            byte[] frame = CreateFrameCommand(4, 4);
+            BinaryPrimitives.WriteDoubleLittleEndian(frame.AsSpan(144 + (10 * sizeof(double))), -1);
+            scene.Apply(Concat(frame, command, CreateMeshUpsert("/volume", materialPath, primId: 7)), 3, 1);
+            SilkMeshData mesh = scene.Meshes.Values.Single();
+            SilkMaterialData material = CopyMaterial(command);
+            float[] scalar = (float[])material.Scalars.Single(
+                static value => value.Parameter == SilkMaterialParameter.VolumeDensity).Values;
+            using SilkVolumeCameraPass.Prepared initial =
+                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+            SilkVolumeCameraPass.ResourceSet published = initial.ResourceData ??
+                throw new InvalidOperationException("The initial atlas must be present.");
+            initial.Commit();
+            await Assert.That(published.AtlasDensitySamples.Single().MaximumMagnitude).IsEqualTo(1e30f);
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(12ul);
+            int targets = device.CreatedTextureDescriptors.Count;
+            scalar[0] = 1e10f;
+            var exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            {
+                using SilkVolumeCameraPass.Prepared refused =
+                    pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+                return Task.CompletedTask;
+            }) ?? throw new InvalidOperationException("Expected a density product admission exception.");
+            await Assert.That(exception.Message).Contains("density-scale arithmetic");
+            await Assert.That(published.IsDisposed).IsFalse();
+            await Assert.That(device.VolumeAllocations).IsEqualTo(1);
+            await Assert.That(device.CreatedTextureDescriptors.Count).IsEqualTo(targets);
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(12ul);
+            scalar[0] = 1e-40f;
+            await Assert.That(() =>
+            {
+                using SilkVolumeCameraPass.Prepared refused =
+                    pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+            }).Throws<InvalidDataException>().WithMessageContaining("too small");
+            await Assert.That(published.IsDisposed).IsFalse();
+            await Assert.That(device.VolumeAllocations).IsEqualTo(1);
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(12ul);
+            published.ParameterBuffer.Write(new byte[32]);
+            scalar[0] = 1;
+            using SilkVolumeCameraPass.Prepared retry =
+                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+            SilkVolumeCameraPass.ResourceSet corrected = retry.ResourceData ??
+                throw new InvalidOperationException("The corrected atlas must be present.");
+            retry.Commit();
+            await Assert.That(ReferenceEquals(corrected.AtlasTexture, published.AtlasTexture)).IsTrue();
+            await Assert.That(corrected.AtlasDensitySamples.Single().MaximumMagnitude).IsEqualTo(1e30f);
+            await Assert.That(published.IsDisposed).IsTrue();
+            await Assert.That(corrected.IsDisposed).IsFalse();
+            await Assert.That(device.VolumeAllocations).IsEqualTo(1);
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(12ul);
+            pass.Dispose();
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+        finally
+        {
+            File.Delete(asset);
+        }
+    }
+
+    [Test]
+    public async Task CameraAtlasMetadataReservationRefusalReleasesGpuCreditAndAllowsRetry()
+    {
+        using var device = new CameraAdmissionDevice();
+        var cpu = new SilkCpuTextureBudget(12);
+        using var resources = new SilkSceneGpuResources(
+            device, new SilkTextureResidencyOptions(maxGpuBytes: sizeof(float)), cpu);
+
+        await Assert.That(() =>
+        {
+            using IDisposable refused = resources.ReserveVolumeCameraAtlas(1, 1, 1, 2);
+        }).Throws<SilkCpuTextureBudgetExceededException>();
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+
+        using (IDisposable reservation = resources.ReserveVolumeCameraAtlas(1, 1, 1, 1))
+        {
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(12ul);
+            await Assert.That(() =>
+            {
+                using IDisposable refused = resources.ReserveVolumeCameraAtlas(1, 1, 1, 1);
+            }).Throws<SilkGpuTextureBudgetExceededException>();
+        }
+
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
+        using IDisposable retry = resources.ReserveVolumeCameraAtlas(1, 1, 1, 1);
+        await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(12ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CameraDensityProductRefusesNewUniformAndSampledFieldsBeforeAllocation(bool sampled)
+    {
+        string asset = Path.Combine(Path.GetTempPath(), $"camera-product-new-{Guid.NewGuid():N}.raw");
+        try
+        {
+            byte[] pixels = new byte[sizeof(float)];
+            BinaryPrimitives.WriteSingleLittleEndian(pixels, 1e30f);
+            await File.WriteAllBytesAsync(asset, pixels);
+            using var device = new CameraAdmissionDevice { AllowAtlasAllocations = true };
+            using var scene = new SilkSceneState();
+            using var resources = new SilkSceneGpuResources(device);
+            using var pass = new SilkVolumeCameraPass(device, SilkShaderBinaryFormat.SpirV, resources);
+            const string materialPath = "/density";
+            byte[] initialMaterial = CreateMaterialUpsert(materialPath, SilkSurfaceKind.VolumeDensity, [],
+                [(SilkMaterialParameter.VolumeDensity, [1f])]);
+            byte[] frame = CreateFrameCommand(4, 4);
+            BinaryPrimitives.WriteDoubleLittleEndian(frame.AsSpan(144 + (10 * sizeof(double))), -1);
+            scene.Apply(Concat(frame, initialMaterial, CreateMeshUpsert("/volume", materialPath, primId: 7)), 3, 1);
+            SilkMeshData mesh = scene.Meshes.Values.Single();
+            SilkMaterialData initial = CopyMaterial(initialMaterial);
+            using SilkVolumeCameraPass.Prepared first =
+                pass.Prepare(scene, null, 4, 4, false, [(mesh, initial)]);
+            SilkVolumeCameraPass.ResourceSet published = first.ResourceData ??
+                throw new InvalidOperationException("The initial camera pass must be present.");
+            first.Commit();
+            int targets = device.CreatedTextureDescriptors.Count;
+            TextureSpec[] textures = sampled
+                ? [new(SilkMaterialParameter.VolumeDensity, asset, "1,1,1",
+                    ComponentCount: 1, Channel: SilkTextureChannel.R)]
+                : [];
+            SilkMaterialData material = CopyMaterial(CreateMaterialUpsert(
+                materialPath, SilkSurfaceKind.VolumeDensity, textures,
+                [(SilkMaterialParameter.VolumeDensity, [sampled ? 1e10f : float.MaxValue])]));
+            float[] scalar = (float[])material.Scalars.Single(
+                static value => value.Parameter == SilkMaterialParameter.VolumeDensity).Values;
+            await Assert.That(() =>
+            {
+                using SilkVolumeCameraPass.Prepared refused =
+                    pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+            })
+                .Throws<InvalidDataException>().WithMessageContaining("density-scale arithmetic");
+            await Assert.That(published.IsDisposed).IsFalse();
+            await Assert.That(device.VolumeAllocations).IsEqualTo(0);
+            await Assert.That(device.CreatedTextureDescriptors.Count).IsEqualTo(targets);
+            published.ParameterBuffer.Write(new byte[32]);
+            scalar[0] = 1;
+            using SilkVolumeCameraPass.Prepared retry =
+                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+            retry.Commit();
+            await Assert.That(published.IsDisposed).IsTrue();
+            await Assert.That(device.VolumeAllocations).IsEqualTo(sampled ? 1 : 0);
+        }
+        finally
+        {
+            File.Delete(asset);
+        }
+    }
+
+    [Test]
+    [Arguments(float.NaN)]
+    [Arguments(float.PositiveInfinity)]
+    [Arguments(float.NegativeInfinity)]
+    public async Task CameraNonfiniteTintRefusalPreservesPublishedResourcesAndAllowsRetry(float invalid)
+    {
+        using var device = new CameraAdmissionDevice();
+        using var scene = new SilkSceneState();
+        using var resources = new SilkSceneGpuResources(device);
+        using var pass = new SilkVolumeCameraPass(device, SilkShaderBinaryFormat.SpirV, resources);
+        const string materialPath = "/density";
+        byte[] command = CreateMaterialUpsert(materialPath, SilkSurfaceKind.VolumeDensity, [],
+            [(SilkMaterialParameter.VolumeDensity, [1f]),
+                (SilkMaterialParameter.DiffuseColor, [1f, 0f, 0f]),
+                (SilkMaterialParameter.Opacity, [1f])]);
+        byte[] frame = CreateFrameCommand(4, 4);
+        BinaryPrimitives.WriteDoubleLittleEndian(frame.AsSpan(144 + (10 * sizeof(double))), -1);
+        scene.Apply(Concat(frame, command, CreateMeshUpsert("/volume", materialPath, primId: 7)), 3, 1);
+        SilkMeshData mesh = scene.Meshes.Values.Single();
+        SilkMaterialData material = CopyMaterial(command);
+        using SilkVolumeCameraPass.Prepared initial =
+            pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+        SilkVolumeCameraPass.ResourceSet published = initial.ResourceData ??
+            throw new InvalidOperationException("The initial camera pass must be present.");
+        initial.Commit();
+        int targets = device.CreatedTextureDescriptors.Count;
+        int commandLists = device.CommandListsCreated;
+        foreach (SilkMaterialParameter parameter in new[]
+        {
+            SilkMaterialParameter.DiffuseColor,
+            SilkMaterialParameter.Opacity
+        })
+        {
+            float[] values = (float[])material.Scalars.Single(value => value.Parameter == parameter).Values;
+            for (int component = 0; component < values.Length; component++)
+            {
+                float previous = values[component];
+                values[component] = invalid;
+                var exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
+                {
+                    using SilkVolumeCameraPass.Prepared refused =
+                        pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+                    return Task.CompletedTask;
+                }) ?? throw new InvalidOperationException("Expected an invalid volume material exception.");
+                await Assert.That(exception.Message).Contains($"{parameter} component {component}");
+                await Assert.That(exception.Message).Contains(materialPath);
+                await Assert.That(published.IsDisposed).IsFalse();
+                await Assert.That(device.CreatedTextureDescriptors.Count).IsEqualTo(targets);
+                await Assert.That(device.CommandListsCreated).IsEqualTo(commandLists);
+                published.ParameterBuffer.Write(new byte[32]);
+                values[component] = previous;
+            }
+        }
+        using SilkVolumeCameraPass.Prepared retry =
+            pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+        SilkVolumeCameraPass.ResourceSet corrected = retry.ResourceData ??
+            throw new InvalidOperationException("The corrected camera pass must be present.");
+        retry.Commit();
+        await Assert.That(published.IsDisposed).IsTrue();
+        await Assert.That(corrected.IsDisposed).IsFalse();
+        await Assert.That(device.VolumeAllocations).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments(float.NaN)]
+    [Arguments(float.PositiveInfinity)]
+    [Arguments(float.NegativeInfinity)]
+    public async Task RendererRejectsNonfiniteVolumeOpacityBeforeFilteringAndRetriesWithZeroOpacity(float invalid)
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.SpirV);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(4, 4));
+        const string materialPath = "/density";
+        byte[] frame = CreateFrameCommand(4, 4);
+        BinaryPrimitives.WriteDoubleLittleEndian(frame.AsSpan(144 + (10 * sizeof(double))), -1);
+        byte[] material = CreateMaterialUpsert(materialPath, SilkSurfaceKind.PreviewSurface, []);
+        byte[] mesh = CreateMeshUpsert("/volume", materialPath, primId: 7);
+        using var initial = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            Concat(frame, material, mesh), 3);
+        _ = renderer.ApplyAndRender(initial, color, depth);
+        int targets = device.CreatedTextureDescriptors.Count;
+        int draws = device.DrawDepths.Count;
+        byte[] invalidMaterial = CreateMaterialUpsert(materialPath, SilkSurfaceKind.VolumeDensity, [],
+            [(SilkMaterialParameter.VolumeDensity, [1f]),
+                (SilkMaterialParameter.DiffuseColor, [1f, 0f, 0f]),
+                (SilkMaterialParameter.Opacity, [invalid])]);
+        using var refused = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, invalidMaterial, 1);
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
+        {
+            _ = renderer.ApplyAndRender(refused, color, depth);
+            return Task.CompletedTask;
+        }) ?? throw new InvalidOperationException("Expected an invalid volume material exception.");
+        await Assert.That(exception.Message).Contains("Opacity component 0");
+        await Assert.That(exception.Message).Contains(materialPath);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
+        await Assert.That(device.DrawDepths.Count).IsEqualTo(draws);
+        await Assert.That(device.CreatedTextureDescriptors.Count).IsEqualTo(targets);
+        _ = renderer.Render(color, depth);
+        await Assert.That(device.DrawDepths.Count).IsGreaterThan(draws);
+        byte[] correctedMaterial = CreateMaterialUpsert(materialPath, SilkSurfaceKind.VolumeDensity, [],
+            [(SilkMaterialParameter.VolumeDensity, [1f]),
+                (SilkMaterialParameter.Opacity, [0f])]);
+        using var corrected = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, correctedMaterial, 1);
+        _ = renderer.ApplyAndRender(corrected, color, depth);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(2UL);
+        _ = renderer.Render(color, depth);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(2UL);
+    }
+
+    [Test]
+    [Arguments(float.NaN)]
+    [Arguments(float.PositiveInfinity)]
+    [Arguments(float.NegativeInfinity)]
+    public async Task RendererRejectsNonfiniteVolumeTintBeforeZeroOpacityFiltering(float invalid)
+    {
+        using var device = new RenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.SpirV);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(4, 4));
+        const string materialPath = "/density";
+        byte[] frame = CreateFrameCommand(4, 4);
+        BinaryPrimitives.WriteDoubleLittleEndian(frame.AsSpan(144 + (10 * sizeof(double))), -1);
+        byte[] material = CreateMaterialUpsert(materialPath, SilkSurfaceKind.PreviewSurface, []);
+        byte[] mesh = CreateMeshUpsert("/volume", materialPath, primId: 7);
+        using var initial = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            Concat(frame, material, mesh), 3);
+        _ = renderer.ApplyAndRender(initial, color, depth);
+        int targets = device.CreatedTextureDescriptors.Count;
+        int draws = device.DrawDepths.Count;
+        for (int component = 0; component < 3; component++)
+        {
+            float[] tint = [1f, 0f, 0f];
+            tint[component] = invalid;
+            byte[] invalidMaterial = CreateMaterialUpsert(materialPath, SilkSurfaceKind.VolumeDensity, [],
+                [(SilkMaterialParameter.VolumeDensity, [1f]),
+                    (SilkMaterialParameter.DiffuseColor, tint),
+                    (SilkMaterialParameter.Opacity, [0f])]);
+            using var refused = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, invalidMaterial, 1);
+            var exception = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            {
+                _ = renderer.ApplyAndRender(refused, color, depth);
+                return Task.CompletedTask;
+            }) ?? throw new InvalidOperationException("Expected an invalid volume material exception.");
+            await Assert.That(exception.Message).Contains($"DiffuseColor component {component}");
+            await Assert.That(exception.Message).Contains(materialPath);
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
+            await Assert.That(device.DrawDepths.Count).IsEqualTo(draws);
+            await Assert.That(device.CreatedTextureDescriptors.Count).IsEqualTo(targets);
+        }
+        _ = renderer.Render(color, depth);
+        await Assert.That(device.DrawDepths.Count).IsGreaterThan(draws);
+        byte[] correctedMaterial = CreateMaterialUpsert(materialPath, SilkSurfaceKind.VolumeDensity, [],
+            [(SilkMaterialParameter.VolumeDensity, [1f]),
+                (SilkMaterialParameter.DiffuseColor, [1f, 0f, 0f]),
+                (SilkMaterialParameter.Opacity, [0f])]);
+        using var corrected = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, correctedMaterial, 1);
+        _ = renderer.ApplyAndRender(corrected, color, depth);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(2UL);
+    }
+
+    [Test]
+    public async Task CameraWorkloadRefusalPrecedesAtlasAndTargetAllocationAndPreservesPublishedResources()
+    {
+        string asset = Path.Combine(Path.GetTempPath(), $"volume-camera-workload-{Guid.NewGuid():N}.raw");
+        try
+        {
+            await File.WriteAllBytesAsync(asset, new byte[512 * sizeof(float)]);
+            using var device = new CameraAdmissionDevice();
+            using var scene = new SilkSceneState();
+            using var resources = new SilkSceneGpuResources(device);
+            using var pass = new SilkVolumeCameraPass(device, SilkShaderBinaryFormat.SpirV, resources);
+            const string materialPath = "/World/Materials/Volume";
+            byte[] uniform = CreateMaterialUpsert(materialPath, SilkSurfaceKind.VolumeDensity, [],
+                [(SilkMaterialParameter.VolumeDensity, [1f])]);
+            byte[] frame = CreateFrameCommand(4, 4);
+            BinaryPrimitives.WriteDoubleLittleEndian(frame.AsSpan(144 + (10 * sizeof(double))), -1);
+            scene.Apply(Concat(frame, uniform,
+                CreateMeshUpsert("/World/Volume", materialPath, primId: 7)), 3, 1);
+            SilkMeshData mesh = scene.Meshes.Values.Single();
+            SilkMaterialData material = CopyMaterial(uniform);
+            using SilkVolumeCameraPass.Prepared initial =
+                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+            SilkVolumeCameraPass.ResourceSet published = initial.ResourceData ??
+                throw new InvalidOperationException("The initial camera pass must be present.");
+            initial.Commit();
+            int targetAllocations = device.CreatedTextureDescriptors.Count;
+            SilkMaterialData nonfinite = CopyMaterial(CreateMaterialUpsert(
+                materialPath, SilkSurfaceKind.VolumeDensity, [],
+                [(SilkMaterialParameter.VolumeDensity, [float.PositiveInfinity])]));
+            await Assert.That(() => pass.Prepare(scene, null, 4, 4, false, [(mesh, nonfinite)]))
+                .Throws<InvalidDataException>().WithMessageContaining("nonfinite density scalar");
+            await Assert.That(device.CreatedTextureDescriptors.Count).IsEqualTo(targetAllocations);
+            await Assert.That(published.IsDisposed).IsFalse();
+            SilkMaterialData expensive = CopyMaterial(CreateMaterialUpsert(
+                materialPath, SilkSurfaceKind.VolumeDensity,
+                [new(SilkMaterialParameter.VolumeDensity, asset, "512,1,1",
+                    ComponentCount: 1, Channel: SilkTextureChannel.R)],
+                [(SilkMaterialParameter.VolumeDensity, [1f])]));
+            (SilkMeshData Mesh, SilkMaterialData Material)[] fields =
+                Enumerable.Repeat((mesh, expensive), 8).ToArray();
+
+            await Assert.That(() => pass.Prepare(scene, null, 4, 4, false, fields))
+                .Throws<InvalidDataException>().WithMessageContaining("1966080 evaluations per pixel");
+
+            await Assert.That(device.VolumeAllocations).IsEqualTo(0);
+            await Assert.That(device.CreatedTextureDescriptors.Count).IsEqualTo(targetAllocations);
+            await Assert.That(published.IsDisposed).IsFalse();
+            // Exercise the retained upload buffer, not only an ownership flag.
+            published.ParameterBuffer.Write(new byte[32]);
+            using SilkVolumeCameraPass.Prepared retry =
+                pass.Prepare(scene, null, 4, 4, false, [(mesh, material)]);
+            SilkVolumeCameraPass.ResourceSet corrected = retry.ResourceData ??
+                throw new InvalidOperationException("The corrected camera pass must be present.");
+            retry.Commit();
+            await Assert.That(published.IsDisposed).IsTrue();
+            await Assert.That(corrected.IsDisposed).IsFalse();
+            await Assert.That(device.VolumeAllocations).IsEqualTo(0);
+        }
+        finally
+        {
+            File.Delete(asset);
+        }
+    }
+
+    [Test]
+    [Arguments(1)]
+    [Arguments(2)]
+    public async Task MaterialDisabledVolumeUsesOrdinaryPipelineWithoutDensityOrDepthBindings(int meshCount)
+    {
+        using var device = new VolumeRenderPipelineDevice();
+        using var renderer = new SilkMeshRenderer(device, SilkShaderBinaryFormat.SpirV);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(4, 4));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(4, 4));
+        const string materialPath = "/World/Materials/Volume";
+        byte[][] meshes = [.. Enumerable.Range(0, meshCount).Select(index =>
+            CreateMeshUpsert($"/World/Volume{index}", materialPath, primId: 7 + index))];
+        byte[] material = CreateMaterialUpsert(materialPath, SilkSurfaceKind.VolumeDensity,
+            [new(SilkMaterialParameter.VolumeDensity, "unused-density.raw", "1,1,1",
+                ComponentCount: 1, Channel: SilkTextureChannel.R)]);
+        byte[] bytes = Concat([CreateFrameCommand(4, 4), material, .. meshes]);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, bytes, (uint)(2 + meshCount));
+        SilkMeshRenderOptions options = SilkMeshRenderOptions.Default with { UseSceneMaterials = false };
+        renderer.ApplyPage(page, options);
+
+        SilkMeshRenderResult result = renderer.Render(color, depth, options);
+
+        await Assert.That(result.DrawCount).IsGreaterThan(0);
+        await Assert.That(device.RecordedPipelineStates.Count).IsGreaterThan(0);
+        await Assert.That(device.ShaderEntryPoints).DoesNotContain("volumeVertexMain");
+        await Assert.That(device.BoundTextureSlots).DoesNotContain(SilkBindingLayoutDescriptor.VolumeDensityTextureBinding);
+        await Assert.That(device.BoundTextureSlots).DoesNotContain(SilkBindingLayoutDescriptor.VolumeOpaqueDepthTextureBinding);
+        await Assert.That(device.VolumeAllocations).IsEqualTo(0);
+        await Assert.That(device.CreatedTextureDescriptors.Any(descriptor =>
+            descriptor.Width == 4 && descriptor.Height == 4 &&
+            descriptor.Format == SilkTextureFormat.D32Float &&
+            (descriptor.Usage & SilkTextureUsage.Sampled) != 0)).IsFalse();
+    }
+
+    [Test]
     public async Task ScalarOpacityUsesStraightAlphaAndReadOnlyDepth()
     {
         using var device = new RenderPipelineDevice();
@@ -1534,7 +2051,7 @@ public sealed class SilkTextureResidencyTests
     }
 
     [Test]
-    public async Task TextureDrivenOpacityRequiresAnAuthoredShadowCutoff()
+    public async Task TextureDrivenOpacitySelectsCutoffOrTransmissionShadowCoverage()
     {
         const string materialPath = "/World/Materials/Cutout";
         const string meshPath = "/World/Cutout";
@@ -1557,7 +2074,51 @@ public sealed class SilkTextureResidencyTests
             []);
         _ = scene.Apply(blendedMaterial, 1, 2);
         await Assert.That(SilkShadowMapCache.ClassifyOpacity(scene, scene.MeshesByPath[(meshPath, 0)]))
+            .IsEqualTo(SilkShadowOpacityCoverage.Transmissive);
+    }
+
+    [Test]
+    [Arguments(0f, 0f)]
+    [Arguments(0.25f, 0f)]
+    [Arguments(1f, 0f)]
+    [Arguments(0.25f, 0.5f)]
+    public async Task PtexOpacityIsExplicitlyExcludedInsteadOfCastingWithTheScalarDefault(
+        float fallback, float threshold)
+    {
+        const string materialPath = "/World/Materials/PtexOpacity";
+        const string meshPath = "/World/PtexCaster";
+        var scene = new SilkSceneState();
+        TextureSpec opacity = ScalarTexture(SilkMaterialParameter.Opacity, "opacity.ptx", SilkTextureChannel.R) with
+        {
+            SourceKind = SilkTextureSourceKind.Ptex,
+            UvPrimvar = string.Empty,
+            Fallback = [fallback, fallback, fallback, 1f],
+        };
+        byte[] material = CreateMaterialUpsert(materialPath, SilkSurfaceKind.PreviewSurface, [opacity],
+            [(SilkMaterialParameter.OpacityThreshold, [threshold])]);
+        _ = scene.Apply(Concat(material, CreateMeshUpsert(meshPath, materialPath, primId: 7)), 2, 1);
+        SilkMeshData mesh = scene.MeshesByPath[(meshPath, 0)];
+        await Assert.That(scene.Materials[materialPath].GetTexture(SilkMaterialParameter.Opacity)!.Fallback[0])
+            .IsEqualTo(fallback);
+        await Assert.That(SilkShadowMapCache.ClassifyOpacity(scene, mesh))
             .IsEqualTo(SilkShadowOpacityCoverage.Unsupported);
+        await Assert.That(SilkShadowMapCache.ClassifyOpacity(scene, mesh, useSceneMaterials: false))
+            .IsEqualTo(SilkShadowOpacityCoverage.Solid);
+        using var device = new RenderPipelineDevice();
+        using var resources = new SilkSceneGpuResources(device);
+        resources.ReportUnsupportedShadowCasters([meshPath], 1);
+        RenderDiagnostic diagnostic = resources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.ShadowCasterUnsupported);
+        await Assert.That(diagnostic.Message).Contains("sample Ptex opacity");
+        await Assert.That(diagnostic.Message).Contains("excluded rather than approximated as opaque");
+        _ = scene.Apply(CreateMaterialUpsert(materialPath, SilkSurfaceKind.PreviewSurface,
+            [opacity with { SourceKind = SilkTextureSourceKind.Standard, Asset = "opacity.png", UvPrimvar = "st" }],
+            [(SilkMaterialParameter.OpacityThreshold, [threshold])]), 1, 2);
+        await Assert.That(SilkShadowMapCache.ClassifyOpacity(scene, mesh))
+            .IsEqualTo(threshold > 0 ? SilkShadowOpacityCoverage.Masked : SilkShadowOpacityCoverage.Transmissive);
+        resources.ReportUnsupportedShadowCasters([], 2);
+        await Assert.That(resources.Diagnostics.Entries.Any(
+            entry => entry.Code == SilkRenderDiagnosticCodes.ShadowCasterUnsupported)).IsFalse();
     }
 
     [Test]
@@ -1767,7 +2328,9 @@ public sealed class SilkTextureResidencyTests
         float[]? Scale = null,
         float[]? Bias = null,
         SilkCompositeOperator CompositeOperator = SilkCompositeOperator.None,
-        float CompositeFactor = 0f);
+        float CompositeFactor = 0f,
+        SilkTextureSourceKind SourceKind = SilkTextureSourceKind.Standard,
+        float[]? Fallback = null);
 
     private static byte[] CreateMaterialUpsert(
         string path,
@@ -1816,12 +2379,12 @@ public sealed class SilkTextureResidencyTests
             }
             for (int component = 0; component < 4; component++)
             {
-                payload.AddRange(BitConverter.GetBytes(component == 3 ? 1f : 0f));
+                payload.AddRange(BitConverter.GetBytes(texture.Fallback?[component] ?? (component == 3 ? 1f : 0f)));
             }
             payload.AddRange(BitConverter.GetBytes((uint)texture.Channel));
             payload.AddRange(BitConverter.GetBytes((uint)texture.CompositeOperator));
             payload.AddRange(BitConverter.GetBytes(texture.CompositeFactor));
-            payload.AddRange(BitConverter.GetBytes((uint)SilkTextureSourceKind.Standard));
+            payload.AddRange(BitConverter.GetBytes((uint)texture.SourceKind));
             payload.AddRange(assetBytes);
             payload.AddRange(uvBytes);
         }
@@ -2326,7 +2889,58 @@ public sealed class SilkTextureResidencyTests
     // Fakes: a full no-op rendering pipeline, capable of a real SilkMeshRenderer.Render() call.
     // ---------------------------------------------------------------------
 
-    private sealed class RenderPipelineDevice : ISilkGraphicsDevice
+    private sealed class VolumeRenderPipelineDevice : RenderPipelineDevice, ISilkVolumeTextureGraphicsDevice
+    {
+        internal int VolumeAllocations { get; private set; }
+
+        public ISilkGraphicsTexture CreateTexture3D(
+            uint width, uint height, uint depth, SilkTextureFormat format)
+        {
+            VolumeAllocations++;
+            throw new InvalidOperationException("Material-disabled rendering must not allocate a density texture.");
+        }
+    }
+
+    private sealed class CameraAdmissionDevice :
+        RenderPipelineDevice, ISilkVolumeTextureGraphicsDevice, ISilkCpuTextureAdmissionDevice
+    {
+        internal int VolumeAllocations { get; private set; }
+        internal int CommandListsCreated { get; private set; }
+        internal bool AllowAtlasAllocations { get; init; }
+
+        public ISilkGraphicsTexture CreateTexture3D(
+            uint width, uint height, uint depth, SilkTextureFormat format)
+        {
+            VolumeAllocations++;
+            if (AllowAtlasAllocations)
+            {
+                return new RenderPipelineTexture(new SilkTextureDescriptor(
+                    width, height, format, SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination),
+                    MaterialTextureKind, this);
+            }
+            throw new InvalidOperationException("Refused camera workloads must not allocate an atlas.");
+        }
+
+        public override ISilkGraphicsCommandList CreateCommandList()
+        {
+            CommandListsCreated++;
+            return new CameraAdmissionCommandList(this);
+        }
+    }
+
+    private sealed class CameraAdmissionCommandList(CameraAdmissionDevice device)
+        : RenderPipelineCommandList(device), ISilkVolumeTextureCommandList
+    {
+        public void UploadTexture3D(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
+        {
+            if (!device.AllowAtlasAllocations)
+            {
+                throw new InvalidOperationException("Refused camera workloads must not upload an atlas.");
+            }
+        }
+    }
+
+    private class RenderPipelineDevice : SilkGraphicsDeviceLifetimeBase, ISilkGraphicsDevice
     {
         internal const string MaterialTextureKind = "material";
 
@@ -2335,6 +2949,10 @@ public sealed class SilkTextureResidencyTests
         private int _pendingSubmissions;
 
         internal List<SilkGraphicsPipelineDescriptor> RecordedPipelineStates { get; } = [];
+        internal List<string> ShaderEntryPoints { get; } = [];
+        internal List<uint> BoundTextureSlots { get; } = [];
+        internal List<SilkTextureDescriptor> CreatedTextureDescriptors { get; } = [];
+        internal bool RefuseSubmission { get; set; }
 
         internal List<float> DrawDepths { get; } = [];
 
@@ -2378,6 +2996,7 @@ public sealed class SilkTextureResidencyTests
 
         public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor)
         {
+            CreatedTextureDescriptors.Add(descriptor);
             // Only sampled, non-attachment descriptors are material/volume textures for the
             // purposes of this test: render targets (color, depth, and the selection mask) reuse
             // the same descriptor overload but must not be counted as retained material textures.
@@ -2401,8 +3020,11 @@ public sealed class SilkTextureResidencyTests
         public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor) =>
             new RenderPipelineSampler(descriptor);
 
-        public ISilkGraphicsShaderModule CreateShaderModule(SilkShaderModuleDescriptor descriptor) =>
-            new RenderPipelineShaderModule(descriptor);
+        public ISilkGraphicsShaderModule CreateShaderModule(SilkShaderModuleDescriptor descriptor)
+        {
+            ShaderEntryPoints.Add(descriptor.EntryPoint);
+            return new RenderPipelineShaderModule(descriptor);
+        }
 
         public ISilkGraphicsBindingLayout CreateBindingLayout(SilkBindingLayoutDescriptor descriptor) =>
             new RenderPipelineBindingLayout(descriptor);
@@ -2424,7 +3046,7 @@ public sealed class SilkTextureResidencyTests
         public ISilkComputePipeline CreateComputePipeline(SilkComputePipelineDescriptor descriptor) =>
             throw new NotSupportedException();
 
-        public ISilkGraphicsCommandList CreateCommandList()
+        public virtual ISilkGraphicsCommandList CreateCommandList()
         {
             var commandList = new RenderPipelineCommandList(this);
             _lastCommandList = commandList;
@@ -2440,6 +3062,10 @@ public sealed class SilkTextureResidencyTests
 
         public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList)
         {
+            if (RefuseSubmission)
+            {
+                throw new InvalidOperationException("Injected submission refusal.");
+            }
             _pendingSubmissions++;
             return new RenderPipelineSubmission(this);
         }
@@ -2567,12 +3193,16 @@ public sealed class SilkTextureResidencyTests
         }
     }
 
-    private sealed class RenderPipelineCommandList(RenderPipelineDevice device)
-        : ISilkGraphicsCommandList
+    private class RenderPipelineCommandList(RenderPipelineDevice device)
+        : ISilkGraphicsCommandList, ISilkTextureCopyGraphicsCommandList
     {
         private RenderPipelineBuffer? _uniformBuffer;
 
         internal bool IsDisposed { get; private set; }
+
+        public void CopyRenderTarget(ISilkGraphicsTexture source, ISilkGraphicsTexture destination)
+        {
+        }
 
         public void UploadTexture(ISilkGraphicsTexture texture, ReadOnlySpan<byte> source)
         {
@@ -2621,6 +3251,7 @@ public sealed class SilkTextureResidencyTests
 
         public void SetTexture(uint setIndex, uint binding, ISilkGraphicsTexture texture)
         {
+            device.BoundTextureSlots.Add(binding);
         }
 
         public void SetSampler(uint setIndex, uint binding, ISilkGraphicsSampler sampler)

@@ -219,14 +219,37 @@ public interface ISilkMaterialShaderCompiler : IDisposable
     SilkMaterialShaderRequest GetOrQueue(SilkMaterialShaderKey key);
 }
 
+internal static class SilkMaterialShaderPaths
+{
+    private const string CacheDirectoryVariable = "OPENUSD_SILK_SHADER_CACHE_DIR";
+
+    internal static string GetDefaultCacheDirectory()
+    {
+        string? configured = Environment.GetEnvironmentVariable(CacheDirectoryVariable);
+        if (string.IsNullOrEmpty(configured))
+        {
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenUsd",
+                "SilkMaterialShaders");
+        }
+        if (!Path.IsPathFullyQualified(configured))
+        {
+            throw new InvalidOperationException(
+                $"{CacheDirectoryVariable} must be an absolute directory path.");
+        }
+        return Path.GetFullPath(configured);
+    }
+}
+
 /// <summary>Options for <see cref="SilkMaterialShaderCompilerService"/>.</summary>
 public sealed class SilkMaterialShaderCompilerOptions
 {
-    /// <summary>Gets or sets the root directory for content-addressed cache entries.</summary>
-    public string CacheDirectory { get; set; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "OpenUsd",
-        "SilkMaterialShaders");
+    /// <summary>
+    /// Gets or sets the root directory for content-addressed cache entries. The default uses
+    /// <c>OPENUSD_SILK_SHADER_CACHE_DIR</c> when set, or local application data otherwise.
+    /// </summary>
+    public string CacheDirectory { get; set; } = SilkMaterialShaderPaths.GetDefaultCacheDirectory();
 
     /// <summary>Gets or sets the maximum number of ready programs kept in memory.</summary>
     public int MaxMemoryEntries { get; set; } = 128;
@@ -453,11 +476,7 @@ internal static partial class SilkD3D12GeneratedMaterialCompiler
     private static byte[] CompileHlslToDxil(string hlsl)
     {
         string dxc = LocateDxc();
-        string workRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenUsd",
-            "SilkMaterialShaders",
-            "dxc");
+        string workRoot = GetDxcWorkDirectory();
         Directory.CreateDirectory(workRoot);
         string unique = Guid.NewGuid().ToString("N");
         string hlslPath = Path.Combine(workRoot, unique + ".hlsl");
@@ -500,6 +519,9 @@ internal static partial class SilkD3D12GeneratedMaterialCompiler
             TryDelete(dxilPath);
         }
     }
+
+    internal static string GetDxcWorkDirectory() =>
+        Path.Combine(SilkMaterialShaderPaths.GetDefaultCacheDirectory(), "dxc");
 
     private static string LocateDxc()
     {

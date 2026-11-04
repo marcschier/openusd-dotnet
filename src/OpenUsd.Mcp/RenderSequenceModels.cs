@@ -51,7 +51,8 @@ internal sealed class RenderSequenceRequest : SceneRevisionRequestBase
     [JsonPropertyName("hdrColorFormat"), MaxLength(3), DefaultValue("raw")]
     [Description(
         "HDR container: 'raw' (default packed RGBA binary16) or 'exr' (lossless half EXR). " +
-        "'exr' requires includeHdrColor=true and the Windows x64 Core encoder. " +
+        "'exr' requires includeHdrColor=true and a matching Windows x64 or little-endian Linux/macOS x64/ARM64 " +
+        "Core encoder. " +
         "No color/alpha conversion; the encoded-byte quota does not bound native codec heap.")]
     public string HdrColorFormat { get; init; } = "raw";
 }
