@@ -790,10 +790,11 @@ each grid axis to 512; workload admission refuses more than 7,117 positions per 
 pixel before allocating atlas or depth-target resources. Admission refuses non-finite density values, finite
 sample/scale products outside its supported range, tint/exposure products that exceed float range before blending, and
 certain low signals that produced black output. The low-signal screen is conservative and does not establish that all
-admitted ray integrations retain normal values. The 84-case camera gate passed locally on D3D12 WARP and Vulkan
-SwiftShader, including thin high-density fields, overlapping high-tint fields and representative refusal and retry
-cases. Linux, Metal and native producer-to-renderer execution remain unqualified, as do the remaining finite ray and
-integration arithmetic
+admitted ray integrations retain normal values. After two same-size, same-generation admitted publications, a reusable
+spare depth snapshot adds four bytes per pixel to a configured GPU texture budget. An earlier source snapshot passed the
+114-case camera gate locally on D3D12 WARP and Vulkan SwiftShader, including snapshot rollback, admission and
+resource-retirement failures. Those results do not qualify the current source. Linux, Metal and native
+producer-to-renderer execution remain unqualified, as do the remaining finite ray and integration arithmetic
 
 **Limits:** Only density fields are modeled; temperature, emission/color and general multi-field shading remain
 unsupported. The joint multi-proxy path remains unqualified on Linux, Metal and the native producer-to-renderer chain;
