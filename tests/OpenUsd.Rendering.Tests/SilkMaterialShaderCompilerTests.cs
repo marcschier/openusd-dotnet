@@ -294,7 +294,7 @@ public sealed class SilkMaterialShaderCompilerTests
             failingGenerator, CreateOptions(CreateCacheDirectory()));
         SilkMaterialShaderRequest pending = failing.GetOrQueue(key);
         SilkMaterialShaderRequest failed = await WaitForTerminalAsync(failing, key);
-        using var device = new TestGraphicsDevice();
+        using var device = new SilkHdrColorReadbackDevice();
         using var renderer = new SilkMeshRenderer(device);
 
         renderer.ObserveMaterialShaderRequest("/World/Materials/Broken", key, pending);
@@ -327,7 +327,7 @@ public sealed class SilkMaterialShaderCompilerTests
         using var compiler = new SilkMaterialShaderCompilerService(generator, CreateOptions(CreateCacheDirectory()));
         _ = compiler.GetOrQueue(firstKey);
         SilkMaterialShaderRequest failed = await WaitForTerminalAsync(compiler, firstKey);
-        using var device = new TestGraphicsDevice();
+        using var device = new SilkHdrColorReadbackDevice();
         using var renderer = new SilkMeshRenderer(device);
 
         for (int index = 0; index < SilkMeshRenderer.MaterialShaderDiagnosticCapacity; index++)
