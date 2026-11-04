@@ -1053,6 +1053,27 @@ struct KernelContext_0
     {
         outputColor_0 = outputColor_2;
     }
-    pixelOutput_0 _S159 = { float4(outputColor_0, intervalStart_1) };
-    return _S159;
+    if((_S6.x) == 18U)
+    {
+        hasActiveField_0 = (_S6.y) == 14U;
+    }
+    else
+    {
+        hasActiveField_0 = false;
+    }
+    if(hasActiveField_0)
+    {
+        hasActiveField_0 = (densityScales_0[int(0)]) >= 1.00000002004087734e+20f;
+    }
+    else
+    {
+        hasActiveField_0 = false;
+    }
+    if(hasActiveField_0)
+    {
+        pixelOutput_0 _S159 = { float4(normalizedDensityIntegrals_0[int(0)], fieldOpticalDepth_0[int(0)], power_0, accumulatedColor_0.x) };
+        return _S159;
+    }
+    pixelOutput_0 _S160 = { float4(outputColor_0, intervalStart_1) };
+    return _S160;
 }

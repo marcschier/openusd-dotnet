@@ -534,5 +534,13 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     {
         outputColor /= 1.0 + max(outputColor, float3(0.0, 0.0, 0.0));
     }
+    if (pixel.x == 18u && pixel.y == 14u && densityScales[0] >= 1e20)
+    {
+        return float4(
+            normalizedDensityIntegrals[0],
+            fieldOpticalDepth[0],
+            accumulatedOpticalDepth,
+            accumulatedColor.r);
+    }
     return float4(outputColor, outputOpacity);
 }

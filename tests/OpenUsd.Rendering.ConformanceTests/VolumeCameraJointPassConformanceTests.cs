@@ -93,6 +93,11 @@ public sealed class VolumeCameraJointPassConformanceTests
             Mesh(MeshB, MaterialB, -1, 1, 2, 0.0625, 0.0625));
         _ = renderer.ApplyAndRender(page, color, depth);
         float[] pixels = ReadPixels(color);
+        int probe = checked(((14 * (int)Size + 18) * 4));
+        Console.WriteLine(
+            $"[DEBUG-volume-naN] high-tint probe: " +
+            $"{pixels[probe]:R}, {pixels[probe + 1]:R}, " +
+            $"{pixels[probe + 2]:R}, {pixels[probe + 3]:R}");
         int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
         double depthIntegral = 2 * (double)density;
         double absorbed = depthIntegral < 1e-4
@@ -1498,6 +1503,11 @@ public sealed class VolumeCameraJointPassConformanceTests
             Material(MaterialA, density, [1, 0, 0], grid, sampled, false, "2,2,2", opacity));
         _ = renderer.ApplyAndRender(dense, color, depth);
         float[] densePixels = ReadPixels(color);
+        int probe = checked(((14 * (int)Size + 18) * 4));
+        Console.WriteLine(
+            $"[DEBUG-volume-naN] thin-field probe: " +
+            $"{densePixels[probe]:R}, {densePixels[probe + 1]:R}, " +
+            $"{densePixels[probe + 2]:R}, {densePixels[probe + 3]:R}");
         int firstNonFinite = Array.FindIndex(
             densePixels,
             static component => !float.IsFinite(component));
