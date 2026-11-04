@@ -15,6 +15,11 @@ import zipfile
 
 REQUIRED_GATES = {"ci", "shaders", "native", "performance", "packages", "render"}
 VERSION_PATTERN = r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
+UNAPPROVED_COMPILER_PATTERN = re.compile(
+    r"(?:(?:lib)?spirv[-_]?cross(?:\.dll|\.dylib|\.so(?:\.[0-9]+)*)|"
+    r"dxc\.exe|(?:lib)?(?:dxcompiler|dxil)(?:\.dll|\.dylib|\.so(?:\.[0-9]+)*))",
+    re.IGNORECASE,
+)
 
 
 def _inventory(values, label):
@@ -81,9 +86,36 @@ def _payloads(path):
     return result
 
 
+def _check_compiler_entries(archive, path):
+    for entry in archive.infolist():
+        name = entry.filename.replace("\\", "/").rsplit("/", 1)[-1]
+        if not entry.is_dir() and UNAPPROVED_COMPILER_PATTERN.fullmatch(name):
+            raise ValueError(
+                f"Package {path.name} contains an unapproved compiler binary: {entry.filename}")
+
+
+def verify_compiler_assets(directory):
+    if not directory.is_dir():
+        raise ValueError(f"Package directory does not exist: {directory}")
+    paths = sorted(path for path in directory.iterdir()
+                   if path.suffix.casefold() in (".nupkg", ".snupkg"))
+    if not paths:
+        raise ValueError(f"Package directory contains no archives: {directory}")
+    for path in paths:
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"Package must be a regular file: {path}")
+        try:
+            with zipfile.ZipFile(path) as archive:
+                _check_compiler_entries(archive, path)
+        except (zipfile.BadZipFile, RuntimeError) as error:
+            raise ValueError(f"Invalid package payload in {path.name}: {error}") from error
+    return {"archives": len(paths)}
+
+
 def _metadata(path, package_id, version, commit):
     try:
         with zipfile.ZipFile(path) as archive:
+            _check_compiler_entries(archive, path)
             entries = [
                 entry for entry in archive.infolist()
                 if "/" not in entry.filename and "\\" not in entry.filename
@@ -175,6 +207,18 @@ def verify_promotion(*, packages, release_packages, evidence, release_run,
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--check-compiler-assets":
+        parser = argparse.ArgumentParser(description="Check release archives for unapproved compiler binaries.")
+        parser.add_argument("--packages", type=Path, required=True)
+        args = parser.parse_args(sys.argv[2:])
+        try:
+            result = verify_compiler_assets(args.packages)
+        except (OSError, ValueError) as error:
+            print(f"COMPILER_ASSET_CHECK_INVALID: {error}", file=sys.stderr)
+            return 1
+        print(json.dumps(result, sort_keys=True))
+        return 0
+
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("packages", "release-packages", "evidence", "release-run", "inventory"):
         parser.add_argument(f"--{name}", type=Path, required=True)

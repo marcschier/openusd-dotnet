@@ -9,7 +9,9 @@ on:
       - 'eng/assert-viewer-compiler-redistribution.ps1'
       - 'eng/publish-viewer-bundle.ps1'
       - 'eng/test-viewer-compiler-redistribution.ps1'
+      - 'eng/verify-nuget-promotion.py'
       - 'eng/verify-spirv-cross-provenance.py'
+      - 'eng/tests/test_verify_nuget_promotion.py'
       - 'eng/tests/test_verify_spirv_cross_provenance.py'
 
 permissions:
@@ -47,7 +49,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Test compiler provenance verifier
-        run: python -m unittest -v eng.tests.test_verify_spirv_cross_provenance
+        run: >-
+          python -m unittest -v eng.tests.test_verify_spirv_cross_provenance
+          eng.tests.test_verify_nuget_promotion
       - name: Check out the actual Silk.NET binary producer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

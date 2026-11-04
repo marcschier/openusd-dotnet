@@ -448,6 +448,12 @@ jobs:
               "Missing: $($missing -join ', '). Unexpected: $($unexpected -join ', ').")
           }
           Write-Host "Verified all $($expected.Count) published package(s)."
+      - name: Reject unapproved compiler binaries in release archives
+        shell: pwsh
+        run: |
+          python eng/verify-nuget-promotion.py --check-compiler-assets `
+            --packages artifacts/nupkg
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Generate release SBOM
         shell: pwsh
         run: |

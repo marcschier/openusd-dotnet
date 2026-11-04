@@ -126,6 +126,75 @@ class NuGetPromotionTests(unittest.TestCase):
             self.write_package(path)
             shutil.copyfile(path, self.packages / path.name)
 
+    def test_matching_packages_and_symbols_reject_unapproved_compiler_binaries(self):
+        names = (
+            "spirv-cross.dll", "libspirv-cross.so", "libspirv-cross.so.1",
+            "libspirv-cross.dylib", "SPIRV-CROSS.DLL", "dxc.exe",
+            "dxcompiler.dll", "dxil.dll", "libdxcompiler.so", "libdxcompiler.so.3.8",
+            "libdxil.so.1", "libdxil.dylib",
+        )
+        for extension in ("nupkg", "snupkg"):
+            path = self.released / f"openusd.{VERSION}.{extension}"
+            for name in names:
+                with self.subTest(extension=extension, name=name):
+                    self.write_package(path)
+                    with zipfile.ZipFile(path, "a") as archive:
+                        archive.writestr(f"runtimes/nested/{name}", b"compiler")
+                    shutil.copyfile(path, self.packages / path.name)
+                    with self.assertRaisesRegex(ValueError, "unapproved compiler binary"):
+                        self.verify()
+            self.write_package(path)
+            shutil.copyfile(path, self.packages / path.name)
+
+    def test_compiler_notices_are_not_mistaken_for_binaries(self):
+        path = self.released / f"openusd.{VERSION}.nupkg"
+        with zipfile.ZipFile(path, "a") as archive:
+            archive.writestr("notices/spirv-cross-notice.txt", b"notice")
+        shutil.copyfile(path, self.packages / path.name)
+        self.assertEqual(self.verify()["packages"], 2)
+
+    def test_release_archive_check_rejects_bad_or_missing_archives_before_publication(self):
+        arguments = [sys.executable, str(SCRIPT), "--check-compiler-assets",
+                     "--packages", str(self.released)]
+        result = subprocess.run(arguments, text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {"archives": 3})
+
+        path = self.released / f"openusd.{VERSION}.snupkg"
+        with zipfile.ZipFile(path, "a") as archive:
+            archive.writestr(r"nested\SPIRV-CROSS.DLL", b"compiler")
+        result = subprocess.run(arguments, text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("unapproved compiler binary", result.stderr)
+        self.assertIn("SPIRV-CROSS.DLL", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+        path.write_bytes(b"not an archive")
+        result = subprocess.run(arguments, text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Invalid package payload", result.stderr)
+
+        arguments[-1] = str(self.root / "absent")
+        result = subprocess.run(arguments, text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Package directory does not exist", result.stderr)
+        arguments[-1] = str(self.root)
+        result = subprocess.run(arguments, text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("contains no archives", result.stderr)
+
+    def test_release_workflow_checks_compilers_before_the_first_package_push(self):
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8")
+        publish = workflow.split("\n  publish:", 1)[1]
+        guard = publish.index("      - name: Reject unapproved compiler binaries")
+        push = publish.index("      - name: Push to the GitHub Packages NuGet feed")
+        self.assertLess(guard, push)
+        guard_step = publish[guard:publish.index("\n      - name:", guard + 1)]
+        self.assertIn("--check-compiler-assets", guard_step)
+        self.assertIn("--packages artifacts/nupkg", guard_step)
+        self.assertIn("if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }", guard_step)
+
     def test_missing_malformed_oversized_and_wrong_root_nuspec_are_rejected(self):
         for metadata, message in (
                 (False, "bounded root nuspec"), ("<package", "Invalid package metadata"),

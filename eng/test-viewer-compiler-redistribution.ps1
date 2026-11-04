@@ -33,6 +33,8 @@ try
         'dxcompiler.dll',
         'dxil.dll',
         'libdxcompiler.so',
+        'libdxcompiler.so.3.8',
+        'libdxil.so.1',
         'libdxil.dylib'))
     {
         $path = Join-Path $nested $name

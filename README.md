@@ -450,7 +450,8 @@ GPU-equipped runners for the two Vulkan composition gates.
 `eng/publish-viewer-bundle.ps1` currently stops archive creation if the layout contains a
 SPIRV-Cross binary; source reproduction and an independent redistribution review remain open. It
 also stops if the layout contains DXC binaries, which are supplied externally. `-NoArchive`
-produces a local layout without approving it for distribution.
+produces a local layout without approving it for distribution. Release and NuGet promotion check
+each package and symbol archive for the same binaries before publishing to either feed.
 
 The `0.14.0-alpha` [release run 33931868184](https://github.com/marcschier/openusd-dotnet/actions/runs/33931868184)
 at `f33ba56`, attempt 1, passed the installed Viewer bundle smokes on `win-x64`, `linux-x64`, and
