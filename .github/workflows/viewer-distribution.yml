@@ -391,21 +391,10 @@ jobs:
           {
             throw 'Viewer input readiness workflow-run/source identity differs.'
           }
-          $jobs = $null
-          for ($attempt = 0; $attempt -lt 12; $attempt++)
-          {
-            $jobs = gh api "$api/jobs?per_page=100" | ConvertFrom-Json
-            if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer pack-job evidence.' }
-            $packJobs = @($jobs.jobs | Where-Object {
-              $_.name.StartsWith('pack Viewer inputs ', [StringComparison]::Ordinal)
-            })
-            $unfinished = @($packJobs | Where-Object status -ne 'completed')
-            if ($packJobs.Count -eq 3 -and $unfinished.Count -eq 0) { break }
-            if ($attempt -lt 11) { Start-Sleep -Seconds 5 }
-          }
+          $metadata = Get-ViewerInputMetadata -RunApi $api
+          $jobs = $metadata.jobs
+          $artifacts = $metadata.artifacts
           $jobs | ConvertTo-Json -Depth 20 | Set-Content "$directory/jobs.json"
-          $artifacts = gh api "$api/artifacts?per_page=100" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer input-artifact evidence.' }
           $artifacts | ConvertTo-Json -Depth 20 | Set-Content "$directory/artifacts.json"
           $result = Get-ViewerInputReadiness -WorkflowRun $run -JobsResponse $jobs -ArtifactsResponse $artifacts
           $result | ConvertTo-Json -Depth 6 | Set-Content "$directory/readiness.json"

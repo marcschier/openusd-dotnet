@@ -142,7 +142,7 @@ public sealed class MetalSelectionOutlineTests
             .EnumerateArray().ToArray();
         await Assert.That(
             programs.Length)
-            .IsEqualTo(25);
+            .IsEqualTo(35);
         foreach ((string name, string stage, string source) in new[]
         {
             ("shadow.mask.vertex", "vertex", "eng/shaders/sources/shadow.vertex.slang"),

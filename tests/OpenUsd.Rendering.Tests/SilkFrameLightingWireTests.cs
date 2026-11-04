@@ -492,7 +492,7 @@ public sealed class SilkFrameLightingWireTests
             for (int element = 0; element < 16; element++)
             {
                 await Assert.That(transforms[light, element])
-                    .IsEqualTo(100.125000001d + (light * 16) + element);
+                    .IsEqualTo(LightTransformValue(light, element));
             }
         }
         float[] expectedAmbient = [0.25f, 0.5f, 0.75f, 0.875f];
@@ -598,7 +598,7 @@ public sealed class SilkFrameLightingWireTests
                 // before returning them must not pass the matrix oracle.
                 BinaryPrimitives.WriteDoubleLittleEndian(
                     bytes.AsSpan(entry + 32 + (element * 8)),
-                    100.125000001d + (light * 16) + element);
+                    LightTransformValue(light, element));
             }
             BinaryPrimitives.WriteSingleLittleEndian(
                 bytes.AsSpan(entry + 160), -1.5f + (light / 16f));
@@ -614,4 +614,13 @@ public sealed class SilkFrameLightingWireTests
         BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(23092), 0.875f);
         return bytes;
     }
+
+    private static double LightTransformValue(int light, int element) =>
+        element switch
+        {
+            3 or 7 or 11 => 0d,
+            15 => 1d,
+            _ => 100.125000001d + (light * 16) + element +
+                (element is 0 or 5 or 10 ? 10000d : 0d),
+        };
 }

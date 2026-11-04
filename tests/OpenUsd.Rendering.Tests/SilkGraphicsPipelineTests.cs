@@ -30,13 +30,13 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(material.Set).IsEqualTo(0u);
         await Assert.That(material.Binding).IsEqualTo(0u);
         await Assert.That(material.UniformByteSize).IsEqualTo(80u);
-        await Assert.That(material.MaterialSlots.Count).IsEqualTo(13);
+        await Assert.That(material.MaterialSlots.Count).IsEqualTo(17);
 
         // The mesh layout includes the always-on instance, surface, and frame
-        // buffers, the shadow atlas and its sampler, and the two prefiltered
-        // environment maps and the sampler they share.
+        // buffers, the shadow atlas, its transmission layers and sampler, and
+        // the two prefiltered environment maps and the sampler they share.
         await Assert.That(SilkBindingLayoutDescriptor.SceneParameters.MaterialSlots.Count)
-            .IsEqualTo(10);
+            .IsEqualTo(14);
     }
 
     [Test]
@@ -445,6 +445,10 @@ public sealed class SilkGraphicsPipelineTests
                 (36u, SilkBindingKind.SampledTexture),
                 (39u, SilkBindingKind.SampledTexture),
                 (40u, SilkBindingKind.SampledTexture),
+                (41u, SilkBindingKind.SampledTexture),
+                (42u, SilkBindingKind.SampledTexture),
+                (43u, SilkBindingKind.SampledTexture),
+                (44u, SilkBindingKind.SampledTexture),
             ]);
         layout.Validate();
     }
@@ -512,7 +516,11 @@ public sealed class SilkGraphicsPipelineTests
             (37u, SilkBindingKind.SampledTexture),
             (38u, SilkBindingKind.SampledTexture),
             (39u, SilkBindingKind.SampledTexture),
-            (40u, SilkBindingKind.SampledTexture)
+            (40u, SilkBindingKind.SampledTexture),
+            (41u, SilkBindingKind.SampledTexture),
+            (42u, SilkBindingKind.SampledTexture),
+            (43u, SilkBindingKind.SampledTexture),
+            (44u, SilkBindingKind.SampledTexture)
         ]);
     }
 
@@ -572,7 +580,11 @@ public sealed class SilkGraphicsPipelineTests
             (35u, SilkBindingKind.Sampler),
             (36u, SilkBindingKind.SampledTexture),
             (39u, SilkBindingKind.SampledTexture),
-            (40u, SilkBindingKind.SampledTexture)
+            (40u, SilkBindingKind.SampledTexture),
+            (41u, SilkBindingKind.SampledTexture),
+            (42u, SilkBindingKind.SampledTexture),
+            (43u, SilkBindingKind.SampledTexture),
+            (44u, SilkBindingKind.SampledTexture)
         ]);
         layout.Validate();
     }
@@ -632,7 +644,7 @@ public sealed class SilkGraphicsPipelineTests
         await Assert.That(device.CreatedPipelineCount).IsEqualTo(2);
         await Assert.That(device.DisposedPipelineCount).IsEqualTo(1);
         await Assert.That(device.CreatedFragmentShaders).IsEqualTo(2);
-        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(34);
+        await Assert.That(device.LastBindingLayout.MaterialSlots.Count).IsEqualTo(38);
     }
 
     [Test]

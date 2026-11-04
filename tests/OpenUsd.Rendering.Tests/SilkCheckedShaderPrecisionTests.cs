@@ -113,7 +113,12 @@ public sealed class SilkCheckedShaderPrecisionTests
         await Assert.That(metal).DoesNotContain("precise float");
         await Assert.That(Regex.IsMatch(
             metal,
-            @"densityIntegrals_0\[field_0\]\s*=\s*densityIntegrals_0\[field_0\]\s*\+\s*[^;\n]+\*\s*localStepLength_0;"))
+            @"normalizedDensityIntegrals_0\[field_0\]\s*=\s*normalizedDensityIntegrals_0\[field_0\]" +
+            @"\s*\+\s*[^;\n]+\s*/\s*densityScales_0\[field_0\]\s*\*\s*localStepLength_0;"))
+            .IsTrue();
+        await Assert.That(Regex.IsMatch(
+            metal,
+            @"float\s+localStepLength_0\s*=\s*length\([^;\n]+\)\s*\*\s*_S\d+;"))
             .IsTrue();
         await Assert.That(Regex.IsMatch(
             metal,

@@ -63,7 +63,7 @@
     },
     {
       "path": ".github/workflows/viewer-distribution.yml",
-      "sha256": "d7cf2c1e1bcc312217de153140558ae29f5a92e0dd347dd3e91d3166f8e54609"
+      "sha256": "2ad096abc7b5469effcba9f7fb66b86d4c69cd11c9e9140bdd60633230277077"
     },
     {
       "path": "LICENSE",
@@ -419,7 +419,7 @@
     },
     {
       "path": "eng/viewer-input-readiness.ps1",
-      "sha256": "1fac3fbbdd30edca1ae94ba87bcf52bcd0c5b96a3c644cb050fd0c89378e0e64"
+      "sha256": "b57448af5d8d16d1904b7a3c721dc78dc9b8b3665b9378c59810413d2fc3cd71"
     },
     {
       "path": "eng/wait-openusd-sdk-cache.py",

@@ -124,14 +124,29 @@ public sealed class SilkMaterialShaderCompilerTests
                 "materialx:configured-dxc",
                 "generated-dxc-v1",
                 SilkShaderBinaryFormat.Dxil);
+            // The generated unlit path emits a constant-output fragment with no frame buffer.
             byte[] fragment = SilkCheckedShaderAssets
-                .LoadMeshFragment(SilkShaderBinaryFormat.SpirV)
+                .LoadSelectionMaskFragment(SilkShaderBinaryFormat.SpirV)
                 .Code
                 .ToArray();
             generator.RegisterGenerated(key, fragment);
 
-            SilkMaterialShaderProgram program =
-                await generator.CompileAsync(key, CancellationToken.None);
+            SilkMaterialShaderProgram program;
+            try
+            {
+                program = await generator.CompileAsync(key, CancellationToken.None);
+            }
+            catch (InvalidDataException exception)
+            {
+                string diagnosticDirectory = Path.Combine(directory, "dxc");
+                string[] diagnostics = Directory.Exists(diagnosticDirectory)
+                    ? Directory.GetFiles(diagnosticDirectory, "*.err")
+                    : [];
+                string detail = diagnostics.Length == 1
+                    ? await File.ReadAllTextAsync(diagnostics[0])
+                    : "No unique DXC diagnostic file was produced.";
+                throw new InvalidDataException(exception.Message + Environment.NewLine + detail, exception);
+            }
 
             byte[] compiled = program.FragmentShader.Code.ToArray();
             await Assert.That(program.FragmentShader.Format).IsEqualTo(SilkShaderBinaryFormat.Dxil);

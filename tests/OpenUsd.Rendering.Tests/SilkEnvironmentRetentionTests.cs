@@ -2941,11 +2941,11 @@ public sealed class SilkEnvironmentRetentionTests
         RetentionFloats(edited, entry127 + 160, 2, 0.25f, 0.875f, 2);
         byte[] editedExpected = (byte[])baselineBytes.Clone();
         RetentionFloats(editedExpected, 224 + (127 * 16), 9, -7, 5, 3);
-        RetentionFloats(editedExpected, 2272 + (127 * 16), -1, 0, 0, 2);
+        RetentionFloats(editedExpected, 2272 + (127 * 16), -4, 0, 0, 2);
         RetentionFloats(editedExpected, 4320 + (127 * 16), 0.25f, 0.5f, 0.75f, 12);
         RetentionFloats(editedExpected, 6368 + (127 * 16), 0.25f, 0.875f, 1, 0);
-        RetentionFloats(editedExpected, 8416 + (127 * 16), 0, 1, 0, 6);
-        RetentionFloats(editedExpected, 10464 + (127 * 16), 0, 0, -1, 7);
+        RetentionFloats(editedExpected, 8416 + (127 * 16), 0, 2, 0, 6);
+        RetentionFloats(editedExpected, 10464 + (127 * 16), 0, 0, -3, 7);
 
         byte[] removed = (byte[])edited.Clone();
         BinaryPrimitives.WriteUInt32LittleEndian(removed.AsSpan(536), 127u);
@@ -3019,8 +3019,22 @@ public sealed class SilkEnvironmentRetentionTests
             ISilkGraphicsBuffer next = resources.RequireFrameBuffer(
                 scene, RenderOutputTransform.Identity, 0);
             await Assert.That(next).IsSameReferenceAs(frameBuffer);
-            await Assert.That(RetentionReadback(next).SequenceEqual(edit.Expected))
-                .IsTrue().Because($"the {edit.Name} transition must change exactly its frame bytes");
+            byte[] actual = RetentionReadback(next);
+            await Assert.That(actual.Length).IsEqualTo(edit.Expected.Length)
+                .Because($"the {edit.Name} transition must preserve the frame byte count");
+            int mismatch = -1;
+            for (int index = 0; index < actual.Length; index++)
+            {
+                if (actual[index] != edit.Expected[index])
+                {
+                    mismatch = index;
+                    break;
+                }
+            }
+            await Assert.That(mismatch).IsEqualTo(-1)
+                .Because($"the {edit.Name} transition must change exactly its frame bytes; " +
+                    $"first mismatch at {mismatch}" +
+                    (mismatch < 0 ? string.Empty : $" ({actual[mismatch]} != {edit.Expected[mismatch]})"));
             await Assert.That(resources.Statistics.BufferWriteBytes - beforeWrite.BufferWriteBytes)
                 .IsEqualTo(edit.Changed ? 19264UL : 0UL);
             await Assert.That(resources.Statistics.BufferAllocationBytes)

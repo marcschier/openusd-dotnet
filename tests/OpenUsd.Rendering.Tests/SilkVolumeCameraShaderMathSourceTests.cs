@@ -47,7 +47,10 @@ public sealed class SilkVolumeCameraShaderMathSourceTests
         await Assert.That(logHelper).Contains("sum += power / float(order);");
         await Assert.That(exponentialHelper).Contains("term *= nonnegative / float(order);");
         await Assert.That(source)
-            .Contains("fieldOpticalDepth[field] *\n                    (localDensity / densityIntegrals[field])");
+            .Contains("float densityFraction = density / densityScales[field];");
+        await Assert.That(source)
+            .Contains("(densityFraction * localStepLength) / normalizedDensityIntegrals[field]");
+        await Assert.That(source).Contains("fieldDepths[field] = fieldOpticalDepth[field] * stepFraction;");
         await Assert.That(source)
             .Contains("float outputOpacity = OneMinusExpNegative(accumulatedOpticalDepth)");
 
@@ -112,8 +115,9 @@ public sealed class SilkVolumeCameraShaderMathSourceTests
         await Assert.That(main).DoesNotContain("entries[field] < segmentEnd");
         await Assert.That(main).DoesNotContain("exits[field] > segmentStart");
         await Assert.That(main)
-            .Contains("fieldOpticalDepth[field] *\n                    (localDensity / densityIntegrals[field])");
-        await Assert.That(main).DoesNotContain("max(densityIntegrals[field],");
+            .Contains("(densityFraction * localStepLength) / normalizedDensityIntegrals[field]");
+        await Assert.That(main).Contains("fieldDepths[field] = fieldOpticalDepth[field] * stepFraction;");
+        await Assert.That(main).DoesNotContain("max(normalizedDensityIntegrals[field],");
         await Assert.That(main).DoesNotContain("min(stepCount");
         await Assert.That(source).DoesNotContain("MaximumEvaluationsPerPixel");
     }

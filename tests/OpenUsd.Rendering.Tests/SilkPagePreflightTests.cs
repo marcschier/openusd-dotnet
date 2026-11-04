@@ -823,9 +823,11 @@ public sealed class SilkPagePreflightTests
         var scene = new SilkSceneState();
         UInt128 high96 = UInt128.One << 96;
         UInt128 high127 = UInt128.One << 127;
+        byte[] initialFrame = WideFrame(128, 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(initialFrame.AsSpan(552 + (127 * 176)), 1u);
         _ = scene.Apply(
             [
-                .. WideFrame(128, 2),
+                .. initialFrame,
                 .. Mesh(),
                 .. Material(),
                 .. WideLinks(128, 2,
@@ -843,6 +845,7 @@ public sealed class SilkPagePreflightTests
         await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(0);
 
         byte[] frame = WideFrame(97, 2, width: 640, flags: 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(552 + (96 * 176)), 1u);
         byte[] links = WideLinks(97, 2,
             (MeshPath, -1, high96 | 1, high96 | 2, 2u),
             (MeshPath, 0, high96 | 4, high96 | 8, 1u));
