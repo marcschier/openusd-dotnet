@@ -279,16 +279,16 @@ public sealed class SilkVolumeCameraShaderMathSourceTests
         double normalizedY,
         double normalizedZ)
     {
-        static (int First, int Second, double Fraction) Axis(double coordinate, int size)
+        static (int First, int Second, double Fraction) axis(double coordinate, int size)
         {
             double position = Math.Clamp(coordinate * size - 0.5, 0, size - 1);
             int first = (int)Math.Floor(position);
             return (first, Math.Min(first + 1, size - 1), position - first);
         }
 
-        (int x0, int x1, double fx) = Axis(normalizedX, values.GetLength(0));
-        (int y0, int y1, double fy) = Axis(normalizedY, values.GetLength(1));
-        (int z0, int z1, double fz) = Axis(normalizedZ, values.GetLength(2));
+        (int x0, int x1, double fx) = axis(normalizedX, values.GetLength(0));
+        (int y0, int y1, double fy) = axis(normalizedY, values.GetLength(1));
+        (int z0, int z1, double fz) = axis(normalizedZ, values.GetLength(2));
         double zLow = Lerp(
             Lerp(values[x0, y0, z0], values[x1, y0, z0], fx),
             Lerp(values[x0, y1, z0], values[x1, y1, z0], fx),

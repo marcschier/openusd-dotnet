@@ -23,14 +23,14 @@ public sealed class SilkBackendRetirementOwnershipTests
         var attempts = new int[3];
         var releases = new int[3];
         bool refuse = true;
-        void Release(int step)
+        void release(int step)
         {
             attempts[step]++;
             if (refuse && step == failAt)
             { throw new InvalidOperationException("Injected readback teardown refusal."); }
             releases[step]++;
         }
-        await Assert.That(() => VulkanSilkPickReadbackBuffer.RetireOwnedSteps(ref steps, Release))
+        await Assert.That(() => VulkanSilkPickReadbackBuffer.RetireOwnedSteps(ref steps, release))
             .Throws<InvalidOperationException>();
         await Assert.That(steps.Completed).IsEqualTo(failAt);
         for (int step = 0; step < 3; step++)
@@ -39,8 +39,8 @@ public sealed class SilkBackendRetirementOwnershipTests
             await Assert.That(releases[step]).IsEqualTo(step < failAt ? 1 : 0);
         }
         refuse = false;
-        VulkanSilkPickReadbackBuffer.RetireOwnedSteps(ref steps, Release);
-        VulkanSilkPickReadbackBuffer.RetireOwnedSteps(ref steps, Release);
+        VulkanSilkPickReadbackBuffer.RetireOwnedSteps(ref steps, release);
+        VulkanSilkPickReadbackBuffer.RetireOwnedSteps(ref steps, release);
         await Assert.That(steps.Completed).IsEqualTo(3);
         for (int step = 0; step < 3; step++)
         {
@@ -113,7 +113,7 @@ public sealed class SilkBackendRetirementOwnershipTests
         bool releasing = false;
         int slotReleases = 0;
         SilkResourceReleaseSteps steps = default;
-        void Release(int step)
+        void release(int step)
         {
             if (step == 0)
             {
@@ -123,7 +123,7 @@ public sealed class SilkBackendRetirementOwnershipTests
             }
             VulkanSilkPickSubmission.RetireOwnedLeases(ref leases, ref releasing);
         }
-        await Assert.That(() => VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, Release))
+        await Assert.That(() => VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, release))
             .Throws<InvalidOperationException>();
         await Assert.That(steps.Completed).IsEqualTo(0);
         await Assert.That(slotReleases).IsEqualTo(0);
@@ -131,8 +131,8 @@ public sealed class SilkBackendRetirementOwnershipTests
         await Assert.That(leases![0]).IsNotNull();
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(8ul);
         result = VulkanResult.Success;
-        VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, Release);
-        VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, Release);
+        VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, release);
+        VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, release);
         await Assert.That(steps.Completed).IsEqualTo(2);
         await Assert.That(slotReleases).IsEqualTo(1);
         await Assert.That(resource.Releases).IsEqualTo(1);
@@ -147,14 +147,14 @@ public sealed class SilkBackendRetirementOwnershipTests
     {
         SilkResourceReleaseSteps steps = default;
         var released = new List<int>();
-        void Release(int step)
+        void release(int step)
         {
             if (step == 0)
             { VulkanSilkPickReadbackBuffer.RequireTerminalRetirementResult(result); }
             released.Add(step);
         }
-        VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, Release);
-        VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, Release);
+        VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, release);
+        VulkanSilkPickSubmission.RetireOwnedSteps(ref steps, release);
         await Assert.That(steps.Completed).IsEqualTo(2);
         await Assert.That(released.ToArray()).IsEquivalentTo(ExpectedReadbackRetirementOrder);
     }
@@ -188,7 +188,7 @@ public sealed class SilkBackendRetirementOwnershipTests
                 ? D3D12SilkPickSubmission.RetireOwnedSteps
                 : throw new PlatformNotSupportedException();
         int slotReleases = 0;
-        void Release(int step)
+        void release(int step)
         {
             if (step == 0)
             { slotReleases++; return; }
@@ -204,7 +204,7 @@ public sealed class SilkBackendRetirementOwnershipTests
             else
             { throw new PlatformNotSupportedException(); }
         }
-        await Assert.That(() => retire(ref steps, Release)).Throws<InvalidOperationException>();
+        await Assert.That(() => retire(ref steps, release)).Throws<InvalidOperationException>();
         await Assert.That(steps.Completed).IsEqualTo(1);
         await Assert.That(slotReleases).IsEqualTo(1);
         int retained = backend == SilkGraphicsBackend.Vulkan ? failAt + 1 : 3 - failAt;
@@ -217,8 +217,8 @@ public sealed class SilkBackendRetirementOwnershipTests
             await Assert.That(leases![index]).IsSameReferenceAs(released ? null : original[index]);
         }
         resources[failAt].Refuse = false;
-        retire(ref steps, Release);
-        retire(ref steps, Release);
+        retire(ref steps, release);
+        retire(ref steps, release);
         await Assert.That(steps.Completed).IsEqualTo(2);
         await Assert.That(slotReleases).IsEqualTo(1);
         await Assert.That(leases).IsNull();
@@ -287,14 +287,14 @@ public sealed class SilkBackendRetirementOwnershipTests
         var releases = new int[count];
         SilkResourceReleaseSteps steps = default;
         bool refuse = true;
-        void Release(int step)
+        void release(int step)
         {
             attempts[step]++;
             if (refuse && step == failAt)
             { throw new InvalidOperationException("Injected Metal owner retirement callback failure."); }
             releases[step]++;
         }
-        await Assert.That(() => retire(ref steps, Release)).Throws<InvalidOperationException>();
+        await Assert.That(() => retire(ref steps, release)).Throws<InvalidOperationException>();
         await Assert.That(steps.Completed).IsEqualTo(failAt);
         for (int step = 0; step < count; step++)
         {
@@ -302,8 +302,8 @@ public sealed class SilkBackendRetirementOwnershipTests
             await Assert.That(attempts[step]).IsEqualTo(step <= failAt ? 1 : 0);
         }
         refuse = false;
-        retire(ref steps, Release);
-        retire(ref steps, Release);
+        retire(ref steps, release);
+        retire(ref steps, release);
         await Assert.That(steps.Completed).IsEqualTo(count);
         for (int step = 0; step < count; step++)
         {
@@ -440,7 +440,7 @@ public sealed class SilkBackendRetirementOwnershipTests
         bool releasingLeases = false, releasingUploads = false;
         int slotReleases = 0;
         SilkResourceReleaseSteps steps = default;
-        void Release(int step)
+        void release(int step)
         {
             if (step == 0)
             { slotReleases++; return; }
@@ -448,7 +448,7 @@ public sealed class SilkBackendRetirementOwnershipTests
                 ref leases, ref releasingLeases, ref uploads, ref releasingUploads, ref descriptorHeaps);
         }
         return new(
-            () => D3D12SilkPickSubmission.RetireOwnedSteps(ref steps, Release),
+            () => D3D12SilkPickSubmission.RetireOwnedSteps(ref steps, release),
             () => steps.Completed == 2 && slotReleases == 1 && leases is null &&
                 uploads is null && descriptorHeaps is null,
             () => uploads?.Count(upload => upload is not null) ?? 0);

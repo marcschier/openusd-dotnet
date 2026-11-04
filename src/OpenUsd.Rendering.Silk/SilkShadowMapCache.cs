@@ -1087,7 +1087,7 @@ internal sealed class SilkShadowMapCache : IDisposable
                     using ISilkGraphicsSubmission submission = _device.Submit(clear);
                     submission.Wait();
                 }
-                draws += RenderTransmissionPass(
+                draws += renderTransmissionPass(
                     layer == 0 ? SilkShadowTransmissionPass.FirstPeel : SilkShadowTransmissionPass.Peel,
                     target, previous, depth, tile, casters);
                 if (!overflow)
@@ -1096,7 +1096,7 @@ internal sealed class SilkShadowMapCache : IDisposable
                     clear.ClearColor(probe, new SilkColor(0, 0, 0, 0));
                     using ISilkGraphicsSubmission submission = _device.Submit(clear);
                     submission.Wait();
-                    draws += RenderTransmissionPass(
+                    draws += renderTransmissionPass(
                         SilkShadowTransmissionPass.EqualDepthProbe, probe, target, depth, tile, casters);
                 }
                 probe.ReadbackForTesting(pixels);
@@ -1113,7 +1113,7 @@ internal sealed class SilkShadowMapCache : IDisposable
         }
         return draws;
 
-        int RenderTransmissionPass(
+        int renderTransmissionPass(
             SilkShadowTransmissionPass pass,
             ISilkGraphicsTexture target,
             ISilkGraphicsTexture source,

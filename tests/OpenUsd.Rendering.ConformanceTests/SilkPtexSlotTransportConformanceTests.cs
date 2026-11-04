@@ -185,7 +185,7 @@ public sealed class SilkPtexSlotTransportConformanceTests
         using ISilkGraphicsBuffer vertexBuffer = Buffer(device, MemoryMarshal.AsBytes(vertices.AsSpan()), SilkBufferUsage.Vertex);
         using ISilkGraphicsBuffer indexBuffer = Buffer(device, MemoryMarshal.AsBytes(indices.AsSpan()), SilkBufferUsage.Index);
         using ISilkGraphicsBuffer lookup = Buffer(device, MemoryMarshal.AsBytes(words.AsSpan()), SilkBufferUsage.Storage);
-        byte[] Render(bool releaseLookupOwnerBeforeWait = false, uint? declaredLookupBytes = null)
+        byte[] render(bool releaseLookupOwnerBeforeWait = false, uint? declaredLookupBytes = null)
         {
             ISilkGraphicsBuffer boundLookup = releaseLookupOwnerBeforeWait
                 ? Buffer(device, MemoryMarshal.AsBytes(words.AsSpan()), SilkBufferUsage.Storage)
@@ -249,13 +249,13 @@ public sealed class SilkPtexSlotTransportConformanceTests
                 }
             }
         }
-        byte[] baseline = Render();
+        byte[] baseline = render();
         if (pickOnlyTail)
         {
             await Assert.That(vertexBuffer.Size).IsEqualTo((nuint)(8 * 8 * sizeof(float)));
             vertices.AsSpan(6 * 8).Fill(127);
             vertexBuffer.Write(MemoryMarshal.AsBytes(vertices.AsSpan()));
-            byte[] changedTail = Render();
+            byte[] changedTail = render();
             await Assert.That(changedTail.AsSpan().SequenceEqual(baseline)).IsTrue();
         }
         foreach (int y in new[] { 16, 48 })
@@ -332,16 +332,16 @@ public sealed class SilkPtexSlotTransportConformanceTests
                 }
             }
         }
-        byte[] repeated = Render();
+        byte[] repeated = render();
         await Assert.That(repeated.AsSpan().SequenceEqual(baseline)).IsTrue();
-        byte[] submissionRetained = Render(releaseLookupOwnerBeforeWait: true);
+        byte[] submissionRetained = render(releaseLookupOwnerBeforeWait: true);
         await Assert.That(submissionRetained.AsSpan().SequenceEqual(baseline)).IsTrue()
             .Because("Disposing the lookup owner after Submit must preserve this submission's UV transport.");
-        await Assert.That(() => Render(declaredLookupBytes: checked((uint)lookup.Size + 1)))
+        await Assert.That(() => render(declaredLookupBytes: checked((uint)lookup.Size + 1)))
             .Throws<InvalidDataException>();
         foreach (uint truncatedBytes in new[] { 15u, checked((uint)lookup.Size - sizeof(uint)) })
         {
-            byte[] truncated = Render(declaredLookupBytes: truncatedBytes);
+            byte[] truncated = render(declaredLookupBytes: truncatedBytes);
             foreach (int y in new[] { 16, 48 })
             {
                 foreach (int x in new[] { 14, 18, 46, 50 })
@@ -357,7 +357,7 @@ public sealed class SilkPtexSlotTransportConformanceTests
         // Change just the second slot, then restore it.
         words[36] = BitConverter.SingleToUInt32Bits(0.35f);
         lookup.Write(MemoryMarshal.AsBytes(words.AsSpan()));
-        byte[] replaced = Render();
+        byte[] replaced = render();
         await Assert.That(replaced.AsSpan().SequenceEqual(baseline)).IsEqualTo(mixed);
         int firstSlotChanges = 0;
         for (int pixel = 0; pixel < 64 * 64; pixel++)
@@ -372,13 +372,13 @@ public sealed class SilkPtexSlotTransportConformanceTests
         await Assert.That(firstSlotChanges).IsEqualTo(0);
         words[36] = BitConverter.SingleToUInt32Bits(transforms[8]);
         lookup.Write(MemoryMarshal.AsBytes(words.AsSpan()));
-        byte[] restored = Render();
+        byte[] restored = render();
         await Assert.That(restored.AsSpan().SequenceEqual(baseline)).IsTrue();
         if (mixed)
         {
             words[28] = BitConverter.SingleToUInt32Bits(transforms[0] + 0.1f);
             lookup.Write(MemoryMarshal.AsBytes(words.AsSpan()));
-            byte[] changedPtex = Render();
+            byte[] changedPtex = render();
             await Assert.That(changedPtex.AsSpan().SequenceEqual(baseline)).IsFalse();
             int ordinaryChanges = 0;
             for (int pixel = 0; pixel < 64 * 64; pixel++)
@@ -392,7 +392,7 @@ public sealed class SilkPtexSlotTransportConformanceTests
             await Assert.That(ordinaryChanges).IsEqualTo(0);
             words[28] = BitConverter.SingleToUInt32Bits(transforms[0]);
             lookup.Write(MemoryMarshal.AsBytes(words.AsSpan()));
-            byte[] restoredPtex = Render();
+            byte[] restoredPtex = render();
             await Assert.That(restoredPtex.AsSpan().SequenceEqual(baseline)).IsTrue();
             // Alter only ordinary UVs. Ptex samples must remain byte-identical.
             for (int corner = 0; corner < 6; corner++)
@@ -400,7 +400,7 @@ public sealed class SilkPtexSlotTransportConformanceTests
                 vertices[corner * 8 + 6] += 0.1f;
             }
             vertexBuffer.Write(MemoryMarshal.AsBytes(vertices.AsSpan()));
-            byte[] changedOrdinary = Render();
+            byte[] changedOrdinary = render();
             await Assert.That(changedOrdinary.AsSpan().SequenceEqual(baseline)).IsFalse();
             int ptexChanges = 0;
             for (int pixel = 0; pixel < 64 * 64; pixel++)
@@ -418,12 +418,12 @@ public sealed class SilkPtexSlotTransportConformanceTests
                 vertices[corner * 8 + 6] = 0.5f - 0.2f * sourceX;
             }
             vertexBuffer.Write(MemoryMarshal.AsBytes(vertices.AsSpan()));
-            byte[] restoredOrdinary = Render();
+            byte[] restoredOrdinary = render();
             await Assert.That(restoredOrdinary.AsSpan().SequenceEqual(baseline)).IsTrue();
         }
         words[0] = 0;
         lookup.Write(MemoryMarshal.AsBytes(words.AsSpan()));
-        byte[] invalidCorners = Render();
+        byte[] invalidCorners = render();
         foreach (int y in new[] { 16, 48 })
         {
             foreach (int x in new[] { 14, 18, 46, 50 })
@@ -437,7 +437,7 @@ public sealed class SilkPtexSlotTransportConformanceTests
         }
         words[0] = 6;
         lookup.Write(MemoryMarshal.AsBytes(words.AsSpan()));
-        byte[] repaired = Render();
+        byte[] repaired = render();
         await Assert.That(repaired.AsSpan().SequenceEqual(baseline)).IsTrue();
 
     }

@@ -996,9 +996,9 @@ public sealed class SilkSceneState : IDisposable
         bool affine = transform[3] == 0 && transform[7] == 0 && transform[11] == 0 && transform[15] == 1;
         if (!affine || !finite || !float.IsFinite(scale) || !float.IsFinite(determinant) ||
             scale <= 0 || MathF.Abs(determinant) <= scale * 1e-6f ||
-            !FiniteInverse(cross, determinant) ||
-            !FiniteInverse(Vector3.Cross(z, x), determinant) ||
-            !FiniteInverse(Vector3.Cross(x, y), determinant))
+            !finiteInverse(cross, determinant) ||
+            !finiteInverse(Vector3.Cross(z, x), determinant) ||
+            !finiteInverse(Vector3.Cross(x, y), determinant))
         {
             throw new InvalidDataException(
                 $"Sampled density volume '{mesh.Path}' instance {mesh.InstanceIndex} bound to " +
@@ -1008,7 +1008,7 @@ public sealed class SilkSceneState : IDisposable
                 "or bake the transform into the density grid before retrying. The update was refused.");
         }
 
-        static bool FiniteInverse(Vector3 cofactor, float determinant)
+        static bool finiteInverse(Vector3 cofactor, float determinant)
         {
             Vector3 inverse = cofactor / determinant;
             return float.IsFinite(inverse.X) && float.IsFinite(inverse.Y) && float.IsFinite(inverse.Z);

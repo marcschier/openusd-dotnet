@@ -893,7 +893,7 @@ internal static class OffscreenRhiConformance
             {
                 TopologyKind = SilkTopologyKind.PointList
             });
-        void BindScene(ISilkGraphicsCommandList commands)
+        void bindScene(ISilkGraphicsCommandList commands)
         {
             commands.SetGraphicsPipeline(scenePipeline);
             commands.SetViewport(new SilkViewport(0, 0, size, size));
@@ -916,7 +916,7 @@ internal static class OffscreenRhiConformance
             commands.ClearColor(color, new SilkColor(0, 0, 0, 1));
             commands.ClearDepth(depth, 1);
             commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
-            BindScene(commands);
+            bindScene(commands);
             commands.DrawIndexed(3);
             commands.EndRendering();
             using ISilkGraphicsSubmission submission = device.Submit(commands);
@@ -933,7 +933,7 @@ internal static class OffscreenRhiConformance
             commands.ClearColor(rebound, new SilkColor(0, 0, 0, 1));
             commands.ClearDepth(depth, 1);
             commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
-            BindScene(commands);
+            bindScene(commands);
             commands.DrawIndexed(3);
             commands.EndRendering();
 

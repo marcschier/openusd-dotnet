@@ -104,7 +104,7 @@ internal static class PtexSlotProbeAssets
             SilkShaderBinaryFormat.MetalLibrary => "metal",
             _ => throw new ArgumentOutOfRangeException(nameof(format)),
         };
-        SilkShaderModuleDescriptor Module(string stage, SilkShaderStage shaderStage) => new(
+        SilkShaderModuleDescriptor module(string stage, SilkShaderStage shaderStage) => new(
             shaderStage, format,
             format == SilkShaderBinaryFormat.MetalLibrary ? "main" :
                 mixed && stage == "fragment" ? "ptexSlotMixedFragmentMain" :
@@ -112,7 +112,7 @@ internal static class PtexSlotProbeAssets
                 $"ptexSlotProbe{(stage == "vertex" ? "Vertex" : "Fragment")}Main",
             Verify(manifest.GetProperty("artifacts"), $"{stem}.{stage}.{extension}",
                 Path.Combine(output, $"{stem}.{stage}.{extension}")));
-        return (Module("vertex", SilkShaderStage.Vertex), Module("fragment", SilkShaderStage.Fragment));
+        return (module("vertex", SilkShaderStage.Vertex), module("fragment", SilkShaderStage.Fragment));
     }
 
     private static uint ResourceIndex(JsonElement parameter)

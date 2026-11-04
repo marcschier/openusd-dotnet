@@ -20,7 +20,7 @@ public sealed class SilkFrameCaptureDiagnosticsTests
             CreateRequests();
         renderer.ObserveMaterialShaderRequest(MaterialPath, key, failed);
 
-        SilkFrameCaptureResult first = Capture();
+        SilkFrameCaptureResult first = capture();
         RenderDiagnostic[] failures = first.Diagnostics.Entries
             .Where(static entry => entry.Code == SilkRenderDiagnosticCodes.MaterialShaderCompilationFailed)
             .ToArray();
@@ -31,12 +31,12 @@ public sealed class SilkFrameCaptureDiagnosticsTests
         await Assert.That(failures[0].Message).Contains(CompilationFailure);
 
         renderer.ObserveMaterialShaderRequest(MaterialPath, key, ready);
-        SilkFrameCaptureResult recovered = Capture();
+        SilkFrameCaptureResult recovered = capture();
         await Assert.That(recovered.Diagnostics.Entries.Any(static entry =>
             entry.Code == SilkRenderDiagnosticCodes.MaterialShaderCompilationFailed)).IsFalse();
         await Assert.That(first.Diagnostics.Entries.Any(entry => ReferenceEquals(entry, failures[0]))).IsTrue();
 
-        SilkFrameCaptureResult Capture() => includeHdr
+        SilkFrameCaptureResult capture() => includeHdr
             ? SilkFrameCapture.CaptureRetainedWithHdrColor(renderer, device, 1, 1, RenderSettings.Default)
             : SilkFrameCapture.CaptureRetained(renderer, device, 1, 1, RenderSettings.Default);
     }

@@ -532,7 +532,7 @@ public sealed class SilkGraphicsSubmissionRetirementTests
         }
         device.DeferNextReadbackDrainForTesting();
         var actual = new byte[64];
-        void Readback()
+        void readback()
         {
             if (image is not null)
             {
@@ -545,13 +545,13 @@ public sealed class SilkGraphicsSubmissionRetirementTests
         }
         if (signalFailure)
         {
-            COMException? observed = await Assert.That(Readback).Throws<COMException>();
+            COMException? observed = await Assert.That(readback).Throws<COMException>();
             await Assert.That(observed!.HResult).IsEqualTo(unchecked((int)0x80004005));
         }
         else
         {
             InvalidOperationException? observed =
-                await Assert.That(Readback).Throws<InvalidOperationException>();
+                await Assert.That(readback).Throws<InvalidOperationException>();
             await Assert.That(observed).IsSameReferenceAs(failure);
         }
         await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(texture ? 784ul : 64ul);
@@ -648,7 +648,7 @@ public sealed class SilkGraphicsSubmissionRetirementTests
         var failure = new InvalidOperationException("Injected readback fence failure.");
         device.FailNextReadbackFenceForTesting(failure);
         var actual = new byte[64];
-        void Readback()
+        void readback()
         {
             if (image is not null)
             {
@@ -660,10 +660,10 @@ public sealed class SilkGraphicsSubmissionRetirementTests
             }
         }
         InvalidOperationException? observed =
-            await Assert.That(Readback).Throws<InvalidOperationException>();
+            await Assert.That(readback).Throws<InvalidOperationException>();
         await Assert.That(observed).IsSameReferenceAs(failure);
         await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
-        Readback();
+        readback();
         await Assert.That(actual).IsEquivalentTo(source);
         await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
     }
@@ -1197,7 +1197,7 @@ public sealed class SilkGraphicsSubmissionRetirementTests
         var failure = new InvalidOperationException("Injected readback allocation failure.");
         device.ReadbackBufferCreationProbeForTesting = () => throw failure;
         var actual = new byte[64];
-        void Readback()
+        void readback()
         {
             if (image is not null)
             {
@@ -1211,11 +1211,11 @@ public sealed class SilkGraphicsSubmissionRetirementTests
         try
         {
             InvalidOperationException? observed =
-                await Assert.That(Readback).Throws<InvalidOperationException>();
+                await Assert.That(readback).Throws<InvalidOperationException>();
             await Assert.That(observed).IsSameReferenceAs(failure);
             await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
             device.ReadbackBufferCreationProbeForTesting = null;
-            Readback();
+            readback();
             await Assert.That(actual).IsEquivalentTo(source);
             await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
         }

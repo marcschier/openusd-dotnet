@@ -392,7 +392,7 @@ public sealed class VolumeCameraJointPassConformanceTests
             int createdBuffers = device.CreatedBuffers;
             File.Move(grid, movedGrid);
             using OpenUsdSilkPage next = Page(2, Frame(SilkMeshRendererConformance.Identity()));
-            SilkMeshRenderResult RenderAttempt() => staged
+            SilkMeshRenderResult renderAttempt() => staged
                 ? renderer.ApplyAndRender(next, resizedColor, resizedDepth)
                 : renderer.Render(resizedColor, resizedDepth);
 
@@ -402,14 +402,14 @@ public sealed class VolumeCameraJointPassConformanceTests
                 {
                     case VolumeFrameFailure.OutputAllocation:
                         device.RefuseTextureAfter = 1;
-                        await Assert.That(RenderAttempt)
+                        await Assert.That(renderAttempt)
                             .Throws<InvalidOperationException>()
                             .WithMessageContaining("Injected GPU texture preparation refusal");
                         break;
                     case VolumeFrameFailure.FrameSubmission:
                     case VolumeFrameFailure.OutputPublication:
                         device.RefuseSubmissionAfter = failure == VolumeFrameFailure.FrameSubmission ? 0 : 1;
-                        await Assert.That(RenderAttempt)
+                        await Assert.That(renderAttempt)
                             .Throws<SilkGpuStagingBudgetExceededException>();
                         break;
                     default:
@@ -437,7 +437,7 @@ public sealed class VolumeCameraJointPassConformanceTests
             var retainedPixels = new float[publishedPixels.Length];
             originalColor.ReadbackForTesting(retainedPixels);
             await Assert.That(retainedPixels.AsSpan().SequenceEqual(publishedPixels)).IsTrue();
-            _ = RenderAttempt();
+            _ = renderAttempt();
             await Assert.That(renderer.Scene.Revision).IsEqualTo(staged ? 2UL : 1UL);
             float[] retriedPixels = ReadPixels(resizedColor);
             int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
@@ -541,20 +541,20 @@ public sealed class VolumeCameraJointPassConformanceTests
             renderer.PhysicsOverrides = overrides;
             File.Move(grid, movedGrid);
             using OpenUsdSilkPage next = Page(2, Frame(SilkMeshRendererConformance.Identity()));
-            SilkMeshRenderResult RenderAttempt() => staged
+            SilkMeshRenderResult renderAttempt() => staged
                 ? renderer.ApplyAndRender(next, resizedColor, resizedDepth)
                 : renderer.Render(resizedColor, resizedDepth);
 
             if (failure == VolumeCleanupFailure.None)
             {
-                _ = RenderAttempt();
+                _ = renderAttempt();
             }
             else if (failure == VolumeCleanupFailure.Both)
             {
                 AggregateException? reported = null;
                 try
                 {
-                    _ = RenderAttempt();
+                    _ = renderAttempt();
                 }
                 catch (AggregateException exception)
                 {
@@ -569,7 +569,7 @@ public sealed class VolumeCameraJointPassConformanceTests
             }
             else
             {
-                await Assert.That(RenderAttempt)
+                await Assert.That(renderAttempt)
                     .Throws<InvalidOperationException>()
                     .WithMessageContaining("Injected texture cleanup failure");
             }
@@ -669,18 +669,18 @@ public sealed class VolumeCameraJointPassConformanceTests
                 revision: 1));
             renderer.PhysicsOverrides = overrides;
             File.Move(grid, movedGrid);
-            SilkMeshRenderResult RenderAttempt() => renderer.Render(resizedColor, resizedDepth);
+            SilkMeshRenderResult renderAttempt() => renderer.Render(resizedColor, resizedDepth);
 
             if (failure == VolumeCleanupFailure.None)
             {
-                _ = RenderAttempt();
+                _ = renderAttempt();
             }
             else if (failure == VolumeCleanupFailure.Both)
             {
                 AggregateException? reported = null;
                 try
                 {
-                    _ = RenderAttempt();
+                    _ = renderAttempt();
                 }
                 catch (AggregateException exception)
                 {
@@ -695,7 +695,7 @@ public sealed class VolumeCameraJointPassConformanceTests
             }
             else
             {
-                await Assert.That(RenderAttempt)
+                await Assert.That(renderAttempt)
                     .Throws<InvalidOperationException>()
                     .WithMessageContaining("Injected texture cleanup failure");
             }
@@ -766,11 +766,11 @@ public sealed class VolumeCameraJointPassConformanceTests
             var bindings = new PhysicsRenderBindingTable(1);
             await Assert.That(bindings.TryBind(body, MeshA)).IsTrue();
             var overrides = new SilkPhysicsTransformOverrides(1);
-            void StageTransform(double x, ulong revision) => overrides.Stage(bindings, new PhysicsRenderOverrideView(
+            void stageTransform(double x, ulong revision) => overrides.Stage(bindings, new PhysicsRenderOverrideView(
                 new[] { new PhysicsRenderTransformOverride(
                     body, new UsdVec3d(x, 0, -1), PhysicsRenderOrientation.Identity, true) },
                 revision: revision));
-            StageTransform(0.1, 1);
+            stageTransform(0.1, 1);
             renderer.PhysicsOverrides = overrides;
             using OpenUsdSilkPage initial = Page(
                 1,
@@ -793,10 +793,10 @@ public sealed class VolumeCameraJointPassConformanceTests
             var untouchedDepth = new float[Size * Size];
             resizedDepth.ReadbackForTesting(untouchedDepth);
 
-            StageTransform(0.25, 2);
+            stageTransform(0.25, 2);
             File.Move(grid, movedGrid);
             using OpenUsdSilkPage next = Page(2, Frame(SilkMeshRendererConformance.Identity()));
-            SilkMeshRenderResult RenderAttempt() => staged
+            SilkMeshRenderResult renderAttempt() => staged
                 ? renderer.ApplyAndRender(next, resizedColor, resizedDepth)
                 : renderer.Render(resizedColor, resizedDepth);
             device.FailTextureDisposals.Add(SilkTextureDescriptor.SampledDepthTarget(Size, Size));
@@ -805,7 +805,7 @@ public sealed class VolumeCameraJointPassConformanceTests
             AggregateException? reported = null;
             try
             {
-                _ = RenderAttempt();
+                _ = renderAttempt();
             }
             catch (AggregateException exception)
             {
@@ -835,7 +835,7 @@ public sealed class VolumeCameraJointPassConformanceTests
             resizedDepth.ReadbackForTesting(afterDepth);
             await Assert.That(afterDepth.AsSpan().SequenceEqual(untouchedDepth)).IsTrue();
 
-            _ = RenderAttempt();
+            _ = renderAttempt();
             await Assert.That(renderer.Scene.Revision).IsEqualTo(staged ? 2UL : 1UL);
             await Assert.That(overrides.GetTransform(1)[12]).IsEqualTo(0.25);
             await Assert.That(device.TextureDisposalAttempts).IsEqualTo(4);
@@ -897,13 +897,13 @@ public sealed class VolumeCameraJointPassConformanceTests
 
         using OpenUsdSilkPage next = Page(2, Frame(SilkMeshRendererConformance.Identity()));
         SilkMeshRenderOptions changedDepth = SilkMeshRenderOptions.Default with { ClearDepth = 0.5f };
-        SilkMeshRenderResult RenderAttempt() => staged
+        SilkMeshRenderResult renderAttempt() => staged
             ? renderer.ApplyAndRender(next, color, depth, changedDepth)
             : renderer.Render(color, depth, changedDepth);
         device.RefuseSubmissionAfter = 1;
         try
         {
-            await Assert.That(RenderAttempt).Throws<SilkGpuStagingBudgetExceededException>();
+            await Assert.That(renderAttempt).Throws<SilkGpuStagingBudgetExceededException>();
         }
         finally
         {
@@ -920,7 +920,7 @@ public sealed class VolumeCameraJointPassConformanceTests
         snapshot.ReadbackForTesting(afterSnapshot);
         await Assert.That(afterSnapshot.AsSpan().SequenceEqual(snapshotPixels)).IsTrue();
 
-        _ = RenderAttempt();
+        _ = renderAttempt();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(staged ? 2UL : 1UL);
         ISilkGraphicsTexture retriedSnapshot = GetPublishedVolumeDepthSnapshot(renderer);
         retriedSnapshot.ReadbackForTesting(afterSnapshot);
@@ -1015,20 +1015,20 @@ public sealed class VolumeCameraJointPassConformanceTests
         ulong reservedUnderPressure = textureBudget.Usage.ReservedBytes;
         using OpenUsdSilkPage next = Page(2, Frame(SilkMeshRendererConformance.Identity()));
         SilkMeshRenderOptions changedDepth = SilkMeshRenderOptions.Default with { ClearDepth = 0.5f };
-        SilkMeshRenderResult RenderAttempt() => staged
+        SilkMeshRenderResult renderAttempt() => staged
             ? renderer.ApplyAndRender(next, color, depth, changedDepth)
             : renderer.Render(color, depth, changedDepth);
 
         var afterSnapshot = new float[snapshotPixels.Length];
         if (exactBoundary)
         {
-            _ = RenderAttempt();
+            _ = renderAttempt();
             await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(reservedUnderPressure + snapshotBytes);
             pressure.Dispose();
         }
         else
         {
-            var refusal = await Assert.That(RenderAttempt).Throws<SilkGpuTextureBudgetExceededException>();
+            var refusal = await Assert.That(renderAttempt).Throws<SilkGpuTextureBudgetExceededException>();
             await Assert.That(refusal!.RequestedBytes).IsEqualTo(snapshotBytes);
             await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
             await Assert.That(ReferenceEquals(GetPublishedVolumeDepthSnapshot(renderer), snapshot)).IsTrue();
@@ -1040,7 +1040,7 @@ public sealed class VolumeCameraJointPassConformanceTests
             await Assert.That(afterDepth.AsSpan().SequenceEqual(publishedDepth)).IsTrue();
             await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(reservedUnderPressure);
             pressure.Dispose();
-            _ = RenderAttempt();
+            _ = renderAttempt();
         }
         await Assert.That(renderer.Scene.Revision).IsEqualTo(staged ? 2UL : 1UL);
         GetPublishedVolumeDepthSnapshot(renderer).ReadbackForTesting(afterSnapshot);

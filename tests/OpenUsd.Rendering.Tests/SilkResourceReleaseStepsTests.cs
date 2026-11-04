@@ -26,14 +26,14 @@ public sealed class SilkResourceReleaseStepsTests
         var attempts = new int[count];
         var releases = new int[count];
         bool refuse = true;
-        void Release(int step)
+        void release(int step)
         {
             attempts[step]++;
             if (refuse && step == failAt)
             { throw new InvalidOperationException("Injected native retirement step failure."); }
             releases[step]++;
         }
-        await Assert.That(() => steps.Release(count, Release)).Throws<InvalidOperationException>();
+        await Assert.That(() => steps.Release(count, release)).Throws<InvalidOperationException>();
         await Assert.That(steps.Completed).IsEqualTo(failAt);
         for (int step = 0; step < count; step++)
         {
@@ -41,8 +41,8 @@ public sealed class SilkResourceReleaseStepsTests
             await Assert.That(releases[step]).IsEqualTo(step < failAt ? 1 : 0);
         }
         refuse = false;
-        steps.Release(count, Release);
-        steps.Release(count, Release);
+        steps.Release(count, release);
+        steps.Release(count, release);
         await Assert.That(steps.Completed).IsEqualTo(count);
         for (int step = 0; step < count; step++)
         {
@@ -59,11 +59,11 @@ public sealed class SilkResourceReleaseStepsTests
     {
         SilkResourceReleaseSteps steps = default;
         int calls = 0;
-        void Release(int step) => calls++;
-        await Assert.That(() => steps.Release(invalidCount, Release)).Throws<ArgumentOutOfRangeException>();
+        void release(int step) => calls++;
+        await Assert.That(() => steps.Release(invalidCount, release)).Throws<ArgumentOutOfRangeException>();
         await Assert.That(calls).IsEqualTo(0);
-        steps.Release(2, Release);
-        await Assert.That(() => steps.Release(3, Release)).Throws<InvalidOperationException>();
+        steps.Release(2, release);
+        await Assert.That(() => steps.Release(3, release)).Throws<InvalidOperationException>();
         await Assert.That(calls).IsEqualTo(2);
         await Assert.That(steps.Completed).IsEqualTo(2);
     }

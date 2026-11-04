@@ -295,7 +295,7 @@ public sealed partial class StormSilkParityCaptureDriverTests
                     SilkTextureDescriptor.DepthTarget(Width, Height));
 
                 (ParityImage Image, int[] FaceIndices, SilkPtexMappingStatus Status, int DrawCount,
-                    bool Unsupported, bool MissingCoordinates) Capture(double time)
+                    bool Unsupported, bool MissingCoordinates) capture(double time)
                 {
                     using OpenUsdSilkPage page = session.Sync(
                         Width,
@@ -318,9 +318,9 @@ public sealed partial class StormSilkParityCaptureDriverTests
                             entry.Code == SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable));
                 }
 
-                var baseline = Capture(1);
-                var shifted = Capture(2);
-                var restored = Capture(1);
+                var baseline = capture(1);
+                var shifted = capture(2);
+                var restored = capture(1);
                 await Assert.That(baseline.DrawCount).IsGreaterThan(0);
                 await Assert.That(baseline.Status).IsEqualTo(SilkPtexMappingStatus.Mapped);
                 await Assert.That(shifted.Status).IsEqualTo(SilkPtexMappingStatus.Mapped);

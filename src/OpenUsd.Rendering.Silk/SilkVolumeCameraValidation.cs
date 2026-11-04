@@ -595,7 +595,7 @@ internal static class SilkVolumeCameraValidation
         float xCrossYy = (x[2] * y[0]) - (x[0] * y[2]);
         float xCrossYz = (x[0] * y[1]) - (x[1] * y[0]);
         float determinant = (x[0] * yCrossZx) + (x[1] * yCrossZy) + (x[2] * yCrossZz);
-        float basisScale = Length(x) * Length(y) * Length(z);
+        float basisScale = length(x) * length(y) * length(z);
         float inverseDeterminant = 1.0f / determinant;
         if (!float.IsFinite(basisScale) || basisScale <= 0 ||
             !float.IsFinite(yCrossZx) || !float.IsFinite(yCrossZy) || !float.IsFinite(yCrossZz) ||
@@ -624,7 +624,7 @@ internal static class SilkVolumeCameraValidation
                 "the shader's relative determinant tolerance");
         }
 
-        static float Length(float[] value) =>
+        static float length(float[] value) =>
             MathF.Sqrt((value[0] * value[0]) + (value[1] * value[1]) + (value[2] * value[2]));
     }
 

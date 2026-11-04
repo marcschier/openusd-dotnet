@@ -4073,19 +4073,19 @@ public sealed class SilkMaterialCommandTests
         _ = bindings.TryBind(id, "/Volume");
         var overrides = new SilkPhysicsTransformOverrides(1);
         renderer.PhysicsOverrides = overrides;
-        PhysicsRenderOverrideView Pose(double x, ulong revision) => new(
+        PhysicsRenderOverrideView pose(double x, ulong revision) => new(
             new[] { new PhysicsRenderTransformOverride(
                 id, new UsdVec3d(x, 0, 0), PhysicsRenderOrientation.Identity, true) }, revision);
-        _ = overrides.Refresh(renderer.Scene, bindings, Pose(1, 1));
+        _ = overrides.Refresh(renderer.Scene, bindings, pose(1, 1));
         ulong overrideRevision = overrides.Revision;
-        overrides.Stage(bindings, Pose(double.MaxValue, 2));
+        overrides.Stage(bindings, pose(double.MaxValue, 2));
         using var bad = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [], 0);
         await Assert.That(() => renderer.ApplyPage(bad, useSceneMaterials: false))
             .Throws<InvalidDataException>();
         await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
         await Assert.That(overrides.Revision).IsEqualTo(overrideRevision);
 
-        overrides.Stage(bindings, Pose(2, 3));
+        overrides.Stage(bindings, pose(2, 3));
         using var corrected = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
             CreateMeshUpsert("/Added", "/AdmissionVolume", 8), 1);
         device.RefuseBufferSize = SilkSceneUniformWriter.ByteSize;
@@ -4117,11 +4117,11 @@ public sealed class SilkMaterialCommandTests
         var bindings = new PhysicsRenderBindingTable(2);
         _ = bindings.TryBind(first, "/First");
         _ = bindings.TryBind(second, "/Second");
-        static PhysicsRenderTransformOverride Pose(PhysicsRenderObjectId id, double x) =>
+        static PhysicsRenderTransformOverride pose(PhysicsRenderObjectId id, double x) =>
             new(id, new UsdVec3d(x, 0, 0), PhysicsRenderOrientation.Identity, true);
         PhysicsRenderTransformOverride[] values = duplicate
-            ? [Pose(first, double.MaxValue), Pose(first, 1)]
-            : [Pose(first, 1), Pose(second, double.MaxValue)];
+            ? [pose(first, double.MaxValue), pose(first, 1)]
+            : [pose(first, 1), pose(second, double.MaxValue)];
         var overrides = new SilkPhysicsTransformOverrides(1);
         _ = overrides.Refresh(scene, bindings, new PhysicsRenderOverrideView(values, 1));
         await Assert.That(overrides.Count).IsEqualTo(1);
@@ -4168,20 +4168,20 @@ public sealed class SilkMaterialCommandTests
         {
             _ = bindings.TryBind(id, path, instanceIndex);
         }
-        PhysicsRenderOverrideView View(double x, ulong revision) => new(
+        PhysicsRenderOverrideView view(double x, ulong revision) => new(
             new[] { new PhysicsRenderTransformOverride(
                 id, new UsdVec3d(x, 0, 0), PhysicsRenderOrientation.Identity, true) }, revision);
         var overrides = new SilkPhysicsTransformOverrides(1);
-        _ = overrides.Refresh(scene, bindings, View(1, 1));
+        _ = overrides.Refresh(scene, bindings, view(1, 1));
         double[] before = overrides.GetTransform(scene.Meshes.Values.Single().Id).ToArray();
         ulong beforeRevision = overrides.Revision;
-        overrides.Stage(bindings, View(double.MaxValue, 2));
+        overrides.Stage(bindings, view(double.MaxValue, 2));
         await Assert.That(() => overrides.RefreshStaged(scene)).Throws<InvalidDataException>();
         await Assert.That(overrides.Revision).IsEqualTo(beforeRevision);
         await Assert.That(overrides.SourceRevision).IsEqualTo(1UL);
         await Assert.That(overrides.GetTransform(scene.Meshes.Values.Single().Id).ToArray())
             .IsEquivalentTo(before);
-        overrides.Stage(bindings, View(2, 3));
+        overrides.Stage(bindings, view(2, 3));
         _ = overrides.RefreshStaged(scene);
         scene.ValidateVolumeTransforms(overrides);
         await Assert.That(overrides.GetTransform(scene.Meshes.Values.Single().Id)[12]).IsEqualTo(2.0);
@@ -4204,7 +4204,7 @@ public sealed class SilkMaterialCommandTests
     {
         const string path = "/World/UnstableVolume";
         const string materialPath = "/World/VolumeMaterial";
-        byte[] Material(SilkSurfaceKind kind) => CreateMaterialUpsert(
+        byte[] material(SilkSurfaceKind kind) => CreateMaterialUpsert(
             materialPath, kind, scalars: [], textures: kind == SilkSurfaceKind.VolumeDensity
                 ? [new TextureSpec(
                     SilkMaterialParameter.VolumeDensity, SilkTextureWrap.Clamp, SilkTextureWrap.Clamp,
@@ -4212,7 +4212,7 @@ public sealed class SilkMaterialCommandTests
                     Scale: [1f, 1f, 1f, 1f], Bias: [0f, 0f, 0f, 0f],
                     Fallback: [0f, 0f, 0f, 1f], Asset: "density.raw", UvPrimvar: "4,4,4")]
                 : []);
-        byte[] Mesh(bool unstable)
+        byte[] mesh(bool unstable)
         {
             byte[] command = CreateMeshUpsert(path, materialPath);
             BinaryPrimitives.WriteInt32LittleEndian(command.AsSpan(24), instanceIndex);
@@ -4231,14 +4231,14 @@ public sealed class SilkMaterialCommandTests
 
         using var scene = new SilkSceneState();
         _ = scene.Apply(
-            [.. Material(materialChange ? SilkSurfaceKind.PreviewSurface : SilkSurfaceKind.VolumeDensity),
-             .. Mesh(materialChange)], 2, 1);
+            [.. material(materialChange ? SilkSurfaceKind.PreviewSurface : SilkSurfaceKind.VolumeDensity),
+             .. mesh(materialChange)], 2, 1);
         SilkMeshData retainedMesh = scene.Meshes.Values.Single();
         SilkMaterialData retainedMaterial = scene.Materials[materialPath];
         ulong geometryRevision = scene.GeometryRevision;
         ulong materialRevision = scene.MaterialRevision;
         InvalidDataException? refusal = await Assert.That(() => scene.Apply(
-            materialChange ? Material(SilkSurfaceKind.VolumeDensity) : Mesh(true), 1, 2))
+            materialChange ? material(SilkSurfaceKind.VolumeDensity) : mesh(true), 1, 2))
             .Throws<InvalidDataException>();
         await Assert.That(refusal!.Message).Contains(path);
         await Assert.That(refusal.Message).Contains($"instance {instanceIndex}");
@@ -4253,15 +4253,15 @@ public sealed class SilkMaterialCommandTests
 
         using var empty = new SilkSceneState();
         await Assert.That(() => empty.Apply(
-            [.. Mesh(true), .. Material(SilkSurfaceKind.VolumeDensity)], 2, 1))
+            [.. mesh(true), .. material(SilkSurfaceKind.VolumeDensity)], 2, 1))
             .Throws<InvalidDataException>();
         await Assert.That(empty.Meshes.Count).IsEqualTo(0);
         await Assert.That(empty.Materials.Count).IsEqualTo(0);
         await Assert.That(empty.Revision).IsEqualTo(0UL);
 
-        byte[] repaired = Mesh(true);
+        byte[] repaired = mesh(true);
         BinaryPrimitives.WriteDoubleLittleEndian(repaired.AsSpan(80 + 5 * sizeof(double)), 2.0);
-        _ = scene.Apply([.. repaired, .. Material(SilkSurfaceKind.VolumeDensity)], 2, 3);
+        _ = scene.Apply([.. repaired, .. material(SilkSurfaceKind.VolumeDensity)], 2, 3);
         await Assert.That(scene.Revision).IsEqualTo(3UL);
         await Assert.That(scene.Meshes.Values.Single().Transform.Span[5]).IsEqualTo(2.0);
     }
@@ -6162,13 +6162,13 @@ public sealed class SilkMaterialCommandTests
         float coordinate = mesh.PtexCoordinates[0];
         int face = mesh.PtexFaceIndices[0];
         float vertex = geometry.Vertices[0];
-        void SetChanged(bool changed)
+        void setChanged(bool changed)
         {
             mesh.PtexCoordinates[0] = changed && change == "coordinate" ? coordinate + 0.125f : coordinate;
             mesh.PtexFaceIndices[0] = changed && change == "face" ? 11 : face;
             geometry.Vertices[0] = changed && change == "vertex" ? vertex + 0.25f : vertex;
         }
-        SetChanged(true);
+        setChanged(true);
         using (budget.Reserve(budget.MaximumBytes - originalBytes))
         {
             await Assert.That(() => cache.Prepare(mesh, geometry, sources, 16, budget, 0))
@@ -6184,13 +6184,13 @@ public sealed class SilkMaterialCommandTests
         }
         await Assert.That(ReferenceEquals(cache.Current, original)).IsTrue();
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(originalBytes);
-        SetChanged(false);
+        setChanged(false);
         using (var unchanged = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
         {
             await Assert.That(ReferenceEquals(unchanged.Value, original)).IsTrue();
             unchanged.Commit();
         }
-        SetChanged(true);
+        setChanged(true);
         using (var update = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
         {
             await Assert.That(ReferenceEquals(update.Value, original)).IsFalse();
@@ -6205,7 +6205,7 @@ public sealed class SilkMaterialCommandTests
             update.Commit();
         }
         SilkPtexSlotCandidateCache.Candidate changedPublication = cache.Current!;
-        SetChanged(false);
+        setChanged(false);
         using (var restored = cache.Prepare(mesh, geometry, sources, 16, budget, 0))
         {
             await Assert.That(ReferenceEquals(restored.Value, changedPublication)).IsFalse();
@@ -6469,7 +6469,7 @@ public sealed class SilkMaterialCommandTests
     [Test]
     public async Task CandidatePtexMaterialValuesRejectUnestablishedProcessingWithoutTouchingPixels()
     {
-        static SilkMaterialTexture Texture(
+        static SilkMaterialTexture createTexture(
             SilkTextureSourceKind kind = SilkTextureSourceKind.Ptex,
             SilkCompositeOperator composite = SilkCompositeOperator.None,
             SilkTextureChannel channel = SilkTextureChannel.Rgb,
@@ -6482,10 +6482,10 @@ public sealed class SilkMaterialCommandTests
                 new System.Numerics.Vector4(0, 0, 0, luminance), kind);
         foreach (SilkMaterialTexture texture in new[]
         {
-            Texture(kind: SilkTextureSourceKind.Standard),
-            Texture(composite: SilkCompositeOperator.Mix),
-            Texture(channel: SilkTextureChannel.LuminanceRgb),
-            Texture(luminance: 1),
+            createTexture(kind: SilkTextureSourceKind.Standard),
+            createTexture(composite: SilkCompositeOperator.Mix),
+            createTexture(channel: SilkTextureChannel.LuminanceRgb),
+            createTexture(luminance: 1),
         })
         {
             byte[] pixels = [12, 34, 56, 78];
@@ -6493,7 +6493,7 @@ public sealed class SilkMaterialCommandTests
                 .Throws<NotSupportedException>();
             await Assert.That(pixels.SequenceEqual(new byte[] { 12, 34, 56, 78 })).IsTrue();
         }
-        await Assert.That(() => SilkSceneGpuResources.CapturePtexMaterialValue(Texture(scale: float.NaN)))
+        await Assert.That(() => SilkSceneGpuResources.CapturePtexMaterialValue(createTexture(scale: float.NaN)))
             .Throws<InvalidDataException>();
     }
 
@@ -6514,7 +6514,7 @@ public sealed class SilkMaterialCommandTests
             new(SilkMaterialParameter.DiffuseColor, 1, first),
             new(SilkMaterialParameter.Roughness, 2, second),
         ];
-        static SilkMaterialTexture Material(SilkMaterialParameter parameter, float scale) => new(
+        static SilkMaterialTexture material(SilkMaterialParameter parameter, float scale) => new(
             parameter, SilkTextureWrap.Repeat, SilkTextureWrap.Mirror, SilkColorSpace.Raw,
             parameter == SilkMaterialParameter.DiffuseColor ? 3 : 1,
             parameter == SilkMaterialParameter.DiffuseColor ? SilkTextureChannel.Rgb : SilkTextureChannel.G,
@@ -6523,8 +6523,8 @@ public sealed class SilkMaterialCommandTests
             sourceKind: SilkTextureSourceKind.Ptex);
         SilkMaterialTexture[] materials =
         [
-            Material(SilkMaterialParameter.DiffuseColor, 0.5f),
-            Material(SilkMaterialParameter.Roughness, 0.75f),
+            material(SilkMaterialParameter.DiffuseColor, 0.5f),
+            material(SilkMaterialParameter.Roughness, 0.75f),
         ];
         var cpu = new SilkCpuTextureBudget(65536);
         using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 16 };
@@ -6547,7 +6547,7 @@ public sealed class SilkMaterialCommandTests
             await Assert.That(commands.SamplerBindings.All(binding =>
                 binding.Descriptor == SilkSceneGpuResources.PtexMaterialSampler)).IsTrue();
         }
-        materials[1] = Material(SilkMaterialParameter.Roughness, 0.25f);
+        materials[1] = material(SilkMaterialParameter.Roughness, 0.25f);
         using (var pending = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0, materials))
         {
             pending.Commit();
@@ -6555,7 +6555,7 @@ public sealed class SilkMaterialCommandTests
         await Assert.That(device.Submissions).IsEqualTo(2);
         await Assert.That(device.LastSubmittedUploads[0].SequenceEqual(before[0])).IsTrue();
         await Assert.That(device.LastSubmittedUploads[1].SequenceEqual(before[1])).IsFalse();
-        materials[1] = Material(SilkMaterialParameter.Roughness, 0.75f);
+        materials[1] = material(SilkMaterialParameter.Roughness, 0.75f);
         using (var pending = cache.Prepare(mesh, ordinary, sources, 16, cpu, 0, materials))
         {
             pending.Commit();

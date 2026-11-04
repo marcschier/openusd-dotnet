@@ -37,7 +37,7 @@ public sealed class VolumeCameraConformanceTests
         var cases = new List<string>();
         string deviceName = string.Empty;
         bool software = false;
-        void WriteReceipt(string status) => File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
+        void writeReceipt(string status) => File.WriteAllText(receiptPath, JsonSerializer.Serialize(new
         {
             schemaVersion = 1,
             platform,
@@ -47,7 +47,7 @@ public sealed class VolumeCameraConformanceTests
             software,
             cases,
         }));
-        WriteReceipt("started");
+        writeReceipt("started");
         SilkGraphicsBackend? previousBackend = GateBackend.Value;
         GateBackend.Value = backend;
         try
@@ -62,182 +62,182 @@ public sealed class VolumeCameraConformanceTests
                     throw new InvalidOperationException($"Camera gate requires SwiftShader, selected '{deviceName}'.");
                 }
             }
-            async Task Run(string id, Func<Task> test)
+            async Task run(string id, Func<Task> test)
             {
                 await test();
                 cases.Add(id);
-                WriteReceipt("started");
+                writeReceipt("started");
             }
-            await Run("analytic-slab-511-side", () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(511, 90));
-            await Run("analytic-slab-512-side", () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(512, 90));
-            await Run("analytic-slab-512-oblique", () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(512, 45));
-            await Run("large-scale-inside", () => LargeScaleInsideRayMatchesFieldLocalAnalyticReference(1e9, false));
-            await Run("large-scale-threshold", () => LargeScaleInsideRayMatchesFieldLocalAnalyticReference(1e6, false));
-            await Run("parallel-outside", () => LargeScaleInsideRayMatchesFieldLocalAnalyticReference(1e9, true));
-            await Run("camera-inside", CameraInsideVolumeIntegratesOnlyTheVisibleRaySegmentOnVulkan);
-            await Run("camera-perspective", PerspectiveCameraUsesOffAxisRayForVolumeIntersectionOnVulkan);
-            await Run("camera-near", NearPlaneClippedVolumeEntryStillRendersOnlyTheVisibleSegmentOnVulkan);
-            await Run("camera-far", FarPlaneClipsTheVolumeIntegrationSegmentOnVulkan);
-            await Run("camera-enclosing-clip", VolumeEnclosingNearAndFarPlanesMatchesFieldLocalReferenceOnVulkan);
-            await Run("scaled-field-local", ScaledNonUniformVolumeMatchesTheFieldLocalDistanceReferenceOnVulkan);
-            await Run("same-tint-order", OverlappingEqualTintVolumesCompositeIndependentlyOfDepthOrderOnVulkan);
-            await Run("opaque-update-reuse", OpaqueDepthTerminatesVolumeAndSnapshotTracksUpdateAndRestoreOnVulkan);
-            await Run("transform-refusal-retry", SingularVolumeTransformIsRefusedAndDisposedRendererRejectsUseOnVulkan);
-            await Run("material-disabled-single", MaterialDisabledSingleVolumeMatchesOrdinaryProxyOnVulkan);
-            await Run("camera-far-origin", () => EyeSpaceRayMatchesIndependentLocalChord(1e12, 1, 1, false, false));
-            await Run("camera-nonrigid-view", () => EyeSpaceRayMatchesIndependentLocalChord(1e9, 2, 2, false, false));
-            await Run("camera-micro-outside", () => EyeSpaceRayMatchesIndependentLocalChord(0, 1e-6, 1, false, false));
-            await Run("camera-micro-inside", () => EyeSpaceRayMatchesIndependentLocalChord(0, 1e-6, 1, true, false));
-            await Run("camera-micro-clipped", () => EyeSpaceRayMatchesIndependentLocalChord(0, 1e-6, 1, false, true));
-            await Run("perspective-near-small", () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(0.01, 1000, 0.25));
-            await Run("perspective-near-one", () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(1, 11, 0));
-            await Run("perspective-near-two-asymmetric", () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(2, 100, 0.25));
-            await Run("oblique-off-center-clip", ObliqueProjectionClipsAtThePixelLocalNearPlane);
-            await Run("perspective-finite-large-far", () => HomogeneousFarPlaneMatchesIndependentOpticalLength(false));
-            await Run("perspective-infinite-far", () => HomogeneousFarPlaneMatchesIndependentOpticalLength(true));
-            await Run("opaque-one-ulp-before-clear", LargeFarOpaqueDepthOneUlpBeforeClearTerminatesTheVolume);
+            await run("analytic-slab-511-side", () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(511, 90));
+            await run("analytic-slab-512-side", () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(512, 90));
+            await run("analytic-slab-512-oblique", () => WideShallowNonuniformGridMatchesAnAnalyticSlabOnVulkan(512, 45));
+            await run("large-scale-inside", () => LargeScaleInsideRayMatchesFieldLocalAnalyticReference(1e9, false));
+            await run("large-scale-threshold", () => LargeScaleInsideRayMatchesFieldLocalAnalyticReference(1e6, false));
+            await run("parallel-outside", () => LargeScaleInsideRayMatchesFieldLocalAnalyticReference(1e9, true));
+            await run("camera-inside", CameraInsideVolumeIntegratesOnlyTheVisibleRaySegmentOnVulkan);
+            await run("camera-perspective", PerspectiveCameraUsesOffAxisRayForVolumeIntersectionOnVulkan);
+            await run("camera-near", NearPlaneClippedVolumeEntryStillRendersOnlyTheVisibleSegmentOnVulkan);
+            await run("camera-far", FarPlaneClipsTheVolumeIntegrationSegmentOnVulkan);
+            await run("camera-enclosing-clip", VolumeEnclosingNearAndFarPlanesMatchesFieldLocalReferenceOnVulkan);
+            await run("scaled-field-local", ScaledNonUniformVolumeMatchesTheFieldLocalDistanceReferenceOnVulkan);
+            await run("same-tint-order", OverlappingEqualTintVolumesCompositeIndependentlyOfDepthOrderOnVulkan);
+            await run("opaque-update-reuse", OpaqueDepthTerminatesVolumeAndSnapshotTracksUpdateAndRestoreOnVulkan);
+            await run("transform-refusal-retry", SingularVolumeTransformIsRefusedAndDisposedRendererRejectsUseOnVulkan);
+            await run("material-disabled-single", MaterialDisabledSingleVolumeMatchesOrdinaryProxyOnVulkan);
+            await run("camera-far-origin", () => EyeSpaceRayMatchesIndependentLocalChord(1e12, 1, 1, false, false));
+            await run("camera-nonrigid-view", () => EyeSpaceRayMatchesIndependentLocalChord(1e9, 2, 2, false, false));
+            await run("camera-micro-outside", () => EyeSpaceRayMatchesIndependentLocalChord(0, 1e-6, 1, false, false));
+            await run("camera-micro-inside", () => EyeSpaceRayMatchesIndependentLocalChord(0, 1e-6, 1, true, false));
+            await run("camera-micro-clipped", () => EyeSpaceRayMatchesIndependentLocalChord(0, 1e-6, 1, false, true));
+            await run("perspective-near-small", () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(0.01, 1000, 0.25));
+            await run("perspective-near-one", () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(1, 11, 0));
+            await run("perspective-near-two-asymmetric", () => PerspectiveRangeAndAsymmetryMatchAnalyticOffAxisChord(2, 100, 0.25));
+            await run("oblique-off-center-clip", ObliqueProjectionClipsAtThePixelLocalNearPlane);
+            await run("perspective-finite-large-far", () => HomogeneousFarPlaneMatchesIndependentOpticalLength(false));
+            await run("perspective-infinite-far", () => HomogeneousFarPlaneMatchesIndependentOpticalLength(true));
+            await run("opaque-one-ulp-before-clear", LargeFarOpaqueDepthOneUlpBeforeClearTerminatesTheVolume);
             foreach (string plane in new[] { "entry", "exit", "oblique", "excluded", "parallel" })
             {
-                await Run($"scene-clip-{plane}", () => SceneClipPlanesBoundTheIntegratedChord(plane));
+                await run($"scene-clip-{plane}", () => SceneClipPlanesBoundTheIntegratedChord(plane));
             }
             var jointPass = new VolumeCameraJointPassConformanceTests();
-            await Run("joint-unequal-tint-reference", () =>
+            await run("joint-unequal-tint-reference", () =>
                 jointPass.NestedUnequalTintVolumesMatchIndependentReferenceAcrossInsertionAndCameraOrder(backend));
-            await Run("joint-uniform-mixed-clipping", () =>
+            await run("joint-uniform-mixed-clipping", () =>
                 jointPass.UniformAndMixedTexturedFieldsRespectFarAndOpaqueClippingOnIntendedBackend(backend));
-            await Run("joint-replacement-CpuAdmission", () =>
+            await run("joint-replacement-CpuAdmission", () =>
                 jointPass.RendererAtlasReplacementRefusalPreservesPixelsAndRetriesAfterCorrection(
                     backend, VolumeCameraJointPassConformanceTests.VolumeCameraFailure.CpuAdmission));
-            await Run("joint-replacement-GpuAdmission", () =>
+            await run("joint-replacement-GpuAdmission", () =>
                 jointPass.RendererAtlasReplacementRefusalPreservesPixelsAndRetriesAfterCorrection(
                     backend, VolumeCameraJointPassConformanceTests.VolumeCameraFailure.GpuAdmission));
-            await Run("joint-replacement-AtlasSubmission", () =>
+            await run("joint-replacement-AtlasSubmission", () =>
                 jointPass.RendererAtlasReplacementRefusalPreservesPixelsAndRetriesAfterCorrection(
                     backend, VolumeCameraJointPassConformanceTests.VolumeCameraFailure.AtlasSubmission));
-            await Run("joint-ownership-uniform", () =>
+            await run("joint-ownership-uniform", () =>
                 jointPass.StagedApplyAndRenderPublishesVolumeResourcesThatSurviveUnchangedRedraw(backend, false));
-            await Run("joint-ownership-atlas", () =>
+            await run("joint-ownership-atlas", () =>
                 jointPass.StagedApplyAndRenderPublishesVolumeResourcesThatSurviveUnchangedRedraw(backend, true));
-            await Run("joint-zero-opacity-field-limit", () =>
+            await run("joint-zero-opacity-field-limit", () =>
                 jointPass.ZeroOpacityFieldsDoNotConsumeActiveFieldSlotsAndRetryAfterRefusal(backend));
-            await Run("joint-missing-asset-refusal", () =>
+            await run("joint-missing-asset-refusal", () =>
                 jointPass.MissingSampledFieldRefusesUpdateAndPreservesPublishedFrame(backend));
-            await Run("joint-retained-atlas-source-removal", () =>
+            await run("joint-retained-atlas-source-removal", () =>
                 jointPass.PublishedAtlasRemainsAvailableWhenSourceFileIsMoved(backend));
-            await Run("joint-unsupported-uniform-map", () =>
+            await run("joint-unsupported-uniform-map", () =>
                 jointPass.UnsupportedVolumeTexturesRefusePublicationAndAllowCorrectedRetry(
                     backend, VolumeCameraJointPassConformanceTests.VolumeTextureFailure.UniformSurfaceMap));
-            await Run("joint-unsupported-zero-opacity-map", () =>
+            await run("joint-unsupported-zero-opacity-map", () =>
                 jointPass.UnsupportedVolumeTexturesRefusePublicationAndAllowCorrectedRetry(
                     backend, VolumeCameraJointPassConformanceTests.VolumeTextureFailure.ZeroOpacitySurfaceMap));
-            await Run("joint-unsupported-sampled-map", () =>
+            await run("joint-unsupported-sampled-map", () =>
                 jointPass.UnsupportedVolumeTexturesRefusePublicationAndAllowCorrectedRetry(
                     backend, VolumeCameraJointPassConformanceTests.VolumeTextureFailure.SampledSurfaceMap));
-            await Run("joint-unsupported-density-duplicate", () =>
+            await run("joint-unsupported-density-duplicate", () =>
                 jointPass.UnsupportedVolumeTexturesRefusePublicationAndAllowCorrectedRetry(
                     backend, VolumeCameraJointPassConformanceTests.VolumeTextureFailure.DuplicateDensity));
-            await Run("joint-unsupported-density-composite", () =>
+            await run("joint-unsupported-density-composite", () =>
                 jointPass.UnsupportedVolumeTexturesRefusePublicationAndAllowCorrectedRetry(
                     backend, VolumeCameraJointPassConformanceTests.VolumeTextureFailure.CompositeDensity));
-            await Run("joint-dense-unequal-tint-uniform", () =>
+            await run("joint-dense-unequal-tint-uniform", () =>
                 jointPass.OpaqueUnequalDensityFieldsPreserveExtinctionTintWeights(backend, false));
-            await Run("joint-dense-unequal-tint-atlas", () =>
+            await run("joint-dense-unequal-tint-atlas", () =>
                 jointPass.OpaqueUnequalDensityFieldsPreserveExtinctionTintWeights(backend, true));
-            await Run("joint-workload-refusal-retry", () =>
+            await run("joint-workload-refusal-retry", () =>
                 jointPass.ExpensiveJointWorkloadRefusalPreservesFrameAndSceneAndRetriesAfterCorrection(backend));
-            await Run("joint-nonfinite-density-scalar", () =>
+            await run("joint-nonfinite-density-scalar", () =>
                 jointPass.NonfiniteDensityRefusalPreservesFrameAndSceneAndRetriesAfterCorrection(backend, false));
-            await Run("joint-nonfinite-density-grid", () =>
+            await run("joint-nonfinite-density-grid", () =>
                 jointPass.NonfiniteDensityRefusalPreservesFrameAndSceneAndRetriesAfterCorrection(backend, true));
-            await Run("joint-finite-density-scalar", () =>
+            await run("joint-finite-density-scalar", () =>
                 jointPass.FiniteDensityProductRefusalPreservesFrameAndSceneAndRetriesAfterCorrection(backend, false));
-            await Run("joint-finite-density-grid", () =>
+            await run("joint-finite-density-grid", () =>
                 jointPass.FiniteDensityProductRefusalPreservesFrameAndSceneAndRetriesAfterCorrection(backend, true));
-            await Run("joint-thin-density-scalar-translucent", () =>
+            await run("joint-thin-density-scalar-translucent", () =>
                 jointPass.LargeFiniteDensityInThinFieldRemainsVisible(backend, false, 1e30f, 0.5f));
-            await Run("joint-thin-density-scalar-opaque", () =>
+            await run("joint-thin-density-scalar-opaque", () =>
                 jointPass.LargeFiniteDensityInThinFieldRemainsVisible(backend, false, 1e30f, 1f));
-            await Run("joint-thin-density-grid-translucent", () =>
+            await run("joint-thin-density-grid-translucent", () =>
                 jointPass.LargeFiniteDensityInThinFieldRemainsVisible(backend, true, 1e30f, 0.5f));
-            await Run("joint-thin-density-grid-opaque", () =>
+            await run("joint-thin-density-grid-opaque", () =>
                 jointPass.LargeFiniteDensityInThinFieldRemainsVisible(backend, true, 1e30f, 1f));
-            await Run("joint-tint-exposure-scalar-retained", () =>
+            await run("joint-tint-exposure-scalar-retained", () =>
                 jointPass.VolumeTintExposureOverflowRefusesBeforePublicationAndRetries(backend, false, false));
-            await Run("joint-tint-exposure-scalar-staged", () =>
+            await run("joint-tint-exposure-scalar-staged", () =>
                 jointPass.VolumeTintExposureOverflowRefusesBeforePublicationAndRetries(backend, false, true));
-            await Run("joint-tint-exposure-grid-retained", () =>
+            await run("joint-tint-exposure-grid-retained", () =>
                 jointPass.VolumeTintExposureOverflowRefusesBeforePublicationAndRetries(backend, true, false));
-            await Run("joint-tint-exposure-grid-staged", () =>
+            await run("joint-tint-exposure-grid-staged", () =>
                 jointPass.VolumeTintExposureOverflowRefusesBeforePublicationAndRetries(backend, true, true));
-            await Run("joint-tint-exposure-zero-opacity", () =>
+            await run("joint-tint-exposure-zero-opacity", () =>
                 jointPass.VolumeTintExposureAdmissionSkipsInactiveMaterials(backend, false));
-            await Run("joint-tint-exposure-material-disabled", () =>
+            await run("joint-tint-exposure-material-disabled", () =>
                 jointPass.VolumeTintExposureAdmissionSkipsInactiveMaterials(backend, true));
-            await Run("joint-high-tint-overlap-scalar", () =>
+            await run("joint-high-tint-overlap-scalar", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, false, 1));
-            await Run("joint-high-tint-overlap-dense-scalar", () =>
+            await run("joint-high-tint-overlap-dense-scalar", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, false, 1e30f));
-            await Run("joint-high-tint-overlap-grid", () =>
+            await run("joint-high-tint-overlap-grid", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, true, 1));
-            await Run("joint-high-tint-overlap-dense-grid", () =>
+            await run("joint-high-tint-overlap-dense-grid", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, true, 1e30f));
-            await Run("joint-high-tint-overlap-1e-37-scalar", () =>
+            await run("joint-high-tint-overlap-1e-37-scalar", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, false, 1e-37f));
-            await Run("joint-high-tint-overlap-1e-20-scalar", () =>
+            await run("joint-high-tint-overlap-1e-20-scalar", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, false, 1e-20f));
-            await Run("joint-high-tint-overlap-1e-8-scalar", () =>
+            await run("joint-high-tint-overlap-1e-8-scalar", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, false, 1e-8f));
-            await Run("joint-high-tint-overlap-1e-37-grid", () =>
+            await run("joint-high-tint-overlap-1e-37-grid", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, true, 1e-37f));
-            await Run("joint-high-tint-overlap-1e-20-grid", () =>
+            await run("joint-high-tint-overlap-1e-20-grid", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, true, 1e-20f));
-            await Run("joint-high-tint-overlap-1e-8-grid", () =>
+            await run("joint-high-tint-overlap-1e-8-grid", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, true, 1e-8f));
-            await Run("joint-signal-subnormal-scale-scalar", () =>
+            await run("joint-signal-subnormal-scale-scalar", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, false, VolumeCameraJointPassConformanceTests.LowDensitySignal.SubnormalScale));
-            await Run("joint-signal-step-underflow-scalar", () =>
+            await run("joint-signal-step-underflow-scalar", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, false, VolumeCameraJointPassConformanceTests.LowDensitySignal.StepUnderflow));
-            await Run("joint-signal-opacity-product-scalar", () =>
+            await run("joint-signal-opacity-product-scalar", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, false, VolumeCameraJointPassConformanceTests.LowDensitySignal.OpacityProduct));
-            await Run("joint-signal-subnormal-scale-grid", () =>
+            await run("joint-signal-subnormal-scale-grid", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, true, VolumeCameraJointPassConformanceTests.LowDensitySignal.SubnormalScale));
-            await Run("joint-signal-step-underflow-grid", () =>
+            await run("joint-signal-step-underflow-grid", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, true, VolumeCameraJointPassConformanceTests.LowDensitySignal.StepUnderflow));
-            await Run("joint-signal-opacity-product-grid", () =>
+            await run("joint-signal-opacity-product-grid", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, true, VolumeCameraJointPassConformanceTests.LowDensitySignal.OpacityProduct));
-            await Run("joint-signal-subnormal-sample-grid", () =>
+            await run("joint-signal-subnormal-sample-grid", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, true, VolumeCameraJointPassConformanceTests.LowDensitySignal.SubnormalSample));
-            await Run("joint-signal-zero-opacity", () =>
+            await run("joint-signal-zero-opacity", () =>
                 jointPass.UnderflowAdmissionSkipsInactiveMaterials(backend, false));
-            await Run("joint-signal-material-disabled", () =>
+            await run("joint-signal-material-disabled", () =>
                 jointPass.UnderflowAdmissionSkipsInactiveMaterials(backend, true));
-            await Run("joint-signal-retained-resize-scalar", () =>
+            await run("joint-signal-retained-resize-scalar", () =>
                 jointPass.RetainedUnderflowSignalRefusesBeforeResizedOutputAndAllowsRetry(backend, false));
-            await Run("joint-signal-retained-resize-grid", () =>
+            await run("joint-signal-retained-resize-grid", () =>
                 jointPass.RetainedUnderflowSignalRefusesBeforeResizedOutputAndAllowsRetry(backend, true));
-            await Run("joint-output-allocation-retained", () =>
+            await run("joint-output-allocation-retained", () =>
                 jointPass.VolumeCameraCandidateRollsBackOnOutputFailureAndRetries(
                     backend, VolumeCameraJointPassConformanceTests.VolumeFrameFailure.OutputAllocation, false));
-            await Run("joint-output-frame-submission-retained", () =>
+            await run("joint-output-frame-submission-retained", () =>
                 jointPass.VolumeCameraCandidateRollsBackOnOutputFailureAndRetries(
                     backend, VolumeCameraJointPassConformanceTests.VolumeFrameFailure.FrameSubmission, false));
-            await Run("joint-output-publication-retained", () =>
+            await run("joint-output-publication-retained", () =>
                 jointPass.VolumeCameraCandidateRollsBackOnOutputFailureAndRetries(
                     backend, VolumeCameraJointPassConformanceTests.VolumeFrameFailure.OutputPublication, false));
-            await Run("joint-output-allocation-staged", () =>
+            await run("joint-output-allocation-staged", () =>
                 jointPass.VolumeCameraCandidateRollsBackOnOutputFailureAndRetries(
                     backend, VolumeCameraJointPassConformanceTests.VolumeFrameFailure.OutputAllocation, true));
-            await Run("joint-output-frame-submission-staged", () =>
+            await run("joint-output-frame-submission-staged", () =>
                 jointPass.VolumeCameraCandidateRollsBackOnOutputFailureAndRetries(
                     backend, VolumeCameraJointPassConformanceTests.VolumeFrameFailure.FrameSubmission, true));
-            await Run("joint-output-publication-staged", () =>
+            await run("joint-output-publication-staged", () =>
                 jointPass.VolumeCameraCandidateRollsBackOnOutputFailureAndRetries(
                     backend, VolumeCameraJointPassConformanceTests.VolumeFrameFailure.OutputPublication, true));
             foreach ((string id, VolumeCameraJointPassConformanceTests.VolumeCleanupFailure failure) in new[]
@@ -248,32 +248,32 @@ public sealed class VolumeCameraConformanceTests
                 ("both", VolumeCameraJointPassConformanceTests.VolumeCleanupFailure.Both),
             })
             {
-                await Run($"joint-direct-retirement-{id}", () =>
+                await run($"joint-direct-retirement-{id}", () =>
                     jointPass.UnadmittedRetainedVolumeFrameSurvivesRetirementFailure(backend, failure));
                 foreach (bool staged in new[] { false, true })
                 {
                     string frame = staged ? "staged" : "retained";
-                    await Run($"joint-retirement-{id}-{frame}", () =>
+                    await run($"joint-retirement-{id}-{frame}", () =>
                         jointPass.PublishedVolumeFrameSurvivesRetirementFailure(backend, failure, staged));
                 }
             }
             foreach (bool staged in new[] { false, true })
             {
                 string frame = staged ? "staged" : "retained";
-                await Run($"joint-failed-frame-cleanup-{frame}", () =>
+                await run($"joint-failed-frame-cleanup-{frame}", () =>
                     jointPass.FailedVolumeFrameReportsOperationAndCandidateCleanupFailuresAndRetries(backend, staged));
-                await Run($"joint-snapshot-rollback-{frame}", () =>
+                await run($"joint-snapshot-rollback-{frame}", () =>
                     jointPass.SameSizePublicationFailurePreservesPublishedVolumeDepthSnapshot(backend, staged));
-                await Run($"joint-snapshot-budget-refusal-{frame}", () =>
+                await run($"joint-snapshot-budget-refusal-{frame}", () =>
                     jointPass.SnapshotBudgetEnforcesExactOverlapAndPreservesRefusedFrame(backend, staged, false));
-                await Run($"joint-snapshot-budget-exact-{frame}", () =>
+                await run($"joint-snapshot-budget-exact-{frame}", () =>
                     jointPass.SnapshotBudgetEnforcesExactOverlapAndPreservesRefusedFrame(backend, staged, true));
             }
-            await Run("joint-snapshot-budget-reuse", () =>
+            await run("joint-snapshot-budget-reuse", () =>
                 jointPass.AdmittedVolumeDepthSnapshotsReuseTwoBudgetedTextures(backend));
-            await Run("joint-renderer-disposal-retry", () =>
+            await run("joint-renderer-disposal-retry", () =>
                 jointPass.RendererDisposalReportsVolumeCleanupFailuresAndAllowsReleaseRetry(backend));
-            WriteReceipt("passed");
+            writeReceipt("passed");
         }
         finally
         {
@@ -1125,7 +1125,7 @@ public sealed class VolumeCameraConformanceTests
             [],
             occluder).Rgba.ToArray();
 
-        byte[] Render(uint revision, byte[] depthOccluder)
+        byte[] render(uint revision, byte[] depthOccluder)
         {
             SilkMeshRendererConformance.Apply(
                 renderer,
@@ -1145,15 +1145,15 @@ public sealed class VolumeCameraConformanceTests
             z: -0.75f);
         byte[] movedOpaqueOnly = CaptureSceneWithFrame(
             CreateVulkanDevice, frame, [], movedMesh).Rgba.ToArray();
-        byte[] first = Render(1, occluder);
-        byte[] moved = Render(2, movedMesh);
-        byte[] restored = Render(3, occluder);
+        byte[] first = render(1, occluder);
+        byte[] moved = render(2, movedMesh);
+        byte[] restored = render(3, occluder);
         byte[] frontMesh = VolumeCommandAuthoring.CreateDepthOccluderMeshCommand(
             "/World/OpaqueOccluder",
             z: -0.1f);
         byte[] frontOpaqueOnly = CaptureSceneWithFrame(
             CreateVulkanDevice, frame, [], frontMesh).Rgba.ToArray();
-        byte[] frontOccluder = Render(4, frontMesh);
+        byte[] frontOccluder = render(4, frontMesh);
 
         int firstDistance = PixelRgbDelta(first, opaqueOnly, center);
         int movedDistance = PixelRgbDelta(moved, movedOpaqueOnly, center);
@@ -1175,7 +1175,7 @@ public sealed class VolumeCameraConformanceTests
 
         for (uint revision = 5; revision < 9; revision++)
         {
-            byte[] repeated = Render(
+            byte[] repeated = render(
                 revision,
                 (revision & 1) == 1
                     ? occluder
@@ -1230,10 +1230,10 @@ public sealed class VolumeCameraConformanceTests
             _ = bindings.TryBind(body, MeshPath);
             var overrides = new SilkPhysicsTransformOverrides(1);
             renderer.PhysicsOverrides = overrides;
-            PhysicsRenderOverrideView Pose(double x, ulong revision) => new(
+            PhysicsRenderOverrideView pose(double x, ulong revision) => new(
                 new[] { new PhysicsRenderTransformOverride(
                     body, new UsdVec3d(x, 0, -0.7), PhysicsRenderOrientation.Identity, true) }, revision);
-            overrides.Stage(bindings, Pose(double.MaxValue, 1));
+            overrides.Stage(bindings, pose(double.MaxValue, 1));
             await Assert.That(() => renderer.Render(color, depth, options))
                 .Throws<InvalidDataException>();
             using (var invalidOverridePage = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [], 0))
@@ -1245,7 +1245,7 @@ public sealed class VolumeCameraConformanceTests
             color.ReadbackForTesting(refusedPixels);
             await Assert.That(refusedPixels.SequenceEqual(visiblePixels)).IsTrue();
             await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
-            overrides.Stage(bindings, Pose(0, 2));
+            overrides.Stage(bindings, pose(0, 2));
             using (var correctedOverridePage = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [], 0))
             {
                 renderer.ApplyPage(correctedOverridePage);

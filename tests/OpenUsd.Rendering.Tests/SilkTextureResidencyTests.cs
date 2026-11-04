@@ -1509,7 +1509,7 @@ public sealed class SilkTextureResidencyTests
             renderer.PhysicsDeformations = deformations;
         }
         using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [], 0);
-        void Render()
+        void render()
         {
             if (authoredPage)
             {
@@ -1521,18 +1521,18 @@ public sealed class SilkTextureResidencyTests
             }
         }
         device.RefuseSubmission = true;
-        await Assert.That(() => Render()).Throws<InvalidOperationException>();
+        await Assert.That(() => render()).Throws<InvalidOperationException>();
         await Assert.That(overrides.Revision).IsEqualTo(0UL);
         await Assert.That(overrides.SourceRevision).IsEqualTo(0UL);
         await Assert.That(overrides.UnresolvedOverrides).IsEqualTo(0L);
         await Assert.That(overrides.Count).IsEqualTo(0);
         device.RefuseSubmission = false;
-        Render();
+        render();
         await Assert.That(overrides.Revision).IsEqualTo(1UL);
         await Assert.That(overrides.SourceRevision).IsEqualTo(19UL);
         await Assert.That(overrides.UnresolvedOverrides).IsEqualTo(1L);
         await Assert.That(overrides.GetTransform(7)[12]).IsEqualTo(0.25);
-        Render();
+        render();
         await Assert.That(overrides.Revision).IsEqualTo(2UL);
         await Assert.That(overrides.UnresolvedOverrides).IsEqualTo(2L);
     }
