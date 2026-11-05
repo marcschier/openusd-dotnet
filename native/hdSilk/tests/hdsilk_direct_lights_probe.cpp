@@ -4405,6 +4405,77 @@ void VerifyBoundedPointShadowBudgetAndPublicationRetry()
         retry.shadows.maps, {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, "point retry");
 }
 
+void VerifyAreaShadowRefusalDoesNotConsumeLightBudget()
+{
+    HdSilkSceneState state;
+    HdSilkMeshRecord mesh;
+    mesh.path = "/Geom/Unsupported";
+    mesh.primId = 92;
+    mesh.topologyRevision = 1;
+    mesh.points = CasterPoints3;
+    mesh.indices = {0u, 1u, 2u};
+    mesh.triangleSubprims = {0u};
+    state.ReplaceMeshInstances(mesh.path, {mesh});
+    HdSilkLightRecord light;
+    light.path = "/Lights/L000";
+    light.type = OPENUSD_SILK_LIGHT_RECT;
+    light.intensity = 1.0f;
+    light.shadowEnabled = 1u;
+    light.radius = 0.375f;
+    light.shapeX = 4.0f;
+    light.shapeY = 6.0f;
+    state.ReplaceLight(light);
+    for (uint32_t index = 1; index <= 4; ++index)
+    {
+        HdSilkLightRecord distant;
+        distant.path = "/Lights/L00" + std::to_string(index);
+        distant.type = OPENUSD_SILK_LIGHT_DISTANT;
+        distant.shadowEnabled = 1u;
+        state.ReplaceLight(distant);
+    }
+
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+    const RetainedPage intersecting = ReadRetainedPage(bytes, count);
+    Require(revision == 1u && intersecting.frame.directLightCount == 5u,
+        "intersecting emitter must retain all direct lights");
+    RequireShadowHeader(intersecting, 4u, 5u, OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE,
+        "intersecting emitter");
+    for (uint32_t map = 0; map < 4; ++map)
+    {
+        RequireShadow(intersecting.shadows.maps[map], map + 1, map,
+            OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC, Z3, "intersecting emitter");
+    }
+
+    light.transform[14] = 10.0;
+    state.ReplaceLight(light);
+    bytes = state.BuildPage(&revision, &count);
+    const RetainedPage separated = ReadRetainedPage(bytes, count);
+    Require(revision == 2u, "moving the emitter must publish a new page");
+    RequireShadowHeader(separated, 8u, 5u, OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET,
+        "separated emitter");
+    for (uint32_t map = 0; map < 5; ++map)
+    {
+        const ShadowView& sample = separated.shadows.maps[map];
+        Require(sample.lightIndex == 0u && sample.mapIndex == map &&
+                sample.flags == OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE,
+            "separated emitter must publish its complete five-map group");
+    }
+    for (uint32_t map = 5; map < 8; ++map)
+    {
+        RequireShadow(separated.shadows.maps[map], map - 4, map,
+            OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC, Z3, "separated emitter");
+    }
+
+    light.transform[14] = 0.0;
+    state.ReplaceLight(light);
+    bytes = state.BuildPage(&revision, &count);
+    const RetainedPage restored = ReadRetainedPage(bytes, count);
+    Require(revision == 3u && restored.shadowBytes == intersecting.shadowBytes,
+        "restoring the intersecting emitter must restore the original shadow table");
+}
+
 void VerifyShadowBudgetAndAreaTypes()
 {
     static_assert(OPENUSD_SILK_MAX_SHADOW_MAPS == 24u);
@@ -4526,6 +4597,8 @@ void VerifyShadowBudgetAndAreaTypes()
                         light.shapeX = shape.type == OPENUSD_SILK_LIGHT_RECT ? 4.0f :
                             (shape.type == OPENUSD_SILK_LIGHT_CYLINDER ? 8.0f : 0.0f);
                         light.shapeY = shape.type == OPENUSD_SILK_LIGHT_RECT ? 6.0f : 0.0f;
+                        // Keep every emitter sample outside the caster bounds.
+                        light.transform[14] = 10.0;
                     }
                     mixed.ReplaceLight(light);
                 }
@@ -4540,7 +4613,7 @@ void VerifyShadowBudgetAndAreaTypes()
                         page.frame.directLights[0].radius == 0.375f &&
                         page.frame.directLights[0].shapeX == (shape.wireType == 3u ? 4.0f : (shape.wireType == 5u ? 8.0f : 0.0f)) &&
                         page.frame.directLights[0].shapeY == (shape.wireType == 3u ? 6.0f : 0.0f),
-                    label + ": unsupported SHADOW shape must remain an intact direct wire light");
+                    label + ": SHADOW shape must remain an intact direct wire light");
                 const bool mapBudgetExceeded = enabled || fifth;
                 const uint32_t reasons = mapBudgetExceeded
                     ? OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET
@@ -4586,7 +4659,10 @@ void VerifyShadowBudgetAndAreaTypes()
 
     struct EmptyCasterCase { bool distant; bool rect; uint32_t reasons; };
     const EmptyCasterCase emptyCases[] = {
-        {false, false, 0u}, {true, false, 4u}, {false, true, 1u}, {true, true, 5u}};
+        {false, false, OPENUSD_SILK_SHADOW_UNSUPPORTED_NONE},
+        {true, false, OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS},
+        {false, true, OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS},
+        {true, true, OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS}};
     for (const EmptyCasterCase& row : emptyCases)
     {
         HdSilkSceneState empty;
@@ -4598,6 +4674,11 @@ void VerifyShadowBudgetAndAreaTypes()
             light.type = index == 0 ? OPENUSD_SILK_LIGHT_RECT : OPENUSD_SILK_LIGHT_DISTANT;
             light.intensity = static_cast<float>(index + 1);
             light.shadowEnabled = (index == 0 && row.rect) || (index == 127 && row.distant) ? 1u : 0u;
+            if (index == 0)
+            {
+                light.shapeX = 4.0f;
+                light.shapeY = 6.0f;
+            }
             empty.ReplaceLight(light);
         }
         const std::vector<uint8_t> bytes = empty.BuildPage(&revision, &count);
@@ -4610,12 +4691,15 @@ void VerifyShadowBudgetAndAreaTypes()
         else
         {
             RequireOrder(page, {1u, 9u}, "no caster geometry");
-            RequireShadowHeader(page, 0, 128u, row.reasons, "type reason precedes caster eligibility");
+            RequireShadowHeader(page, 0, 128u, row.reasons, "no caster geometry");
         }
         Require(revision == 1u && page.frame.directLightCount == 128u &&
                 page.frame.directLights[0].type == 3u &&
+                page.frame.directLights[0].shapeX == 4.0f &&
+                page.frame.directLights[0].shapeY == 6.0f &&
+                page.frame.directLights[0].shadowEnabled == (row.rect ? 1u : 0u) &&
                 page.frame.directLights[127].shadowEnabled == (row.distant ? 1u : 0u),
-            "no-caster/type diagnostic changed the selected direct identities");
+            "no-caster diagnostic changed the selected direct identities");
     }
 }
 
@@ -4858,6 +4942,8 @@ int main(int argc, char* argv[])
             VerifyBoundedPointShadowFrustumAndRefusal},
         {"domes-shadows", "VerifyBoundedPointShadowBudgetAndPublicationRetry",
             VerifyBoundedPointShadowBudgetAndPublicationRetry},
+        {"domes-shadows", "VerifyAreaShadowRefusalDoesNotConsumeLightBudget",
+            VerifyAreaShadowRefusalDoesNotConsumeLightBudget},
         {"domes-shadows", "VerifyShadowBudgetAndAreaTypes", VerifyShadowBudgetAndAreaTypes},
         {"domes-shadows", "VerifyShadowEligibilityBoundaries", VerifyShadowEligibilityBoundaries}};
 
