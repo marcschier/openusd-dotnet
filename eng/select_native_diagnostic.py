@@ -24,6 +24,7 @@ NON_REPRODUCTION_PATHS = (
     "eng/tests/test_verify_nuget_promotion.py",
     "eng/verify-nuget-promotion.py",
     "tests/OpenUsd.Rendering.ConformanceTests/SilkPointShadowNativeConformanceTests.cs",
+    "tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraJointPassConformanceTests.cs",
     "tests/OpenUsd.Rendering.Tests/SilkShadowNormalSpaceSourceContractTests.cs",
 )
 LINUX_JOB = "linux-x64 verified native archive"
@@ -34,7 +35,7 @@ COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 def select_candidate(runs, compatible, jobs_for, artifacts_for, checkout_for):
     for run in runs:
         status = run["status"]
-        if status != "in_progress" and not (
+        if status not in ("queued", "in_progress") and not (
             status == "completed" and run["conclusion"] in ("success", "cancelled")
         ):
             continue

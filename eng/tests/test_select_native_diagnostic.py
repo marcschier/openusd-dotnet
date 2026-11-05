@@ -56,6 +56,7 @@ class NativeDiagnosticSelectionTests(unittest.TestCase):
             "eng/tests/test_verify_nuget_promotion.py",
             "eng/verify-nuget-promotion.py",
             "tests/OpenUsd.Rendering.ConformanceTests/SilkPointShadowNativeConformanceTests.cs",
+            "tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraJointPassConformanceTests.cs",
             "tests/OpenUsd.Rendering.Tests/SilkShadowNormalSpaceSourceContractTests.cs",
         })
 
@@ -72,6 +73,17 @@ class NativeDiagnosticSelectionTests(unittest.TestCase):
         jobs.assert_called_once_with(10)
         artifacts.assert_called_once_with(10)
         checkout.assert_called_once_with(10, JOB_ID, HEAD)
+
+    def test_completed_linux_job_is_usable_while_the_workflow_is_queued(self):
+        selected = selector.select_candidate(
+            [run(status="queued")],
+            lambda _: True,
+            lambda _: [LINUX_JOB],
+            lambda _: [ARCHIVE],
+            matching_checkout,
+        )
+
+        self.assertEqual(selected, (10, HEAD, "queued", "", CHECKOUT, TREE))
 
     def test_incompatible_source_is_not_inspected_or_used(self):
         compatible = Mock(side_effect=[False, True])
@@ -91,16 +103,13 @@ class NativeDiagnosticSelectionTests(unittest.TestCase):
         jobs.assert_called_once_with(11)
         artifacts.assert_called_once_with(11)
 
-    def test_failed_or_unstarted_producer_is_not_selected(self):
+    def test_failed_producer_is_not_selected(self):
         compatible = Mock(return_value=True)
         jobs = Mock(return_value=[LINUX_JOB])
         artifacts = Mock(return_value=[ARCHIVE])
 
         selected = selector.select_candidate(
-            [
-                run(status="completed", conclusion="failure"),
-                run(12, status="queued"),
-            ],
+            [run(status="completed", conclusion="failure")],
             compatible,
             jobs,
             artifacts,
@@ -110,6 +119,20 @@ class NativeDiagnosticSelectionTests(unittest.TestCase):
         self.assertIsNone(selected)
         compatible.assert_not_called()
         jobs.assert_not_called()
+        artifacts.assert_not_called()
+
+    def test_queued_producer_without_a_completed_linux_job_is_not_selected(self):
+        artifacts = Mock(return_value=[ARCHIVE])
+
+        selected = selector.select_candidate(
+            [run(status="queued")],
+            lambda _: True,
+            lambda _: [{**LINUX_JOB, "status": "in_progress", "conclusion": ""}],
+            artifacts,
+            matching_checkout,
+        )
+
+        self.assertIsNone(selected)
         artifacts.assert_not_called()
 
     def test_completed_linux_job_from_cancelled_multi_platform_run_is_diagnostic_only(self):

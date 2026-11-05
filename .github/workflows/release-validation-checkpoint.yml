@@ -41,6 +41,7 @@ on:
       - 'native/openusd_dotnet/include/openusd_dotnet.h'
       - 'native/include/openusd_render_camera.h'
       - 'tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdProbeVulkanDevice.cs'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraJointPassConformanceTests.cs'
 
 permissions:
   actions: read
@@ -257,6 +258,49 @@ jobs:
             -MinimumExpectedTests 2 -TestArguments @(
               '--treenode-filter',
               '/*/*/VolumeRenderingConformanceTests/(UniformDensityVolumeGatesOnVulkan|SampledOpenVdbDensityGatesOnVulkan)')
+      - name: Reproduce high-tint volume accumulation
+        if: always() && steps.diagnostic.outputs.compatible == 'true' && steps.native.outcome == 'success' && steps.build.outcome == 'success' && steps.vulkan.outcome == 'success'
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.vulkan.outputs.icd }}
+          VK_ICD_FILENAMES: ${{ steps.vulkan.outputs.icd }}
+          OPENUSD_PLUGIN_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/plugin/usd
+          LD_LIBRARY_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/lib:${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/bin
+        run: |
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-linux-net10.0.tunit-report.json'
+          $retainedPath = 'artifacts/shadow-volume-repro/high-tint-volume.tunit-report.json'
+          if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+            Remove-Item -LiteralPath $reportPath
+          }
+          try {
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 1 `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/VolumeCameraJointPassConformanceTests/EightCoincidentHighTintFieldsProduceFinitePixels')
+          }
+          finally {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Copy-Item -LiteralPath $reportPath -Destination $retainedPath
+            }
+          }
+          if (-not (Test-Path -LiteralPath $retainedPath -PathType Leaf)) {
+            throw 'The high-tint volume diagnostic report is missing.'
+          }
+          $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+          $results = @($report.groups | Where-Object {
+            $_.className -ceq 'VolumeCameraJointPassConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.displayName -ceq 'EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 1 -or $report.summary.passed -ne 1 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $results.Count -ne 1) {
+            throw 'The Vulkan high-tint volume case did not pass exactly once without skips.'
+          }
       - name: Retain diagnostic test reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -265,6 +309,7 @@ jobs:
           path: |
             artifacts/shadow-volume-repro/native-source.txt
             artifacts/shadow-volume-repro/point-shadow.tunit-report.json
+            artifacts/shadow-volume-repro/high-tint-volume.tunit-report.json
             tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/
           if-no-files-found: warn
           retention-days: 14

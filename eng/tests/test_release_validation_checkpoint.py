@@ -20,6 +20,7 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         for path in (
             "eng/select_native_diagnostic.py",
             "eng/tests/test_select_native_diagnostic.py",
+            "tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraJointPassConformanceTests.cs",
         ):
             self.assertIn(f"      - '{path}'", triggers)
         self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", job)
@@ -46,6 +47,15 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         self.assertIn("$report.summary.skipped -ne 0", job)
         self.assertIn("artifacts/shadow-volume-repro/native-source.txt", job)
         self.assertIn("artifacts/shadow-volume-repro/point-shadow.tunit-report.json", job)
+        high_tint = job.split(
+            "\n      - name: Reproduce high-tint volume accumulation", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn(
+            "EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)", high_tint
+        )
+        self.assertIn("$report.summary.passed -ne 1", high_tint)
+        self.assertIn("$report.summary.skipped -ne 0", high_tint)
+        self.assertIn("artifacts/shadow-volume-repro/high-tint-volume.tunit-report.json", job)
         self.assertNotIn("continue-on-error", job)
 
     def test_shadow_report_contract_runs_for_its_evidence_inputs(self):
