@@ -10,35 +10,36 @@ struct pixelOutput_0
 struct pixelInput_0
 {
     float lightDepth_0 [[user(TEXCOORD_2)]];
-    [[flat]] float pointDepthScale_0 [[user(TEXCOORD_3)]];
+    [[flat]] float2 pointDepth_0 [[user(TEXCOORD_3)]];
 };
 
 [[fragment]] pixelOutput_0 shadowFragmentMain(pixelInput_0 _S1 [[stage_in]], float4 position_0 [[position]])
 {
     float _S2 = position_0.z;
-    bool _S3 = (_S1.pointDepthScale_0) > 0.0f;
-    float _S4;
-    if(_S3)
+    float _S3 = _S1.pointDepth_0.x;
+    bool _S4 = _S3 > 0.0f;
+    float _S5;
+    if(_S4)
     {
-        _S4 = _S1.lightDepth_0 * _S1.pointDepthScale_0;
+        _S5 = _S1.lightDepth_0 * _S3;
     }
     else
     {
-        _S4 = _S2;
+        _S5 = _S2;
     }
-    bool _S5;
-    if(_S3)
+    bool _S6;
+    if(_S4)
     {
-        _S5 = _S4 > 1.0f;
+        _S6 = _S5 > (_S1.pointDepth_0.y);
     }
     else
     {
-        _S5 = false;
+        _S6 = false;
     }
-    if(_S5)
+    if(_S6)
     {
         discard_fragment();
     }
-    pixelOutput_0 _S6 = { _S4 };
-    return _S6;
+    pixelOutput_0 _S7 = { _S5 };
+    return _S7;
 }

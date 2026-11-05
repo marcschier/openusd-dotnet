@@ -270,7 +270,7 @@
       }
     },
     {
-      "name": "pointDepthScale",
+      "name": "pointDepth",
       "semantic": {
         "name": "TEXCOORD",
         "index": 3,
@@ -278,8 +278,12 @@
       },
       "location": 3,
       "type": {
-        "kind": "scalar",
-        "scalarType": "float32"
+        "kind": "vector",
+        "elementCount": 2,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
       }
     }
   ]
