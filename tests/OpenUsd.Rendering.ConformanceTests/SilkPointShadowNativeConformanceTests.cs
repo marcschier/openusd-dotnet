@@ -116,6 +116,12 @@ public sealed class SilkPointShadowNativeConformanceTests
         await AssertNear(before, shadowed, ControlX, "unoccluded receiver");
         await AssertNear(before, shadowed, MovedShadowX, "receiver beyond the initial shadow");
 
+        ShadowDepthSample movedProbe = SampleShadowDepth(freshMoved, MovedShadowX);
+        await Assert.That(movedProbe.ReceiverDepth).IsLessThan(1.0f)
+            .Because($"The moved receiver must stay inside the point-shadow far plane: {movedProbe}.");
+        await Assert.That(movedProbe.DirectDepth).IsLessThan(movedProbe.ReceiverDepth)
+            .Because($"The moved caster must be in front of its receiver: {movedProbe}.");
+
         await Assert.That(moved.LiveMaps).IsEqualTo(6);
         await Assert.That(moved.Renders).IsGreaterThan(shadowed.Renders);
         await Assert.That(moved.CasterX).IsEqualTo((double)MovedCasterX).Within(0.000001);
@@ -386,6 +392,20 @@ public sealed class SilkPointShadowNativeConformanceTests
         float flippedDepth = depth[(flippedAtlasY * (int)frame.ShadowAtlasEdge) + atlasX];
         return new ShadowDepthSample(
             face, atlasX, atlasY, directDepth, flippedDepth, clip.Z * inverseW, clip.W);
+    }
+
+    private static ShadowDepthSample SampleShadowDepth(Frame frame, int x)
+    {
+        float[] depth = frame.ShadowAtlasDepth ??
+            throw new InvalidOperationException("The moved frame has no shadow atlas readback.");
+        SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(frame.Descriptors) ??
+            throw new InvalidOperationException("The moved frame has no shadow atlas layout.");
+        return SampleShadowDepth(
+            frame,
+            layout,
+            depth,
+            new Vector4(PixelWorldX(x), PixelWorldY(SampleY), 0.2f, 1),
+            TransformRow);
     }
 
     private static Vector4 TransformColumn(Matrix4x4 matrix, Vector4 vector) => new(

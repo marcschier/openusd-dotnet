@@ -3070,7 +3070,9 @@ bool BuildPointShadowFace(
     // The view's +Z axis points back toward the emitter.
     direction[face / 2u] = (face & 1u) == 0u ? -1.0 : 1.0;
     BuildPerspectiveShadowView(direction, eye, outView);
-    farPlane += std::max(radius / 512.0, 1e-6);
+    // Keep scene-bound receivers inside the float clip volume after the
+    // double-precision projection is converted for GPU use.
+    farPlane += std::max(radius / 16.0, 1e-6);
     const double nearPlane = std::max(radius / 65536.0, 1e-6);
     if (!BuildPerspectiveShadowProjection(nearPlane, farPlane, 1.0, outProjection))
     {
