@@ -123,13 +123,18 @@ public sealed class SilkPointShadowNativeConformanceTests
         await AssertNear(before, moved, CenterX, "receiver the moved caster left");
         await AssertNear(before, moved, PerspectiveOnlyX, "perspective extension the caster left");
         await AssertNear(before, moved, ControlX, "unoccluded receiver after movement");
-        string movedDarkPixels = string.Join(",", Enumerable.Range(0, Size)
-            .Where(x => before.Pixels[PixelOffset(x)] > 40 &&
-                moved.Pixels[PixelOffset(x)] * 4 < before.Pixels[PixelOffset(x)]));
+        int[] movedDarkPixels = Enumerable.Range(0, Size * Size)
+            .Where(pixel => before.Pixels[pixel * 4] > 40 &&
+                moved.Pixels[pixel * 4] * 4 < before.Pixels[pixel * 4])
+            .ToArray();
+        string movedDarkPixelLocations = string.Join(",", movedDarkPixels
+            .Take(64)
+            .Select(pixel => $"{pixel % Size}:{pixel / Size}"));
         int movedOffset = PixelOffset(MovedShadowX);
         await AssertDarkened(before, moved, MovedShadowX,
             $"moved point shadow; second red={movedAgain.Pixels[movedOffset]}, " +
-            $"fresh red={freshMoved.Pixels[movedOffset]}, dark x=[{movedDarkPixels}]");
+            $"fresh red={freshMoved.Pixels[movedOffset]}, dark pixels={movedDarkPixels.Length} " +
+            $"at x:y=[{movedDarkPixelLocations}]");
         await AssertDarkened(before, movedAgain, MovedShadowX, "repeated moved point shadow");
         await AssertDarkened(before, freshMoved, MovedShadowX, "fresh moved point shadow");
 
