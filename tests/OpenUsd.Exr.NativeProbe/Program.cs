@@ -80,7 +80,22 @@ internal static unsafe partial class Program
     private static void ModuleIdentity(string name, string expectedSha256)
     {
         string? modulePath = null;
-        if (OperatingSystem.IsMacOS())
+        if (OperatingSystem.IsWindows())
+        {
+            nint module = GetModuleHandle(name);
+            if (module != 0)
+            {
+                char[] buffer = new char[32768];
+                fixed (char* fileName = buffer)
+                {
+                    uint length = GetModuleFileName(module, fileName, (uint)buffer.Length);
+                    Require(length > 0 && length < buffer.Length,
+                        $"Could not resolve the loaded native module '{name}' to a full path.");
+                    modulePath = new string(buffer, 0, (int)length);
+                }
+            }
+        }
+        else if (OperatingSystem.IsMacOS())
         {
             uint count = GetImageCount();
             for (uint index = 0; index < count; index++)
@@ -347,6 +362,14 @@ internal static unsafe partial class Program
     [SupportedOSPlatform("windows")]
     [LibraryImport("kernel32", SetLastError = true)]
     private static partial int GetHandleInformation(nint handle, out uint flags);
+
+    [SupportedOSPlatform("windows")]
+    [LibraryImport("kernel32", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint GetModuleHandle(string moduleName);
+
+    [SupportedOSPlatform("windows")]
+    [LibraryImport("kernel32", EntryPoint = "GetModuleFileNameW", SetLastError = true)]
+    private static partial uint GetModuleFileName(nint module, char* fileName, uint size);
 
     [LibraryImport("libc", EntryPoint = "fcntl", SetLastError = true)]
     private static partial int GetDescriptorFlags(int descriptor, int command);
