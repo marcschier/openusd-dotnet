@@ -254,7 +254,8 @@ try
         {
             throw "Expected one authored program for $($program.name)."
         }
-        if ($authoredProgramMatches[0].floatingPointMode -eq 'precise')
+        $floatingPointMode = $authoredProgramMatches[0].PSObject.Properties['floatingPointMode']
+        if ($null -ne $floatingPointMode -and $floatingPointMode.Value -eq 'precise')
         {
             $metalArguments += '-fno-fast-math'
         }

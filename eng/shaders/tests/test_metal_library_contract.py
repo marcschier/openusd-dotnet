@@ -10,8 +10,11 @@ contract is pure data, so it can and should be checked everywhere.
 """
 
 import json
+import os
 import pathlib
 import re
+import shutil
+import subprocess
 import sys
 import unittest
 
@@ -81,6 +84,25 @@ class MetalLibraryContractTests(unittest.TestCase):
         # one symbol in the packed library.
         entries = [contract["entryPoint"] for contract in self.contracts]
         self.assertEqual(len(entries), len(set(entries)))
+
+    def test_checked_metal_precision_selection_accepts_default_and_precise_modes(self) -> None:
+        pwsh = os.environ.get("OPENUSD_TEST_PWSH") or shutil.which("pwsh")
+        self.assertIsNotNone(pwsh, "PowerShell is required for checked payload validation")
+        result = subprocess.run(
+            [
+                pwsh,
+                "-NoLogo",
+                "-NoProfile",
+                "-File",
+                str(REPO_ROOT / "eng" / "shaders" / "tests" / "test-checked-metal-precision.ps1"),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_expanded_programs_are_not_raw_manifest_programs(self) -> None:
         # Pins the distinction the macOS failure turned on: the checked manifest
