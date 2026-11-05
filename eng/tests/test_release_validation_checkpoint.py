@@ -11,6 +11,39 @@ WORKFLOW = ROOT / ".github" / "workflows" / "release-validation-checkpoint.yml"
 
 
 class ReleaseValidationCheckpointTests(unittest.TestCase):
+    def test_linux_native_diagnostic_selects_and_retains_source_bound_evidence(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        triggers, jobs = workflow.split("\njobs:\n", 1)
+        job = jobs.split("  linux-shadow-volume-repro:\n", 1)[1]
+        job = re.split(r"\n  [a-z0-9-]+:\n", job, maxsplit=1)[0]
+
+        for path in (
+            "eng/select_native_diagnostic.py",
+            "eng/tests/test_select_native_diagnostic.py",
+        ):
+            self.assertIn(f"      - '{path}'", triggers)
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", job)
+        self.assertIn("python3 -m unittest eng.tests.test_select_native_diagnostic", job)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", job)
+        self.assertIn("EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}", job)
+        self.assertIn("--repository \"$GITHUB_REPOSITORY\"", job)
+        self.assertIn("--branch \"$EXPECTED_BRANCH\" --head \"$EXPECTED_HEAD\"", job)
+        self.assertIn("run-id: ${{ steps.diagnostic.outputs.native_run_id }}", job)
+        self.assertIn("name: openusd-native-linux-x64", job)
+        self.assertIn("NATIVE_SOURCE: ${{ steps.diagnostic.outputs.native_source }}", job)
+        self.assertIn("NATIVE_STATUS: ${{ steps.diagnostic.outputs.native_status }}", job)
+        self.assertIn("NATIVE_CONCLUSION: ${{ steps.diagnostic.outputs.native_conclusion }}", job)
+        self.assertIn("-Source archive -PipelineRoot artifacts/diagnostic-native/linux-x64", job)
+        self.assertIn("OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED: '1'", job)
+        self.assertIn(
+            "AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported(Vulkan)", job
+        )
+        self.assertIn("$report.summary.passed -ne 1", job)
+        self.assertIn("$report.summary.skipped -ne 0", job)
+        self.assertIn("artifacts/shadow-volume-repro/native-source.txt", job)
+        self.assertIn("artifacts/shadow-volume-repro/point-shadow.tunit-report.json", job)
+        self.assertNotIn("continue-on-error", job)
+
     def test_shadow_report_contract_runs_for_its_evidence_inputs(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         triggers, jobs = workflow.split("\njobs:\n", 1)

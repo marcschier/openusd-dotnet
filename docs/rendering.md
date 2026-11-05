@@ -4400,10 +4400,10 @@ There is no native page ABI change. Managed bindings 41 through 44 carry the fou
 negative internal PCF radius encodes their presence as `-(radius + 1)` without altering the published
 descriptor. Checked DXIL, SPIR-V and reflection payloads have been regenerated and verified for the
 linear point-depth source. A hosted checkpoint also built the combined Metal library, but did not
-execute a Metal raster-shadow pipeline. Earlier Windows tests passed on D3D12 WARP and Vulkan
-SwiftShader before the linear point-depth change. Backend pixel execution, end-to-end native/package
-execution and physical-device qualification remain outstanding. Metal continues to advertise no
-raster-shadow capability.
+execute a Metal raster-shadow pipeline. A later Windows checkpoint passed selected point-light
+transmission cases on D3D12 WARP and Vulkan SwiftShader after the linear point-depth change. The
+full transmission gate, end-to-end native/package execution and physical-device qualification
+remain outstanding. Metal continues to advertise no raster-shadow capability.
 
 The CI gate adds `SilkShadowTransmissionConformanceTests` to the existing cubic and point-shadow
 report/receipt runner. Windows requires all 54 named argument cases to pass, covering 27 D3D12 WARP
@@ -4414,7 +4414,8 @@ reused report publication generation rejects the evidence. Both jobs retain the 
 HTML and log with a hashed execution receipt after a successful run. A failed run retains its log and
 any reports it produced, but does not produce a successful receipt. The earlier 30-case Windows run
 passed, as did the synthetic report/workflow-contract controls. That run predates the linear
-point-depth change. The added point-light cases have not yet been qualified on either backend.
+point-depth change. The full 54-case Windows gate and the Linux gate have not yet run for the current
+source.
 The same runner separately checks `SilkFiniteAreaShadowTests`: Windows requires both named methods
 on D3D12 and Vulkan to pass, while Linux requires both Vulkan passes and permits only the two named
 D3D12 platform skips. These four identities have their own report and receipt; transmission evidence
@@ -4486,7 +4487,9 @@ A receiver beyond the selected face's limit is lit, and a caster fragment beyond
 including during transmission peeling and overflow checks. A longer face does not extend the comparison
 range of a shorter face. Other shadow maps retain their raster depth. The shadow fragments write
 `SV_Depth` for all projections, which can reduce early-depth optimization; the performance effect
-has not been measured. Backend execution of the per-face limit remains pending.
+has not been measured. The unequal-face receiver, opaque and masked caster, and constant and textured
+transmission cases passed on D3D12 WARP and Vulkan SwiftShader. Native-producer and physical-device
+qualification remain pending.
 
 For a published perspective-depth bias `b` and a face with near and far distances `n` and `f`, the
 renderer calculates `B = n * f / (f - n)` and a converted bias `q = b / (B * s)`, where `s` is the

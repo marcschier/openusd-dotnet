@@ -16,6 +16,7 @@ on:
       - 'eng/primitive-id-transport-report.ps1'
       - 'eng/publish-viewer-bundle.ps1'
       - 'eng/run-windows-lavapipe-primitive-probe.ps1'
+      - 'eng/select_native_diagnostic.py'
       - 'eng/silk-cubic-shadow-report.ps1'
       - 'eng/test-metal-volume-repro-report.ps1'
       - 'eng/test-primitive-id-transport-report.ps1'
@@ -25,6 +26,7 @@ on:
       - 'eng/verify-nuget-promotion.py'
       - 'eng/verify-spirv-cross-provenance.py'
       - 'eng/tests/test_release_validation_checkpoint.py'
+      - 'eng/tests/test_select_native_diagnostic.py'
       - 'eng/tests/test_verify_nuget_promotion.py'
       - 'eng/tests/test_verify_spirv_cross_provenance.py'
       - 'native/hdSilk/src/mesh.cpp'
@@ -82,7 +84,7 @@ jobs:
             native/hdSilk/tests/hdsilk_direct_lights_session_probe.cpp
 
   linux-shadow-volume-repro:
-    name: Linux shadow and volume historical-native repro
+    name: Linux shadow and volume native diagnostic
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -90,42 +92,47 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
-      - name: Check whether the historical native artifact matches source
-        id: historical
+      - name: Verify native diagnostic selection
+        run: python3 -m unittest eng.tests.test_select_native_diagnostic
+      - name: Select a source-compatible Linux native artifact
+        id: diagnostic
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          if git diff --quiet d88616be47f32d7e651ddef558f5d5e65b26f968 HEAD -- \
-            native eng/openusd.lock.json eng/openusd.install.lock.json \
-            eng/fetch-native.ps1 eng/build-native.ps1 eng/build-vulkan-sdk.ps1 \
-            eng/openusd-storage-admission.lock.json eng/normalize-linux-runtime.py \
-            eng/cmake eng/shaderc-source-patches.lock.json eng/patches \
-            eng/native-install-metadata.ps1 eng/generate-native-notices.py \
-            eng/generate-sbom.py eng/check-linux-native-prerequisites.ps1 \
-            eng/shaders LICENSE NOTICE; then
-            echo "compatible=true" >> "$GITHUB_OUTPUT"
-          else
-            diff_status=$?
-            if [ "$diff_status" -ne 1 ]; then
-              exit "$diff_status"
-            fi
-            echo "compatible=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping the historical-native repro because its native or shader inputs differ from the pinned artifact."
-          fi
-      - name: Download historical native artifact for diagnosis
-        if: steps.historical.outputs.compatible == 'true'
+          python3 ./eng/select_native_diagnostic.py \
+            --repository "$GITHUB_REPOSITORY" --branch "$EXPECTED_BRANCH" --head "$EXPECTED_HEAD"
+      - name: Record diagnostic archive provenance
+        if: steps.diagnostic.outputs.compatible == 'true'
+        shell: bash
+        env:
+          SOURCE_HEAD: ${{ github.event.pull_request.head.sha }}
+          NATIVE_RUN: ${{ steps.diagnostic.outputs.native_run_id }}
+          NATIVE_SOURCE: ${{ steps.diagnostic.outputs.native_source }}
+          NATIVE_STATUS: ${{ steps.diagnostic.outputs.native_status }}
+          NATIVE_CONCLUSION: ${{ steps.diagnostic.outputs.native_conclusion }}
+        run: |
+          mkdir -p artifacts/shadow-volume-repro
+          printf 'diagnosticHead=%s\nnativeRunId=%s\nnativeSource=%s\nnativeStatus=%s\nnativeConclusion=%s\n' \
+            "$SOURCE_HEAD" "$NATIVE_RUN" "$NATIVE_SOURCE" "$NATIVE_STATUS" "$NATIVE_CONCLUSION" \
+            > artifacts/shadow-volume-repro/native-source.txt
+      - name: Download source-compatible native artifact for diagnosis
+        if: steps.diagnostic.outputs.compatible == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
-          run-id: 42030115704
+          run-id: ${{ steps.diagnostic.outputs.native_run_id }}
           name: openusd-native-linux-x64
-          path: artifacts/historical-native/linux-x64
+          path: artifacts/diagnostic-native/linux-x64
       - name: Prepare and stage the native runtime
-        if: steps.historical.outputs.compatible == 'true'
+        if: steps.diagnostic.outputs.compatible == 'true'
         id: native
         shell: pwsh
         run: |
           ./eng/prepare-workflow-native-input.ps1 `
-            -Rid linux-x64 -Source archive -PipelineRoot artifacts/historical-native/linux-x64
+            -Rid linux-x64 -Source archive -PipelineRoot artifacts/diagnostic-native/linux-x64
           $runtime = Join-Path $env:GITHUB_WORKSPACE 'artifacts/shadow-volume-repro/runtime'
           $bin = Join-Path $runtime 'bin'
           $lib = Join-Path $runtime 'lib'
@@ -154,11 +161,11 @@ jobs:
             throw 'The diagnostic runtime is missing the OpenUSD plugin root.'
           }
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: steps.historical.outputs.compatible == 'true'
+        if: steps.diagnostic.outputs.compatible == 'true'
         with:
           dotnet-version: 10.0.403
       - name: Build current conformance tests
-        if: steps.historical.outputs.compatible == 'true'
+        if: steps.diagnostic.outputs.compatible == 'true'
         id: build
         shell: pwsh
         run: |
@@ -166,12 +173,12 @@ jobs:
             -c Release -f net10.0 -p:OpenUsdRequireMetalShaderLibrary=false -warnaserror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install software Vulkan
-        if: steps.historical.outputs.compatible == 'true'
+        if: steps.diagnostic.outputs.compatible == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libopengl0
       - name: Locate lavapipe
-        if: steps.historical.outputs.compatible == 'true'
+        if: steps.diagnostic.outputs.compatible == 'true'
         id: vulkan
         shell: bash
         run: |
@@ -185,7 +192,7 @@ jobs:
           fi
           echo "icd=$icd" >> "$GITHUB_OUTPUT"
       - name: Reproduce moved point-shadow update
-        if: steps.historical.outputs.compatible == 'true'
+        if: steps.diagnostic.outputs.compatible == 'true'
         id: point
         shell: pwsh
         env:
@@ -196,14 +203,42 @@ jobs:
           OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED: '1'
           LD_LIBRARY_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/lib:${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/bin
         run: |
-          ./eng/run-managed-tests.ps1 `
-            -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-            -Framework net10.0 -Configuration Release -MinimumExpectedTests 1 `
-            -TestArguments @(
-              '--treenode-filter',
-              '/*/*/SilkPointShadowNativeConformanceTests/AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported')
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-linux-net10.0.tunit-report.json'
+          $retainedPath = 'artifacts/shadow-volume-repro/point-shadow.tunit-report.json'
+          if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+            Remove-Item -LiteralPath $reportPath
+          }
+          try {
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 1 `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/SilkPointShadowNativeConformanceTests/AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported')
+          }
+          finally {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Copy-Item -LiteralPath $reportPath -Destination $retainedPath
+            }
+          }
+          if (-not (Test-Path -LiteralPath $retainedPath -PathType Leaf)) {
+            throw 'The moved point-shadow diagnostic report is missing.'
+          }
+          $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+          $results = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkPointShadowNativeConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.displayName -ceq 'AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported(Vulkan)' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 1 -or $report.summary.passed -ne 1 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $results.Count -ne 1) {
+            throw 'The Vulkan moved point-shadow case did not pass exactly once without skips.'
+          }
       - name: Reproduce native volume fixture cameras
-        if: always() && steps.historical.outputs.compatible == 'true' && steps.native.outcome == 'success' && steps.build.outcome == 'success' && steps.vulkan.outcome == 'success'
+        if: always() && steps.diagnostic.outputs.compatible == 'true' && steps.native.outcome == 'success' && steps.build.outcome == 'success' && steps.vulkan.outcome == 'success'
         shell: pwsh
         env:
           VK_DRIVER_FILES: ${{ steps.vulkan.outputs.icd }}
@@ -225,7 +260,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-shadow-volume-repro-${{ github.run_id }}-${{ github.run_attempt }}
-          path: tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/
+          path: |
+            artifacts/shadow-volume-repro/native-source.txt
+            artifacts/shadow-volume-repro/point-shadow.tunit-report.json
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/
           if-no-files-found: warn
           retention-days: 14
 

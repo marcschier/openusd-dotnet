@@ -122,7 +122,7 @@ public sealed class SilkShadowNormalSpaceSourceContractTests
         Match call = Regex.Match(
             source,
             @"ResolveShadowVisibility\(\s*frame,\s*shadowSlot,\s*worldPosition," +
-                @"\s*worldGeometricNormal,\s*(?<direction>\w+)\)",
+                @"\s*worldGeometricNormal,\s*(?<direction>\w+),\s*shadowGroup\.z\s*\)",
             RegexOptions.None,
             TimeSpan.FromSeconds(5));
 
