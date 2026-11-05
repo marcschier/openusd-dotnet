@@ -13,10 +13,10 @@ public sealed class SilkPointShadowNativeConformanceTests
     private const int SampleY = 32;
     private const int CenterX = 32;
     private const int PerspectiveOnlyX = 45;
-    private const int ControlX = 51;
+    private const int ControlX = 8;
     private const int MovedShadowX = 58;
     private const float CasterHalfWidth = 0.25f;
-    private const float MovedCasterX = 0.6f;
+    private const float MovedCasterX = 0.5f;
 
     private static readonly CameraState Camera = new(Matrix4x4.Identity, Matrix4x4.Identity);
     private static readonly SilkMeshRenderOptions Options = new(
