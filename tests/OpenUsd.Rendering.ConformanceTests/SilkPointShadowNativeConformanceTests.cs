@@ -127,14 +127,22 @@ public sealed class SilkPointShadowNativeConformanceTests
             .Where(pixel => before.Pixels[pixel * 4] > 40 &&
                 moved.Pixels[pixel * 4] * 4 < before.Pixels[pixel * 4])
             .ToArray();
+        string movedDarkPixelBounds = movedDarkPixels.Length == 0
+            ? "none"
+            : $"{movedDarkPixels.Min(pixel => pixel % Size)}:{movedDarkPixels.Min(pixel => pixel / Size)}-" +
+              $"{movedDarkPixels.Max(pixel => pixel % Size)}:{movedDarkPixels.Max(pixel => pixel / Size)}";
+        string movedDarkPixelRows = string.Join(",", movedDarkPixels
+            .GroupBy(pixel => pixel / Size)
+            .Select(group => $"{group.Key}={group.Count()}"));
         string movedDarkPixelLocations = string.Join(",", movedDarkPixels
             .Take(64)
             .Select(pixel => $"{pixel % Size}:{pixel / Size}"));
         int movedOffset = PixelOffset(MovedShadowX);
         await AssertDarkened(before, moved, MovedShadowX,
             $"moved point shadow; second red={movedAgain.Pixels[movedOffset]}, " +
-            $"fresh red={freshMoved.Pixels[movedOffset]}, dark pixels={movedDarkPixels.Length} " +
-            $"at x:y=[{movedDarkPixelLocations}]");
+            $"fresh red={freshMoved.Pixels[movedOffset]}, dark pixels={movedDarkPixels.Length}, " +
+            $"bounds=[{movedDarkPixelBounds}], rows=[{movedDarkPixelRows}], " +
+            $"first x:y=[{movedDarkPixelLocations}]");
         await AssertDarkened(before, movedAgain, MovedShadowX, "repeated moved point shadow");
         await AssertDarkened(before, freshMoved, MovedShadowX, "fresh moved point shadow");
 
