@@ -14,6 +14,11 @@ on:
       - 'eng/tests/test_release_validation_checkpoint.py'
       - 'eng/tests/test_verify_nuget_promotion.py'
       - 'eng/tests/test_verify_spirv_cross_provenance.py'
+      - 'native/hdSilk/tests/hdsilk_direct_lights_session_probe.cpp'
+      - 'native/hdSilk/tests/hdsilk_direct_lights_test_decode.h'
+      - 'native/hdSilk/include/openusd_hdsilk.h'
+      - 'native/openusd_dotnet/include/openusd_dotnet.h'
+      - 'native/include/openusd_render_camera.h'
 
 permissions:
   actions: read
@@ -24,6 +29,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-session-probe-syntax:
+    name: Native direct-light session probe syntax
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Compile the session probe without linking
+        shell: bash
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fsyntax-only \
+            -Inative/hdSilk/tests \
+            -Inative/hdSilk/include \
+            -Inative/openusd_dotnet/include \
+            -Inative/include \
+            native/hdSilk/tests/hdsilk_direct_lights_session_probe.cpp
+
   viewer-compiler-redistribution-guard:
     name: Viewer compiler redistribution guard
     runs-on: ubuntu-24.04
