@@ -99,6 +99,8 @@ public sealed class SilkPointShadowNativeConformanceTests
             await Assert.That(backend).IsEqualTo(SilkGraphicsBackend.Metal);
             await Assert.That(shadowed.LiveMaps).IsEqualTo(0);
             await Assert.That(shadowed.Renders).IsEqualTo(0ul);
+            await Assert.That(freshMoved.ShadowAtlasDepth).IsNull();
+            await Assert.That(freshMoved.ShadowAtlasEdge).IsEqualTo(0u);
             await Assert.That(shadowed.ShadowDiagnostics.Any(message =>
                 message.Contains("Metal", StringComparison.Ordinal) &&
                 message.Contains("depth-only pass", StringComparison.Ordinal))).IsTrue();
@@ -305,14 +307,17 @@ public sealed class SilkPointShadowNativeConformanceTests
         using (var renderer = new SilkMeshRenderer(device))
         {
             freshMoved = Capture(session, renderer, color, depth, 2);
-            uint shadowAtlasEdge = renderer.ShadowAtlasEdge;
-            var shadowAtlasDepth = new float[checked((int)(shadowAtlasEdge * shadowAtlasEdge))];
-            renderer.ReadShadowAtlasDepthForTesting(shadowAtlasDepth);
-            freshMoved = freshMoved with
+            if (device.Capabilities.SupportsRasterShadows)
             {
-                ShadowAtlasDepth = shadowAtlasDepth,
-                ShadowAtlasEdge = shadowAtlasEdge
-            };
+                uint shadowAtlasEdge = renderer.ShadowAtlasEdge;
+                var shadowAtlasDepth = new float[checked((int)(shadowAtlasEdge * shadowAtlasEdge))];
+                renderer.ReadShadowAtlasDepthForTesting(shadowAtlasDepth);
+                freshMoved = freshMoved with
+                {
+                    ShadowAtlasDepth = shadowAtlasDepth,
+                    ShadowAtlasEdge = shadowAtlasEdge
+                };
+            }
         }
 
         return new Sequence(
