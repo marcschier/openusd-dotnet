@@ -116,6 +116,16 @@ internal sealed class SilkShadowMapCache : IDisposable
     /// <summary>Gets the number of times the retained atlas has been rendered.</summary>
     internal ulong RenderCount { get; private set; }
 
+    internal void ReadAtlasDepthForTesting(Span<float> destination)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_atlas is null)
+        {
+            throw new InvalidOperationException("No shadow atlas is retained.");
+        }
+        _atlas.Depth.ReadbackForTesting(destination);
+    }
+
     internal void ReportPreparedCasters(SilkSceneGpuResources resources) =>
         resources.ReportUnsupportedShadowCasters(_unsupportedCasters, _casterReportRevision);
 

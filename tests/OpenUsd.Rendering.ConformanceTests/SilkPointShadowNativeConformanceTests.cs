@@ -147,7 +147,8 @@ public sealed class SilkPointShadowNativeConformanceTests
             $"fresh red={freshMoved.Pixels[movedOffset]}, dark pixels={movedDarkPixels.Length}, " +
             $"bounds=[{movedDarkPixelBounds}], rows=[{movedDarkPixelRows}], " +
             $"sample rows={movedDarkPixelSampleRows}, " +
-            $"first x:y=[{movedDarkPixelLocations}]");
+            $"first x:y=[{movedDarkPixelLocations}], " +
+            $"[DEBUG-point-shadow-depth] {DescribeShadowAtlasDepth(freshMoved)}");
         await AssertDarkened(before, movedAgain, MovedShadowX, "repeated moved point shadow");
         await AssertDarkened(before, freshMoved, MovedShadowX, "fresh moved point shadow");
 
@@ -196,6 +197,14 @@ public sealed class SilkPointShadowNativeConformanceTests
         using (var renderer = new SilkMeshRenderer(device))
         {
             freshMoved = Capture(session, renderer, color, depth, 2);
+            uint shadowAtlasEdge = renderer.ShadowAtlasEdge;
+            var shadowAtlasDepth = new float[checked((int)(shadowAtlasEdge * shadowAtlasEdge))];
+            renderer.ReadShadowAtlasDepthForTesting(shadowAtlasDepth);
+            freshMoved = freshMoved with
+            {
+                ShadowAtlasDepth = shadowAtlasDepth,
+                ShadowAtlasEdge = shadowAtlasEdge
+            };
         }
 
         return new Sequence(
@@ -283,7 +292,57 @@ public sealed class SilkPointShadowNativeConformanceTests
 
     private static float PixelWorldX(int x) => ((x + 0.5f) * 2f / Size) - 1f;
 
+    private static float PixelWorldY(int y) => ((y + 0.5f) * 2f / Size) - 1f;
+
     private static float CasterIntersectionX(int x) => PixelWorldX(x) * 0.5f;
+
+    private static string DescribeShadowAtlasDepth(Frame frame)
+    {
+        float[] depth = frame.ShadowAtlasDepth ??
+            throw new InvalidOperationException("The moved frame has no shadow atlas readback.");
+        SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(frame.Descriptors) ??
+            throw new InvalidOperationException("The moved frame has no shadow atlas layout.");
+        SilkShadowDescriptor descriptor = frame.Descriptors[5];
+        Matrix4x4 worldToLightClip = SilkShadowMatrix.CreateWorldToLightClip(descriptor);
+        SilkShadowTilePlacement tile = layout.Tiles[5];
+        var samples = new List<string>();
+        for (int x = 54; x <= 63; x++)
+        {
+            Vector4 clip = TransformColumn(
+                worldToLightClip,
+                new Vector4(PixelWorldX(x), PixelWorldY(SampleY), 0.2f, 1));
+            float inverseW = 1f / clip.W;
+            float ndcX = clip.X * inverseW;
+            float ndcY = clip.Y * inverseW;
+            float u = (ndcX * 0.5f) + 0.5f;
+            float v = (ndcY * -0.5f) + 0.5f;
+            int atlasX = Math.Clamp(
+                (int)((tile.OffsetU + (u * tile.ScaleU)) * frame.ShadowAtlasEdge),
+                0,
+                (int)frame.ShadowAtlasEdge - 1);
+            int atlasY = Math.Clamp(
+                (int)((tile.OffsetV + (v * tile.ScaleV)) * frame.ShadowAtlasEdge),
+                0,
+                (int)frame.ShadowAtlasEdge - 1);
+            int flippedAtlasY = (int)frame.ShadowAtlasEdge - 1 - atlasY;
+            float directDepth = depth[(atlasY * (int)frame.ShadowAtlasEdge) + atlasX];
+            float flippedDepth = depth[(flippedAtlasY * (int)frame.ShadowAtlasEdge) + atlasX];
+            samples.Add(
+                $"{x}@{atlasX},{atlasY}:{directDepth:F4}/{flippedDepth:F4};" +
+                $"receiver={clip.Z * inverseW:F4}");
+        }
+        return string.Join(" ", samples);
+    }
+
+    private static Vector4 TransformColumn(Matrix4x4 matrix, Vector4 vector) => new(
+        (matrix.M11 * vector.X) + (matrix.M12 * vector.Y) +
+            (matrix.M13 * vector.Z) + (matrix.M14 * vector.W),
+        (matrix.M21 * vector.X) + (matrix.M22 * vector.Y) +
+            (matrix.M23 * vector.Z) + (matrix.M24 * vector.W),
+        (matrix.M31 * vector.X) + (matrix.M32 * vector.Y) +
+            (matrix.M33 * vector.Z) + (matrix.M34 * vector.W),
+        (matrix.M41 * vector.X) + (matrix.M42 * vector.Y) +
+            (matrix.M43 * vector.Z) + (matrix.M44 * vector.W));
 
     private static string RequirePlugins()
     {
@@ -338,5 +397,9 @@ public sealed class SilkPointShadowNativeConformanceTests
         int LiveMaps,
         ulong Renders,
         double CasterX,
-        string[] ShadowDiagnostics);
+        string[] ShadowDiagnostics)
+    {
+        public float[]? ShadowAtlasDepth { get; init; }
+        public uint ShadowAtlasEdge { get; init; }
+    }
 }

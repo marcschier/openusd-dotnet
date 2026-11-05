@@ -481,6 +481,11 @@ public sealed partial class SilkMeshRenderer :
     /// <summary>Gets the number of retained shadow maps.</summary>
     internal int ShadowMapCount => _shadowMaps.MapCount;
 
+    internal uint ShadowAtlasEdge => _shadowMaps.AtlasEdge;
+
+    internal void ReadShadowAtlasDepthForTesting(Span<float> destination) =>
+        _shadowMaps.ReadAtlasDepthForTesting(destination);
+
     /// <summary>
     /// Gets or sets the physics transform overrides applied to retained meshes for every rendered
     /// frame, or <see langword="null"/> to draw every mesh from its authored transform.
