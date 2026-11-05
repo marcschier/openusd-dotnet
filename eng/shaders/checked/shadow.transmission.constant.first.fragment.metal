@@ -2,9 +2,16 @@
 #include <metal_math>
 #include <metal_texture>
 using namespace metal;
-struct pixelOutput_0
+struct ShadowTransmissionOutput_0
 {
-    float4 output_0 [[color(0)]];
+    float4 color_0 [[color(0)]];
+    float depth_0 [[depth(any)]];
+};
+
+struct pixelInput_0
+{
+    float lightDepth_0 [[user(TEXCOORD_2)]];
+    [[flat]] float pointDepthScale_0 [[user(TEXCOORD_3)]];
 };
 
 struct SurfaceParameters_natural_0
@@ -30,13 +37,46 @@ struct SurfaceParameters_natural_0
     packed_float4 alternateUvTransformRow1_0;
 };
 
-[[fragment]] pixelOutput_0 shadowTransmissionConstantFirstFragmentMain(float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_0 [[buffer(7)]])
+struct KernelContext_0
 {
-    float opacity_0 = saturate(saturate((float4((surfaceParameters_0+int(0))->diffuseOpacity_0) ).w));
+    SurfaceParameters_natural_0 device* surfaceParameters_0;
+};
+
+[[fragment]] ShadowTransmissionOutput_0 shadowTransmissionConstantFirstFragmentMain(pixelInput_0 _S1 [[stage_in]], float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]])
+{
+    thread KernelContext_0 kernelContext_0;
+    (&kernelContext_0)->surfaceParameters_0 = surfaceParameters_1;
+    float _S2 = position_0.z;
+    bool _S3 = (_S1.pointDepthScale_0) > 0.0f;
+    float _S4;
+    if(_S3)
+    {
+        _S4 = _S1.lightDepth_0 * _S1.pointDepthScale_0;
+    }
+    else
+    {
+        _S4 = _S2;
+    }
+    bool _S5;
+    if(_S3)
+    {
+        _S5 = _S4 > 1.0f;
+    }
+    else
+    {
+        _S5 = false;
+    }
+    if(_S5)
+    {
+        discard_fragment();
+    }
+    float opacity_0 = saturate(saturate((float4(((&kernelContext_0)->surfaceParameters_0+int(0))->diffuseOpacity_0) ).w));
     if(opacity_0 <= 0.0f)
     {
         discard_fragment();
     }
-    pixelOutput_0 _S1 = { float4(position_0.z, 1.0f - opacity_0, 0.0f, 1.0f) };
-    return _S1;
+    thread ShadowTransmissionOutput_0 output_0;
+    (&output_0)->depth_0 = _S4;
+    (&output_0)->color_0 = float4(_S4, 1.0f - opacity_0, 0.0f, 1.0f);
+    return output_0;
 }

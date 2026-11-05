@@ -4336,7 +4336,7 @@ restores cutout or bounded transmission classification.
 
 **Blended caster model.** A depth-only map cannot distinguish a partly transmitting surface in front
 of a receiver from one behind it. The renderer therefore retains up to
-four positive-opacity intersections per shadow texel, each as a 32-bit raster depth and scalar
+four positive-opacity intersections per shadow texel, each as a 32-bit shadow depth and scalar
 transmittance `1 - saturate(opacity)`. Depth peeling operates on general triangle casters, including
 multiple intersections within one mesh; it does not restrict accepted geometry to planar cards.
 Every layer uses the same material opacity function as the masked and colour passes, including
@@ -4359,7 +4359,7 @@ A fifth peel checks for overflow. A separate equality pass blends a fixed alpha 
 nearest peeled depth: one fragment produces approximately 128 in the byte probe, while two produce
 approximately 191. Any fifth intersection or equal-depth multiplicity refuses the candidate with
 `ShadowTransmissionLayerOverflow` or `ShadowTransmissionEqualDepth`, naming its light, layer and atlas
-pixel. Equal raster depths cannot be ordered reliably and are not silently merged. Overflow is
+pixel. Equal stored depths cannot be ordered reliably and are not silently merged. Overflow is
 conservatively checked across the complete light frustum, including intersections hidden by opaque
 geometry or behind the current camera's receivers.
 
@@ -4398,20 +4398,23 @@ ownership, refusal and retry cases; all 68 cases passed locally.
 
 There is no native page ABI change. Managed bindings 41 through 44 carry the four layer textures;
 negative internal PCF radius encodes their presence as `-(radius + 1)` without altering the published
-descriptor. Checked DXIL, SPIR-V and reflection payloads were regenerated and verified. Windows tests
-passed on D3D12 WARP and Vulkan SwiftShader; Metal library, native/package execution, Linux and physical
-device qualification remain outstanding. Metal continues to advertise no raster-shadow capability.
-These local results do not establish release readiness.
+descriptor. Checked DXIL, SPIR-V and reflection payloads have been regenerated and verified for the
+linear point-depth source. A hosted checkpoint also built the combined Metal library, but did not
+execute a Metal raster-shadow pipeline. Earlier Windows tests passed on D3D12 WARP and Vulkan
+SwiftShader before the linear point-depth change. Backend pixel execution, end-to-end native/package
+execution and physical-device qualification remain outstanding. Metal continues to advertise no
+raster-shadow capability.
 
 The CI gate adds `SilkShadowTransmissionConformanceTests` to the existing cubic and point-shadow
-report/receipt runner. Windows requires all 30 named argument cases to pass, covering 15 D3D12 WARP
-and 15 packaged SwiftShader cases, with no skips. Linux requires all 15 named Vulkan cases to pass and
-permits only the 15 explicitly identified D3D12 platform skips. A skipped Vulkan
+report/receipt runner. Windows requires all 52 named argument cases to pass, covering 26 D3D12 WARP
+and 26 packaged SwiftShader cases, with no skips. Linux requires all 26 named Vulkan cases to pass and
+permits only the 26 explicitly identified D3D12 platform skips. A skipped Vulkan
 case, missing or duplicate identity, substituted method, incorrect count, stale execution time or
 reused report publication generation rejects the evidence. Both jobs retain the raw report,
 HTML and log with a hashed execution receipt after a successful run. A failed run retains its log and
-any reports it produced, but does not produce a successful receipt. The 30-case Windows run passed,
-as did the synthetic report/workflow-contract controls. Linux and hosted runs remain unqualified.
+any reports it produced, but does not produce a successful receipt. The earlier 30-case Windows run
+passed, as did the synthetic report/workflow-contract controls. That run predates the linear
+point-depth change. The added point-light cases have not yet been qualified on either backend.
 The same runner separately checks `SilkFiniteAreaShadowTests`: Windows requires both named methods
 on D3D12 and Vulkan to pass, while Linux requires both Vulkan passes and permits only the two named
 D3D12 platform skips. These four identities have their own report and receipt; transmission evidence
@@ -4464,17 +4467,34 @@ are averaged; when transmission layers are present, each sample includes their a
 the average. The checked mesh fragment offsets
 the receiver along its **world-space geometric normal**. Screen-space derivatives of world position produce that normal.
 The object-to-world inverse transpose is applied exactly without a normal matrix in the pinned 80-byte instance block.
-The fragment subtracts a slope-scaled depth bias and filters nine taps at the
+The fragment applies a slope-scaled depth bias and filters nine taps at the
 descriptor's PCF radius. The normal's sign is resolved against each light rather than against the
 camera, because a derivative-based normal carries the sign of the triangle's screen winding. The
-caster pass itself rasterizes with the device's own clip-space convention, so every backend stores the
-same map and the colour pass reconstructs the atlas coordinate with one convention everywhere.
-Everything
-outside a map's own frustum is fully lit, because the projection is derived from the caster bounds and
-a receiver outside it has no caster in front of it by construction. A frame with no shadow map names
+caster pass rasterizes using the device's clip-space convention, and the colour pass reconstructs
+the atlas coordinate in that convention. A receiver outside the map's frustum is treated as fully
+lit. Geometry beyond the fitted depth range is therefore not tested against a caster inside it.
+A frame with no shadow map names
 slot `-1` for every light and never reaches the atlas, and binds a one-texel stand-in depth image
 purely because the checked binary references the slot in every permutation, exactly as it does for the
 composite material image.
+
+For a point light, the caster writes clip-space `w` multiplied by one scale shared by its six cube
+faces. The scale uses the largest face far distance rounded outward; the producer's near plane is
+unchanged. Opaque, cutout and transmission casters store this depth, and the colour pass uses it
+for comparisons. A receiver whose encoded depth exceeds one is lit, and a caster fragment outside
+that range is discarded. Other shadow maps retain their raster depth. The shadow fragments write
+`SV_Depth` for all projections, which can reduce early-depth optimization; the performance effect
+has not been measured.
+
+For a published perspective-depth bias `b` and a face with near and far distances `n` and `f`, the
+renderer calculates `B = n * f / (f - n)` and a converted bias `q = b / (B * s)`, where `s` is the
+shared point-depth scale. It compares a receiver with encoded depth `L` as
+`L / (1 + q * slopeFactor * L)`, using the same slope factor as the raster-depth path. During shadow
+preparation, a cube face is rejected for a non-finite or non-affine view, an unsupported perspective
+depth projection, or a depth range or converted bias the GPU cannot represent. This includes a
+subnormal scale, near-depth value or nonzero converted bias, and a converted bias above
+`float.MaxValue / 3`. The check runs before allocating an atlas candidate. The checks do not prove
+every finite input, including extreme world-coordinate cancellation.
 
 **What is retained.** The atlas is re-rendered exactly when one of its inputs changes: the published
 descriptor table, the caster geometry revision (which moves on upsert, removal, deformation, and
@@ -4536,11 +4556,12 @@ checked masked shader payloads embedded for each target framework. `SilkShadowWi
 cutoff defaults, adjacent threshold values and invalid
 inputs as well as the wire layout and its rejections, including the reserved header field.
 `SilkTextureResidencyTests` distinguishes cutout and continuous-opacity caster classification.
-The new `SilkShadowTransmissionConformanceTests` declares independent analytic transmission ratios
+`SilkShadowTransmissionConformanceTests` declares independent analytic transmission ratios
 for single and multiple layers, behind-receiver geometry, texture changes, shadow links and lifecycle,
-as well as overflow/equal-depth refusal and opaque/cutout interaction. All 30 cases passed locally on
-D3D12 WARP and Vulkan SwiftShader. `SilkShadowTransmissionTests` and `SilkShadowAtlasRetentionTests`
-also passed 68 managed resource-accounting, allocation-refusal and validation cases.
+as well as overflow/equal-depth refusal and opaque/cutout interaction. An earlier set of 30 cases
+passed locally on D3D12 WARP and Vulkan SwiftShader before the linear point-depth change.
+`SilkShadowTransmissionTests` and `SilkShadowAtlasRetentionTests`
+also passed 68 managed resource-accounting, allocation-refusal and validation cases before that change.
 `PerspectiveSpotShadowPixelsMatchAnalyticReceiver` checks shaped-sphere illumination against a
 perspective descriptor on both backends; `hdsilk_direct_lights_probe` pins native spot descriptor
 production and cone boundaries. `RectEmitterShadowsMatchFiveRayReferenceAcrossUpdateAndRetirement`

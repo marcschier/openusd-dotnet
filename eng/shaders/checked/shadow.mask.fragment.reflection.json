@@ -894,7 +894,47 @@
           "scalarType": "float32"
         }
       }
+    },
+    {
+      "name": "lightDepth",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 2,
+        "systemValue": false
+      },
+      "location": 2,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "float32"
+      }
+    },
+    {
+      "name": "pointDepthScale",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 3,
+        "systemValue": false
+      },
+      "location": 3,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "float32"
+      }
     }
   ],
-  "stageOutputs": []
+  "stageOutputs": [
+    {
+      "name": "result",
+      "semantic": {
+        "name": "SV_DEPTH",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "float32"
+      }
+    }
+  ]
 }

@@ -2,9 +2,16 @@
 #include <metal_math>
 #include <metal_texture>
 using namespace metal;
-struct pixelOutput_0
+struct ShadowTransmissionOutput_0
 {
-    float4 output_0 [[color(0)]];
+    float4 color_0 [[color(0)]];
+    float depth_0 [[depth(any)]];
+};
+
+struct pixelInput_0
+{
+    float lightDepth_0 [[user(TEXCOORD_2)]];
+    [[flat]] float pointDepthScale_0 [[user(TEXCOORD_3)]];
 };
 
 struct SurfaceParameters_natural_0
@@ -36,26 +43,51 @@ struct KernelContext_0
     texture2d<float, access::sample> previousShadowLayer_0;
 };
 
-[[fragment]] pixelOutput_0 shadowTransmissionConstantProbeFragmentMain(float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], texture2d<float, access::sample> previousShadowLayer_1 [[texture(24)]])
+[[fragment]] ShadowTransmissionOutput_0 shadowTransmissionConstantProbeFragmentMain(pixelInput_0 _S1 [[stage_in]], float4 position_0 [[position]], SurfaceParameters_natural_0 device* surfaceParameters_1 [[buffer(7)]], texture2d<float, access::sample> previousShadowLayer_1 [[texture(24)]])
 {
     thread KernelContext_0 kernelContext_0;
     (&kernelContext_0)->surfaceParameters_0 = surfaceParameters_1;
     (&kernelContext_0)->previousShadowLayer_0 = previousShadowLayer_1;
-    int3 _S1 = int3(int2(position_0.xy), int(0));
-    float nearestDepth_0 = ((previousShadowLayer_1).read(vec<uint,2>(((_S1)).xy), uint(((_S1)).z))).x;
-    bool _S2;
-    if((saturate(saturate((float4((surfaceParameters_1+int(0))->diffuseOpacity_0) ).w))) <= 0.0f)
+    float _S2 = position_0.z;
+    bool _S3 = (_S1.pointDepthScale_0) > 0.0f;
+    float _S4;
+    if(_S3)
     {
-        _S2 = true;
+        _S4 = _S1.lightDepth_0 * _S1.pointDepthScale_0;
     }
     else
     {
-        _S2 = (position_0.z) != nearestDepth_0;
+        _S4 = _S2;
     }
-    if(_S2)
+    bool _S5;
+    if(_S3)
+    {
+        _S5 = _S4 > 1.0f;
+    }
+    else
+    {
+        _S5 = false;
+    }
+    if(_S5)
     {
         discard_fragment();
     }
-    pixelOutput_0 _S3 = { float4(0.0f, 0.0f, 0.0f, 0.5f) };
-    return _S3;
+    int3 _S6 = int3(int2(position_0.xy), int(0));
+    float nearestDepth_0 = (((&kernelContext_0)->previousShadowLayer_0).read(vec<uint,2>(((_S6)).xy), uint(((_S6)).z))).x;
+    if((saturate(saturate((float4(((&kernelContext_0)->surfaceParameters_0+int(0))->diffuseOpacity_0) ).w))) <= 0.0f)
+    {
+        _S5 = true;
+    }
+    else
+    {
+        _S5 = _S4 != nearestDepth_0;
+    }
+    if(_S5)
+    {
+        discard_fragment();
+    }
+    thread ShadowTransmissionOutput_0 output_0;
+    (&output_0)->depth_0 = _S4;
+    (&output_0)->color_0 = float4(0.0f, 0.0f, 0.0f, 0.5f);
+    return output_0;
 }

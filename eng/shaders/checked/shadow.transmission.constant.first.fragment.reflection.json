@@ -712,11 +712,37 @@
           "scalarType": "float32"
         }
       }
+    },
+    {
+      "name": "lightDepth",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 2,
+        "systemValue": false
+      },
+      "location": 0,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "float32"
+      }
+    },
+    {
+      "name": "pointDepthScale",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 3,
+        "systemValue": false
+      },
+      "location": 1,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "float32"
+      }
     }
   ],
   "stageOutputs": [
     {
-      "name": "result",
+      "name": "color",
       "semantic": {
         "name": "SV_TARGET",
         "index": 0,
@@ -730,6 +756,19 @@
           "kind": "scalar",
           "scalarType": "float32"
         }
+      }
+    },
+    {
+      "name": "depth",
+      "semantic": {
+        "name": "SV_DEPTH",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "float32"
       }
     }
   ]
