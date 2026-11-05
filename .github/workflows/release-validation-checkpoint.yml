@@ -136,7 +136,7 @@ jobs:
       - name: Install software Vulkan
         run: |
           sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libopengl0
       - name: Locate lavapipe
         id: vulkan
         shell: bash
