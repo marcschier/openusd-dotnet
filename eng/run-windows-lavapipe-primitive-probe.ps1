@@ -16,6 +16,7 @@ if (-not $IsWindows)
     throw 'The Windows lavapipe primitive-ID diagnostic requires Windows.'
 }
 
+. (Join-Path $PSScriptRoot 'primitive-id-transport-report.ps1')
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $lock = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'mesa-lavapipe-test-runtime.lock.json') -Raw |
     ConvertFrom-Json
@@ -145,36 +146,19 @@ try
         $testProject = Join-Path $repoRoot (
             'tests\OpenUsd.Rendering.ConformanceTests\OpenUsd.Rendering.ConformanceTests.csproj')
         $testStarted = $true
+        $startedUtc = [DateTime]::UtcNow
         & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
             -Project $testProject `
             -Framework net10.0 -Configuration $Configuration -MinimumExpectedTests 3 `
             -TestArguments @('--treenode-filter', '/*/*/SilkPrimitiveIdTransportConformanceTests/*')
+        $finishedUtc = [DateTime]::UtcNow
         if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf))
         {
             throw 'The Windows lavapipe primitive-ID report is missing.'
         }
         $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
-        $cases = @($report.groups | Where-Object {
-            $_.className -ceq 'SilkPrimitiveIdTransportConformanceTests'
-        } | ForEach-Object { $_.tests } | Where-Object {
-            $_.methodName -ceq 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex' -and
-                $_.status -ceq 'passed'
-        })
-        if ($report.summary.total -ne 3 -or $report.summary.passed -ne 3 -or
-            $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
-            $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
-            $cases.Count -ne 3)
-        {
-            throw 'The three Windows lavapipe primitive-ID cases must pass without skips.'
-        }
-        foreach ($boundary in @(255, 32767, 65535))
-        {
-            $name = "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, $boundary)"
-            if (@($cases | Where-Object { $_.displayName -ceq $name }).Count -ne 1)
-            {
-                throw "The Windows lavapipe case '$name' did not pass exactly once."
-            }
-        }
+        Assert-PrimitiveIdTransportReport -Report $report -Backend Vulkan `
+            -StartedUtc $startedUtc -FinishedUtc $finishedUtc -ExactReport
     }
     catch
     {

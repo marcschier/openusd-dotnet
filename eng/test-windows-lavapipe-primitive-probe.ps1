@@ -84,6 +84,8 @@ try
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'run-windows-lavapipe-primitive-probe.ps1') `
         -Destination $eng
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'primitive-id-transport-report.ps1') `
+        -Destination $eng
     $archive = Join-Path $inputRoot 'archive.7z'
     $driver = Join-Path $inputRoot 'vulkan_lvp.dll'
     $loader = Join-Path $runtime 'vulkan-1.dll'
@@ -129,13 +131,43 @@ function Restore-VulkanTestRuntimeDriver {
 param($Project, $Framework, $Configuration, $MinimumExpectedTests, $TestArguments)
 $runtime = Join-Path (Split-Path $PSScriptRoot -Parent) 'tests\OpenUsd.Rendering.ConformanceTests\bin\Release\net10.0'
 $results = Join-Path $runtime 'TestResults'
+$assembly = 'OpenUsd.Rendering.ConformanceTests'
+$class = 'SilkPrimitiveIdTransportConformanceTests'
 $method = 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex'
-$cases = foreach ($boundary in @(255, 32767, 65535)) {
-    @{ methodName = $method; status = 'passed'; displayName = "$method(Vulkan, $boundary)" }
+if ($env:OPENUSD_PRIMITIVE_PROBE_BACKEND -cne 'Vulkan' -or
+    $env:OPENUSD_PRIMITIVE_PROBE_EXPECTED_DEVICE_NAME -cne 'llvmpipe' -or
+    $env:OPENUSD_REQUIRE_SWIFTSHADER -cne '0' -or
+    $env:VK_DRIVER_FILES -cne $env:VK_ICD_FILENAMES -or
+    [IO.Path]::GetFileName($env:VK_DRIVER_FILES) -cne 'lvp.json') {
+    throw 'The primitive-ID runner did not receive the pinned lavapipe environment.'
 }
+$cases = foreach ($boundary in @(255, 32767, 65535)) {
+    @{
+        id = "$assembly.$class.1.1.$method.$boundary"
+        className = $class
+        methodName = $method
+        status = 'passed'
+        displayName = "$method(Vulkan, $boundary)"
+        startTime = [DateTime]::UtcNow.ToString('o')
+    }
+}
+if ($env:OPENUSD_LAVAPIPE_FIXTURE_MODE -eq 'duplicate-case') {
+    $cases[1].displayName = $cases[0].displayName
+}
+if ($env:OPENUSD_LAVAPIPE_FIXTURE_MODE -eq 'skipped-case') {
+    $cases[0].status = 'skipped'
+}
+$summary = @{ total = 3; passed = 3; failed = 0; skipped = 0; cancelled = 0; timedOut = 0; flaky = 0 }
 $report = @{
-    summary = @{ total = 3; passed = 3; failed = 0; skipped = 0; cancelled = 0; timedOut = 0 }
-    groups = @(@{ className = 'SilkPrimitiveIdTransportConformanceTests'; tests = @($cases) })
+    schemaVersion = 1
+    publicationGeneration = [Guid]::NewGuid().ToString('N')
+    assemblyName = $assembly
+    summary = $summary
+    groups = @(@{ namespace = $assembly; className = $class; summary = $summary; tests = @($cases) })
+}
+if ($env:OPENUSD_LAVAPIPE_FIXTURE_MODE -eq 'skipped-case') {
+    $report.summary.passed = 2
+    $report.summary.skipped = 1
 }
 $report | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath (Join-Path $results 'OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json')
@@ -161,9 +193,11 @@ if ($env:OPENUSD_LAVAPIPE_FIXTURE_MODE -in @(
     }
     $json = Join-Path $results 'OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
     $html = Join-Path $results 'OpenUsd.Rendering.ConformanceTests-windows-net10.0-report.html'
-    foreach ($mode in @(
+    $modes = @(
         'success', 'primary-failure', 'both-fail', 'no-prior', 'existing-evidence',
-        'registry-failure', 'primary-and-registry-failure', 'both-and-registry-failure'))
+        'registry-failure', 'primary-and-registry-failure', 'both-and-registry-failure',
+        'duplicate-case', 'skipped-case')
+    foreach ($mode in $modes)
     {
         $evidence = Join-Path $root "evidence-$mode"
         $env:OPENUSD_LAVAPIPE_FIXTURE_MODE = $mode
@@ -248,6 +282,16 @@ if ($env:OPENUSD_LAVAPIPE_FIXTURE_MODE -in @(
         {
             throw 'Existing evidence was not refused.'
         }
+        if ($mode -eq 'duplicate-case' -and
+            ($null -eq $failure -or $failure.Exception.Message -notlike '*duplicate primitive-ID test identity*'))
+        {
+            throw 'A duplicate primitive-ID boundary was not refused.'
+        }
+        if ($mode -eq 'skipped-case' -and
+            ($null -eq $failure -or $failure.Exception.Message -notlike '*did not pass*'))
+        {
+            throw 'A skipped primitive-ID boundary was not refused.'
+        }
         if ($mode -eq 'no-prior')
         {
             if ((Test-Path -LiteralPath $json) -or (Test-Path -LiteralPath $html))
@@ -311,7 +355,8 @@ if ($env:OPENUSD_LAVAPIPE_FIXTURE_MODE -in @(
         }
         Write-Host "[lavapipe-fixture] Passed $mode"
     }
-    if (@(Get-Content -LiteralPath $registryLog).Count -ne 7)
+    if (@(Get-Content -LiteralPath $registryLog).Count -ne
+        @($modes | Where-Object { $_ -ne 'existing-evidence' }).Count)
     {
         throw 'Each executed diagnostic must restore its driver registration.'
     }

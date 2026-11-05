@@ -284,14 +284,16 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
             upload,
         )
 
-    def test_windows_lavapipe_diagnostic_keeps_the_swiftshader_gate(self):
+    def test_windows_primitive_transport_requires_d3d12_and_lavapipe(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         triggers, jobs = workflow.split("\njobs:\n", 1)
         job = jobs.split("\n  windows-conformance-repro:\n", 1)[1]
         job = re.split(r"\n  [a-z0-9-]+:\n", job, maxsplit=1)[0]
         for path in (
             "eng/mesa-lavapipe-test-runtime.lock.json",
+            "eng/primitive-id-transport-report.ps1",
             "eng/run-windows-lavapipe-primitive-probe.ps1",
+            "eng/test-primitive-id-transport-report.ps1",
             "eng/test-windows-lavapipe-primitive-probe.ps1",
             "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdProbeVulkanDevice.cs",
         ):
@@ -302,34 +304,91 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         ].split("\n      - name:", 1)[0]
         self.assertIn("./eng/run-vulkan-conformance-tests.ps1", repro)
         self.assertNotIn("OPENUSD_PRIMITIVE_PROBE_BACKEND", triggers)
-        self.assertNotIn("OPENUSD_PRIMITIVE_PROBE_BACKEND", job)
+        self.assertIn(
+            "$case.Class -ceq 'SilkPrimitiveIdTransportConformanceTests'", repro
+        )
+        self.assertIn(
+            "$case.Method -ceq 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex'",
+            repro,
+        )
+        self.assertIn("$env:OPENUSD_PRIMITIVE_PROBE_BACKEND = 'D3D12'", repro)
+        self.assertIn("'OPENUSD_PRIMITIVE_PROBE_BACKEND', $previousPrimitiveBackend", repro)
         self.assertIn("-MinimumExpectedTests $case.Names.Count", repro)
         self.assertIn("$report.summary.passed -ne $case.Names.Count", repro)
         self.assertIn("$report.summary.failed -ne 0", repro)
         self.assertIn("$report.summary.skipped -ne 0", repro)
-        for backend in ("D3D12", "Vulkan"):
-            for boundary in (255, 32767, 65535):
-                with self.subTest(backend=backend, boundary=boundary):
-                    name = (
-                        "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex"
-                        f"({backend}, {boundary})"
-                    )
-                    self.assertEqual(repro.count(name), 1)
+        for boundary in (255, 32767, 65535):
+            name = (
+                "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex"
+                f"(D3D12, {boundary})"
+            )
+            self.assertEqual(repro.count(name), 1)
+            self.assertNotIn(
+                "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex"
+                f"(Vulkan, {boundary})",
+                repro,
+            )
+        lavapipe = job.split(
+            "\n      - name: Require Windows Vulkan primitive transport on lavapipe\n", 1
+        )[1].split("\n      - name:", 1)[0]
         self.assertIn(
             "always() && !cancelled() && steps.windows_conformance_build.outcome == 'success'",
-            job,
+            lavapipe,
         )
-        self.assertIn("./eng/run-windows-lavapipe-primitive-probe.ps1", job)
+        self.assertIn("./eng/run-windows-lavapipe-primitive-probe.ps1", lavapipe)
+        self.assertNotIn("continue-on-error", lavapipe)
         self.assertIn("path: artifacts/windows-lavapipe-primitive/", job)
         probe = (
             ROOT / "eng" / "run-windows-lavapipe-primitive-probe.ps1"
         ).read_text(encoding="utf-8")
         self.assertIn("OPENUSD_PRIMITIVE_PROBE_BACKEND = 'Vulkan'", probe)
-        self.assertIn("foreach ($boundary in @(255, 32767, 65535))", probe)
+        self.assertIn("OPENUSD_REQUIRE_SWIFTSHADER = '0'", probe)
         self.assertIn(
-            '"SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, $boundary)"',
-            probe,
+            "Assert-PrimitiveIdTransportReport -Report $report -Backend Vulkan", probe
         )
+        self.assertIn("-StartedUtc $startedUtc -FinishedUtc $finishedUtc -ExactReport", probe)
+        validator = (ROOT / "eng" / "primitive-id-transport-report.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("$summary.total -ne 3", validator)
+        self.assertIn("$summary.passed -ne 3", validator)
+        self.assertIn("$summary.skipped -ne 0", validator)
+        self.assertIn("foreach ($boundary in @(255, 32767, 65535))", validator)
+        self.assertIn(
+            '$expected.Add("$method($Backend, $boundary)")', validator
+        )
+
+    def test_windows_full_ci_requires_swiftshader_and_lavapipe_primitive_transport(self):
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("id: solution-build", workflow)
+        test = workflow.split("\n      - name: Test\n", 1)[1].split(
+            "\n      - name:", 1
+        )[0]
+        self.assertIn("$env:OPENUSD_PRIMITIVE_PROBE_BACKEND = 'D3D12'", test)
+        self.assertIn("'OPENUSD_PRIMITIVE_PROBE_BACKEND', $previousPrimitiveBackend", test)
+        self.assertIn("./eng/run-vulkan-conformance-tests.ps1 -Configuration Release", test)
+        self.assertIn("LastWriteTimeUtc -lt $conformanceStarted", test)
+        self.assertIn(
+            "Assert-PrimitiveIdTransportReport -Report $report -Backend D3D12", test
+        )
+        self.assertIn(
+            "-StartedUtc $conformanceStarted -FinishedUtc $conformanceFinished", test
+        )
+        self.assertIn("windows-d3d12-conformance.tunit-report.json", test)
+        self.assertLess(
+            test.index("$env:OPENUSD_PRIMITIVE_PROBE_BACKEND = 'D3D12'"),
+            test.index("./eng/run-vulkan-conformance-tests.ps1"),
+        )
+        lavapipe = workflow.split(
+            "\n      - name: Require Windows Vulkan primitive transport\n", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn("always() && !cancelled() && runner.os == 'Windows'", lavapipe)
+        self.assertIn("steps.solution-build.outcome == 'success'", lavapipe)
+        self.assertIn("./eng/run-windows-lavapipe-primitive-probe.ps1", lavapipe)
+        self.assertNotIn("continue-on-error", lavapipe)
+        self.assertIn("path: artifacts/windows-lavapipe-primitive/", workflow)
 
 
 if __name__ == "__main__":

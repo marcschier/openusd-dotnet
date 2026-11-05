@@ -11,9 +11,11 @@ on:
       - 'eng/diagnostics/metal-volume-math.swift'
       - 'eng/mesa-lavapipe-test-runtime.lock.json'
       - 'eng/metal-volume-repro-report.ps1'
+      - 'eng/primitive-id-transport-report.ps1'
       - 'eng/publish-viewer-bundle.ps1'
       - 'eng/run-windows-lavapipe-primitive-probe.ps1'
       - 'eng/test-metal-volume-repro-report.ps1'
+      - 'eng/test-primitive-id-transport-report.ps1'
       - 'eng/test-windows-lavapipe-primitive-probe.ps1'
       - 'eng/test-viewer-compiler-redistribution.ps1'
       - 'eng/verify-nuget-promotion.py'
@@ -740,7 +742,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Check lavapipe diagnostic report retention
         shell: pwsh
-        run: ./eng/test-windows-lavapipe-primitive-probe.ps1
+        run: |
+          ./eng/test-primitive-id-transport-report.ps1
+          ./eng/test-windows-lavapipe-primitive-probe.ps1
       - name: Validate shader receipt identity
         shell: pwsh
         env:
@@ -831,10 +835,7 @@ jobs:
               Names = @(
                 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 255)',
                 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 32767)',
-                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 65535)',
-                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, 255)',
-                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, 32767)',
-                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, 65535)'
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 65535)'
               )
             }
           )
@@ -846,13 +847,23 @@ jobs:
             if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
               Remove-Item -LiteralPath $reportPath
             }
+            $previousPrimitiveBackend = [Environment]::GetEnvironmentVariable(
+              'OPENUSD_PRIMITIVE_PROBE_BACKEND', 'Process')
             try {
+              if ($case.Class -ceq 'SilkPrimitiveIdTransportConformanceTests' -and
+                  $case.Method -ceq 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex') {
+                $env:OPENUSD_PRIMITIVE_PROBE_BACKEND = 'D3D12'
+              }
               ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release `
                 -MinimumExpectedTests $case.Names.Count `
                 -TestArguments @('--treenode-filter', "/*/*/$($case.Class)/$($case.Method)")
             }
             catch {
               $failures.Add("$($case.Method) runner failed: $($_.Exception.Message)")
+            }
+            finally {
+              [Environment]::SetEnvironmentVariable(
+                'OPENUSD_PRIMITIVE_PROBE_BACKEND', $previousPrimitiveBackend, 'Process')
             }
             if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
               $failures.Add("$($case.Method) report is missing.")
@@ -891,7 +902,7 @@ jobs:
           name: windows-conformance-repro-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/windows-conformance-repro/*.tunit-report.json
           if-no-files-found: warn
-      - name: Diagnose Windows primitive transport on lavapipe
+      - name: Require Windows Vulkan primitive transport on lavapipe
         if: ${{ always() && !cancelled() && steps.windows_conformance_build.outcome == 'success' }}
         shell: pwsh
         run: >-
