@@ -25,6 +25,7 @@ on:
       - 'eng/test-viewer-compiler-redistribution.ps1'
       - 'eng/verify-nuget-promotion.py'
       - 'eng/verify-spirv-cross-provenance.py'
+      - 'eng/shaders/**'
       - 'eng/tests/test_release_validation_checkpoint.py'
       - 'eng/tests/test_select_native_diagnostic.py'
       - 'eng/tests/test_verify_nuget_promotion.py'
@@ -86,6 +87,7 @@ jobs:
 
   linux-shadow-volume-repro:
     name: Linux shadow and volume native diagnostic
+    needs: shader-receipts
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -116,10 +118,15 @@ jobs:
           NATIVE_TREE: ${{ steps.diagnostic.outputs.native_tree }}
           NATIVE_STATUS: ${{ steps.diagnostic.outputs.native_status }}
           NATIVE_CONCLUSION: ${{ steps.diagnostic.outputs.native_conclusion }}
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
         run: |
+          if [[ ! "$SHADER_RECEIPT_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::The verified shader receipt artifact ID is missing or invalid."
+            exit 1
+          fi
           mkdir -p artifacts/shadow-volume-repro
-          printf 'diagnosticHead=%s\nnativeRunId=%s\nnativeSource=%s\nnativeCheckout=%s\nnativeTree=%s\nnativeStatus=%s\nnativeConclusion=%s\n' \
-            "$SOURCE_HEAD" "$NATIVE_RUN" "$NATIVE_SOURCE" "$NATIVE_CHECKOUT" "$NATIVE_TREE" "$NATIVE_STATUS" "$NATIVE_CONCLUSION" \
+          printf 'diagnosticHead=%s\nnativeRunId=%s\nnativeSource=%s\nnativeCheckout=%s\nnativeTree=%s\nnativeStatus=%s\nnativeConclusion=%s\nshaderReceiptArtifactId=%s\n' \
+            "$SOURCE_HEAD" "$NATIVE_RUN" "$NATIVE_SOURCE" "$NATIVE_CHECKOUT" "$NATIVE_TREE" "$NATIVE_STATUS" "$NATIVE_CONCLUSION" "$SHADER_RECEIPT_ARTIFACT_ID" \
             > artifacts/shadow-volume-repro/native-source.txt
       - name: Download source-compatible native artifact for diagnosis
         if: steps.diagnostic.outputs.compatible == 'true'
@@ -167,6 +174,22 @@ jobs:
         if: steps.diagnostic.outputs.compatible == 'true'
         with:
           dotnet-version: 10.0.403
+      - name: Download verified shader receipts
+        if: steps.diagnostic.outputs.compatible == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          path: .
+      - name: Verify generated shader provenance
+        if: steps.diagnostic.outputs.compatible == 'true'
+        run: |
+          python3 eng/shaders/scripts/checked_payload.py \
+            --checked-root eng/shaders/checked \
+            --lock eng/shaders/toolchain.lock.json \
+            --manifest eng/shaders/shader-manifest.json
       - name: Build current conformance tests
         if: steps.diagnostic.outputs.compatible == 'true'
         id: build
@@ -1298,6 +1321,58 @@ jobs:
           }
           if ($failures.Count -ne 0) {
             throw ($failures -join [Environment]::NewLine)
+          }
+      - name: Reproduce Windows high-tint volume accumulation
+        if: always() && steps.windows_conformance_build.outcome == 'success'
+        shell: pwsh
+        run: |
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
+          $evidence = 'artifacts/windows-conformance-repro'
+          $retainedPath = Join-Path $evidence 'high-tint-volume.tunit-report.json'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+            Remove-Item -LiteralPath $reportPath
+          }
+          try {
+            ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release `
+              -MinimumExpectedTests 12 `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels)')
+          }
+          finally {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Copy-Item -LiteralPath $reportPath -Destination $retainedPath
+            }
+          }
+          if (-not (Test-Path -LiteralPath $retainedPath -PathType Leaf)) {
+            throw 'The Windows high-tint volume diagnostic report is missing.'
+          }
+          $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+          $results = @($report.groups | Where-Object {
+            $_.className -ceq 'VolumeCameraJointPassConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 12 -or $report.summary.passed -ne 12 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $results.Count -ne 12) {
+            throw 'The Windows high-tint volume cases did not all pass without skips.'
+          }
+          foreach ($backend in @('D3D12', 'Vulkan')) {
+            foreach ($method in @(
+              'SingleHighTintFieldProducesFinitePixels',
+              'HalfMaximumTintFieldProducesFinitePixels',
+              'OpaqueHighTintFieldProducesFinitePixels',
+              'ReducedExposureHighTintFieldProducesFinitePixels',
+              'TwoCoincidentHighTintFieldsProduceFinitePixels',
+              'EightCoincidentHighTintFieldsProduceFinitePixels')) {
+              $name = "$method($backend)"
+              if (@($results | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+                throw "The Windows high-tint volume case '$name' did not pass exactly once."
+              }
+            }
           }
       - name: Upload Windows conformance evidence
         if: always()

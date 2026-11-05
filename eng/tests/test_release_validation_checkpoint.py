@@ -20,9 +20,11 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         for path in (
             "eng/select_native_diagnostic.py",
             "eng/tests/test_select_native_diagnostic.py",
+            "eng/shaders/**",
             "tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraJointPassConformanceTests.cs",
         ):
             self.assertIn(f"      - '{path}'", triggers)
+        self.assertIn("needs: shader-receipts", job)
         self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", job)
         self.assertIn("python3 -m unittest eng.tests.test_select_native_diagnostic", job)
         self.assertIn("GH_TOKEN: ${{ github.token }}", job)
@@ -38,6 +40,18 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         self.assertIn('"$NATIVE_SOURCE" "$NATIVE_CHECKOUT" "$NATIVE_TREE"', job)
         self.assertIn("NATIVE_STATUS: ${{ steps.diagnostic.outputs.native_status }}", job)
         self.assertIn("NATIVE_CONCLUSION: ${{ steps.diagnostic.outputs.native_conclusion }}", job)
+        self.assertIn("SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}", job)
+        self.assertIn("shaderReceiptArtifactId=%s\\n", job)
+        self.assertIn("artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}", job)
+        self.assertIn("run-id: ${{ github.run_id }}", job)
+        self.assertIn("python3 eng/shaders/scripts/checked_payload.py", job)
+        self.assertIn("--checked-root eng/shaders/checked", job)
+        self.assertIn("--lock eng/shaders/toolchain.lock.json", job)
+        self.assertIn("--manifest eng/shaders/shader-manifest.json", job)
+        self.assertLess(
+            job.index("Verify generated shader provenance"),
+            job.index("Build current conformance tests"),
+        )
         self.assertIn("-Source archive -PipelineRoot artifacts/diagnostic-native/linux-x64", job)
         self.assertIn("OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED: '1'", job)
         self.assertIn(
@@ -81,6 +95,34 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         self.assertIn("OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}", job)
         self.assertIn("run: ./eng/test-silk-cubic-shadow-report.ps1", job)
         self.assertNotIn("continue-on-error", job)
+
+    def test_windows_high_tint_diagnostic_uses_generated_shaders_and_retains_reports(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        job = workflow.split("\n  windows-conformance-repro:\n", 1)[1]
+        job = re.split(r"\n  [a-z0-9-]+:\n", job, maxsplit=1)[0]
+        self.assertIn("needs: shader-receipts", job)
+        self.assertIn("artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}", job)
+        self.assertIn("run-id: ${{ github.run_id }}", job)
+        high_tint = job.split(
+            "\n      - name: Reproduce Windows high-tint volume accumulation", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn("always() && steps.windows_conformance_build.outcome == 'success'", high_tint)
+        self.assertIn("./eng/run-vulkan-conformance-tests.ps1", high_tint)
+        self.assertIn("-MinimumExpectedTests 12", high_tint)
+        self.assertIn("foreach ($backend in @('D3D12', 'Vulkan'))", high_tint)
+        for case in (
+            "SingleHighTintFieldProducesFinitePixels",
+            "HalfMaximumTintFieldProducesFinitePixels",
+            "OpaqueHighTintFieldProducesFinitePixels",
+            "ReducedExposureHighTintFieldProducesFinitePixels",
+            "TwoCoincidentHighTintFieldsProduceFinitePixels",
+            "EightCoincidentHighTintFieldsProduceFinitePixels",
+        ):
+            self.assertIn(f"'{case}'", high_tint)
+        self.assertIn("$report.summary.passed -ne 12", high_tint)
+        self.assertIn("$report.summary.skipped -ne 0", high_tint)
+        self.assertIn("high-tint-volume.tunit-report.json", high_tint)
+        self.assertIn("artifacts/windows-conformance-repro/", job)
 
     def test_native_session_probe_syntax_job_compiles_the_checked_out_source(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
