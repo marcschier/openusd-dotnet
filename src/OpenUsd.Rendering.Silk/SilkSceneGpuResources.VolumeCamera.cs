@@ -11,6 +11,8 @@ public sealed partial class SilkSceneGpuResources
         new(MaximumVolumeCameraCpuBytes);
     private SilkGpuTextureBudget? _volumeCameraGpuBudget;
 
+    internal SilkGpuTextureUsage? VolumeCameraAtlasGpuUsage => _volumeCameraGpuBudget?.Usage;
+
     internal IDisposable ReserveVolumeCameraCpu(ulong bytes)
     {
         IDisposable volumeReservation = _volumeCameraCpuBudget.Reserve(bytes);

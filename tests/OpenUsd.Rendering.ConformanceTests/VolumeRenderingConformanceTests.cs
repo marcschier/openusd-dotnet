@@ -915,7 +915,8 @@ public sealed partial class VolumeRenderingConformanceTests
                 .Because("the renamed OpenVDB grid must decode to the same density values.");
             await Assert.That(ImageDelta.Compare(sampledReference, recovered).MaximumChannelDelta).IsEqualTo((byte)0)
                 .Because("the density relationship selects the equivalent grid named smoke in an external field.");
-            ulong sampledBytes = renderer.GpuResources.Statistics.TextureResidentGpuBytes;
+            ulong sampledBytes =
+                renderer.GpuResources.VolumeCameraAtlasGpuUsage?.ReservedBytes ?? 0;
             await Assert.That(sampledBytes).IsGreaterThan(0UL);
 
             string blockedTemp = Path.Combine(directory, "blocked-temp");
@@ -928,7 +929,8 @@ public sealed partial class VolumeRenderingConformanceTests
                     .IsNull();
                 await Assert.That(ImageDelta.Compare(uniformReference, cacheUnavailable).MaximumChannelDelta)
                     .IsEqualTo((byte)0);
-                await Assert.That(renderer.GpuResources.Statistics.TextureResidentGpuBytes).IsEqualTo(0UL);
+                await Assert.That(
+                    renderer.GpuResources.VolumeCameraAtlasGpuUsage?.ReservedBytes ?? 0UL).IsEqualTo(0UL);
             }
             finally
             {
@@ -936,18 +938,21 @@ public sealed partial class VolumeRenderingConformanceTests
             }
             ParityImage cacheRecovered = renderAt(1);
             await Assert.That(ImageDelta.Compare(recovered, cacheRecovered).MaximumChannelDelta).IsEqualTo((byte)0);
-            await Assert.That(renderer.GpuResources.Statistics.TextureResidentGpuBytes).IsEqualTo(sampledBytes);
+            await Assert.That(
+                renderer.GpuResources.VolumeCameraAtlasGpuUsage?.ReservedBytes ?? 0UL).IsEqualTo(sampledBytes);
 
             ParityImage disabled = renderAt(2);
             await Assert.That(renderer.Scene.Materials[materialPath].GetTexture(SilkMaterialParameter.VolumeDensity))
                 .IsNull()
                 .Because("the volume's sampled flag, not its external field parent's flag, controls sampling.");
             await Assert.That(ImageDelta.Compare(uniformReference, disabled).MaximumChannelDelta).IsEqualTo((byte)0);
-            await Assert.That(renderer.GpuResources.Statistics.TextureResidentGpuBytes).IsEqualTo(0UL);
+            await Assert.That(
+                renderer.GpuResources.VolumeCameraAtlasGpuUsage?.ReservedBytes ?? 0UL).IsEqualTo(0UL);
 
             ParityImage restored = renderAt(3);
             await Assert.That(ImageDelta.Compare(recovered, restored).MaximumChannelDelta).IsEqualTo((byte)0);
-            await Assert.That(renderer.GpuResources.Statistics.TextureResidentGpuBytes).IsEqualTo(sampledBytes);
+            await Assert.That(
+                renderer.GpuResources.VolumeCameraAtlasGpuUsage?.ReservedBytes ?? 0UL).IsEqualTo(sampledBytes);
 
             ParityImage doubled = renderAt(4);
             await Assert.That(renderer.Scene.Materials[materialPath]
