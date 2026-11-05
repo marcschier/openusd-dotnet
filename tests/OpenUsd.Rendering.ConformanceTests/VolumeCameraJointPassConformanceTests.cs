@@ -115,8 +115,34 @@ public sealed class VolumeCameraJointPassConformanceTests
 
     [Test]
     [MethodDataSource(nameof(AvailableBackends))]
-    public async Task EightCoincidentHighTintFieldsProduceFinitePixels(
-        SilkGraphicsBackend backend)
+    public Task SingleHighTintFieldProducesFinitePixels(SilkGraphicsBackend backend) =>
+        AssertCoincidentHighTintFields(backend, [0.3663415014743805f]);
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public Task TwoCoincidentHighTintFieldsProduceFinitePixels(SilkGraphicsBackend backend) =>
+        AssertCoincidentHighTintFields(backend, [0.3663415014743805f, 31.201824188232422f]);
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public Task EightCoincidentHighTintFieldsProduceFinitePixels(SilkGraphicsBackend backend) =>
+        AssertCoincidentHighTintFields(backend,
+        [
+            0.3663415014743805f,
+            5.4471116065979f,
+            31.201824188232422f,
+            14.238466262817383f,
+            29.368383407592773f,
+            12.753426551818848f,
+            22.81144142150879f,
+            21.9613094329834f
+        ]);
+
+    public static IEnumerable<SilkGraphicsBackend> AvailableBackends() =>
+        SilkConformanceBackends.Available();
+
+    private static async Task AssertCoincidentHighTintFields(
+        SilkGraphicsBackend backend, float[] densities)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
         using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
@@ -127,18 +153,6 @@ public sealed class VolumeCameraJointPassConformanceTests
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.DepthTarget(Size, Size));
         using var renderer = new SilkMeshRenderer(device);
-        // These field weights can sum above one after float rounding.
-        float[] densities =
-        [
-            0.3663415014743805f,
-            5.4471116065979f,
-            31.201824188232422f,
-            14.238466262817383f,
-            29.368383407592773f,
-            12.753426551818848f,
-            22.81144142150879f,
-            21.9613094329834f
-        ];
         var commands = new byte[1 + (2 * densities.Length)][];
         commands[0] = Frame(SilkMeshRendererConformance.Identity());
         for (int field = 0; field < densities.Length; field++)
@@ -160,14 +174,13 @@ public sealed class VolumeCameraJointPassConformanceTests
             .Because(firstNonFinite < 0
                 ? "All pixel components are finite."
                 : $"Pixel component {firstNonFinite} was {pixels[firstNonFinite]:R}.");
-        await Assert.That(Math.Abs((pixels[center] / (double)float.MaxValue) - 1))
+        double depthIntegral = densities.Sum(static density => (double)density);
+        double expected = float.MaxValue * (1 - Math.Exp(-depthIntegral));
+        await Assert.That(Math.Abs((pixels[center] / expected) - 1))
             .IsLessThan(0.01);
         await Assert.That(pixels[center + 1]).IsEqualTo(0f);
         await Assert.That(pixels[center + 2]).IsEqualTo(0f);
     }
-
-    public static IEnumerable<SilkGraphicsBackend> AvailableBackends() =>
-        SilkConformanceBackends.Available();
 
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12, false, LowDensitySignal.SubnormalScale)]

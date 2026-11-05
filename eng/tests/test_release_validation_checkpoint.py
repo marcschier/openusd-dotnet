@@ -50,10 +50,13 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         high_tint = job.split(
             "\n      - name: Reproduce high-tint volume accumulation", 1
         )[1].split("\n      - name:", 1)[0]
-        self.assertIn(
-            "EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)", high_tint
-        )
-        self.assertIn("$report.summary.passed -ne 1", high_tint)
+        for case in (
+            "SingleHighTintFieldProducesFinitePixels(Vulkan)",
+            "TwoCoincidentHighTintFieldsProduceFinitePixels(Vulkan)",
+            "EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)",
+        ):
+            self.assertIn(case, high_tint)
+        self.assertIn("$report.summary.passed -ne 3", high_tint)
         self.assertIn("$report.summary.skipped -ne 0", high_tint)
         self.assertIn("artifacts/shadow-volume-repro/high-tint-volume.tunit-report.json", job)
         self.assertNotIn("continue-on-error", job)
