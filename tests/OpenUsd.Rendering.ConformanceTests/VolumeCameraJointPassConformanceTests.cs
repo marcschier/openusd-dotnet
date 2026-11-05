@@ -155,8 +155,65 @@ public sealed class VolumeCameraJointPassConformanceTests
             21.9613094329834f
         ]);
 
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public Task TinyTintContributionSurvivesUnderflowingWeight(SilkGraphicsBackend backend) =>
+        AssertCoincidentDifferentTintFields(backend, float.MaxValue, 1e-30f, 1e30f);
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public Task TinyTintContributionSurvivesDominantDarkWeight(SilkGraphicsBackend backend) =>
+        AssertCoincidentDifferentTintFields(backend, 1e23f, 1f, 1e8f);
+
     public static IEnumerable<SilkGraphicsBackend> AvailableBackends() =>
         SilkConformanceBackends.Available();
+
+    private static async Task AssertCoincidentDifferentTintFields(
+        SilkGraphicsBackend backend,
+        float tint,
+        float tintedDensity,
+        float darkDensity)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size,
+            Size,
+            SilkTextureFormat.Rgba32Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        double depthIntegral = (double)tintedDensity + darkDensity;
+        double expected = ((double)tint * tintedDensity / depthIntegral) *
+            (1 - Math.Exp(-depthIntegral));
+
+        foreach (bool darkFirst in new[] { false, true })
+        {
+            using var renderer = new SilkMeshRenderer(device);
+            using OpenUsdSilkPage page = Page(
+                1,
+                Frame(SilkMeshRendererConformance.Identity()),
+                Material(MaterialA, darkFirst ? darkDensity : tintedDensity,
+                    [darkFirst ? 0 : tint, 0, 0], string.Empty, false, false),
+                Material(MaterialB, darkFirst ? tintedDensity : darkDensity,
+                    [darkFirst ? tint : 0, 0, 0], string.Empty, false, false),
+                Mesh(MeshA, MaterialA, -1, 1, 1),
+                Mesh(MeshB, MaterialB, -1, 1, 2));
+            _ = renderer.ApplyAndRender(page, color, depth);
+            float[] pixels = ReadPixels(color);
+            int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
+            int firstNonFinite = Array.FindIndex(pixels, static component => !float.IsFinite(component));
+            await Assert.That(firstNonFinite).IsEqualTo(-1)
+                .Because(firstNonFinite < 0
+                    ? "All pixel components are finite."
+                    : $"Pixel component {firstNonFinite} was {pixels[firstNonFinite]:R}.");
+            await Assert.That(Math.Abs((pixels[center] / expected) - 1)).IsLessThan(0.01)
+                .Because(
+                    $"Dark field first: {darkFirst}; red was {pixels[center]:R}, " +
+                    $"expected {expected:R}.");
+            await Assert.That(pixels[center + 1]).IsEqualTo(0f);
+            await Assert.That(pixels[center + 2]).IsEqualTo(0f);
+        }
+    }
 
     private static async Task AssertCoincidentHighTintFields(
         SilkGraphicsBackend backend,

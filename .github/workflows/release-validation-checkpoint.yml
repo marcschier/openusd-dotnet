@@ -298,10 +298,10 @@ jobs:
           try {
             ./eng/run-managed-tests.ps1 `
               -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-              -Framework net10.0 -Configuration Release -MinimumExpectedTests 6 `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 8 `
               -TestArguments @(
                 '--treenode-filter',
-                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels)')
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight)')
           }
           finally {
             if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
@@ -317,10 +317,10 @@ jobs:
           } | ForEach-Object { $_.tests } | Where-Object {
             $_.status -ceq 'passed'
           })
-          if ($report.summary.total -ne 6 -or $report.summary.passed -ne 6 -or
+          if ($report.summary.total -ne 8 -or $report.summary.passed -ne 8 -or
               $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
               $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
-              $results.Count -ne 6) {
+              $results.Count -ne 8) {
             throw 'The Vulkan high-tint volume cases did not all pass without skips.'
           }
           foreach ($case in @(
@@ -329,7 +329,9 @@ jobs:
             'OpaqueHighTintFieldProducesFinitePixels(Vulkan)',
             'ReducedExposureHighTintFieldProducesFinitePixels(Vulkan)',
             'TwoCoincidentHighTintFieldsProduceFinitePixels(Vulkan)',
-            'EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)')) {
+            'EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)',
+            'TinyTintContributionSurvivesUnderflowingWeight(Vulkan)',
+            'TinyTintContributionSurvivesDominantDarkWeight(Vulkan)')) {
             if (@($results | Where-Object { $_.displayName -ceq $case }).Count -ne 1) {
               throw "The Vulkan high-tint volume case '$case' did not pass exactly once."
             }
@@ -1335,10 +1337,10 @@ jobs:
           }
           try {
             ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release `
-              -MinimumExpectedTests 12 `
+              -MinimumExpectedTests 16 `
               -TestArguments @(
                 '--treenode-filter',
-                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels)')
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight)')
           }
           finally {
             if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
@@ -1354,10 +1356,10 @@ jobs:
           } | ForEach-Object { $_.tests } | Where-Object {
             $_.status -ceq 'passed'
           })
-          if ($report.summary.total -ne 12 -or $report.summary.passed -ne 12 -or
+          if ($report.summary.total -ne 16 -or $report.summary.passed -ne 16 -or
               $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
               $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
-              $results.Count -ne 12) {
+              $results.Count -ne 16) {
             throw 'The Windows high-tint volume cases did not all pass without skips.'
           }
           foreach ($backend in @('D3D12', 'Vulkan')) {
@@ -1367,7 +1369,9 @@ jobs:
               'OpaqueHighTintFieldProducesFinitePixels',
               'ReducedExposureHighTintFieldProducesFinitePixels',
               'TwoCoincidentHighTintFieldsProduceFinitePixels',
-              'EightCoincidentHighTintFieldsProduceFinitePixels')) {
+              'EightCoincidentHighTintFieldsProduceFinitePixels',
+              'TinyTintContributionSurvivesUnderflowingWeight',
+              'TinyTintContributionSurvivesDominantDarkWeight')) {
               $name = "$method($backend)"
               if (@($results | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
                 throw "The Windows high-tint volume case '$name' did not pass exactly once."
