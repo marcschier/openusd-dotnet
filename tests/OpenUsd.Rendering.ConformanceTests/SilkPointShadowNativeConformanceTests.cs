@@ -25,7 +25,6 @@ public sealed class SilkPointShadowNativeConformanceTests
         OutputTransform = RenderOutputTransform.Identity
     };
 
-    // Unverified until native and backend execution uses regenerated checked shaders.
     [Test]
     [MethodDataSource(nameof(AvailableBackends))]
     public async Task AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported(
@@ -132,32 +131,7 @@ public sealed class SilkPointShadowNativeConformanceTests
         await AssertNear(before, moved, CenterX, "receiver the moved caster left");
         await AssertNear(before, moved, PerspectiveOnlyX, "perspective extension the caster left");
         await AssertNear(before, moved, ControlX, "unoccluded receiver after movement");
-        int[] movedDarkPixels = Enumerable.Range(0, Size * Size)
-            .Where(pixel => before.Pixels[pixel * 4] > 40 &&
-                moved.Pixels[pixel * 4] * 4 < before.Pixels[pixel * 4])
-            .ToArray();
-        string movedDarkPixelBounds = movedDarkPixels.Length == 0
-            ? "none"
-            : $"{movedDarkPixels.Min(pixel => pixel % Size)}:{movedDarkPixels.Min(pixel => pixel / Size)}-" +
-              $"{movedDarkPixels.Max(pixel => pixel % Size)}:{movedDarkPixels.Max(pixel => pixel / Size)}";
-        string movedDarkPixelRows = string.Join(",", movedDarkPixels
-            .GroupBy(pixel => pixel / Size)
-            .Select(group => $"{group.Key}={group.Count()}"));
-        string movedDarkPixelSampleRows = string.Join(";", Enumerable.Range(SampleY - 2, 5)
-            .Select(y => $"{y}=[{string.Join(",", movedDarkPixels
-                .Where(pixel => pixel / Size == y)
-                .Select(pixel => pixel % Size))}]"));
-        string movedDarkPixelLocations = string.Join(",", movedDarkPixels
-            .Take(64)
-            .Select(pixel => $"{pixel % Size}:{pixel / Size}"));
-        int movedOffset = PixelOffset(MovedShadowX);
-        await AssertDarkened(before, moved, MovedShadowX,
-            $"moved point shadow; second red={movedAgain.Pixels[movedOffset]}, " +
-            $"fresh red={freshMoved.Pixels[movedOffset]}, dark pixels={movedDarkPixels.Length}, " +
-            $"bounds=[{movedDarkPixelBounds}], rows=[{movedDarkPixelRows}], " +
-            $"sample rows={movedDarkPixelSampleRows}, " +
-            $"first x:y=[{movedDarkPixelLocations}], " +
-            $"[DEBUG-point-shadow-depth] {DescribeShadowAtlasDepth(freshMoved)}");
+        await AssertDarkened(before, moved, MovedShadowX, "moved point shadow");
         await AssertDarkened(before, movedAgain, MovedShadowX, "repeated moved point shadow");
         await AssertDarkened(before, freshMoved, MovedShadowX, "fresh moved point shadow");
 
@@ -424,55 +398,6 @@ public sealed class SilkPointShadowNativeConformanceTests
 
     private static float CasterIntersectionX(int x) => PixelWorldX(x) * 0.5f;
 
-    private static string DescribeShadowAtlasDepth(Frame frame)
-    {
-        float[] depth = frame.ShadowAtlasDepth ??
-            throw new InvalidOperationException("The moved frame has no shadow atlas readback.");
-        SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(frame.Descriptors) ??
-            throw new InvalidOperationException("The moved frame has no shadow atlas layout.");
-        var faceDepths = new List<string>();
-        for (int face = 0; face < frame.Descriptors.Length; face++)
-        {
-            SilkShadowTilePlacement tile = layout.Tiles[face];
-            float minimum = 1f;
-            int minimumX = 0;
-            int minimumY = 0;
-            int written = 0;
-            for (int y = (int)tile.PixelY; y < tile.PixelY + tile.Resolution; y++)
-            {
-                for (int x = (int)tile.PixelX; x < tile.PixelX + tile.Resolution; x++)
-                {
-                    float value = depth[(y * (int)frame.ShadowAtlasEdge) + x];
-                    if (value < 1f)
-                    {
-                        written++;
-                        if (value < minimum)
-                        {
-                            minimum = value;
-                            minimumX = x;
-                            minimumY = y;
-                        }
-                    }
-                }
-            }
-            faceDepths.Add(
-                $"f{face}={written}@{minimumX},{minimumY}:" +
-                minimum.ToString("G9", CultureInfo.InvariantCulture));
-        }
-
-        var samples = new List<string>();
-        for (int x = 54; x <= 63; x++)
-        {
-            Vector4 worldPosition = new(PixelWorldX(x), PixelWorldY(SampleY), 0.2f, 1);
-            ShadowDepthSample column = SampleShadowDepth(
-                frame, layout, depth, worldPosition, TransformColumn);
-            ShadowDepthSample row = SampleShadowDepth(
-                frame, layout, depth, worldPosition, TransformRow);
-            samples.Add($"{x}/c{column}/r{row}");
-        }
-        return $"faces=[{string.Join(";", faceDepths)}] samples=[{string.Join(" ", samples)}]";
-    }
-
     private static ShadowDepthSample SampleShadowDepth(
         Frame frame,
         SilkShadowAtlasLayout layout,
@@ -530,16 +455,6 @@ public sealed class SilkPointShadowNativeConformanceTests
             new Vector4(PixelWorldX(x), PixelWorldY(SampleY), 0.2f, 1),
             TransformRow);
     }
-
-    private static Vector4 TransformColumn(Matrix4x4 matrix, Vector4 vector) => new(
-        (matrix.M11 * vector.X) + (matrix.M12 * vector.Y) +
-            (matrix.M13 * vector.Z) + (matrix.M14 * vector.W),
-        (matrix.M21 * vector.X) + (matrix.M22 * vector.Y) +
-            (matrix.M23 * vector.Z) + (matrix.M24 * vector.W),
-        (matrix.M31 * vector.X) + (matrix.M32 * vector.Y) +
-            (matrix.M33 * vector.Z) + (matrix.M34 * vector.W),
-        (matrix.M41 * vector.X) + (matrix.M42 * vector.Y) +
-            (matrix.M43 * vector.Z) + (matrix.M44 * vector.W));
 
     private static Vector4 TransformRow(Matrix4x4 matrix, Vector4 vector) => new(
         (matrix.M11 * vector.X) + (matrix.M21 * vector.Y) +

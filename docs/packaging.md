@@ -574,10 +574,19 @@ The nuget.org push omits `--no-symbols`, so `dotnet nuget push` uploads adjacent
 Both feeds use `--skip-duplicate`; a retry must reuse the verified inputs rather than rebuild
 different bytes under an existing version. A version pushed to nuget.org can be unlisted but
 never withdrawn or replaced. NuGet repository signing can change the public archive bytes, so
-promotion also downloads any existing public packages and compares their payloads with the release,
-excluding only the root repository-signature entry and ZIP metadata. An existing package with
-different content stops the retry before a publishing token is requested. Final public-feed
-verification uses the same content comparison with the complete package set required.
+promotion also downloads any existing public packages and compares their file contents and
+extraction attributes with the release. The comparison excludes the root repository-signature entry
+and ZIP metadata unrelated to extraction, such as timestamps and compression. It preserves the
+file types and permissions needed for the Linux symbolic-link chain. An existing package with
+different content or extraction attributes stops the retry before a publishing token is requested.
+Final public-feed verification downloads every package and selected symbol again and uses the same
+comparison with the complete set required. It retries missing and temporarily unavailable outputs
+within a 20-minute verification window, then fails the workflow and names any outputs it could not
+verify. If the push fails, the workflow makes one fresh pass over the public feeds and records the
+verified subset. An output missing from that pass may still be awaiting indexing. A failed push or
+verification can leave some packages published; repeat promotion with the same tagged release
+inputs. The workflow retains the observed subset, release evidence and any successful verification
+result as an artifact. Dry runs do not upload packages or run this post-publication check.
 
 ## Symbol packages for nuget.org
 
@@ -608,8 +617,8 @@ https://globalcdn.nuget.org/symbol-packages/<lowercase-id>.<lowercase-version>.s
 
 For example, the managed package `OpenUsd 0.14.0-alpha` should appear as
 `https://globalcdn.nuget.org/symbol-packages/openusd.0.14.0-alpha.snupkg` after a successful
-nuget.org promotion. The promotion workflow verifies the complete package and symbol sets before
-minting the short-lived publishing token.
+nuget.org promotion. The promotion workflow verifies the complete source package and symbol sets
+before minting the short-lived publishing token and checks the public sets after upload.
 
 ## Package-only execution gate
 

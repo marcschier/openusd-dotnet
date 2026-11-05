@@ -4,17 +4,29 @@
 """Verify promotion inputs against the successful tagged release."""
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
+import http.client
 import json
+import math
 from pathlib import Path
 import re
 import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
+import zlib
 
 
 REQUIRED_GATES = {"ci", "shaders", "native", "performance", "packages", "render"}
 VERSION_PATTERN = r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
+PUBLIC_ATTEMPTS = 41
+PUBLIC_RETRY_DELAY_SECONDS = 30
+PUBLIC_MAX_WAIT_SECONDS = 20 * 60
+PUBLIC_REQUEST_TIMEOUT_SECONDS = 30
 UNAPPROVED_COMPILER_PATTERN = re.compile(
     r"(?:(?:lib)?spirv[-_]?cross(?:\.dll|\.dylib|\.so(?:\.[0-9]+)*)|"
     r"dxc\.exe|(?:lib)?(?:dxcompiler|dxil)(?:\.dll|\.dylib|\.so(?:\.[0-9]+)*))",
@@ -77,13 +89,181 @@ def _payloads(path):
                 if entry.filename in seen:
                     raise ValueError(f"Duplicate package entry in {path.name}: {entry.filename}")
                 seen.add(entry.filename)
-                if entry.is_dir() or entry.filename == ".signature.p7s":
+                if entry.filename == ".signature.p7s":
                     continue
                 with archive.open(entry) as stream:
-                    result[entry.filename] = hashlib.file_digest(stream, "sha256").hexdigest()
-    except (zipfile.BadZipFile, RuntimeError) as error:
+                    result[entry.filename] = (
+                        hashlib.file_digest(stream, "sha256").hexdigest(),
+                        entry.create_system,
+                        entry.external_attr,
+                    )
+    except (zipfile.BadZipFile, RuntimeError, EOFError, zlib.error) as error:
         raise ValueError(f"Invalid package payload in {path.name}: {error}") from error
     return result
+
+
+def wait_for_public_packages(release_packages, public_packages, inventory, version, *,
+                             attempts=PUBLIC_ATTEMPTS,
+                             retry_delay=PUBLIC_RETRY_DELAY_SECONDS,
+                             max_wait=PUBLIC_MAX_WAIT_SECONDS, opener=None,
+                             sleep=None, clock=None):
+    if type(attempts) is not int or attempts < 1:
+        raise ValueError("Public verification attempts must be a positive integer.")
+    if (isinstance(retry_delay, bool) or not isinstance(retry_delay, (int, float))
+            or not math.isfinite(retry_delay) or retry_delay < 0):
+        raise ValueError("Public verification retry delay must be finite and nonnegative.")
+    if (isinstance(max_wait, bool) or not isinstance(max_wait, (int, float))
+            or not math.isfinite(max_wait) or max_wait <= 0):
+        raise ValueError("Public verification time limit must be finite and positive.")
+    if not isinstance(inventory, dict) or not isinstance(version, str):
+        raise ValueError("A package inventory and exact version are required.")
+    if re.fullmatch(VERSION_PATTERN, version) is None:
+        raise ValueError("An exact supported NuGet version is required.")
+
+    expected = _inventory(inventory.get("packages"), "Published package")
+    symbols = _inventory(inventory.get("symbols"), "Symbol package")
+    if not symbols <= expected:
+        raise ValueError("Symbol package IDs must belong to the published package set.")
+    released = _packages(release_packages, version, expected, symbols)
+    if (public_packages.is_symlink()
+            or public_packages.resolve() == release_packages.resolve()):
+        raise ValueError("Public verification requires a separate directory.")
+    public_packages.mkdir(parents=True, exist_ok=True)
+    if any(public_packages.iterdir()):
+        raise ValueError("Public verification directory must not contain existing files.")
+
+    opener = urllib.request.urlopen if opener is None else opener
+    sleep = time.sleep if sleep is None else sleep
+    clock = time.monotonic if clock is None else clock
+    deadline = clock() + max_wait
+    version = version.casefold()
+    pending = set(released)
+    reasons = {key: "not yet checked" for key in pending}
+
+    def filename(key):
+        return f"{key[0]}.{version}{key[1]}"
+
+    attempts_done = 0
+    for attempt in range(1, attempts + 1):
+        if clock() >= deadline:
+            break
+        attempts_done = attempt
+        for key in sorted(pending):
+            remaining = deadline - clock()
+            if remaining <= 0:
+                break
+            name = filename(key)
+            if key[1] == ".snupkg":
+                url = f"https://globalcdn.nuget.org/symbol-packages/{name}"
+            else:
+                url = f"https://api.nuget.org/v3-flatcontainer/{key[0]}/{version}/{name}"
+            temporary = None
+            try:
+                with opener(url, timeout=min(PUBLIC_REQUEST_TIMEOUT_SECONDS, remaining)) as response:
+                    headers = getattr(response, "headers", None)
+                    length = headers.get("Content-Length") if headers is not None else None
+                    if length is not None and not str(length).isdigit():
+                        raise ValueError(f"Invalid Content-Length for public package {name}.")
+                    with tempfile.NamedTemporaryFile(
+                            dir=public_packages, prefix=f".{name}.", suffix=".partial",
+                            delete=False) as output:
+                        temporary = Path(output.name)
+                        copied = 0
+                        while True:
+                            if clock() >= deadline:
+                                raise TimeoutError("public verification time limit elapsed")
+                            block = response.read1(1024 * 1024)
+                            if not block:
+                                break
+                            output.write(block)
+                            copied += len(block)
+                    if length is not None and copied != int(length):
+                        raise ConnectionError(
+                            f"incomplete download: received {copied} of {length} bytes")
+                if clock() >= deadline:
+                    raise TimeoutError("public verification time limit elapsed")
+                try:
+                    public_payload = _payloads(temporary)
+                except ValueError as error:
+                    raise ValueError(f"Public package {name}: {error}") from error
+                if public_payload != _payloads(released[key]):
+                    raise ValueError(f"Public package content differs from the release: {name}")
+                if clock() >= deadline:
+                    raise TimeoutError("public verification time limit elapsed")
+                temporary.replace(public_packages / name)
+                temporary = None
+                pending.remove(key)
+            except urllib.error.HTTPError as error:
+                if error.code not in (404, 408, 429) and not 500 <= error.code <= 599:
+                    raise ValueError(f"Public package {name} returned HTTP {error.code}.") from error
+                reasons[key] = f"HTTP {error.code}"
+            except (urllib.error.URLError, http.client.IncompleteRead,
+                    TimeoutError, ConnectionError) as error:
+                reasons[key] = str(error)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+        if not pending:
+            return
+        remaining = deadline - clock()
+        if attempt == attempts or remaining <= 0:
+            break
+        print(f"Waiting for {len(pending)} public package(s); "
+              f"attempt {attempt} of {attempts}.", file=sys.stderr)
+        sleep(min(retry_delay, remaining))
+
+    missing = ", ".join(f"{filename(key)} ({reasons[key]})" for key in sorted(pending))
+    raise ValueError(
+        f"Public package verification incomplete after {attempts_done} attempts: {missing}.")
+
+
+def write_public_progress(path, release_packages, public_packages, inventory, version,
+                          tag_commit, run_id, error):
+    expected = _inventory(inventory.get("packages"), "Published package")
+    symbols = _inventory(inventory.get("symbols"), "Symbol package")
+    if not symbols <= expected:
+        raise ValueError("Symbol package IDs must belong to the published package set.")
+    released = _packages(release_packages, version, expected, symbols)
+    public = _packages(public_packages, version, expected, symbols, allow_partial=True)
+    verified = []
+    not_verified = set(released) - set(public)
+    for key, package in sorted(public.items()):
+        if _payloads(package) != _payloads(released[key]):
+            not_verified.add(key)
+            continue
+        verified.append({
+            "file": package.name,
+            "publicSha256": _sha256(package),
+            "releaseSha256": _sha256(released[key]),
+        })
+    if error is None and not_verified:
+        raise ValueError("The public package set changed while recording verification progress.")
+    progress = {
+        "schemaVersion": 1,
+        "version": version,
+        "commit": tag_commit,
+        "runId": run_id,
+        "observedAtUtc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "complete": error is None and not not_verified,
+        "verified": verified,
+        "notVerified": [
+            f"{key[0]}.{version.casefold()}{key[1]}" for key in sorted(not_verified)
+        ],
+        "error": error,
+    }
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.",
+                suffix=".partial", delete=False) as output:
+            temporary = Path(output.name)
+            json.dump(progress, output, indent=2, sort_keys=True)
+            output.write("\n")
+        temporary.replace(path)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def _check_compiler_entries(archive, path):
@@ -226,17 +406,49 @@ def main():
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--public-packages", type=Path)
     parser.add_argument("--allow-partial-public", action="store_true")
+    parser.add_argument("--wait-for-public", action="store_true")
+    parser.add_argument("--public-attempts", type=int, default=PUBLIC_ATTEMPTS)
+    parser.add_argument("--public-progress", type=Path)
     args = parser.parse_args()
+    error = None
+    result = None
+    wait_started = False
     try:
-        result = verify_promotion(
+        if args.public_progress is not None and not args.wait_for_public:
+            raise ValueError("Public progress requires waiting for publication.")
+        if args.wait_for_public and (
+                args.public_packages is None or args.allow_partial_public):
+            raise ValueError(
+                "Waiting for publication requires a public package directory "
+                "and complete public verification.")
+        evidence = json.loads(args.evidence.read_text(encoding="utf-8-sig"))
+        release_run = json.loads(args.release_run.read_text(encoding="utf-8-sig"))
+        inventory = json.loads(args.inventory.read_text(encoding="utf-8-sig"))
+        arguments = dict(
             packages=args.packages, release_packages=args.release_packages,
-            evidence=json.loads(args.evidence.read_text(encoding="utf-8-sig")),
-            release_run=json.loads(args.release_run.read_text(encoding="utf-8-sig")),
-            inventory=json.loads(args.inventory.read_text(encoding="utf-8-sig")),
+            evidence=evidence, release_run=release_run, inventory=inventory,
             version=args.version, run_id=args.run_id, repository=args.repository,
-            tag_commit=args.tag_commit, public_packages=args.public_packages,
+            tag_commit=args.tag_commit)
+        if args.wait_for_public:
+            verify_promotion(**arguments)
+            wait_started = True
+            wait_for_public_packages(args.release_packages, args.public_packages,
+                                     inventory, args.version, attempts=args.public_attempts)
+        result = verify_promotion(
+            **arguments, public_packages=args.public_packages,
             allow_partial_public=args.allow_partial_public)
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError) as caught:
+        error = caught
+    if args.public_progress is not None and wait_started:
+        try:
+            write_public_progress(
+                args.public_progress, args.release_packages, args.public_packages,
+                inventory, args.version, args.tag_commit, args.run_id,
+                None if error is None else str(error))
+        except (OSError, ValueError) as progress_error:
+            message = f"Could not record public package progress: {progress_error}"
+            error = ValueError(f"{error}; {message}" if error is not None else message)
+    if error is not None:
         print(f"NUGET_PROMOTION_INVALID: {error}", file=sys.stderr)
         return 1
     print(json.dumps(result, sort_keys=True))

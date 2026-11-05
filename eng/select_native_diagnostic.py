@@ -11,12 +11,19 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# These paths do not change the native archive. The diagnostic rebuilds its
+# managed test at the requested head rather than using a test from the archive.
 NON_REPRODUCTION_PATHS = (
+    ".github/workflows/nuget.yml",
     ".github/workflows/release-validation-checkpoint.yml",
+    "docs/packaging.md",
     "docs/rendering.md",
     "eng/select_native_diagnostic.py",
     "eng/tests/test_release_validation_checkpoint.py",
     "eng/tests/test_select_native_diagnostic.py",
+    "eng/tests/test_verify_nuget_promotion.py",
+    "eng/verify-nuget-promotion.py",
+    "tests/OpenUsd.Rendering.ConformanceTests/SilkPointShadowNativeConformanceTests.cs",
     "tests/OpenUsd.Rendering.Tests/SilkShadowNormalSpaceSourceContractTests.cs",
 )
 LINUX_JOB = "linux-x64 verified native archive"
