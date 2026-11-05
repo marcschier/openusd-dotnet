@@ -123,9 +123,20 @@ try
             @($reference[0].ExcludeAssets -split '[,;]' | Where-Object {
                 $_.Trim() -ieq 'native'
             }).Count -eq 1
-        if (-not $excluded)
+        if ($global:openUsdViewerFixtureArchive)
         {
-            [IO.File]::WriteAllText((Join-Path $output 'libspirv-cross.so'), 'fixture')
+            if (-not $excluded)
+            {
+                throw 'The archived Viewer project must exclude the compiler package native asset.'
+            }
+        }
+        elseif ($reference.Count -ne 0)
+        {
+            throw 'The non-archive Viewer project must retain its transitive compiler dependency.'
+        }
+        foreach ($name in @('spirv-cross.dll', 'libspirv-cross.so', 'libspirv-cross.dylib'))
+        {
+            [IO.File]::WriteAllText((Join-Path $output $name), 'fixture')
         }
         if ($global:openUsdViewerFixtureIncludeDxc)
         {
@@ -136,21 +147,28 @@ try
 
     try
     {
+        $global:openUsdViewerFixtureArchive = $true
         $global:openUsdViewerFixtureIncludeDxc = $false
         & $publisherPath -Rid linux-x64 -OutputRoot $bundleFixtureRoot -PackageVersion '0.0.0'
         $archiveLayout = Join-Path $bundleFixtureRoot 'layout/linux-x64'
-        if (Test-Path -LiteralPath (Join-Path $archiveLayout 'libspirv-cross.so'))
+        if (Get-ChildItem -LiteralPath $archiveLayout -File |
+            Where-Object { $_.Name -in @('spirv-cross.dll', 'libspirv-cross.so', 'libspirv-cross.dylib') })
         {
-            throw 'The Viewer archive layout included the external SPIRV-Cross library.'
+            throw 'The Viewer archive layout included an external SPIRV-Cross library.'
         }
 
+        $global:openUsdViewerFixtureArchive = $false
         & $publisherPath -Rid linux-x64 -OutputRoot $bundleFixtureRoot `
             -PackageVersion '0.0.0' -NoArchive
-        if (-not (Test-Path -LiteralPath (Join-Path $archiveLayout 'libspirv-cross.so')))
+        foreach ($name in @('spirv-cross.dll', 'libspirv-cross.so', 'libspirv-cross.dylib'))
         {
-            throw 'A non-archive Viewer publish no longer includes its native dependency.'
+            if (-not (Test-Path -LiteralPath (Join-Path $archiveLayout $name)))
+            {
+                throw "A non-archive Viewer publish no longer includes '$name'."
+            }
         }
 
+        $global:openUsdViewerFixtureArchive = $true
         $global:openUsdViewerFixtureIncludeDxc = $true
         $unexpectedRejected = $false
         try
@@ -177,6 +195,7 @@ try
             Remove-Item -LiteralPath $bundleFixtureRoot -Recurse -Force
         }
         Remove-Item Function:\dotnet
+        Remove-Variable openUsdViewerFixtureArchive -Scope Global
         Remove-Variable openUsdViewerFixtureIncludeDxc -Scope Global
     }
     Write-Host 'Viewer compiler redistribution guard passed.'

@@ -131,6 +131,17 @@ function Assert-NoNativeInstallReference
     }
 }
 
+function Remove-ExternalCompilerRuntimeAssets
+{
+    foreach ($file in Get-ChildItem -LiteralPath $layoutRoot -Recurse -File -Force)
+    {
+        if ($file.Name -imatch '^(?:lib)?spirv[-_]?cross(?:\.dll|\.dylib|\.so(?:\.[0-9]+)*)$')
+        {
+            Remove-Item -LiteralPath $file.FullName -Force
+        }
+    }
+}
+
 $version = Get-Version
 Remove-Item $layoutRoot, $objRoot, $artifactRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $layoutRoot, $objRoot, $artifactRoot | Out-Null
@@ -234,6 +245,11 @@ dotnet publish $generatedProject `
 if ($LASTEXITCODE -ne 0)
 {
     throw "Viewer package-only publish failed for $Rid."
+}
+
+if (-not $NoArchive)
+{
+    Remove-ExternalCompilerRuntimeAssets
 }
 
 foreach ($requiredPath in @(
