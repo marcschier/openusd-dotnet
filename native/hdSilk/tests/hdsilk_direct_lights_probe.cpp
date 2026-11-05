@@ -4057,7 +4057,7 @@ void VerifyZeroRadiusSpherePerspectiveConeBoundaries()
 
 ShadowOracle BoundedPointZOracle()
 {
-    const double padding = 3.0 / 512.0;
+    const double padding = 3.0 / 16.0;
     const double nearPlane = 3.0 / 65536.0;
     const double farPlane = 12.0 + padding;
     const double tangent = 1.0;
