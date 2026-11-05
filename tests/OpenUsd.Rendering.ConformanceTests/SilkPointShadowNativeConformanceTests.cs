@@ -302,15 +302,26 @@ public sealed class SilkPointShadowNativeConformanceTests
             throw new InvalidOperationException("The moved frame has no shadow atlas readback.");
         SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(frame.Descriptors) ??
             throw new InvalidOperationException("The moved frame has no shadow atlas layout.");
-        SilkShadowDescriptor descriptor = frame.Descriptors[5];
-        Matrix4x4 worldToLightClip = SilkShadowMatrix.CreateWorldToLightClip(descriptor);
-        SilkShadowTilePlacement tile = layout.Tiles[5];
         var samples = new List<string>();
         for (int x = 54; x <= 63; x++)
         {
-            Vector4 clip = TransformColumn(
-                worldToLightClip,
-                new Vector4(PixelWorldX(x), PixelWorldY(SampleY), 0.2f, 1));
+            Vector4 worldPosition = new(PixelWorldX(x), PixelWorldY(SampleY), 0.2f, 1);
+            int face = 0;
+            float greatestW = -1;
+            Vector4 clip = default;
+            for (int candidate = 0; candidate < 6; candidate++)
+            {
+                Vector4 faceClip = TransformColumn(
+                    SilkShadowMatrix.CreateWorldToLightClip(frame.Descriptors[candidate]),
+                    worldPosition);
+                if (faceClip.W > greatestW)
+                {
+                    greatestW = faceClip.W;
+                    face = candidate;
+                    clip = faceClip;
+                }
+            }
+            SilkShadowTilePlacement tile = layout.Tiles[face];
             float inverseW = 1f / clip.W;
             float ndcX = clip.X * inverseW;
             float ndcY = clip.Y * inverseW;
@@ -328,7 +339,7 @@ public sealed class SilkPointShadowNativeConformanceTests
             float directDepth = depth[(atlasY * (int)frame.ShadowAtlasEdge) + atlasX];
             float flippedDepth = depth[(flippedAtlasY * (int)frame.ShadowAtlasEdge) + atlasX];
             samples.Add(
-                $"{x}@{atlasX},{atlasY}:{directDepth:F4}/{flippedDepth:F4};" +
+                $"{x}/f{face}@{atlasX},{atlasY}:{directDepth:F4}/{flippedDepth:F4};" +
                 $"receiver={clip.Z * inverseW:F4}");
         }
         return string.Join(" ", samples);
