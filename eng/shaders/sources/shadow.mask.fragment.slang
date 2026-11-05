@@ -34,13 +34,13 @@ struct ShadowMaskedVertexOutput
     float2 texCoord1 : TEXCOORD1;
 #endif
     float lightDepth : TEXCOORD2;
-    nointerpolation float pointDepthScale : TEXCOORD3;
+    nointerpolation float2 pointDepth : TEXCOORD3;
 };
 
 [ForceInline]
 float ShadowStoredDepth(ShadowMaskedVertexOutput input)
 {
-    return EncodeShadowDepth(input.position.z, input.lightDepth, input.pointDepthScale);
+    return EncodeShadowDepth(input.position.z, input.lightDepth, input.pointDepth);
 }
 
 struct ShadowTransmissionOutput
@@ -74,7 +74,7 @@ float SampleShadowOpacity(ShadowMaskedVertexOutput input)
 float shadowMaskedFragmentMain(ShadowMaskedVertexOutput input) : SV_Depth
 {
     float depth = ShadowStoredDepth(input);
-    if (PointShadowDepthOutsideRange(depth, input.pointDepthScale))
+    if (PointShadowDepthOutsideRange(depth, input.pointDepth))
     {
         discard;
     }

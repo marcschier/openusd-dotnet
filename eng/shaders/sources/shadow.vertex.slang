@@ -21,7 +21,7 @@ struct ShadowVertexOutput
 {
     float4 position : SV_Position;
     float lightDepth : TEXCOORD2;
-    nointerpolation float pointDepthScale : TEXCOORD3;
+    nointerpolation float2 pointDepth : TEXCOORD3;
 };
 
 struct ShadowMaskedVertexInput
@@ -38,7 +38,7 @@ struct ShadowMaskedVertexOutput
     float2 texCoord : TEXCOORD0;
     float2 texCoord1 : TEXCOORD1;
     float lightDepth : TEXCOORD2;
-    nointerpolation float pointDepthScale : TEXCOORD3;
+    nointerpolation float2 pointDepth : TEXCOORD3;
 };
 
 struct ShadowInstanceParameters
@@ -59,7 +59,7 @@ ShadowVertexOutput shadowVertexMain(
     ShadowVertexOutput output;
     output.position = mul(instance.objectToLightClip, float4(input.position, 1.0));
     output.lightDepth = output.position.w;
-    output.pointDepthScale = instance.reserved.x;
+    output.pointDepth = instance.reserved.xy;
     return output;
 }
 
@@ -72,7 +72,7 @@ ShadowMaskedVertexOutput shadowMaskedVertexMain(
     ShadowMaskedVertexOutput output;
     output.position = mul(instance.objectToLightClip, float4(input.position, 1.0));
     output.lightDepth = output.position.w;
-    output.pointDepthScale = instance.reserved.x;
+    output.pointDepth = instance.reserved.xy;
     output.texCoord = input.texCoord;
     output.texCoord1 = input.texCoord1;
     return output;

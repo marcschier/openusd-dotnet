@@ -178,8 +178,28 @@ internal static class SilkPointShadowDepthEncoding
                         "A point-shadow face has a depth range that is not representable by the GPU.");
                 }
                 _ = ConvertBias(descriptor, scale);
+                _ = GetFarLimit(descriptor, scale);
             }
         }
+    }
+
+    internal static float GetFarLimit(SilkShadowDescriptor descriptor, float scale)
+    {
+        double far = ReadDepthRange(descriptor).Far;
+        float farBound = MathF.BitIncrement((float)far);
+        double exactLimit = (double)farBound * scale;
+        float limit = (float)exactLimit;
+        if ((double)limit < exactLimit)
+        {
+            limit = MathF.BitIncrement(limit);
+        }
+        if (!float.IsFinite(farBound) || !double.IsFinite(exactLimit) ||
+            !float.IsFinite(limit) || limit <= 0 || limit > 1)
+        {
+            throw new InvalidDataException(
+                "A point-shadow face has a far limit that is not representable by the GPU.");
+        }
+        return limit;
     }
 
     internal static float ConvertBias(SilkShadowDescriptor descriptor, float scale)
@@ -257,19 +277,22 @@ internal sealed class SilkShadowFrameBinding
     private readonly Vector4[] _controls;
     private readonly int[] _slotsByLight;
     private readonly float[] _pointDepthScalesByLight;
+    private readonly float[] _pointDepthLimitsByMap;
 
     private SilkShadowFrameBinding(
         Matrix4x4[] worldToLightClip,
         Vector4[] tiles,
         Vector4[] controls,
         int[] slotsByLight,
-        float[] pointDepthScalesByLight)
+        float[] pointDepthScalesByLight,
+        float[] pointDepthLimitsByMap)
     {
         _worldToLightClip = worldToLightClip;
         _tiles = tiles;
         _controls = controls;
         _slotsByLight = slotsByLight;
         _pointDepthScalesByLight = pointDepthScalesByLight;
+        _pointDepthLimitsByMap = pointDepthLimitsByMap;
     }
 
     /// <summary>Gets the binding of a frame that casts no shadow at all.</summary>
@@ -278,7 +301,8 @@ internal sealed class SilkShadowFrameBinding
         new Vector4[SilkShadowCommand.MaximumMaps],
         new Vector4[SilkShadowCommand.MaximumMaps],
         CreateEmptySlots(),
-        new float[SilkFrameState.MaximumLights]);
+        new float[SilkFrameState.MaximumLights],
+        new float[SilkShadowCommand.MaximumMaps]);
 
     /// <summary>Gets the number of bound maps.</summary>
     public int Count { get; private init; }
@@ -303,6 +327,8 @@ internal sealed class SilkShadowFrameBinding
         _slotsByLight[lightIndex] < 0 ? 0 : _mapCountsByLight[lightIndex];
 
     internal float GetPointDepthScaleForLight(int lightIndex) => _pointDepthScalesByLight[lightIndex];
+
+    internal float GetPointDepthLimitForMap(int slot) => _pointDepthLimitsByMap[slot];
 
     private readonly int[] _mapCountsByLight = new int[SilkFrameCommand.MaximumLights];
 
@@ -330,6 +356,7 @@ internal sealed class SilkShadowFrameBinding
         var controls = new Vector4[SilkShadowCommand.MaximumMaps];
         int[] slots = CreateEmptySlots();
         var pointDepthScales = new float[SilkFrameState.MaximumLights];
+        var pointDepthLimits = new float[SilkShadowCommand.MaximumMaps];
         SilkPointShadowDepthEncoding.Prepare(descriptors, pointDepthScales);
         for (int index = 0; index < descriptors.Count; index++)
         {
@@ -345,6 +372,11 @@ internal sealed class SilkShadowFrameBinding
                 ? SilkPointShadowDepthEncoding.ConvertBias(
                     descriptor, pointDepthScales[(int)descriptor.LightIndex])
                 : descriptor.DepthBias;
+            if ((descriptor.Flags & SilkShadowDescriptorOptions.CubeFace) != 0)
+            {
+                pointDepthLimits[index] = SilkPointShadowDepthEncoding.GetFarLimit(
+                    descriptor, pointDepthScales[(int)descriptor.LightIndex]);
+            }
             controls[index] = new Vector4(
                 depthBias,
                 descriptor.NormalBias,
@@ -355,7 +387,8 @@ internal sealed class SilkShadowFrameBinding
                 slots[(int)descriptor.LightIndex] = index;
             }
         }
-        var binding = new SilkShadowFrameBinding(matrices, tiles, controls, slots, pointDepthScales)
+        var binding = new SilkShadowFrameBinding(
+            matrices, tiles, controls, slots, pointDepthScales, pointDepthLimits)
         {
             Count = descriptors.Count,
         };
@@ -508,14 +541,15 @@ internal static class SilkShadowMatrix
 /// </summary>
 /// <remarks>
 /// The table uses the mesh instance layout. Its final float4 carries the
-/// point-shadow depth scale instead of a colour tint.
+/// point-shadow depth scale and face limit instead of a colour tint.
 /// </remarks>
 internal static class SilkShadowInstanceWriter
 {
     internal static void Write(
         Matrix4x4 objectToLightClip,
         Span<byte> destination,
-        float pointDepthScale = 0)
+        float pointDepthScale = 0,
+        float pointDepthLimit = 0)
     {
         if (destination.Length != 80)
         {
@@ -526,6 +560,11 @@ internal static class SilkShadowInstanceWriter
         if (!float.IsFinite(pointDepthScale) || pointDepthScale < 0)
         {
             throw new InvalidDataException("The point-shadow instance depth scale is invalid.");
+        }
+        if (!float.IsFinite(pointDepthLimit) ||
+            (pointDepthScale == 0 ? pointDepthLimit != 0 : pointDepthLimit <= 0 || pointDepthLimit > 1))
+        {
+            throw new InvalidDataException("The point-shadow instance depth limit is invalid.");
         }
 
         Span<float> values =
@@ -555,6 +594,7 @@ internal static class SilkShadowInstanceWriter
             }
         }
         BinaryPrimitives.WriteSingleLittleEndian(destination[64..68], pointDepthScale);
-        destination[68..80].Clear();
+        BinaryPrimitives.WriteSingleLittleEndian(destination[68..72], pointDepthLimit);
+        destination[72..80].Clear();
     }
 }

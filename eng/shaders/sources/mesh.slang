@@ -118,6 +118,7 @@ struct FrameParameters
     // shadow atlas; shadowControls[slot] is (depthBias, normalBias, pcfRadius in
     // texels, one shadow texel in atlas UV); shadowSlots[light].x is the slot the
     // direct light samples, and .z is its point-shadow depth scale or zero.
+    // The .w components are indexed by map slot and carry each face's limit.
     float4x4 shadowWorldToLightClip[MaximumShadowMaps];
     float4 shadowTile[MaximumShadowMaps];
     float4 shadowControls[MaximumShadowMaps];
@@ -864,7 +865,7 @@ float ResolveShadowVisibility(
     if (pointDepthScale > 0.0)
     {
         float linearDepth = lightClip.w * pointDepthScale;
-        if (linearDepth > 1.0)
+        if (linearDepth > ReadFrameShadowSlot((uint)slot).w)
         {
             return 1.0;
         }

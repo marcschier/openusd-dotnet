@@ -71,6 +71,17 @@ public sealed class SilkPointShadowDepthEncodingTests
 
         await Assert.That(Math.Abs(scale - (1f / 12f))).IsLessThan(1e-7f);
         await Assert.That(MathF.BitIncrement(12f) * scale).IsLessThanOrEqualTo(1f);
+        float shortFaceLimit = binding.GetPointDepthLimitForMap(0);
+        float longFaceLimit = binding.GetPointDepthLimitForMap(4);
+        double[] projection = descriptors[0].Projection;
+        double decodedFar = projection[14] / (projection[10] + 1);
+        double outwardFar = MathF.BitIncrement((float)decodedFar);
+        double exactLimit = outwardFar * scale;
+        await Assert.That((double)shortFaceLimit).IsGreaterThanOrEqualTo(exactLimit);
+        await Assert.That((double)MathF.BitDecrement(shortFaceLimit)).IsLessThan(exactLimit);
+        await Assert.That(shortFaceLimit).IsLessThan(longFaceLimit);
+        await Assert.That(10f * scale).IsGreaterThan(shortFaceLimit);
+        await Assert.That(10f * scale).IsLessThan(longFaceLimit);
         await Assert.That(binding.GetMapCountForLight(0)).IsEqualTo(6);
         await Assert.That(binding.GetControls(4).X).IsGreaterThan(0f);
         await Assert.That(binding.GetControls(0).X).IsEqualTo(0f);
@@ -129,18 +140,21 @@ public sealed class SilkPointShadowDepthEncodingTests
         SilkShadowFrameBinding binding = SilkShadowFrameBinding.Create([descriptor], layout);
 
         await Assert.That(binding.GetPointDepthScaleForLight(0)).IsEqualTo(0f);
+        await Assert.That(binding.GetPointDepthLimitForMap(0)).IsEqualTo(0f);
         await Assert.That(binding.GetControls(0).X).IsEqualTo(0.125f);
     }
 
     [Test]
-    public async Task CasterInstanceWritesTheDepthScaleAndClearsOtherReservedValues()
+    public async Task CasterInstanceWritesTheDepthScaleAndFaceLimit()
     {
         byte[] destination = Enumerable.Repeat((byte)0xff, 80).ToArray();
-        SilkShadowInstanceWriter.Write(Matrix4x4.Identity, destination, 0.125f);
+        SilkShadowInstanceWriter.Write(Matrix4x4.Identity, destination, 0.125f, 0.5f);
 
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(destination.AsSpan(64, 4)))
             .IsEqualTo(0.125f);
-        await Assert.That(destination.AsSpan(68, 12).ToArray()).IsEquivalentTo(new byte[12]);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(destination.AsSpan(68, 4)))
+            .IsEqualTo(0.5f);
+        await Assert.That(destination.AsSpan(72, 8).ToArray()).IsEquivalentTo(new byte[8]);
     }
 
     [Test]
@@ -150,6 +164,28 @@ public sealed class SilkPointShadowDepthEncodingTests
     public async Task CasterInstanceRejectsInvalidDepthScale(float scale)
     {
         await Assert.That(() => SilkShadowInstanceWriter.Write(Matrix4x4.Identity, new byte[80], scale))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    [Arguments(-1f)]
+    [Arguments(0f)]
+    [Arguments(1.001f)]
+    [Arguments(float.NaN)]
+    [Arguments(float.PositiveInfinity)]
+    [Arguments(float.NegativeInfinity)]
+    public async Task CasterInstanceRejectsInvalidPointFaceLimit(float limit)
+    {
+        await Assert.That(() =>
+            SilkShadowInstanceWriter.Write(Matrix4x4.Identity, new byte[80], 0.125f, limit))
+            .Throws<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task CasterInstanceRejectsFaceLimitWithoutPointDepthScale()
+    {
+        await Assert.That(() =>
+            SilkShadowInstanceWriter.Write(Matrix4x4.Identity, new byte[80], 0, 0.5f))
             .Throws<InvalidDataException>();
     }
 

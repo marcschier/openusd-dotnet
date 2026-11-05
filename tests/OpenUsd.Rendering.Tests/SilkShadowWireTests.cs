@@ -90,6 +90,14 @@ public sealed class SilkShadowWireTests
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(14888 + 127 * 16)))
             .IsEqualTo(binding.GetPointDepthScaleForLight(127));
         await Assert.That(binding.GetPointDepthScaleForLight(127)).IsGreaterThan(0f);
+        for (int slot = 0; slot < 24; slot++)
+        {
+            await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(14892 + (slot * 16))))
+                .IsEqualTo(binding.GetPointDepthLimitForMap(slot));
+            await Assert.That(binding.GetPointDepthLimitForMap(slot)).IsGreaterThan(0f);
+        }
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(14892 + (127 * 16))))
+            .IsEqualTo(0f);
 
         _ = scene.Apply(
             [.. CreateWideShadowFrame(128), .. CreateShadow(128,

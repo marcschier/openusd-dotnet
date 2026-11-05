@@ -2239,13 +2239,18 @@ internal static class SilkFrameUniformWriter
         }
         for (int light = 0; light < SilkFrameState.MaximumLights; light++)
         {
+            // The unused fourth component is indexed by map, independently of
+            // the first three components, which are indexed by light.
+            float pointDepthLimit = light < SilkShadowCommand.MaximumMaps
+                ? shadows.GetPointDepthLimitForMap(light)
+                : 0;
             WriteVector4(
                 destination,
                 ShadowSlotOffset + (light * 16),
                 shadows.GetSlotForLight(light),
                 shadows.GetMapCountForLight(light),
                 shadows.GetPointDepthScaleForLight(light),
-                0);
+                pointDepthLimit);
         }
     }
 
@@ -11779,7 +11784,8 @@ internal sealed partial class SilkMeshGpuGeometryResource : IDisposable
                 destination.Slice(
                     index * SilkSceneUniformWriter.ByteSize,
                     SilkSceneUniformWriter.ByteSize),
-                casters[index].PointDepthScale);
+                casters[index].PointDepthScale,
+                casters[index].PointDepthLimit);
         }
     }
 

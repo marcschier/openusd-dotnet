@@ -17,7 +17,8 @@ internal readonly record struct SilkShadowCaster(
     Matrix4x4 ObjectToLightClip,
     SilkMaterialData? MaskMaterial = null,
     SilkMeshData? Data = null,
-    float PointDepthScale = 0);
+    float PointDepthScale = 0,
+    float PointDepthLimit = 0);
 
 internal enum SilkShadowOpacityCoverage
 {
@@ -961,6 +962,7 @@ internal sealed class SilkShadowMapCache : IDisposable
                 resources,
                 descriptor,
                 binding.GetPointDepthScaleForLight((int)descriptor.LightIndex),
+                binding.GetPointDepthLimitForMap(slot),
                 _device.ClipSpaceYPointsDown,
                 casters,
                 unsupported ?? _unsupportedCasters,
@@ -1086,7 +1088,8 @@ internal sealed class SilkShadowMapCache : IDisposable
             SilkShadowDescriptor descriptor = descriptors[slot];
             casters.Clear();
             CollectCasters(scene, resources, descriptor,
-                binding.GetPointDepthScaleForLight((int)descriptor.LightIndex), _device.ClipSpaceYPointsDown,
+                binding.GetPointDepthScaleForLight((int)descriptor.LightIndex),
+                binding.GetPointDepthLimitForMap(slot), _device.ClipSpaceYPointsDown,
                 casters, [], useSceneMaterials, transmissionOnly: true);
             if (casters.Count == 0)
             {
@@ -1284,6 +1287,7 @@ internal sealed class SilkShadowMapCache : IDisposable
         SilkSceneGpuResources resources,
         SilkShadowDescriptor descriptor,
         float pointDepthScale,
+        float pointDepthLimit,
         bool flipClipSpaceY,
         List<SilkShadowCaster> casters,
         List<string> unsupportedCasters,
@@ -1330,7 +1334,8 @@ internal sealed class SilkShadowMapCache : IDisposable
                 coverage is SilkShadowOpacityCoverage.Masked or SilkShadowOpacityCoverage.Transmissive
                     ? scene.Materials[data.MaterialPath] : null,
                 data,
-                pointDepthScale));
+                pointDepthScale,
+                pointDepthLimit));
         }
     }
 

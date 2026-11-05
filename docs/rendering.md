@@ -4406,9 +4406,9 @@ execution and physical-device qualification remain outstanding. Metal continues 
 raster-shadow capability.
 
 The CI gate adds `SilkShadowTransmissionConformanceTests` to the existing cubic and point-shadow
-report/receipt runner. Windows requires all 52 named argument cases to pass, covering 26 D3D12 WARP
-and 26 packaged SwiftShader cases, with no skips. Linux requires all 26 named Vulkan cases to pass and
-permits only the 26 explicitly identified D3D12 platform skips. A skipped Vulkan
+report/receipt runner. Windows requires all 54 named argument cases to pass, covering 27 D3D12 WARP
+and 27 packaged SwiftShader cases, with no skips. Linux requires all 27 named Vulkan cases to pass and
+permits only the 27 explicitly identified D3D12 platform skips. A skipped Vulkan
 case, missing or duplicate identity, substituted method, incorrect count, stale execution time or
 reused report publication generation rejects the evidence. Both jobs retain the raw report,
 HTML and log with a hashed execution receipt after a successful run. A failed run retains its log and
@@ -4481,18 +4481,20 @@ composite material image.
 For a point light, the caster writes clip-space `w` multiplied by one scale shared by its six cube
 faces. The scale uses the largest face far distance rounded outward; the producer's near plane is
 unchanged. Opaque, cutout and transmission casters store this depth, and the colour pass uses it
-for comparisons. A receiver whose encoded depth exceeds one is lit, and a caster fragment outside
-that range is discarded. Other shadow maps retain their raster depth. The shadow fragments write
+for comparisons. Each face has an outward-rounded encoded far limit derived from its own projection.
+A receiver beyond the selected face's limit is lit, and a caster fragment beyond it is discarded,
+including during transmission peeling and overflow checks. A longer face does not extend the comparison
+range of a shorter face. Other shadow maps retain their raster depth. The shadow fragments write
 `SV_Depth` for all projections, which can reduce early-depth optimization; the performance effect
-has not been measured.
+has not been measured. Backend execution of the per-face limit remains pending.
 
 For a published perspective-depth bias `b` and a face with near and far distances `n` and `f`, the
 renderer calculates `B = n * f / (f - n)` and a converted bias `q = b / (B * s)`, where `s` is the
 shared point-depth scale. It compares a receiver with encoded depth `L` as
 `L / (1 + q * slopeFactor * L)`, using the same slope factor as the raster-depth path. During shadow
 preparation, a cube face is rejected for a non-finite or non-affine view, an unsupported perspective
-depth projection, or a depth range or converted bias the GPU cannot represent. This includes a
-subnormal scale, near-depth value or nonzero converted bias, and a converted bias above
+depth projection, or a depth range, encoded face limit or converted bias the GPU cannot represent.
+This includes a subnormal scale, near-depth value or nonzero converted bias, and a converted bias above
 `float.MaxValue / 3`. The check runs before allocating an atlas candidate. The checks do not prove
 every finite input, including extreme world-coordinate cancellation.
 

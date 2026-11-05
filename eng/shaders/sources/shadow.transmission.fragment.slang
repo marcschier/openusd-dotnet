@@ -9,7 +9,7 @@ Texture2D<float4> previousShadowLayer : register(t24);
 ShadowTransmissionOutput shadowTransmissionFragmentMain(ShadowMaskedVertexOutput input)
 {
     float storedDepth = ShadowStoredDepth(input);
-    if (PointShadowDepthOutsideRange(storedDepth, input.pointDepthScale))
+    if (PointShadowDepthOutsideRange(storedDepth, input.pointDepth))
     {
         discard;
     }
@@ -29,7 +29,7 @@ ShadowTransmissionOutput shadowTransmissionFragmentMain(ShadowMaskedVertexOutput
 ShadowTransmissionOutput shadowTransmissionProbeFragmentMain(ShadowMaskedVertexOutput input)
 {
     float storedDepth = ShadowStoredDepth(input);
-    if (PointShadowDepthOutsideRange(storedDepth, input.pointDepthScale))
+    if (PointShadowDepthOutsideRange(storedDepth, input.pointDepth))
     {
         discard;
     }

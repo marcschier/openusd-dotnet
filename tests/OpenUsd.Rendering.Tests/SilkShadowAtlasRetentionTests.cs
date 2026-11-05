@@ -270,24 +270,31 @@ public sealed class SilkShadowAtlasRetentionTests
         float originalScale = original.GetPointDepthScaleForLight(0);
         fixture.Device.RecordedCasterDraws.Clear();
 
-        _ = fixture.Scene.Apply(PointShadowTable(64), 1, 2);
+        _ = fixture.Scene.Apply(PointShadowTable(64, faceFourFar: 128), 1, 2);
         SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(fixture.Scene.Shadows.Descriptors)!;
         SilkShadowFrameBinding expected = SilkShadowFrameBinding.Create(fixture.Scene.Shadows.Descriptors, layout);
         float candidateScale = expected.GetPointDepthScaleForLight(0);
         await Assert.That(candidateScale).IsLessThan(originalScale);
+        await Assert.That(expected.GetPointDepthLimitForMap(0))
+            .IsLessThan(expected.GetPointDepthLimitForMap(4));
 
         using SilkShadowMapCache.PreparedCapacity prepared = fixture.Cache.PrepareCapacity(
             fixture.Scene, fixture.Resources, prepareRendering: true)!;
         prepared.Render(fixture.Scene, fixture.Resources, null);
         await Assert.That(fixture.Cache.Binding).IsSameReferenceAs(original);
         await Assert.That(fixture.Device.RecordedCasterDraws.Count).IsEqualTo(6);
-        foreach (RecordedShadowDraw draw in fixture.Device.RecordedCasterDraws)
+        for (int slot = 0; slot < fixture.Device.RecordedCasterDraws.Count; slot++)
         {
+            RecordedShadowDraw draw = fixture.Device.RecordedCasterDraws[slot];
             await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(draw.Bytes.AsSpan(64, 4)))
                 .IsEqualTo(candidateScale);
+            await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(draw.Bytes.AsSpan(68, 4)))
+                .IsEqualTo(expected.GetPointDepthLimitForMap(slot));
         }
         prepared.Commit();
         await Assert.That(fixture.Cache.Binding.GetPointDepthScaleForLight(0)).IsEqualTo(candidateScale);
+        await Assert.That(fixture.Cache.Binding.GetPointDepthLimitForMap(4))
+            .IsEqualTo(expected.GetPointDepthLimitForMap(4));
     }
 
     [Test]
@@ -1703,12 +1710,13 @@ public sealed class SilkShadowAtlasRetentionTests
         return bytes;
     }
 
-    private static byte[] PointShadowTable(double far)
+    private static byte[] PointShadowTable(double far, double? faceFourFar = null)
     {
         byte[] bytes = HighShadowTable(1, 0, 0, 0, 0, 0, 0);
-        double[] projection = CreatePerspectiveDescriptor(0.01, far).Projection;
         for (int face = 0; face < 6; face++)
         {
+            double[] projection = CreatePerspectiveDescriptor(
+                0.01, face == 4 ? faceFourFar ?? far : far).Projection;
             int entry = 24 + (face * 288);
             BinaryPrimitives.WriteUInt32LittleEndian(
                 bytes.AsSpan(entry + 12), (uint)SilkShadowDescriptorOptions.CubeFace);

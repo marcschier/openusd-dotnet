@@ -652,8 +652,10 @@ jobs:
                 CubeGroupRejectsFaceWhoseLinearNearDepthWouldUnderflow = 1
                 InvalidCubeDepthProjectionIsRejected = 4
                 OrthographicMapsRetainTheirPublishedDepthBias = 1
-                CasterInstanceWritesTheDepthScaleAndClearsOtherReservedValues = 1
+                CasterInstanceWritesTheDepthScaleAndFaceLimit = 1
                 CasterInstanceRejectsInvalidDepthScale = 3
+                CasterInstanceRejectsInvalidPointFaceLimit = 6
+                CasterInstanceRejectsFaceLimitWithoutPointDepthScale = 1
               }
             },
             @{

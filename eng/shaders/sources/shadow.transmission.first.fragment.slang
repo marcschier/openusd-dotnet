@@ -6,7 +6,7 @@
 ShadowTransmissionOutput shadowTransmissionFirstFragmentMain(ShadowMaskedVertexOutput input)
 {
     float depth = ShadowStoredDepth(input);
-    if (PointShadowDepthOutsideRange(depth, input.pointDepthScale))
+    if (PointShadowDepthOutsideRange(depth, input.pointDepth))
     {
         discard;
     }
