@@ -1,7 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
-using System.Numerics;
 using System.Text;
 using OpenUsd.Rendering.Silk;
 
@@ -72,7 +71,7 @@ public sealed partial class VolumeRenderingConformanceTests
         using OpenUsdSilkSession session = CreateAvailableFieldSession(stagePath);
         using var budget = new SilkVolumeFieldBudget(2 * fieldBytes);
         session.ConfigureVolumeFieldBudget(budget);
-        var camera = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []);
+        CameraState camera = CreateVolumeFixtureCamera();
         using OpenUsdSilkPage firstPage = session.Sync(Width, Height, 1, camera);
         using var firstScene = new SilkSceneState();
         _ = firstScene.Apply(firstPage);

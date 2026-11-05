@@ -1,6 +1,5 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.Numerics;
 using System.Text;
 using OpenUsd.Rendering.Silk;
 
@@ -73,7 +72,7 @@ public sealed partial class VolumeRenderingConformanceTests
                 SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.DepthTarget(Width, Height));
-        var camera = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []);
+        CameraState camera = CreateVolumeFixtureCamera();
         var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
 
         ParityImage unitShifted = CaptureStaticMultiField(

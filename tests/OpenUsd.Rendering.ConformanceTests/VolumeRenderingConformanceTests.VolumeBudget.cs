@@ -1,6 +1,5 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
-using System.Numerics;
 using System.Text;
 using OpenUsd.Interop;
 using OpenUsd.Rendering.Silk;
@@ -395,7 +394,7 @@ public sealed partial class VolumeRenderingConformanceTests
         using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stage);
         session.ConfigureVolumeFieldBudget(budget);
         using OpenUsdSilkPage page = session.Sync(
-            Width, Height, TimeCode, new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+            Width, Height, TimeCode, CreateVolumeFixtureCamera());
         session.Dispose();
         ParityImage actual = CapturePage(page, createDevice, out byte[]? density);
         await Assert.That(density!.SequenceEqual(expectedDensity)).IsTrue();
@@ -415,7 +414,7 @@ public sealed partial class VolumeRenderingConformanceTests
         {
             using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(ResolvePluginPath(), stage);
             using OpenUsdSilkPage page = session.Sync(
-                Width, Height, TimeCode, new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+                Width, Height, TimeCode, CreateVolumeFixtureCamera());
             using var scene = new SilkSceneState();
             _ = scene.Apply(page);
             SilkMaterialTexture? texture = scene.Materials[BudgetMaterialPath]

@@ -56,6 +56,27 @@ public sealed partial class VolumeRenderingConformanceTests
     private const double MaximumCrossBackendMeanDelta = 0.5;
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task VolumeFixtureCameraPreservesClipMappingWithConventionalDepth(bool flipClipSpaceY)
+    {
+        CameraState camera = CreateVolumeFixtureCamera();
+        Matrix4x4 projection = camera.Projection;
+        double[] projectionValues =
+        [
+            projection.M11, projection.M12, projection.M13, projection.M14,
+            projection.M21, projection.M22, projection.M23, projection.M24,
+            projection.M31, projection.M32, projection.M33, projection.M34,
+            projection.M41, projection.M42, projection.M43, projection.M44,
+        ];
+        await Assert.That(() => SilkVolumeCameraValidation.ValidateProjection(
+            projectionValues, flipClipSpaceY, "volume fixture")).ThrowsNothing();
+        await Assert.That(camera.View * camera.Projection).IsEqualTo(Matrix4x4.Identity);
+        await Assert.That(Vector3.Transform(new Vector3(0, 0, -1), camera.View).Z).IsEqualTo(0f);
+        await Assert.That(Vector3.Transform(new Vector3(0, 0, 1), camera.View).Z).IsEqualTo(-2f);
+    }
+
+    [Test]
     public async Task UniformDensityVolumeGatesOnVulkan()
     {
         await RunUniformDensityVolumeGate(
@@ -310,7 +331,7 @@ public sealed partial class VolumeRenderingConformanceTests
 
         using OpenUsdSilkSession firstSession = OpenUsdSilkRuntime.Create(ResolvePluginPath(), firstStage);
         using OpenUsdSilkSession secondSession = OpenUsdSilkRuntime.Create(ResolvePluginPath(), secondStage);
-        var camera = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []);
+        CameraState camera = CreateVolumeFixtureCamera();
         using OpenUsdSilkPage firstPage = firstSession.Sync(Width, Height, TimeCode, camera);
         using var firstScene = new SilkSceneState();
         _ = firstScene.Apply(firstPage);
@@ -610,7 +631,7 @@ public sealed partial class VolumeRenderingConformanceTests
             SilkTextureDescriptor.DepthTarget(checked((uint)Width), checked((uint)Height)));
         using var renderer = new SilkMeshRenderer(device);
         var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
-        var camera = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []);
+        CameraState camera = CreateVolumeFixtureCamera();
         const string materialPath = "/World/Vdb/Volume/__hdSilkVolumeMaterial";
 
         async Task assertPage(OpenUsdSilkPage page, ParityImage expectedImage, byte[]? expectedDensity)
@@ -770,7 +791,7 @@ public sealed partial class VolumeRenderingConformanceTests
                             Width,
                             Height,
                             invalidTime,
-                            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+                            CreateVolumeFixtureCamera());
                     })
                     .Throws<OpenUsdSilkException>()
                     .WithMessageContaining("hdsilk:density");
@@ -778,7 +799,7 @@ public sealed partial class VolumeRenderingConformanceTests
                     Width,
                     Height,
                     2,
-                    new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+                    CreateVolumeFixtureCamera());
                 _ = scene.Apply(recovered);
                 await Assert.That(scene.Materials["/World/Volume/__hdSilkVolumeMaterial"]
                         .GetScalar(SilkMaterialParameter.VolumeDensity)[0])
@@ -800,7 +821,7 @@ public sealed partial class VolumeRenderingConformanceTests
                     Width,
                     Height,
                     time,
-                    new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+                    CreateVolumeFixtureCamera());
                 _ = scene.Apply(page);
                 float actual = scene.Materials["/World/Volume/__hdSilkVolumeMaterial"]
                     .GetScalar(SilkMaterialParameter.VolumeDensity)[0];
@@ -863,7 +884,7 @@ public sealed partial class VolumeRenderingConformanceTests
                             Width,
                             Height,
                             time,
-                            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+                            CreateVolumeFixtureCamera());
                     }
                     _ = renderer.ApplyAndRender(page, color, depth, options);
                     _ = renderer.ApplyAndRender(page, color, depth, options);
@@ -1032,6 +1053,16 @@ public sealed partial class VolumeRenderingConformanceTests
         return MetalSilkGraphicsDevice.Create();
     }
 
+    private static CameraState CreateVolumeFixtureCamera()
+    {
+        // The self-inverse matrices preserve the fixture's identity world-to-clip
+        // mapping while making eye-space rays travel toward negative Z.
+        Matrix4x4 mirroredOrthographic = Matrix4x4.Identity;
+        mirroredOrthographic.M33 = -1;
+        mirroredOrthographic.M43 = -1;
+        return new CameraState(mirroredOrthographic, mirroredOrthographic, []);
+    }
+
     private static async Task<ParityImage> CaptureStormStage(string stagePath)
     {
         PrependHdSilkNativeSearchPath();
@@ -1042,7 +1073,7 @@ public sealed partial class VolumeRenderingConformanceTests
                 Width,
                 Height,
                 TimeCode,
-                new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []),
+                CreateVolumeFixtureCamera(),
                 new SilkColor(0, 0, 0, 1),
                 OpenUsdStormRuntime.Headlight,
                 UseSceneLights: false),
@@ -1067,7 +1098,7 @@ public sealed partial class VolumeRenderingConformanceTests
             Width,
             Height,
             TimeCode,
-            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+            CreateVolumeFixtureCamera());
         return CapturePage(page, createDevice, out density);
     }
 

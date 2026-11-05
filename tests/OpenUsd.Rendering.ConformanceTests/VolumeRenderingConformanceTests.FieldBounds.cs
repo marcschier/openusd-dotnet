@@ -1,7 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
-using System.Numerics;
 using System.Text;
 using OpenUsd.Rendering.Silk;
 
@@ -193,7 +192,7 @@ public sealed partial class VolumeRenderingConformanceTests
             Width,
             Height,
             TimeCode,
-            new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []));
+            CreateVolumeFixtureCamera());
         using var scene = new SilkSceneState();
         _ = scene.Apply(page);
         SilkMaterialTexture? texture = scene.Materials["/World/Volume/__hdSilkVolumeMaterial"]
@@ -365,7 +364,7 @@ public sealed partial class VolumeRenderingConformanceTests
             SilkTextureDescriptor.DepthTarget(Width, Height));
         using var renderer = new SilkMeshRenderer(device);
         var options = new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1);
-        var camera = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, []);
+        CameraState camera = CreateVolumeFixtureCamera();
         const string materialPath = "/World/Vdb/Volume/__hdSilkVolumeMaterial";
 
         async Task assertPage(
