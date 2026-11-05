@@ -120,6 +120,23 @@ public sealed class VolumeCameraJointPassConformanceTests
 
     [Test]
     [MethodDataSource(nameof(AvailableBackends))]
+    public Task HalfMaximumTintFieldProducesFinitePixels(SilkGraphicsBackend backend) =>
+        AssertCoincidentHighTintFields(
+            backend, [0.3663415014743805f], float.MaxValue / 2);
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public Task OpaqueHighTintFieldProducesFinitePixels(SilkGraphicsBackend backend) =>
+        AssertCoincidentHighTintFields(backend, [1000]);
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public Task ReducedExposureHighTintFieldProducesFinitePixels(SilkGraphicsBackend backend) =>
+        AssertCoincidentHighTintFields(
+            backend, [0.3663415014743805f], exposure: -1);
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
     public Task TwoCoincidentHighTintFieldsProduceFinitePixels(SilkGraphicsBackend backend) =>
         AssertCoincidentHighTintFields(backend, [0.3663415014743805f, 31.201824188232422f]);
 
@@ -142,7 +159,10 @@ public sealed class VolumeCameraJointPassConformanceTests
         SilkConformanceBackends.Available();
 
     private static async Task AssertCoincidentHighTintFields(
-        SilkGraphicsBackend backend, float[] densities)
+        SilkGraphicsBackend backend,
+        float[] densities,
+        float tint = float.MaxValue,
+        float exposure = 0)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
         using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
@@ -160,13 +180,14 @@ public sealed class VolumeCameraJointPassConformanceTests
             string material = $"/World/JointCamera/ExtremeMaterial{field}";
             string mesh = $"/World/JointCamera/ExtremeVolume{field}";
             commands[1 + field] = Material(
-                material, densities[field], [float.MaxValue, 0, 0], string.Empty, false, false);
+                material, densities[field], [tint, 0, 0], string.Empty, false, false);
             commands[1 + densities.Length + field] = Mesh(
                 mesh, material, -1, 1, checked((ulong)field + 1));
         }
 
         using OpenUsdSilkPage page = Page(1, commands);
-        _ = renderer.ApplyAndRender(page, color, depth);
+        _ = renderer.ApplyAndRender(
+            page, color, depth, SilkMeshRenderOptions.Default with { Exposure = exposure });
         float[] pixels = ReadPixels(color);
         int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
         int firstNonFinite = Array.FindIndex(pixels, static component => !float.IsFinite(component));
@@ -175,7 +196,7 @@ public sealed class VolumeCameraJointPassConformanceTests
                 ? "All pixel components are finite."
                 : $"Pixel component {firstNonFinite} was {pixels[firstNonFinite]:R}.");
         double depthIntegral = densities.Sum(static density => (double)density);
-        double expected = float.MaxValue * (1 - Math.Exp(-depthIntegral));
+        double expected = tint * (1 - Math.Exp(-depthIntegral)) * Math.Pow(2, exposure);
         await Assert.That(Math.Abs((pixels[center] / expected) - 1))
             .IsLessThan(0.01);
         await Assert.That(pixels[center + 1]).IsEqualTo(0f);

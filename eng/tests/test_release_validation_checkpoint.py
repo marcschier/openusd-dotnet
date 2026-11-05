@@ -52,11 +52,14 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         )[1].split("\n      - name:", 1)[0]
         for case in (
             "SingleHighTintFieldProducesFinitePixels(Vulkan)",
+            "HalfMaximumTintFieldProducesFinitePixels(Vulkan)",
+            "OpaqueHighTintFieldProducesFinitePixels(Vulkan)",
+            "ReducedExposureHighTintFieldProducesFinitePixels(Vulkan)",
             "TwoCoincidentHighTintFieldsProduceFinitePixels(Vulkan)",
             "EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)",
         ):
             self.assertIn(case, high_tint)
-        self.assertIn("$report.summary.passed -ne 3", high_tint)
+        self.assertIn("$report.summary.passed -ne 6", high_tint)
         self.assertIn("$report.summary.skipped -ne 0", high_tint)
         self.assertIn("artifacts/shadow-volume-repro/high-tint-volume.tunit-report.json", job)
         self.assertNotIn("continue-on-error", job)

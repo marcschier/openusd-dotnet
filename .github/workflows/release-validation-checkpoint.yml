@@ -275,10 +275,10 @@ jobs:
           try {
             ./eng/run-managed-tests.ps1 `
               -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-              -Framework net10.0 -Configuration Release -MinimumExpectedTests 3 `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 6 `
               -TestArguments @(
                 '--treenode-filter',
-                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels)')
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels)')
           }
           finally {
             if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
@@ -294,14 +294,17 @@ jobs:
           } | ForEach-Object { $_.tests } | Where-Object {
             $_.status -ceq 'passed'
           })
-          if ($report.summary.total -ne 3 -or $report.summary.passed -ne 3 -or
+          if ($report.summary.total -ne 6 -or $report.summary.passed -ne 6 -or
               $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
               $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
-              $results.Count -ne 3) {
+              $results.Count -ne 6) {
             throw 'The Vulkan high-tint volume cases did not all pass without skips.'
           }
           foreach ($case in @(
             'SingleHighTintFieldProducesFinitePixels(Vulkan)',
+            'HalfMaximumTintFieldProducesFinitePixels(Vulkan)',
+            'OpaqueHighTintFieldProducesFinitePixels(Vulkan)',
+            'ReducedExposureHighTintFieldProducesFinitePixels(Vulkan)',
             'TwoCoincidentHighTintFieldsProduceFinitePixels(Vulkan)',
             'EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)')) {
             if (@($results | Where-Object { $_.displayName -ceq $case }).Count -ne 1) {
