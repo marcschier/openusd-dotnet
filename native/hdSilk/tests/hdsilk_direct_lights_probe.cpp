@@ -1154,11 +1154,68 @@ ShadowTableView ReadShadows(CommandView command)
         map.pcfRadius = ReadF32Le(command, offset + 280);
         map.reserved = ReadU32Le(command, offset + 284);
         Require(map.lightIndex < table.directCount && map.mapIndex == index &&
-                (map.flags & ~7u) == 0u && map.reserved == 0u,
+                (map.flags & ~(OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC |
+                    OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED |
+                    OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE |
+                    OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE)) == 0u &&
+                map.reserved == 0u,
             "SHADOW: invalid descriptor identity, flags or reserved word");
         table.maps.push_back(map);
     }
     return table;
+}
+
+void VerifyShadowDescriptorFlagValidation()
+{
+    static_assert(OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE == 8u);
+    std::vector<uint8_t> bytes(24 + 288, 0u);
+    const auto writeWord = [&bytes](size_t offset, uint32_t value)
+    {
+        for (size_t byte = 0; byte < 4; ++byte)
+        {
+            bytes[offset + byte] = static_cast<uint8_t>(value >> (byte * 8));
+        }
+    };
+    writeWord(0, OPENUSD_SILK_COMMAND_SHADOW);
+    writeWord(4, static_cast<uint32_t>(bytes.size()));
+    writeWord(8, 1u);
+    writeWord(12, 1u);
+    writeWord(32, OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION);
+
+    const uint32_t accepted[] = {
+        OPENUSD_SILK_SHADOW_FLAG_NONE,
+        OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC,
+        OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED,
+        OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE,
+        OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE,
+        OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE | OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED};
+    for (uint32_t flags : accepted)
+    {
+        writeWord(36, flags);
+        const ShadowTableView table = ReadShadows({bytes.data(), bytes.size()});
+        Require(table.maps.size() == 1u && table.maps[0].flags == flags,
+            "SHADOW: known descriptor flags must survive decoding");
+    }
+
+    const uint32_t rejectedFlags[] = {
+        16u,
+        OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE | 16u,
+        0x80000000u};
+    for (uint32_t flags : rejectedFlags)
+    {
+        writeWord(36, flags);
+        bool rejected = false;
+        try
+        {
+            (void)ReadShadows({bytes.data(), bytes.size()});
+        }
+        catch (const std::runtime_error& error)
+        {
+            rejected = std::string(error.what()) ==
+                "SHADOW: invalid descriptor identity, flags or reserved word";
+        }
+        Require(rejected, "SHADOW: unknown descriptor flags must be rejected");
+    }
 }
 
 MeshView ReadMesh(CommandView command)
@@ -4783,6 +4840,8 @@ int main(int argc, char* argv[])
             VerifyShapedZeroRadiusSpherePublishesPerspectiveShadow},
         {"domes-shadows", "VerifyPointInsideBoundsPublishesSixFaces",
             VerifyPointInsideBoundsPublishesSixFaces},
+        {"domes-shadows", "VerifyShadowDescriptorFlagValidation",
+            VerifyShadowDescriptorFlagValidation},
         {"domes-shadows", "VerifyFiniteAreaEmitterSamplesPublishAndUpdatePerspectiveGroups",
             VerifyFiniteAreaEmitterSamplesPublishAndUpdatePerspectiveGroups},
         {"domes-shadows", "VerifyFiniteAreaEmitterSamplesPreserveAuthoredTransform",

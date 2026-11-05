@@ -115,10 +115,15 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(verify).Contains("$receipt.archiveSha256 -cne ");
         await Assert.That(verify).Contains("$receipt.assemblySha256 -cne ");
         await Assert.That(verify).Contains("$receipt.metalLibrarySha256 -cne ");
-        await Assert.That(run).Contains("-MinimumExpectedTests 10");
         await Assert.That(run).Contains(
-            "/*/*/VolumeCameraJointPassConformanceTests/OverlappingHighFiniteTintsMatchTheIndependentComposite");
+            "Method = 'LargeFiniteDensityInThinFieldRemainsVisible'; Minimum = 8");
+        await Assert.That(run).Contains(
+            "Method = 'OverlappingHighFiniteTintsMatchTheIndependentComposite'; Minimum = 10");
+        await Assert.That(run).Contains("-MinimumExpectedTests $case.Minimum");
+        await Assert.That(run).Contains(
+            "/*/*/VolumeCameraJointPassConformanceTests/$($case.Method)");
         await Assert.That(run).Contains("Assert-MetalVolumeReproReport");
+        await Assert.That(run).Contains("-Method $case.Method");
         await Assert.That(run).Contains("$reportTime -lt $started");
         await Assert.That(evidence).Contains("if: always()");
         await Assert.That(consumer.IndexOf(
