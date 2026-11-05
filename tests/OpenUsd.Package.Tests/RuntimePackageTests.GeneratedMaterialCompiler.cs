@@ -266,7 +266,7 @@ public sealed partial class RuntimePackageTests
             consumerRoot,
             [
                 "publish", "Consumer.csproj", "-c", "Release", "-r", "win-x64",
-                "--self-contained", "false", "--nologo", "-m:1",
+                "--self-contained", "true", "--nologo", "-m:1",
                 "-p:UseSharedCompilation=false", "-p:UseArtifactsOutput=false",
                 "--configfile", "NuGet.config", "-o", publishRoot,
             ],
@@ -281,6 +281,14 @@ public sealed partial class RuntimePackageTests
             executable, publishRoot, cache, "missing-cross", dxc);
         await Assert.That(missing.ExitCode).IsEqualTo(0).Because(missing.Output);
         await Assert.That(missing.Output).Contains("MISSING_SPIRV_CROSS_REPORTED");
+
+        string adjacentCross = Path.Combine(publishRoot, "spirv-cross.dll");
+        File.Copy(restoredCross, adjacentCross);
+        CommandResult adjacent = await RunGeneratedMaterialConsumerAsync(
+            executable, publishRoot, cache, "external-cross", dxc);
+        await Assert.That(adjacent.ExitCode).IsEqualTo(0).Because(adjacent.Output);
+        await Assert.That(adjacent.Output).Contains("EXTERNAL_SPIRV_CROSS_AND_DXC_OK");
+        File.Delete(adjacentCross);
 
         string externalCross = Path.Combine(consumerRoot, "external-spirv-cross");
         Directory.CreateDirectory(externalCross);
