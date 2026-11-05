@@ -424,7 +424,6 @@ def Xform "World"
                     .IsTrue()
                     .Because($"{firstSilk.BackendName} parity capture for {scene.Name} must be byte-stable.");
                 await Assert.That(firstSilk.DrawCount).IsGreaterThan(0);
-                await AssertPerformanceBudget(scene, firstSilk);
                 ParityComparisonResult result = ParityImageComparer.Compare(
                     first.Storm,
                     firstSilk.Image,
@@ -434,6 +433,7 @@ def Xform "World"
                 evidence.Add(metrics);
                 adjustedIouEvidence.Add(FormatAdjustedIouEvidence(scene, firstSilk, result));
                 Console.WriteLine(metrics);
+                await AssertPerformanceBudget(scene, firstSilk);
                 if (!result.Passed ||
                     !MeetsRequiredAdjustedIou(scene, result) ||
                     result.ReferenceCoveragePixels == 0 ||
@@ -7216,8 +7216,9 @@ def Xform "World"
                 RecommendedMinimumAdjustedIou: 0.92,
                 RequiredAdjustedIou: ExactCuratedParityAdjustedIou)
             {
+                // Six card quads add twelve vertices for triangle-local normals.
                 PerformanceBudgets = CurrentBackendBudgets(
-                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 20_336, 20_336, 0)),
+                    ParityPerformanceBudget.FromMeasured(1, 1, 1, 1, 1, 1, 20_656, 20_656, 0)),
             },
             new ParityScene(
                 "single-sided-winding",
