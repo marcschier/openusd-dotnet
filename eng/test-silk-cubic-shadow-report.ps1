@@ -277,7 +277,7 @@ try
                     args = @(', False, False', ', False, True', ', True, False', ', True, True') },
                 @{ method = 'OpaqueAndCutoutCastersComposeWithTransmission'; args = @('') },
                 @{ method = 'PointLightOpaqueAndCutoutCastersComposeWithTransmission'; args = @('') },
-                @{ method = 'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow'; args = @('') }))
+                @{ method = 'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow'; args = @(', False', ', True') }))
             {
                 foreach ($argument in $entry.args)
                 {
@@ -290,18 +290,18 @@ try
                 }
             }
         }
-        $count = if ($platform -ceq 'windows') { 52 } else { 26 }
+        $count = if ($platform -ceq 'windows') { 54 } else { 27 }
         $fixture.groups[0].className = $class
         $fixture.groups[0].tests = $rows.ToArray()
         foreach ($summary in @($fixture.summary, $fixture.groups[0].summary))
         {
-            $summary.total = 52
+            $summary.total = 54
             $summary.passed = $count
-            $summary.skipped = 52 - $count
+            $summary.skipped = 54 - $count
         }
         Write-Fixture $fixture $path
         $accepted = Assert-SilkCubicShadowReport $path $platform $class $started $count
-        if ($accepted.passed -ne $count -or $accepted.skipped -ne 52 - $count)
+        if ($accepted.passed -ne $count -or $accepted.skipped -ne 54 - $count)
         {
             throw 'The transmission backend evidence count is incorrect.'
         }

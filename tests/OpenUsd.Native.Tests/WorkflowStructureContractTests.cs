@@ -177,7 +177,7 @@ public sealed class WorkflowStructureContractTests
         await Assert.That(guard).Contains("'RectEmitterShadowsMatchFiveRayReferenceAcrossUpdateAndRetirement'");
         await Assert.That(guard).Contains("'TransformedRectEmitterShadowsMatchFiveRayReference'");
         await Assert.That(guard).Contains("$expectedCount = 4");
-        await Assert.That(guard).Contains("$expectedCount = 30");
+        await Assert.That(guard).Contains("$expectedCount = 54");
         await Assert.That(guard).Contains(
             "$expectedStatus = if ($contract.Skips.Contains($name)) { 'skipped' } else { 'passed' }");
         await Assert.That(guard).Contains("$LogPassedCount -ne $contract.Passed");
@@ -188,8 +188,8 @@ public sealed class WorkflowStructureContractTests
             "OpenUsd.Rendering.ConformanceTests", "SilkShadowConformance.Transmission.cs"));
         string testClass = fixtures[fixtures.IndexOf("public sealed class SilkShadowTransmissionConformanceTests",
             StringComparison.Ordinal)..];
-        await Assert.That(Regex.Count(testClass, @"\[Arguments\(SilkGraphicsBackend\.D3D12")).IsEqualTo(15);
-        await Assert.That(Regex.Count(testClass, @"\[Arguments\(SilkGraphicsBackend\.Vulkan")).IsEqualTo(15);
+        await Assert.That(Regex.Count(testClass, @"\[Arguments\(SilkGraphicsBackend\.D3D12")).IsEqualTo(27);
+        await Assert.That(Regex.Count(testClass, @"\[Arguments\(SilkGraphicsBackend\.Vulkan")).IsEqualTo(27);
         foreach (Match method in Regex.Matches(testClass, @"public async Task (?<method>\w+)\("))
         {
             await Assert.That(guard).Contains($"'{method.Groups["method"].Value}'");

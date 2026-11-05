@@ -35,6 +35,22 @@ public sealed class SilkShadowAdmissionTests
     }
 
     [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true)]
+    public async Task PointCasterBeyondSelectedFaceDoesNotWriteDepth(
+        SilkGraphicsBackend backend, bool masked)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuTextureBudget(134_217_728);
+        budget.ConfigureDevice(device);
+        await SilkShadowConformance.PointCasterBeyondSelectedFaceDoesNotWriteDepth(device, backend, masked);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task ShadowQuotaRefusalPreservesPriorPixelsAndRetriesWithoutNativeLeaks(SilkGraphicsBackend backend)

@@ -303,20 +303,32 @@ internal static partial class SilkShadowConformance
         await AssertTransmissionPixel(ReadPixels(color), lit, opaque, 1 - (64.0 / 255), center);
     }
 
-    internal static async Task PointLayersBeyondFarPlaneDoNotTriggerOverflow(ISilkGraphicsDevice device)
+    internal static async Task PointLayersBeyondFarPlaneDoNotTriggerOverflow(
+        ISilkGraphicsDevice device, SilkGraphicsBackend backend, bool textured)
     {
-        using var renderer = new SilkMeshRenderer(device);
+        SilkShaderBinaryFormat format = backend == SilkGraphicsBackend.D3D12
+            ? SilkShaderBinaryFormat.Dxil : SilkShaderBinaryFormat.SpirV;
+        using var renderer = new SilkMeshRenderer(
+            device,
+            format,
+            (_, _) => new SilkDecodedImage(1, 1, [128, 128, 128, 255]),
+            textureResidencyOptions: new SilkTextureResidencyOptions(1_048_576, 1_048_576, false));
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
         var position = new Vector3(0, 0, 50);
         byte[] frame = CreateTransmissionLightFrame(true);
         BinaryPrimitives.WriteSingleLittleEndian(frame.AsSpan(580), 2500);
         WriteCubeMatrix(frame.AsSpan(584), Matrix4x4.CreateTranslation(position));
-        byte[] layers = CreateLayeredCaster(5, false, pointLight: true);
+        byte[] layers = CreateLayeredCaster(5, false, pointLight: true, textured: textured);
         WriteCubeMatrix(layers.AsSpan(80), Matrix4x4.CreateTranslation(0, 0, 40));
-        SilkMeshRendererConformance.Apply(renderer, 1, frame, CreateReceiver(),
-            CreateCasterMaterial([(SilkMaterialParameter.Opacity, 0.5f)]), layers);
+        byte[] material = textured
+            ? SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity)
+            : CreateCasterMaterial([(SilkMaterialParameter.Opacity, 0.5f)]);
+        SilkMeshRendererConformance.Apply(renderer, 1, frame, CreateReceiver(), material, layers);
         _ = renderer.Render(color, depth);
+        SilkMeshData layerData = renderer.Scene.MeshesByPath[("/World/Layers", 0)];
+        await Assert.That(SilkShadowMapCache.ClassifyOpacity(renderer.Scene, layerData))
+            .IsEqualTo(SilkShadowOpacityCoverage.Transmissive);
         byte[] unshadowed = ReadPixels(color);
         await Assert.That(unshadowed[Offset(32)]).IsGreaterThan((byte)40);
 
@@ -328,6 +340,31 @@ internal static partial class SilkShadowConformance
         await Assert.That(HasCasterDiagnostic(renderer)).IsFalse();
         await Assert.That(Math.Abs(ReadPixels(color)[Offset(32)] - unshadowed[Offset(32)]))
             .IsLessThanOrEqualTo(2);
+
+        SilkMeshRendererConformance.Apply(renderer, 3,
+            CreatePointCubeTable(
+                position, resolution: 256, near: 1e-8, far: 4, depthBias: 0, otherFaceFar: 100));
+        _ = renderer.Render(color, depth);
+        byte[] outsideShortFace = ReadPixels(color);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(3ul);
+        await Assert.That(HasCasterDiagnostic(renderer)).IsFalse();
+        await Assert.That(Math.Abs(outsideShortFace[Offset(32)] - unshadowed[Offset(32)]))
+            .IsLessThanOrEqualTo(2);
+
+        using var overflow = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 4,
+            CreatePointCubeTable(position, resolution: 256, near: 1e-8, far: 100, depthBias: 0), 1);
+        await Assert.That(() => renderer.ApplyAndRender(overflow, color, depth))
+            .Throws<InvalidDataException>()
+            .WithMessageContaining("ShadowTransmissionLayerOverflow");
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(3ul);
+        await Assert.That(ReadPixels(color).SequenceEqual(outsideShortFace)).IsTrue();
+
+        using var corrected = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 4,
+            CreatePointCubeTable(
+                position, resolution: 256, near: 1e-8, far: 4, depthBias: 0, otherFaceFar: 100), 1);
+        _ = renderer.ApplyAndRender(corrected, color, depth);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(4ul);
+        await Assert.That(ReadPixels(color).SequenceEqual(outsideShortFace)).IsTrue();
     }
 
     private static byte[] ReplaceMaterialPath(byte[] material, string oldPath, string newPath)
@@ -346,10 +383,11 @@ internal static partial class SilkShadowConformance
 
     private static byte[] CreateLayeredCaster(
         int layers, bool behindReceiver, double x = 0, bool equalDepth = false, ulong topologyRevision = 1,
-        float firstDepth = 0.65f, bool pointLight = false)
+        float firstDepth = 0.65f, bool pointLight = false, bool textured = false)
     {
         List<float> positions = [];
         List<uint> indices = [];
+        List<float> texCoords = [];
         for (int layer = 0; layer < layers; layer++)
         {
             float z = behindReceiver && layer == layers - 1 ? -1.5f : firstDepth + (equalDepth ? 0 : layer * 0.1f);
@@ -359,9 +397,18 @@ internal static partial class SilkShadowConformance
                 centerX - 0.25f, -0.25f, z, centerX + 0.25f, -0.25f, z,
                 centerX + 0.25f, 0.25f, z, centerX - 0.25f, 0.25f, z]);
             indices.AddRange([first, first + 2, first + 1, first, first + 3, first + 2]);
+            if (textured)
+            {
+                texCoords.AddRange([0, 0, 1, 0, 1, 1, 0, 1]);
+            }
         }
-        return BindCutoutMaterial(SilkMeshRendererConformance.CreateMeshCommand(
-            3, "/World/Layers", [.. positions], [.. indices], x, 0, [1, 1, 1, 1], topologyRevision));
+        byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
+            3, "/World/Layers", [.. positions], [.. indices], x, 0, [1, 1, 1, 1], topologyRevision,
+            triangleSubprims: null, pointOrigins: null, cornerEdges: null,
+            attributes: textured ? [("st", (uint)SilkAttributeSemantic.TexCoord, 2, [.. texCoords])] : null);
+        return textured
+            ? VolumeCommandAuthoring.WithMaterialBinding(mesh, "/A")
+            : BindCutoutMaterial(mesh);
     }
 
     private static byte[] CreateTransmissionLightFrame(bool pointLight)
@@ -573,14 +620,17 @@ public sealed class SilkShadowTransmissionConformanceTests
     }
 
     [Test]
-    [Arguments(SilkGraphicsBackend.D3D12)]
-    [Arguments(SilkGraphicsBackend.Vulkan)]
-    public async Task PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(SilkGraphicsBackend backend)
+    [Arguments(SilkGraphicsBackend.D3D12, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, true)]
+    public async Task PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(
+        SilkGraphicsBackend backend, bool textured)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
         var budget = new SilkGpuTextureBudget(268_435_456);
         budget.ConfigureDevice(device);
-        await SilkShadowConformance.PointLayersBeyondFarPlaneDoNotTriggerOverflow(device);
+        await SilkShadowConformance.PointLayersBeyondFarPlaneDoNotTriggerOverflow(device, backend, textured);
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
     }
 }

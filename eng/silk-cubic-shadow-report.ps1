@@ -106,8 +106,7 @@ function Get-SilkCubicShadowContract
             foreach ($method in @(
                 'TextureBudgetRefusalPreservesTransmissionAndRetriesTheSamePage',
                 'OpaqueAndCutoutCastersComposeWithTransmission',
-                'PointLightOpaqueAndCutoutCastersComposeWithTransmission',
-                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow'))
+                'PointLightOpaqueAndCutoutCastersComposeWithTransmission'))
             {
                 $cases.Add("${method}($backend)", $method)
             }
@@ -124,7 +123,8 @@ function Get-SilkCubicShadowContract
                 'OverflowAndEqualDepthRefusalPreservePublishedPixelsAndAllowCorrection',
                 'OpacityTextureEditsAndShadowLinksMatchAnalyticPixels',
                 'PointLightOverflowAndEqualDepthPreservePixelsAndAllowCorrection',
-                'PointLightConstantAndTexturedLayersComposeInEitherDepthOrder'))
+                'PointLightConstantAndTexturedLayersComposeInEitherDepthOrder',
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow'))
             {
                 foreach ($argument in @('False', 'True'))
                 {
@@ -147,7 +147,7 @@ function Get-SilkCubicShadowContract
                 if ($name.Contains('(D3D12', [StringComparison]::Ordinal)) { [void]$skips.Add($name) }
             }
         }
-        $expectedCount = 52
+        $expectedCount = 54
     }
     elseif ($Class -ceq 'SilkCubicCurveNativeTests')
     {

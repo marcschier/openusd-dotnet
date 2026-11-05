@@ -1055,6 +1055,16 @@ jobs:
               )
             },
             @{
+              Class = 'SilkShadowAdmissionTests'
+              Method = 'PointCasterBeyondSelectedFaceDoesNotWriteDepth'
+              Names = @(
+                'PointCasterBeyondSelectedFaceDoesNotWriteDepth(D3D12, False)',
+                'PointCasterBeyondSelectedFaceDoesNotWriteDepth(D3D12, True)',
+                'PointCasterBeyondSelectedFaceDoesNotWriteDepth(Vulkan, False)',
+                'PointCasterBeyondSelectedFaceDoesNotWriteDepth(Vulkan, True)'
+              )
+            },
+            @{
               Class = 'SilkShadowTransmissionConformanceTests'
               Method = 'PointLightLayersRespectReceiverDepthAndLifecycle'
               Names = @(
@@ -1102,8 +1112,10 @@ jobs:
               Class = 'SilkShadowTransmissionConformanceTests'
               Method = 'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow'
               Names = @(
-                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(D3D12)',
-                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(Vulkan)'
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(D3D12, False)',
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(D3D12, True)',
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(Vulkan, False)',
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(Vulkan, True)'
               )
             },
             @{
