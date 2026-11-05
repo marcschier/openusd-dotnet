@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Globalization;
 using System.Numerics;
 using OpenUsd.Rendering.Silk;
 
@@ -327,7 +328,9 @@ public sealed class SilkPointShadowNativeConformanceTests
                     }
                 }
             }
-            faceDepths.Add($"f{face}={written}@{minimumX},{minimumY}:{minimum:F4}");
+            faceDepths.Add(
+                $"f{face}={written}@{minimumX},{minimumY}:" +
+                minimum.ToString("G9", CultureInfo.InvariantCulture));
         }
 
         var samples = new List<string>();
@@ -415,8 +418,10 @@ public sealed class SilkPointShadowNativeConformanceTests
         float ClipW)
     {
         public override string ToString() =>
-            $"f{Face}@{X},{Y}:{DirectDepth:F4}/{FlippedDepth:F4};" +
-            $"z={ReceiverDepth:F4};w={ClipW:F4}";
+            $"f{Face}@{X},{Y}:{DirectDepth.ToString("G9", CultureInfo.InvariantCulture)}/" +
+            $"{FlippedDepth.ToString("G9", CultureInfo.InvariantCulture)};" +
+            $"z={ReceiverDepth.ToString("G9", CultureInfo.InvariantCulture)};" +
+            $"w={ClipW.ToString("G9", CultureInfo.InvariantCulture)}";
     }
 
     private static string RequirePlugins()
