@@ -35,6 +35,8 @@ public sealed class SilkPointShadowNativeConformanceTests
         Frame before = sequence.Before;
         Frame shadowed = sequence.Shadowed;
         Frame moved = sequence.Moved;
+        Frame movedAgain = sequence.MovedAgain;
+        Frame freshMoved = sequence.FreshMoved;
         Frame restored = sequence.Restored;
         Frame retired = sequence.Retired;
 
@@ -115,10 +117,21 @@ public sealed class SilkPointShadowNativeConformanceTests
 
         await Assert.That(moved.LiveMaps).IsEqualTo(6);
         await Assert.That(moved.Renders).IsGreaterThan(shadowed.Renders);
+        await Assert.That(moved.CasterX).IsEqualTo((double)MovedCasterX).Within(0.000001);
+        await Assert.That(movedAgain.CasterX).IsEqualTo((double)MovedCasterX).Within(0.000001);
+        await Assert.That(freshMoved.CasterX).IsEqualTo((double)MovedCasterX).Within(0.000001);
         await AssertNear(before, moved, CenterX, "receiver the moved caster left");
         await AssertNear(before, moved, PerspectiveOnlyX, "perspective extension the caster left");
         await AssertNear(before, moved, ControlX, "unoccluded receiver after movement");
-        await AssertDarkened(before, moved, MovedShadowX, "moved point shadow");
+        string movedDarkPixels = string.Join(",", Enumerable.Range(0, Size)
+            .Where(x => before.Pixels[PixelOffset(x)] > 40 &&
+                moved.Pixels[PixelOffset(x)] * 4 < before.Pixels[PixelOffset(x)]));
+        int movedOffset = PixelOffset(MovedShadowX);
+        await AssertDarkened(before, moved, MovedShadowX,
+            $"moved point shadow; second red={movedAgain.Pixels[movedOffset]}, " +
+            $"fresh red={freshMoved.Pixels[movedOffset]}, dark x=[{movedDarkPixels}]");
+        await AssertDarkened(before, movedAgain, MovedShadowX, "repeated moved point shadow");
+        await AssertDarkened(before, freshMoved, MovedShadowX, "fresh moved point shadow");
 
         await Assert.That(restored.LiveMaps).IsEqualTo(6);
         await Assert.That(restored.Renders).IsGreaterThan(moved.Renders);
@@ -137,21 +150,45 @@ public sealed class SilkPointShadowNativeConformanceTests
     private static Sequence RenderSequence(SilkGraphicsBackend backend, string plugins)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
-        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(plugins, FixturePath());
-        using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
             Size, Size, SilkTextureFormat.Rgba8Unorm,
             SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.DepthTarget(Size, Size));
 
+        Frame before;
+        Frame shadowed;
+        Frame moved;
+        Frame movedAgain;
+        Frame restored;
+        Frame retired;
+        using (OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(plugins, FixturePath()))
+        using (var renderer = new SilkMeshRenderer(device))
+        {
+            before = Capture(session, renderer, color, depth, 0);
+            shadowed = Capture(session, renderer, color, depth, 1);
+            moved = Capture(session, renderer, color, depth, 2);
+            movedAgain = Capture(session, renderer, color, depth, 2);
+            restored = Capture(session, renderer, color, depth, 3);
+            retired = Capture(session, renderer, color, depth, 4);
+        }
+
+        Frame freshMoved;
+        using (OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(plugins, FixturePath()))
+        using (var renderer = new SilkMeshRenderer(device))
+        {
+            freshMoved = Capture(session, renderer, color, depth, 2);
+        }
+
         return new Sequence(
             device.Capabilities.SupportsRasterShadows,
-            Capture(session, renderer, color, depth, 0),
-            Capture(session, renderer, color, depth, 1),
-            Capture(session, renderer, color, depth, 2),
-            Capture(session, renderer, color, depth, 3),
-            Capture(session, renderer, color, depth, 4));
+            before,
+            shadowed,
+            moved,
+            movedAgain,
+            freshMoved,
+            restored,
+            retired);
     }
 
     private static Frame Capture(
@@ -175,6 +212,8 @@ public sealed class SilkPointShadowNativeConformanceTests
             renderer.Scene.Shadows.UnsupportedFeatures,
             renderer.ShadowMapCount,
             renderer.ShadowMapRenderCount,
+            renderer.Scene.Meshes.Values.Single(mesh =>
+                mesh.Path == "/World/Caster").Transform.Span[12],
             [.. renderer.GpuResources.Diagnostics.Entries
                 .Where(entry => entry.Code == SilkRenderDiagnosticCodes.ShadowUnsupported)
                 .Select(entry => entry.Message)]);
@@ -265,6 +304,8 @@ public sealed class SilkPointShadowNativeConformanceTests
         Frame Before,
         Frame Shadowed,
         Frame Moved,
+        Frame MovedAgain,
+        Frame FreshMoved,
         Frame Restored,
         Frame Retired);
 
@@ -278,5 +319,6 @@ public sealed class SilkPointShadowNativeConformanceTests
         SilkShadowUnsupportedFeatures Unsupported,
         int LiveMaps,
         ulong Renders,
+        double CasterX,
         string[] ShadowDiagnostics);
 }
