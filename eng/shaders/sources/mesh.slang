@@ -117,7 +117,7 @@ struct FrameParameters
     // is (offsetU, offsetV, scaleU, scaleV) of the slot's tile inside the single
     // shadow atlas; shadowControls[slot] is (depthBias, normalBias, pcfRadius in
     // texels, one shadow texel in atlas UV); shadowSlots[light].x is the slot the
-    // direct light at that index samples, or -1 when the light casts no shadow.
+    // direct light samples, and .z is its point-shadow depth scale or zero.
     float4x4 shadowWorldToLightClip[MaximumShadowMaps];
     float4 shadowTile[MaximumShadowMaps];
     float4 shadowControls[MaximumShadowMaps];
@@ -822,7 +822,8 @@ float ResolveShadowVisibility(
     int slot,
     float3 worldPosition,
     float3 worldNormal,
-    float3 lightDirection)
+    float3 lightDirection,
+    float pointDepthScale)
 {
     float4 controls = frameParameters.Load<float4>(ShadowControlByteOffset + slot * 16u);
     float4 tile = frameParameters.Load<float4>(ShadowTileByteOffset + slot * 16u);
@@ -858,7 +859,17 @@ float ResolveShadowVisibility(
     float texel = controls.w;
     bool transmission = controls.z < 0.0;
     float radius = transmission ? -controls.z - 1.0 : max(controls.z, 0.0);
-    float receiverDepth = ndc.z - (controls.x * (1.0 + (2.0 * slope)));
+    float slopeFactor = 1.0 + (2.0 * slope);
+    float receiverDepth = ndc.z - (controls.x * slopeFactor);
+    if (pointDepthScale > 0.0)
+    {
+        float linearDepth = lightClip.w * pointDepthScale;
+        if (linearDepth > 1.0)
+        {
+            return 1.0;
+        }
+        receiverDepth = linearDepth / (1.0 + (controls.x * slopeFactor * linearDepth));
+    }
     float2 lowerBound = tile.xy + (texel * 0.5);
     float2 upperBound = tile.xy + tile.zw - (texel * 0.5);
     float lit = 0.0;
@@ -1939,7 +1950,8 @@ float4 FRAGMENT_ENTRY_POINT(
                             shadowSlot + (int)sampleIndex,
                             worldPosition,
                             worldGeometricNormal,
-                            shadowLightDirection);
+                            shadowLightDirection,
+                            shadowGroup.z);
                     }
                 }
                 else
@@ -1956,7 +1968,8 @@ float4 FRAGMENT_ENTRY_POINT(
                         shadowSlot,
                         worldPosition,
                         worldGeometricNormal,
-                        shadowLightDirection);
+                        shadowLightDirection,
+                        shadowGroup.z);
                 }
             }
         }

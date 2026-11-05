@@ -6,26 +6,42 @@
 Texture2D<float4> previousShadowLayer : register(t24);
 
 [shader("fragment")]
-float4 shadowTransmissionFragmentMain(ShadowMaskedVertexOutput input) : SV_Target0
+ShadowTransmissionOutput shadowTransmissionFragmentMain(ShadowMaskedVertexOutput input)
 {
-    float opacity = saturate(SampleShadowOpacity(input));
-    float previousDepth = previousShadowLayer.Load(int3(int2(input.position.xy), 0)).x;
-    if (opacity <= 0.0 || previousDepth < 0.0 || input.position.z <= previousDepth)
+    float storedDepth = ShadowStoredDepth(input);
+    if (PointShadowDepthOutsideRange(storedDepth, input.pointDepthScale))
     {
         discard;
     }
-    return float4(input.position.z, 1.0 - opacity, 0.0, 1.0);
+    float opacity = saturate(SampleShadowOpacity(input));
+    float previousDepth = previousShadowLayer.Load(int3(int2(input.position.xy), 0)).x;
+    if (opacity <= 0.0 || previousDepth < 0.0 || storedDepth <= previousDepth)
+    {
+        discard;
+    }
+    ShadowTransmissionOutput output;
+    output.depth = storedDepth;
+    output.color = float4(storedDepth, 1.0 - opacity, 0.0, 1.0);
+    return output;
 }
 
 [shader("fragment")]
-float4 shadowTransmissionProbeFragmentMain(ShadowMaskedVertexOutput input) : SV_Target0
+ShadowTransmissionOutput shadowTransmissionProbeFragmentMain(ShadowMaskedVertexOutput input)
 {
+    float storedDepth = ShadowStoredDepth(input);
+    if (PointShadowDepthOutsideRange(storedDepth, input.pointDepthScale))
+    {
+        discard;
+    }
     float opacity = saturate(SampleShadowOpacity(input));
     float nearestDepth = previousShadowLayer.Load(int3(int2(input.position.xy), 0)).x;
-    if (opacity <= 0.0 || input.position.z != nearestDepth)
+    if (opacity <= 0.0 || storedDepth != nearestDepth)
     {
         discard;
     }
     // Straight-alpha-over records 1 - 2^-N in alpha, independently of draw order.
-    return float4(0.0, 0.0, 0.0, 0.5);
+    ShadowTransmissionOutput output;
+    output.depth = storedDepth;
+    output.color = float4(0.0, 0.0, 0.0, 0.5);
+    return output;
 }

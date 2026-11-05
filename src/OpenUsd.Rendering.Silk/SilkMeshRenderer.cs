@@ -483,6 +483,8 @@ public sealed partial class SilkMeshRenderer :
 
     internal uint ShadowAtlasEdge => _shadowMaps.AtlasEdge;
 
+    internal SilkShadowFrameBinding ShadowBindingForTesting => _shadowMaps.Binding;
+
     internal void ReadShadowAtlasDepthForTesting(Span<float> destination) =>
         _shadowMaps.ReadAtlasDepthForTesting(destination);
 

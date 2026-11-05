@@ -231,6 +231,106 @@ public sealed class SilkShadowAtlasRetentionTests
     }
 
     [Test]
+    public async Task CubeDisplacementRetainsTheOriginalNearPlaneAndExpandsFar()
+    {
+        SilkShadowDescriptor descriptor = CreatePerspectiveDescriptor(near: 4, far: 12) with
+        {
+            Flags = SilkShadowDescriptorOptions.CubeFace,
+            DepthBias = 0.002f,
+        };
+        SilkShadowDescriptor expanded =
+            SilkShadowMapCache.ExpandPerspectiveDescriptor(descriptor, displacementPadding: 2);
+        double near = expanded.Projection[14] / (expanded.Projection[10] - 1);
+        double far = expanded.Projection[14] / (expanded.Projection[10] + 1);
+
+        await Assert.That(Math.Abs(near - 4)).IsLessThan(1e-12);
+        await Assert.That(Math.Abs(far - 14)).IsLessThan(1e-10);
+        await Assert.That(expanded.Projection[0]).IsEqualTo(1d);
+        await Assert.That(expanded.Projection[5]).IsEqualTo(1d);
+        await Assert.That(Math.Abs(expanded.DepthBias - (0.002f * 12 / 14)))
+            .IsLessThan(1e-9f);
+    }
+
+    [Test]
+    public async Task PreparedCubeRendersWithCandidateDepthScaleBeforePublication()
+    {
+        using var fixture = new ShadowFixture();
+        var budget = new SilkGpuTextureBudget(64ul * 1024 * 1024);
+        budget.ConfigureDevice(fixture.Device);
+        fixture.Device.CasterPathsByX[0] = "/Caster";
+        byte[] frame = HighShadowFrame(1);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(552), 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(556), 1);
+        fixture.Resources.Apply(fixture.Scene, fixture.Scene.Apply(
+            [.. frame, .. SilkTransactionalApplyTests.Mesh("/Caster", 1), .. PointShadowTable(16)],
+            3,
+            1));
+        _ = fixture.Cache.Prepare(fixture.Scene, fixture.Resources);
+        SilkShadowFrameBinding original = fixture.Cache.Binding;
+        float originalScale = original.GetPointDepthScaleForLight(0);
+        fixture.Device.RecordedCasterDraws.Clear();
+
+        _ = fixture.Scene.Apply(PointShadowTable(64), 1, 2);
+        SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(fixture.Scene.Shadows.Descriptors)!;
+        SilkShadowFrameBinding expected = SilkShadowFrameBinding.Create(fixture.Scene.Shadows.Descriptors, layout);
+        float candidateScale = expected.GetPointDepthScaleForLight(0);
+        await Assert.That(candidateScale).IsLessThan(originalScale);
+
+        using SilkShadowMapCache.PreparedCapacity prepared = fixture.Cache.PrepareCapacity(
+            fixture.Scene, fixture.Resources, prepareRendering: true)!;
+        prepared.Render(fixture.Scene, fixture.Resources, null);
+        await Assert.That(fixture.Cache.Binding).IsSameReferenceAs(original);
+        await Assert.That(fixture.Device.RecordedCasterDraws.Count).IsEqualTo(6);
+        foreach (RecordedShadowDraw draw in fixture.Device.RecordedCasterDraws)
+        {
+            await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(draw.Bytes.AsSpan(64, 4)))
+                .IsEqualTo(candidateScale);
+        }
+        prepared.Commit();
+        await Assert.That(fixture.Cache.Binding.GetPointDepthScaleForLight(0)).IsEqualTo(candidateScale);
+    }
+
+    [Test]
+    public async Task InvalidCubeProjectionIsRejectedBeforeReplacingThePublishedAtlas()
+    {
+        using var fixture = new ShadowFixture();
+        var budget = new SilkGpuTextureBudget(64ul * 1024 * 1024);
+        budget.ConfigureDevice(fixture.Device);
+        fixture.Device.CasterPathsByX[0] = "/Caster";
+        byte[] frame = HighShadowFrame(1);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(552), 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(556), 1);
+        byte[] valid = PointShadowTable(16);
+        fixture.Resources.Apply(fixture.Scene, fixture.Scene.Apply(
+            [.. frame, .. SilkTransactionalApplyTests.Mesh("/Caster", 1), .. valid], 3, 1));
+        _ = fixture.Cache.Prepare(fixture.Scene, fixture.Resources);
+        ShadowTexture atlas = fixture.BindAndCaptureAtlas();
+        SilkShadowFrameBinding binding = fixture.Cache.Binding;
+        int allocations = fixture.Device.CreatedShadowTextureCount;
+        ulong renderCount = fixture.Cache.RenderCount;
+
+        byte[] invalid = (byte[])valid.Clone();
+        BinaryPrimitives.WriteDoubleLittleEndian(
+            invalid.AsSpan(24 + (3 * 288) + 144 + (11 * 8)), 0);
+        _ = fixture.Scene.Apply(invalid, 1, 2);
+        await Assert.That(() => fixture.Cache.PrepareCapacity(
+            fixture.Scene, fixture.Resources, prepareRendering: true))
+            .Throws<SilkShadowProjectionException>();
+        await Assert.That(fixture.Cache.Binding).IsSameReferenceAs(binding);
+        await Assert.That(fixture.BindAndCaptureAtlas()).IsSameReferenceAs(atlas);
+        await Assert.That(fixture.Device.CreatedShadowTextureCount).IsEqualTo(allocations);
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(renderCount);
+
+        _ = fixture.Scene.Apply(valid, 1, 3);
+        using SilkShadowMapCache.PreparedCapacity retry = fixture.Cache.PrepareCapacity(
+            fixture.Scene, fixture.Resources, prepareRendering: true)!;
+        retry.Render(fixture.Scene, fixture.Resources, null);
+        retry.Commit();
+        await Assert.That(fixture.Cache.RenderCount).IsEqualTo(renderCount + 1);
+        await Assert.That(fixture.Cache.Binding.GetPointDepthScaleForLight(0)).IsGreaterThan(0f);
+    }
+
+    [Test]
     public async Task PerspectiveDisplacementPaddingExpandsFrustumAndDepthRange()
     {
         SilkShadowDescriptor descriptor = CreatePerspectiveDescriptor(near: 1, far: 10);
@@ -1598,6 +1698,24 @@ public sealed class SilkShadowAtlasRetentionTests
                 double identity = element % 5 == 0 ? 1 : 0;
                 BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(entry + 16 + (element * 8)), identity);
                 BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(entry + 144 + (element * 8)), identity);
+            }
+        }
+        return bytes;
+    }
+
+    private static byte[] PointShadowTable(double far)
+    {
+        byte[] bytes = HighShadowTable(1, 0, 0, 0, 0, 0, 0);
+        double[] projection = CreatePerspectiveDescriptor(0.01, far).Projection;
+        for (int face = 0; face < 6; face++)
+        {
+            int entry = 24 + (face * 288);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(entry + 12), (uint)SilkShadowDescriptorOptions.CubeFace);
+            for (int element = 0; element < 16; element++)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    bytes.AsSpan(entry + 144 + (element * 8)), projection[element]);
             }
         }
         return bytes;

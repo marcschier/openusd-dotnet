@@ -23,6 +23,20 @@ public sealed class SilkShadowAdmissionTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task PointReceiverBeyondFarPlaneRemainsLitWhenPerspectiveDepthRoundsToOne(
+        SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuTextureBudget(67_108_864);
+        budget.ConfigureDevice(device);
+        await SilkShadowConformance.PointReceiverBeyondFarPlaneRemainsLit(device);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task ShadowQuotaRefusalPreservesPriorPixelsAndRetriesWithoutNativeLeaks(SilkGraphicsBackend backend)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);

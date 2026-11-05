@@ -1,14 +1,21 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+#include "shadow.depth.shared.slang"
+
 struct ShadowVertexOutput
 {
     float4 position : SV_Position;
+    float lightDepth : TEXCOORD2;
+    nointerpolation float pointDepthScale : TEXCOORD3;
 };
 
-// Writes no colour at all. A shadow pass binds no colour attachment, so a
-// fragment stage returning SV_Target0 would describe an output the pass cannot
-// store; the depth value is produced by the fixed-function stage alone.
 [shader("fragment")]
-void shadowFragmentMain(ShadowVertexOutput input)
+float shadowFragmentMain(ShadowVertexOutput input) : SV_Depth
 {
+    float depth = EncodeShadowDepth(input.position.z, input.lightDepth, input.pointDepthScale);
+    if (PointShadowDepthOutsideRange(depth, input.pointDepthScale))
+    {
+        discard;
+    }
+    return depth;
 }

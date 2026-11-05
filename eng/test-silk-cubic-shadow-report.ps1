@@ -105,10 +105,15 @@ function New-FixtureReport
     }
     else
     {
-        $method = 'AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported'
-        foreach ($backend in $backends)
+        foreach ($method in @(
+            'AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported',
+            'DistantPointShadowPreservesDepthSeparationWhenSupported',
+            'RetainedPointShadowTracksCasterMovingTowardLightWhenSupported'))
         {
-            Add-FixtureCase $rows $Class $method "${method}($backend)" $start
+            foreach ($backend in $backends)
+            {
+                Add-FixtureCase $rows $Class $method "${method}($backend)" $start
+            }
         }
     }
     $summary = {
@@ -206,7 +211,7 @@ try
             {
                 if ($platform -ceq 'windows') { 73 } else { 71 }
             }
-            else { if ($platform -ceq 'windows') { 2 } else { 1 } }
+            else { if ($platform -ceq 'windows') { 6 } else { 3 } }
             Write-Fixture $fixture $path
             $accepted = Assert-SilkCubicShadowReport -ReportPath $path -Platform $platform `
                 -Class $class -StartedUtc $started -LogPassedCount $count
@@ -215,7 +220,9 @@ try
 
             $gpuRows = @($fixture.groups[0].tests | Where-Object {
                 $_.methodName -ceq 'CubicBezierRasterMatchesIndependentSegments' -or
-                $_.methodName -ceq 'AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported'
+                $_.methodName -ceq 'AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported' -or
+                $_.methodName -ceq 'DistantPointShadowPreservesDepthSeparationWhenSupported' -or
+                $_.methodName -ceq 'RetainedPointShadowTracksCasterMovingTowardLightWhenSupported'
             })
             foreach ($gpuRow in $gpuRows)
             {
@@ -256,13 +263,21 @@ try
                 @{ method = 'TextureBudgetRefusalPreservesTransmissionAndRetriesTheSamePage'; args = @('') },
                 @{ method = 'SingleAndMultipleLayersRespectReceiverDepthAndLifecycle'
                     args = @(', 1, False', ', 2, False', ', 4, False', ', 1, True', ', 2, True') },
+                @{ method = 'PointLightLayersRespectReceiverDepthAndLifecycle'
+                    args = @(', 1, False', ', 2, False', ', 4, False', ', 1, True', ', 2, True') },
                 @{ method = 'OverflowAndEqualDepthRefusalPreservePublishedPixelsAndAllowCorrection'
+                    args = @(', False', ', True') },
+                @{ method = 'PointLightOverflowAndEqualDepthPreservePixelsAndAllowCorrection'
                     args = @(', False', ', True') },
                 @{ method = 'OpacityTextureEditsAndShadowLinksMatchAnalyticPixels'
                     args = @(', False', ', True') },
+                @{ method = 'PointLightConstantAndTexturedLayersComposeInEitherDepthOrder'
+                    args = @(', False', ', True') },
                 @{ method = 'ConstantAndTexturedLayersComposeInEitherDepthOrder'
                     args = @(', False, False', ', False, True', ', True, False', ', True, True') },
-                @{ method = 'OpaqueAndCutoutCastersComposeWithTransmission'; args = @('') }))
+                @{ method = 'OpaqueAndCutoutCastersComposeWithTransmission'; args = @('') },
+                @{ method = 'PointLightOpaqueAndCutoutCastersComposeWithTransmission'; args = @('') },
+                @{ method = 'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow'; args = @('') }))
             {
                 foreach ($argument in $entry.args)
                 {
@@ -275,18 +290,18 @@ try
                 }
             }
         }
-        $count = if ($platform -ceq 'windows') { 30 } else { 15 }
+        $count = if ($platform -ceq 'windows') { 52 } else { 26 }
         $fixture.groups[0].className = $class
         $fixture.groups[0].tests = $rows.ToArray()
         foreach ($summary in @($fixture.summary, $fixture.groups[0].summary))
         {
-            $summary.total = 30
+            $summary.total = 52
             $summary.passed = $count
-            $summary.skipped = 30 - $count
+            $summary.skipped = 52 - $count
         }
         Write-Fixture $fixture $path
         $accepted = Assert-SilkCubicShadowReport $path $platform $class $started $count
-        if ($accepted.passed -ne $count -or $accepted.skipped -ne 30 - $count)
+        if ($accepted.passed -ne $count -or $accepted.skipped -ne 52 - $count)
         {
             throw 'The transmission backend evidence count is incorrect.'
         }

@@ -60,6 +60,7 @@ public sealed class SilkShadowWireTests
             (uint)(124 + (index / 6)), (uint)index, 256,
             SilkShadowDescriptorOptions.CubeFace | SilkShadowDescriptorOptions.CasterLinked)).ToArray();
         byte[] cube = CreateShadow(128, descriptors);
+        WriteCubePerspectiveMatrices(cube, descriptors.Length);
         _ = scene.Apply(cube, 1, 1);
         await Assert.That(scene.Shadows.Count).IsEqualTo(24);
         SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!;
@@ -86,6 +87,9 @@ public sealed class SilkShadowWireTests
             .IsEqualTo(18f);
         await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(14884 + 127 * 16)))
             .IsEqualTo(6f);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(14888 + 127 * 16)))
+            .IsEqualTo(binding.GetPointDepthScaleForLight(127));
+        await Assert.That(binding.GetPointDepthScaleForLight(127)).IsGreaterThan(0f);
 
         _ = scene.Apply(
             [.. CreateWideShadowFrame(128), .. CreateShadow(128,
@@ -988,6 +992,30 @@ public sealed class SilkShadowWireTests
                 descriptor.PcfRadius);
         }
         return bytes;
+    }
+
+    private static void WriteCubePerspectiveMatrices(byte[] page, int count)
+    {
+        const double near = 0.01;
+        const double far = 64;
+        double[] projection =
+        [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, -(far + near) / (far - near), -1,
+            0, 0, -(2 * far * near) / (far - near), 0,
+        ];
+        for (int map = 0; map < count; map++)
+        {
+            int entry = FixedSize + (map * DescriptorSize);
+            for (int element = 0; element < 16; element++)
+            {
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    page.AsSpan(entry + 16 + (element * 8)), element % 5 == 0 ? 1 : 0);
+                BinaryPrimitives.WriteDoubleLittleEndian(
+                    page.AsSpan(entry + 144 + (element * 8)), projection[element]);
+            }
+        }
     }
 
     [Test]

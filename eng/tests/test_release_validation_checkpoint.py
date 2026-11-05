@@ -230,6 +230,68 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
                 windows,
             )
 
+    def test_point_shadow_checkpoint_requires_managed_and_backend_cases(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        managed = workflow.split(
+            "\n      - name: Run point-shadow depth and transaction tests", 1
+        )[1].split("\n      - name:", 1)[0]
+        for method, count in (
+            ("DistantCubeDepthSeparatesCastersWithoutFittingTheNearPlane", 1),
+            ("CubeBiasPreservesThePublishedPerspectiveBias", 3),
+            ("CubeFacesUseOneScaleWhenTheirFarPlanesDiffer", 1),
+            ("CubeGroupRejectsFaceWhoseLinearNearDepthWouldUnderflow", 1),
+            ("InvalidCubeDepthProjectionIsRejected", 4),
+            ("OrthographicMapsRetainTheirPublishedDepthBias", 1),
+            ("CasterInstanceWritesTheDepthScaleAndClearsOtherReservedValues", 1),
+            ("CasterInstanceRejectsInvalidDepthScale", 3),
+            ("CubeDisplacementRetainsTheOriginalNearPlaneAndExpandsFar", 1),
+            ("PreparedCubeRendersWithCandidateDepthScaleBeforePublication", 1),
+            ("InvalidCubeProjectionIsRejectedBeforeReplacingThePublishedAtlas", 1),
+            ("SixFaceGroupsRetainTheirFirstSlotAcrossReplacementAndRetirement", 1),
+        ):
+            with self.subTest(method=method):
+                self.assertIn(f"{method} = {count}", managed)
+        self.assertIn("-MinimumExpectedTests $expectedCount", managed)
+        self.assertIn("$report.summary.passed -ne $expectedCount", managed)
+        self.assertIn("$report.summary.skipped -ne 0", managed)
+        self.assertIn("$report.summary.failed -ne 0", managed)
+        for output in (
+            "point-depth-encoding.json",
+            "point-depth-transactions.json",
+            "point-depth-wire.json",
+        ):
+            self.assertIn(output, managed)
+
+        windows = workflow.split("\n  windows-conformance-repro:", 1)[1]
+        repro = windows.split("\n      - name: Reproduce Windows conformance cases", 1)[
+            1
+        ].split("\n      - name:", 1)[0]
+        methods = {
+            "PointReceiverBeyondFarPlaneRemainsLitWhenPerspectiveDepthRoundsToOne": ("",),
+            "PointLightLayersRespectReceiverDepthAndLifecycle": (
+                ", 1, False", ", 2, False", ", 4, False", ", 1, True", ", 2, True"
+            ),
+            "PointLightOverflowAndEqualDepthPreservePixelsAndAllowCorrection": (
+                ", False", ", True"
+            ),
+            "PointLightConstantAndTexturedLayersComposeInEitherDepthOrder": (
+                ", False", ", True"
+            ),
+            "PointLightOpaqueAndCutoutCastersComposeWithTransmission": ("",),
+            "PointLightLayersBeyondFarPlaneDoNotTriggerOverflow": ("",),
+        }
+        for method, arguments in methods.items():
+            with self.subTest(method=method):
+                self.assertEqual(repro.count(f"Method = '{method}'"), 1)
+                for backend in ("D3D12", "Vulkan"):
+                    for argument in arguments:
+                        self.assertEqual(
+                            repro.count(f"'{method}({backend}{argument})'"), 1
+                        )
+        self.assertIn("-MinimumExpectedTests $case.Names.Count", repro)
+        self.assertIn("$report.summary.passed -ne $case.Names.Count", repro)
+        self.assertIn("$report.summary.skipped -ne 0", repro)
+
     def test_native_ptex_admission_gate_keeps_both_reports_and_requires_exact_cases(self):
         native = (ROOT / ".github" / "workflows" / "native.yml").read_text(
             encoding="utf-8"

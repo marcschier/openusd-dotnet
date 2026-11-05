@@ -3,12 +3,20 @@
 #include "shadow.mask.fragment.slang"
 
 [shader("fragment")]
-float4 shadowTransmissionFirstFragmentMain(ShadowMaskedVertexOutput input) : SV_Target0
+ShadowTransmissionOutput shadowTransmissionFirstFragmentMain(ShadowMaskedVertexOutput input)
 {
+    float depth = ShadowStoredDepth(input);
+    if (PointShadowDepthOutsideRange(depth, input.pointDepthScale))
+    {
+        discard;
+    }
     float opacity = saturate(SampleShadowOpacity(input));
     if (opacity <= 0.0)
     {
         discard;
     }
-    return float4(input.position.z, 1.0 - opacity, 0.0, 1.0);
+    ShadowTransmissionOutput output;
+    output.depth = depth;
+    output.color = float4(output.depth, 1.0 - opacity, 0.0, 1.0);
+    return output;
 }

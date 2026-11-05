@@ -171,6 +171,107 @@ public sealed class SilkPointShadowNativeConformanceTests
         }
     }
 
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public async Task DistantPointShadowPreservesDepthSeparationWhenSupported(
+        SilkGraphicsBackend backend)
+    {
+        string plugins = RequirePlugins();
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size, Size, SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(
+            plugins, FixturePath("native-point-shadow-distant-reference.usda"));
+        using var renderer = new SilkMeshRenderer(device);
+
+        Frame before = Capture(session, renderer, color, depth, 0);
+        Frame shadowed = Capture(session, renderer, color, depth, 1);
+        await AssertLit(before, CenterX, "distant point-light control");
+        await Assert.That(shadowed.Light.Transform.M43).IsEqualTo(50f);
+        await Assert.That(shadowed.Descriptors.Length).IsEqualTo(6);
+
+        if (!device.Capabilities.SupportsRasterShadows)
+        {
+            await Assert.That(backend).IsEqualTo(SilkGraphicsBackend.Metal);
+            await AssertNear(before, shadowed, CenterX, "unsupported distant point shadow");
+            return;
+        }
+
+        uint shadowAtlasEdge = renderer.ShadowAtlasEdge;
+        var shadowAtlasDepth = new float[checked((int)(shadowAtlasEdge * shadowAtlasEdge))];
+        renderer.ReadShadowAtlasDepthForTesting(shadowAtlasDepth);
+        shadowed = shadowed with
+        {
+            ShadowAtlasDepth = shadowAtlasDepth,
+            ShadowAtlasEdge = shadowAtlasEdge
+        };
+        ShadowDepthSample probe = SampleShadowDepth(shadowed, CenterX);
+        await Assert.That(probe.DirectDepth).IsLessThan(probe.ReceiverDepth)
+            .Because($"The distant caster must remain in front of its receiver: {probe}.");
+        await AssertDarkened(before, shadowed, CenterX, "distant point shadow");
+        await AssertNear(before, shadowed, ControlX, "unoccluded distant receiver");
+    }
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public async Task RetainedPointShadowTracksCasterMovingTowardLightWhenSupported(
+        SilkGraphicsBackend backend)
+    {
+        string plugins = RequirePlugins();
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size, Size, SilkTextureFormat.Rgba8Unorm,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(
+            plugins, FixturePath("native-point-shadow-distant-reference.usda"));
+        using var renderer = new SilkMeshRenderer(device);
+
+        Frame unshadowed = Capture(session, renderer, color, depth, 0);
+        Frame original = Capture(session, renderer, color, depth, 1);
+        ulong shadowRevision = renderer.Scene.Shadows.Revision;
+        ulong renderCount = renderer.ShadowMapRenderCount;
+        SilkDeformationResult result = renderer.Scene.ReplacePoints(
+            "/World/Caster",
+            0,
+            [
+                -0.25f, -0.25f, 30f,
+                 0.25f, -0.25f, 30f,
+                 0.25f,  0.25f, 30f,
+                -0.25f,  0.25f, 30f,
+            ],
+            out ulong meshId);
+        await Assert.That(result).IsEqualTo(SilkDeformationResult.Applied);
+        renderer.GpuResources.Apply(
+            renderer.Scene, new SilkSceneDelta(new[] { meshId }, ReadOnlyMemory<ulong>.Empty));
+        Frame moved = CaptureRetained(renderer, color, depth);
+        await Assert.That(renderer.Scene.Shadows.Revision).IsEqualTo(shadowRevision);
+
+        await Assert.That(renderer.Scene.RestoreAuthoredPoints(meshId)).IsTrue();
+        renderer.GpuResources.Apply(
+            renderer.Scene, new SilkSceneDelta(new[] { meshId }, ReadOnlyMemory<ulong>.Empty));
+        Frame restored = CaptureRetained(renderer, color, depth);
+        await Assert.That(renderer.Scene.Shadows.Revision).IsEqualTo(shadowRevision);
+        if (!device.Capabilities.SupportsRasterShadows)
+        {
+            await Assert.That(backend).IsEqualTo(SilkGraphicsBackend.Metal);
+            await AssertNear(unshadowed, moved, PerspectiveOnlyX, "unsupported moved point shadow");
+            return;
+        }
+
+        await Assert.That(moved.Renders).IsGreaterThan(renderCount);
+        await Assert.That(restored.Renders).IsGreaterThan(moved.Renders);
+        await AssertNear(unshadowed, original, PerspectiveOnlyX, "original distant receiver");
+        await AssertDarkened(unshadowed, moved, PerspectiveOnlyX, "caster moved toward the point light");
+        await AssertNear(unshadowed, moved, ControlX, "unoccluded moved point-light receiver");
+        await AssertNear(original, restored, PerspectiveOnlyX, "restored point-light receiver");
+        await AssertDarkened(unshadowed, restored, CenterX, "restored distant point shadow");
+    }
+
     public static IEnumerable<SilkGraphicsBackend> AvailableBackends() => SilkConformanceBackends.Available();
 
     private static Sequence RenderSequence(SilkGraphicsBackend backend, string plugins)
@@ -234,6 +335,20 @@ public sealed class SilkPointShadowNativeConformanceTests
     {
         using OpenUsdSilkPage page = session.Sync(Size, Size, time, Camera);
         SilkMeshRenderResult result = renderer.ApplyAndRender(page, color, depth, Options);
+        return CaptureFrame(renderer, color, result);
+    }
+
+    private static Frame CaptureRetained(
+        SilkMeshRenderer renderer,
+        ISilkGraphicsTexture color,
+        ISilkGraphicsTexture depth) =>
+        CaptureFrame(renderer, color, renderer.Render(color, depth, Options));
+
+    private static Frame CaptureFrame(
+        SilkMeshRenderer renderer,
+        ISilkGraphicsTexture color,
+        SilkMeshRenderResult result)
+    {
         var pixels = new byte[Size * Size * 4];
         color.ReadbackForTesting(pixels);
         return new Frame(
@@ -243,6 +358,7 @@ public sealed class SilkPointShadowNativeConformanceTests
             renderer.Scene.Frame.LightCount,
             renderer.Scene.Frame.Lights[0],
             [.. renderer.Scene.Shadows.Descriptors],
+            renderer.ShadowBindingForTesting,
             renderer.Scene.Shadows.UnsupportedFeatures,
             renderer.ShadowMapCount,
             renderer.ShadowMapRenderCount,
@@ -365,7 +481,7 @@ public sealed class SilkPointShadowNativeConformanceTests
         for (int candidate = 0; candidate < frame.Descriptors.Length; candidate++)
         {
             Vector4 faceClip = transform(
-                SilkShadowMatrix.CreateWorldToLightClip(frame.Descriptors[candidate]),
+                frame.Binding.GetWorldToLightClip(candidate),
                 worldPosition);
             if (faceClip.W > greatestW)
             {
@@ -390,8 +506,10 @@ public sealed class SilkPointShadowNativeConformanceTests
         int flippedAtlasY = (int)frame.ShadowAtlasEdge - 1 - atlasY;
         float directDepth = depth[(atlasY * (int)frame.ShadowAtlasEdge) + atlasX];
         float flippedDepth = depth[(flippedAtlasY * (int)frame.ShadowAtlasEdge) + atlasX];
+        float pointDepthScale = frame.Binding.GetPointDepthScaleForLight(
+            (int)frame.Descriptors[face].LightIndex);
         return new ShadowDepthSample(
-            face, atlasX, atlasY, directDepth, flippedDepth, clip.Z * inverseW, clip.W);
+            face, atlasX, atlasY, directDepth, flippedDepth, clip.W * pointDepthScale, clip.W);
     }
 
     private static ShadowDepthSample SampleShadowDepth(Frame frame, int x)
@@ -462,7 +580,7 @@ public sealed class SilkPointShadowNativeConformanceTests
         return plugins;
     }
 
-    private static string FixturePath()
+    private static string FixturePath(string fileName = "native-point-shadow-reference.usda")
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null &&
@@ -473,7 +591,7 @@ public sealed class SilkPointShadowNativeConformanceTests
         return Path.Combine(
             directory?.FullName ?? throw new InvalidOperationException("Could not locate repository root."),
             "test-assets",
-            "native-point-shadow-reference.usda");
+            fileName);
     }
 
     private sealed record Sequence(
@@ -493,6 +611,7 @@ public sealed class SilkPointShadowNativeConformanceTests
         uint LightCount,
         SilkFrameLight Light,
         SilkShadowDescriptor[] Descriptors,
+        SilkShadowFrameBinding Binding,
         SilkShadowUnsupportedFeatures Unsupported,
         int LiveMaps,
         ulong Renders,

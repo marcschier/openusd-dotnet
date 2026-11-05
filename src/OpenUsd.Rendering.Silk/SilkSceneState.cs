@@ -2244,7 +2244,7 @@ internal static class SilkFrameUniformWriter
                 ShadowSlotOffset + (light * 16),
                 shadows.GetSlotForLight(light),
                 shadows.GetMapCountForLight(light),
-                0,
+                shadows.GetPointDepthScaleForLight(light),
                 0);
         }
     }
@@ -11778,7 +11778,8 @@ internal sealed partial class SilkMeshGpuGeometryResource : IDisposable
                 casters[index].ObjectToLightClip,
                 destination.Slice(
                     index * SilkSceneUniformWriter.ByteSize,
-                    SilkSceneUniformWriter.ByteSize));
+                    SilkSceneUniformWriter.ByteSize),
+                casters[index].PointDepthScale);
         }
     }
 

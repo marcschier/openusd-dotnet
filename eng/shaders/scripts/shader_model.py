@@ -113,6 +113,7 @@ REQUIRED_CHECKED_INPUTS = (
     "eng/shaders/sources/volume.camera.fragment.uniform.slang",
     "eng/shaders/sources/volume.camera.fragment.shared.slang",
     "eng/shaders/sources/material.surface.slang",
+    "eng/shaders/sources/shadow.depth.shared.slang",
     "eng/shaders/test-checked-corruption.ps1",
     "eng/shaders/test-checked-input-line-endings.ps1",
     "eng/shaders/test-expand-verified-archive.ps1",

@@ -105,18 +105,26 @@ function Get-SilkCubicShadowContract
         {
             foreach ($method in @(
                 'TextureBudgetRefusalPreservesTransmissionAndRetriesTheSamePage',
-                'OpaqueAndCutoutCastersComposeWithTransmission'))
+                'OpaqueAndCutoutCastersComposeWithTransmission',
+                'PointLightOpaqueAndCutoutCastersComposeWithTransmission',
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow'))
             {
                 $cases.Add("${method}($backend)", $method)
             }
-            $method = 'SingleAndMultipleLayersRespectReceiverDepthAndLifecycle'
-            foreach ($arguments in @('1, False', '2, False', '4, False', '1, True', '2, True'))
+            foreach ($method in @(
+                'SingleAndMultipleLayersRespectReceiverDepthAndLifecycle',
+                'PointLightLayersRespectReceiverDepthAndLifecycle'))
             {
-                $cases.Add("${method}($backend, $arguments)", $method)
+                foreach ($arguments in @('1, False', '2, False', '4, False', '1, True', '2, True'))
+                {
+                    $cases.Add("${method}($backend, $arguments)", $method)
+                }
             }
             foreach ($method in @(
                 'OverflowAndEqualDepthRefusalPreservePublishedPixelsAndAllowCorrection',
-                'OpacityTextureEditsAndShadowLinksMatchAnalyticPixels'))
+                'OpacityTextureEditsAndShadowLinksMatchAnalyticPixels',
+                'PointLightOverflowAndEqualDepthPreservePixelsAndAllowCorrection',
+                'PointLightConstantAndTexturedLayersComposeInEitherDepthOrder'))
             {
                 foreach ($argument in @('False', 'True'))
                 {
@@ -139,7 +147,7 @@ function Get-SilkCubicShadowContract
                 if ($name.Contains('(D3D12', [StringComparison]::Ordinal)) { [void]$skips.Add($name) }
             }
         }
-        $expectedCount = 30
+        $expectedCount = 52
     }
     elseif ($Class -ceq 'SilkCubicCurveNativeTests')
     {
@@ -225,12 +233,17 @@ function Get-SilkCubicShadowContract
     }
     else
     {
-        $method = 'AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported'
-        foreach ($backend in $backends)
+        foreach ($method in @(
+            'AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported',
+            'DistantPointShadowPreservesDepthSeparationWhenSupported',
+            'RetainedPointShadowTracksCasterMovingTowardLightWhenSupported'))
         {
-            $cases.Add("${method}($backend)", $method)
+            foreach ($backend in $backends)
+            {
+                $cases.Add("${method}($backend)", $method)
+            }
         }
-        $expectedCount = if ($Platform -ceq 'windows') { 2 } else { 1 }
+        $expectedCount = if ($Platform -ceq 'windows') { 6 } else { 3 }
     }
     if ($cases.Count -ne $expectedCount)
     {

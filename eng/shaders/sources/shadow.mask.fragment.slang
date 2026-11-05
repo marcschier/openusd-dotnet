@@ -21,6 +21,7 @@ Texture2D<float4> compositeTexture : register(t15);
 #endif
 
 #include "material.surface.slang"
+#include "shadow.depth.shared.slang"
 
 [[vk::binding(7, 0)]]
 StructuredBuffer<SurfaceParameters> surfaceParameters : register(t7);
@@ -32,6 +33,20 @@ struct ShadowMaskedVertexOutput
     float2 texCoord : TEXCOORD0;
     float2 texCoord1 : TEXCOORD1;
 #endif
+    float lightDepth : TEXCOORD2;
+    nointerpolation float pointDepthScale : TEXCOORD3;
+};
+
+[ForceInline]
+float ShadowStoredDepth(ShadowMaskedVertexOutput input)
+{
+    return EncodeShadowDepth(input.position.z, input.lightDepth, input.pointDepthScale);
+}
+
+struct ShadowTransmissionOutput
+{
+    float4 color : SV_Target0;
+    float depth : SV_Depth;
 };
 
 [ForceInline]
@@ -56,10 +71,16 @@ float SampleShadowOpacity(ShadowMaskedVertexOutput input)
 }
 
 [shader("fragment")]
-void shadowMaskedFragmentMain(ShadowMaskedVertexOutput input)
+float shadowMaskedFragmentMain(ShadowMaskedVertexOutput input) : SV_Depth
 {
+    float depth = ShadowStoredDepth(input);
+    if (PointShadowDepthOutsideRange(depth, input.pointDepthScale))
+    {
+        discard;
+    }
     if (SampleShadowOpacity(input) < surfaceParameters[0].metallicRoughnessThresholdWorkflow.z)
     {
         discard;
     }
+    return depth;
 }

@@ -4285,6 +4285,66 @@ void VerifyBoundedPointShadowFrustumAndRefusal()
         OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS, "point without geometry");
 }
 
+void VerifyDistantPointShadowClipDistances()
+{
+    HdSilkSceneState state;
+    HdSilkLightRecord light;
+    light.path = "/Lights/DistantPoint";
+    light.type = OPENUSD_SILK_LIGHT_SPHERE;
+    light.radius = 0.0f;
+    light.shapingConeAngle = 180.0f;
+    light.shadowEnabled = 1u;
+    light.transform[14] = 50.0;
+    state.ReplaceLight(light);
+
+    HdSilkMeshRecord mesh;
+    mesh.path = "/Geom/DistantPointCaster";
+    mesh.primId = 99;
+    mesh.topologyRevision = 1;
+    mesh.points = CasterPoints3;
+    mesh.indices = {0u, 1u, 2u};
+    mesh.triangleSubprims = {0u};
+    state.ReplaceMeshInstances(mesh.path, {mesh});
+
+    uint64_t revision = 0;
+    uint32_t count = 0;
+    const std::vector<uint8_t> bytes = state.BuildPage(&revision, &count);
+    const RetainedPage page = ReadRetainedPage(bytes, count);
+    RequireShadowHeader(page, 6u, 1u, 0u, "distant point");
+    const ShadowView& face = page.shadows.maps[5];
+    std::array<double, 16> projected{};
+    for (size_t row = 0; row < 4; ++row)
+    {
+        for (size_t column = 0; column < 4; ++column)
+        {
+            for (size_t inner = 0; inner < 4; ++inner)
+            {
+                projected[(row * 4) + column] +=
+                    face.view[(row * 4) + inner] * face.projection[(inner * 4) + column];
+            }
+        }
+    }
+
+    Require(face.projection[11] == -1.0 && face.projection[15] == 0.0 &&
+            face.projection[10] < -1.0 && face.projection[14] < 0.0,
+        "distant point: expected a finite perspective depth projection");
+    const double nearPlane = face.projection[14] / (face.projection[10] - 1.0);
+    const double farPlane = face.projection[14] / (face.projection[10] + 1.0);
+    Require(std::isfinite(nearPlane) && std::isfinite(farPlane) &&
+            nearPlane > 0.0 && farPlane > nearPlane,
+        "distant point: invalid perspective depth range");
+    const float wScale = static_cast<float>(projected[11]);
+    const float wOffset = static_cast<float>(projected[15]);
+    const float casterDistance = wScale + wOffset;
+    const float receiverDistance = -wScale + wOffset;
+    Require(std::isfinite(casterDistance) && std::isfinite(receiverDistance) &&
+            casterDistance > 0.0f && casterDistance < receiverDistance &&
+            static_cast<double>(receiverDistance) < farPlane,
+        "distant point: float clip distances must separate caster and receiver inside the far plane");
+    RequirePointBoundsInside(
+        page.shadows.maps, {-1.0, -2.0, -2.0}, {1.0, 2.0, 2.0}, "distant point");
+}
+
 void VerifyBoundedPointShadowBudgetAndPublicationRetry()
 {
     HdSilkSceneState state;
@@ -4940,6 +5000,8 @@ int main(int argc, char* argv[])
             VerifyBoundedPointShadowProjectionAndLifecycle},
         {"domes-shadows", "VerifyBoundedPointShadowFrustumAndRefusal",
             VerifyBoundedPointShadowFrustumAndRefusal},
+        {"domes-shadows", "VerifyDistantPointShadowClipDistances",
+            VerifyDistantPointShadowClipDistances},
         {"domes-shadows", "VerifyBoundedPointShadowBudgetAndPublicationRetry",
             VerifyBoundedPointShadowBudgetAndPublicationRetry},
         {"domes-shadows", "VerifyAreaShadowRefusalDoesNotConsumeLightBudget",

@@ -196,6 +196,40 @@ class ShaderModelTests(unittest.TestCase):
         self.assertIn("eng/report-validated-checkout.ps1", required)
         self.assertIn("eng/test-workflow-checkout-report.ps1", required)
 
+    def test_checked_inputs_include_shared_shadow_depth_source(self) -> None:
+        required = shader_model.required_checked_inputs(manifest())
+        self.assertIn("eng/shaders/sources/shadow.depth.shared.slang", required)
+
+    def test_shadow_depth_varyings_match_vertex_and_fragment_interfaces(self) -> None:
+        sources = SHADER_ROOT / "sources"
+        vertex = (sources / "shadow.vertex.slang").read_text(encoding="utf-8")
+        for struct_name, fragment_name in (
+            ("ShadowVertexOutput", "shadow.fragment.slang"),
+            ("ShadowMaskedVertexOutput", "shadow.mask.fragment.slang"),
+        ):
+            with self.subTest(struct=struct_name):
+                fragment = (sources / fragment_name).read_text(encoding="utf-8")
+                for source in (vertex, fragment):
+                    match = re.search(
+                        rf"struct\s+{struct_name}\s*\{{([^}}]*)\}};",
+                        source,
+                        re.DOTALL,
+                    )
+                    self.assertIsNotNone(match, f"{struct_name} is missing")
+                    body = match.group(1)
+                    self.assertRegex(body, r"\bfloat\s+lightDepth\s*:\s*TEXCOORD2\s*;")
+                    self.assertRegex(
+                        body,
+                        r"\bnointerpolation\s+float\s+pointDepthScale\s*:\s*TEXCOORD3\s*;",
+                    )
+        masked_input = re.search(
+            r"struct\s+ShadowMaskedVertexInput\s*\{([^}]*)\};",
+            vertex,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(masked_input)
+        self.assertNotRegex(masked_input.group(1), r"\b(lightDepth|pointDepthScale)\b")
+
     def test_rejects_profile_inconsistent_with_locked_shader_model(self) -> None:
         mutated_lock = copy.deepcopy(lock())
         mutated_lock["targets"]["direct3D"]["shaderModel"] = "6.1"
