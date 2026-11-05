@@ -302,47 +302,87 @@ public sealed class SilkPointShadowNativeConformanceTests
             throw new InvalidOperationException("The moved frame has no shadow atlas readback.");
         SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(frame.Descriptors) ??
             throw new InvalidOperationException("The moved frame has no shadow atlas layout.");
+        var faceDepths = new List<string>();
+        for (int face = 0; face < frame.Descriptors.Length; face++)
+        {
+            SilkShadowTilePlacement tile = layout.Tiles[face];
+            float minimum = 1f;
+            int minimumX = 0;
+            int minimumY = 0;
+            int written = 0;
+            for (int y = (int)tile.PixelY; y < tile.PixelY + tile.Resolution; y++)
+            {
+                for (int x = (int)tile.PixelX; x < tile.PixelX + tile.Resolution; x++)
+                {
+                    float value = depth[(y * (int)frame.ShadowAtlasEdge) + x];
+                    if (value < 1f)
+                    {
+                        written++;
+                        if (value < minimum)
+                        {
+                            minimum = value;
+                            minimumX = x;
+                            minimumY = y;
+                        }
+                    }
+                }
+            }
+            faceDepths.Add($"f{face}={written}@{minimumX},{minimumY}:{minimum:F4}");
+        }
+
         var samples = new List<string>();
         for (int x = 54; x <= 63; x++)
         {
             Vector4 worldPosition = new(PixelWorldX(x), PixelWorldY(SampleY), 0.2f, 1);
-            int face = 0;
-            float greatestW = -1;
-            Vector4 clip = default;
-            for (int candidate = 0; candidate < 6; candidate++)
-            {
-                Vector4 faceClip = TransformColumn(
-                    SilkShadowMatrix.CreateWorldToLightClip(frame.Descriptors[candidate]),
-                    worldPosition);
-                if (faceClip.W > greatestW)
-                {
-                    greatestW = faceClip.W;
-                    face = candidate;
-                    clip = faceClip;
-                }
-            }
-            SilkShadowTilePlacement tile = layout.Tiles[face];
-            float inverseW = 1f / clip.W;
-            float ndcX = clip.X * inverseW;
-            float ndcY = clip.Y * inverseW;
-            float u = (ndcX * 0.5f) + 0.5f;
-            float v = (ndcY * -0.5f) + 0.5f;
-            int atlasX = Math.Clamp(
-                (int)((tile.OffsetU + (u * tile.ScaleU)) * frame.ShadowAtlasEdge),
-                0,
-                (int)frame.ShadowAtlasEdge - 1);
-            int atlasY = Math.Clamp(
-                (int)((tile.OffsetV + (v * tile.ScaleV)) * frame.ShadowAtlasEdge),
-                0,
-                (int)frame.ShadowAtlasEdge - 1);
-            int flippedAtlasY = (int)frame.ShadowAtlasEdge - 1 - atlasY;
-            float directDepth = depth[(atlasY * (int)frame.ShadowAtlasEdge) + atlasX];
-            float flippedDepth = depth[(flippedAtlasY * (int)frame.ShadowAtlasEdge) + atlasX];
-            samples.Add(
-                $"{x}/f{face}@{atlasX},{atlasY}:{directDepth:F4}/{flippedDepth:F4};" +
-                $"receiver={clip.Z * inverseW:F4}");
+            ShadowDepthSample column = SampleShadowDepth(
+                frame, layout, depth, worldPosition, TransformColumn);
+            ShadowDepthSample row = SampleShadowDepth(
+                frame, layout, depth, worldPosition, TransformRow);
+            samples.Add($"{x}/c{column}/r{row}");
         }
-        return string.Join(" ", samples);
+        return $"faces=[{string.Join(";", faceDepths)}] samples=[{string.Join(" ", samples)}]";
+    }
+
+    private static ShadowDepthSample SampleShadowDepth(
+        Frame frame,
+        SilkShadowAtlasLayout layout,
+        float[] depth,
+        Vector4 worldPosition,
+        Func<Matrix4x4, Vector4, Vector4> transform)
+    {
+        int face = 0;
+        float greatestW = -1;
+        Vector4 clip = default;
+        for (int candidate = 0; candidate < frame.Descriptors.Length; candidate++)
+        {
+            Vector4 faceClip = transform(
+                SilkShadowMatrix.CreateWorldToLightClip(frame.Descriptors[candidate]),
+                worldPosition);
+            if (faceClip.W > greatestW)
+            {
+                greatestW = faceClip.W;
+                face = candidate;
+                clip = faceClip;
+            }
+        }
+
+        SilkShadowTilePlacement tile = layout.Tiles[face];
+        float inverseW = 1f / clip.W;
+        float u = ((clip.X * inverseW) * 0.5f) + 0.5f;
+        float v = ((clip.Y * inverseW) * -0.5f) + 0.5f;
+        int atlasX = Math.Clamp(
+            (int)((tile.OffsetU + (u * tile.ScaleU)) * frame.ShadowAtlasEdge),
+            0,
+            (int)frame.ShadowAtlasEdge - 1);
+        int atlasY = Math.Clamp(
+            (int)((tile.OffsetV + (v * tile.ScaleV)) * frame.ShadowAtlasEdge),
+            0,
+            (int)frame.ShadowAtlasEdge - 1);
+        int flippedAtlasY = (int)frame.ShadowAtlasEdge - 1 - atlasY;
+        float directDepth = depth[(atlasY * (int)frame.ShadowAtlasEdge) + atlasX];
+        float flippedDepth = depth[(flippedAtlasY * (int)frame.ShadowAtlasEdge) + atlasX];
+        return new ShadowDepthSample(
+            face, atlasX, atlasY, directDepth, flippedDepth, clip.Z * inverseW, clip.W);
     }
 
     private static Vector4 TransformColumn(Matrix4x4 matrix, Vector4 vector) => new(
@@ -354,6 +394,30 @@ public sealed class SilkPointShadowNativeConformanceTests
             (matrix.M33 * vector.Z) + (matrix.M34 * vector.W),
         (matrix.M41 * vector.X) + (matrix.M42 * vector.Y) +
             (matrix.M43 * vector.Z) + (matrix.M44 * vector.W));
+
+    private static Vector4 TransformRow(Matrix4x4 matrix, Vector4 vector) => new(
+        (matrix.M11 * vector.X) + (matrix.M21 * vector.Y) +
+            (matrix.M31 * vector.Z) + (matrix.M41 * vector.W),
+        (matrix.M12 * vector.X) + (matrix.M22 * vector.Y) +
+            (matrix.M32 * vector.Z) + (matrix.M42 * vector.W),
+        (matrix.M13 * vector.X) + (matrix.M23 * vector.Y) +
+            (matrix.M33 * vector.Z) + (matrix.M43 * vector.W),
+        (matrix.M14 * vector.X) + (matrix.M24 * vector.Y) +
+            (matrix.M34 * vector.Z) + (matrix.M44 * vector.W));
+
+    private readonly record struct ShadowDepthSample(
+        int Face,
+        int X,
+        int Y,
+        float DirectDepth,
+        float FlippedDepth,
+        float ReceiverDepth,
+        float ClipW)
+    {
+        public override string ToString() =>
+            $"f{Face}@{X},{Y}:{DirectDepth:F4}/{FlippedDepth:F4};" +
+            $"z={ReceiverDepth:F4};w={ClipW:F4}";
+    }
 
     private static string RequirePlugins()
     {
