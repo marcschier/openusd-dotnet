@@ -242,8 +242,10 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
             ("CubeGroupRejectsFaceWhoseLinearNearDepthWouldUnderflow", 1),
             ("InvalidCubeDepthProjectionIsRejected", 4),
             ("OrthographicMapsRetainTheirPublishedDepthBias", 1),
-            ("CasterInstanceWritesTheDepthScaleAndClearsOtherReservedValues", 1),
+            ("CasterInstanceWritesTheDepthScaleAndFaceLimit", 1),
             ("CasterInstanceRejectsInvalidDepthScale", 3),
+            ("CasterInstanceRejectsInvalidPointFaceLimit", 6),
+            ("CasterInstanceRejectsFaceLimitWithoutPointDepthScale", 1),
             ("CubeDisplacementRetainsTheOriginalNearPlaneAndExpandsFar", 1),
             ("PreparedCubeRendersWithCandidateDepthScaleBeforePublication", 1),
             ("InvalidCubeProjectionIsRejectedBeforeReplacingThePublishedAtlas", 1),
@@ -268,6 +270,7 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         ].split("\n      - name:", 1)[0]
         methods = {
             "PointReceiverBeyondFarPlaneRemainsLitWhenPerspectiveDepthRoundsToOne": ("",),
+            "PointCasterBeyondSelectedFaceDoesNotWriteDepth": (", False", ", True"),
             "PointLightLayersRespectReceiverDepthAndLifecycle": (
                 ", 1, False", ", 2, False", ", 4, False", ", 1, True", ", 2, True"
             ),
@@ -278,7 +281,7 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
                 ", False", ", True"
             ),
             "PointLightOpaqueAndCutoutCastersComposeWithTransmission": ("",),
-            "PointLightLayersBeyondFarPlaneDoNotTriggerOverflow": ("",),
+            "PointLightLayersBeyondFarPlaneDoNotTriggerOverflow": (", False", ", True"),
         }
         for method, arguments in methods.items():
             with self.subTest(method=method):

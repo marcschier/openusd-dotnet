@@ -220,15 +220,16 @@ class ShaderModelTests(unittest.TestCase):
                     self.assertRegex(body, r"\bfloat\s+lightDepth\s*:\s*TEXCOORD2\s*;")
                     self.assertRegex(
                         body,
-                        r"\bnointerpolation\s+float\s+pointDepthScale\s*:\s*TEXCOORD3\s*;",
+                        r"\bnointerpolation\s+float2\s+pointDepth\s*:\s*TEXCOORD3\s*;",
                     )
+        self.assertEqual(vertex.count("output.pointDepth = instance.reserved.xy;"), 2)
         masked_input = re.search(
             r"struct\s+ShadowMaskedVertexInput\s*\{([^}]*)\};",
             vertex,
             re.DOTALL,
         )
         self.assertIsNotNone(masked_input)
-        self.assertNotRegex(masked_input.group(1), r"\b(lightDepth|pointDepthScale)\b")
+        self.assertNotRegex(masked_input.group(1), r"\b(lightDepth|pointDepth)\b")
 
     def test_rejects_profile_inconsistent_with_locked_shader_model(self) -> None:
         mutated_lock = copy.deepcopy(lock())

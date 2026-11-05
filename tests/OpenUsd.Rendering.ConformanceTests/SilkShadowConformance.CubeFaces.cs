@@ -160,10 +160,6 @@ internal static partial class SilkShadowConformance
                 (Receiver, SilkLightLinkCommand.AllInstances, (UInt128)1, (UInt128)0)));
         _ = renderer.Render(color, depth);
         byte[] receiverExcluded = ReadPixels(color);
-        Console.WriteLine(
-            $"[DEBUG-point-face-far] baseline={unshadowed[Offset(60)]}, " +
-            $"receiver-casts={inside[Offset(60)]}, receiver-excluded={receiverExcluded[Offset(60)]}, " +
-            $"excluded-center={receiverExcluded[Offset(32)]}");
         await AssertShadowed(receiverExcluded, 32, "receiver behind the caster with self-shadowing excluded");
         await Assert.That(Math.Abs(receiverExcluded[Offset(60)] - unshadowed[Offset(60)]))
             .IsLessThanOrEqualTo(2);
