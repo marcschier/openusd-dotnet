@@ -1838,16 +1838,6 @@ float4 FRAGMENT_ENTRY_POINT(
             sampleOffsets[2] = -lightTangentAxis * lightRadius;
             sampleOffsets[3] = lightBitangentAxis * lightRadius;
             sampleOffsets[4] = -lightBitangentAxis * lightRadius;
-            sampleEmitterNormals[0] = TransformEmitterAxisNormal(
-                float3(0.0, 0.0, -1.0), lightTangentAxis, lightBitangentAxis, lightDirectionAxis);
-            sampleEmitterNormals[1] = TransformEmitterAxisNormal(
-                float3(1.0, 0.0, 0.0), lightTangentAxis, lightBitangentAxis, lightDirectionAxis);
-            sampleEmitterNormals[2] = TransformEmitterAxisNormal(
-                float3(-1.0, 0.0, 0.0), lightTangentAxis, lightBitangentAxis, lightDirectionAxis);
-            sampleEmitterNormals[3] = TransformEmitterAxisNormal(
-                float3(0.0, 1.0, 0.0), lightTangentAxis, lightBitangentAxis, lightDirectionAxis);
-            sampleEmitterNormals[4] = TransformEmitterAxisNormal(
-                float3(0.0, -1.0, 0.0), lightTangentAxis, lightBitangentAxis, lightDirectionAxis);
             sampleCount = 5.0;
         }
         else if (lightType == 3.0)
@@ -1991,7 +1981,6 @@ float4 FRAGMENT_ENTRY_POINT(
                 // with a positive cosine.
                 float emitterCosine = dot(lightDirection, sampleDirection);
                 if (lightType == 4.0 ||
-                    (lightType == 2.0 && lightRadius > 0.0) ||
                     (lightType == 5.0 && lightRadius > 0.0 && shapeX > 0.0))
                 {
                     float emitterSurfaceCosine =

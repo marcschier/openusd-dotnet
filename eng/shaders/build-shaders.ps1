@@ -145,12 +145,27 @@ try
 
             $outputBase = Join-Path $OutputRoot $program.name
             $airPath = "$outputBase.air"
-            & xcrun `
-                -sdk macosx `
-                metal `
-                "-std=$($plan.toolchain.metalStandard)" `
-                -c "$outputBase.metal" `
-                -o $airPath
+            $metalArguments = @(
+                '-sdk', 'macosx',
+                'metal', "-std=$($plan.toolchain.metalStandard)"
+            )
+            $slangArguments = [string[]]$program.commands.metal.arguments
+            $floatingPointModeIndex = [Array]::IndexOf(
+                $slangArguments,
+                '-fp-mode')
+            if (
+                $floatingPointModeIndex -ge 0 -and
+                $floatingPointModeIndex + 1 -lt $slangArguments.Length -and
+                $slangArguments[$floatingPointModeIndex + 1] -eq 'precise'
+            )
+            {
+                $metalArguments += '-fno-fast-math'
+            }
+            $metalArguments += @(
+                '-c', "$outputBase.metal",
+                '-o', $airPath
+            )
+            & xcrun @metalArguments
             if ($LASTEXITCODE -ne 0)
             {
                 exit $LASTEXITCODE

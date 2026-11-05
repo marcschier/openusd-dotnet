@@ -106,8 +106,10 @@ this check can refuse a final composite that would fit. The ray, local-step,
 tint and exposure arithmetic still lacks a finite-domain proof for every
 admitted input.
 
-Both fragments use precise floating-point mode. For each ray and field, the
-density pass tracks the maximum sampled density and integrates local step
+Both fragments use precise floating-point mode. Each Xcode Metal compile also
+receives `-fno-fast-math` for a program marked `precise`, preserving that choice
+in the second compiler stage. For each ray and field, the density pass tracks
+the maximum sampled density and integrates local step
 lengths weighted by density divided by that maximum. It derives field optical
 depth from the normalized integral, so a large raw density is not multiplied by
 a thin local step before normalization. The shader caps a field's optical depth

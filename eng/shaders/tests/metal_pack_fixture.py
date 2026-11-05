@@ -56,6 +56,10 @@ def create_sidecar(
     compile_commands = []
     symbol_commands = []
     contract = shader_model.metal_library_contract(manifest)
+    floating_point_modes = {
+        program["name"]: program.get("floatingPointMode")
+        for program in shader_model.metal_library_programs(manifest)
+    }
     for entry in contract:
         program_name = entry["programName"]
         entry_point = entry["entryPoint"]
@@ -85,20 +89,27 @@ def create_sidecar(
                 "stage": stage,
             }
         )
+        compile_arguments = [
+            "-sdk",
+            "macosx",
+            "metal",
+            f"-std={model['metalStandard']}",
+        ]
+        if floating_point_modes.get(program_name) == "precise":
+            compile_arguments.append("-fno-fast-math")
+        compile_arguments.extend(
+            [
+                "-c",
+                source["path"],
+                "-o",
+                air_path,
+            ]
+        )
         compile_commands.append(
             {
                 "programName": program_name,
                 "executable": "xcrun",
-                "arguments": [
-                    "-sdk",
-                    "macosx",
-                    "metal",
-                    f"-std={model['metalStandard']}",
-                    "-c",
-                    source["path"],
-                    "-o",
-                    air_path,
-                ],
+                "arguments": compile_arguments,
             }
         )
         symbol_commands.append(

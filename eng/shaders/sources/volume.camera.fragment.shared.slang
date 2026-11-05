@@ -516,7 +516,10 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
                     {
                         if (fieldDepths[field] > 0.0)
                         {
-                            source += fieldTint[field] * (fieldDepths[field] / opticalDepth);
+                            // Preserve the bounded weight before multiplying a potentially large tint.
+                            float weight = fieldDepths[field] / opticalDepth;
+                            float3 weightedTint = fieldTint[field] * weight;
+                            source += weightedTint;
                         }
                     }
                     accumulatedColor += transmittance * alpha * source;
