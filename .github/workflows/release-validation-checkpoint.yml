@@ -6,16 +6,20 @@ on:
     paths:
       - '.github/workflows/release-validation-checkpoint.yml'
       - 'Directory.Packages.props'
+      - 'eng/assert-volume-camera-evidence.ps1'
       - 'eng/assert-viewer-compiler-redistribution.ps1'
       - 'eng/diagnostics/metal-volume-math.metal'
       - 'eng/diagnostics/metal-volume-math.swift'
+      - 'eng/managed-workflow-reports.ps1'
       - 'eng/mesa-lavapipe-test-runtime.lock.json'
       - 'eng/metal-volume-repro-report.ps1'
       - 'eng/primitive-id-transport-report.ps1'
       - 'eng/publish-viewer-bundle.ps1'
       - 'eng/run-windows-lavapipe-primitive-probe.ps1'
+      - 'eng/silk-cubic-shadow-report.ps1'
       - 'eng/test-metal-volume-repro-report.ps1'
       - 'eng/test-primitive-id-transport-report.ps1'
+      - 'eng/test-silk-cubic-shadow-report.ps1'
       - 'eng/test-windows-lavapipe-primitive-probe.ps1'
       - 'eng/test-viewer-compiler-redistribution.ps1'
       - 'eng/verify-nuget-promotion.py'
@@ -45,6 +49,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  shadow-report-contract:
+    name: Shadow report contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Validate shadow and volume evidence guards
+        shell: pwsh
+        env:
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-report-contract
+        run: ./eng/test-silk-cubic-shadow-report.ps1
+
   native-session-probe-syntax:
     name: Native direct-light session probe syntax
     runs-on: ubuntu-24.04

@@ -11,6 +11,24 @@ WORKFLOW = ROOT / ".github" / "workflows" / "release-validation-checkpoint.yml"
 
 
 class ReleaseValidationCheckpointTests(unittest.TestCase):
+    def test_shadow_report_contract_runs_for_its_evidence_inputs(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        triggers, jobs = workflow.split("\njobs:\n", 1)
+        job = jobs.split("  shadow-report-contract:\n", 1)[1]
+        job = re.split(r"\n  [a-z0-9-]+:\n", job, maxsplit=1)[0]
+
+        for path in (
+            "eng/assert-volume-camera-evidence.ps1",
+            "eng/managed-workflow-reports.ps1",
+            "eng/silk-cubic-shadow-report.ps1",
+            "eng/test-silk-cubic-shadow-report.ps1",
+        ):
+            self.assertIn(f"      - '{path}'", triggers)
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", job)
+        self.assertIn("OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}", job)
+        self.assertIn("run: ./eng/test-silk-cubic-shadow-report.ps1", job)
+        self.assertNotIn("continue-on-error", job)
+
     def test_native_session_probe_syntax_job_compiles_the_checked_out_source(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         triggers, jobs = workflow.split("\njobs:\n", 1)
