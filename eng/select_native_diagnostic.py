@@ -89,10 +89,13 @@ def github_json(arguments):
 
 def checkout_from_log(log):
     checkout_lines = []
+    in_checkout = False
     for line in log.splitlines():
-        fields = line.split("\t", 2)
-        if len(fields) == 3 and fields[1].startswith("Run actions/checkout@"):
-            checkout_lines.append(fields[2])
+        step = re.match(r"^\S+\s+##\[group\]Run (.*)$", line)
+        if step is not None:
+            in_checkout = step[1].startswith("actions/checkout@")
+        elif in_checkout:
+            checkout_lines.append(line)
 
     commits = []
     for index, line in enumerate(checkout_lines):
@@ -111,9 +114,9 @@ def checkout_from_log(log):
 def verified_checkout(repository, run_id, job_id, source):
     # A pull-request run's head SHA can differ from its checked-out merge tree.
     result = subprocess.run(
-        ["gh", "run", "view", str(run_id), "--repo", repository,
-         "--job", str(job_id), "--log"],
-        cwd=ROOT, capture_output=True, text=True, check=False,
+        ["gh", "api", "--allow-escape-sequences",
+         f"repos/{repository}/actions/jobs/{job_id}/logs"],
+        cwd=ROOT, capture_output=True, encoding="utf-8", check=False,
     )
     if result.returncode:
         raise RuntimeError(f"Native producer log retrieval failed: {result.stderr.strip()}")

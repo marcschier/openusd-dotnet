@@ -21,9 +21,12 @@ LINUX_JOB = {
 }
 ARCHIVE = {"name": "openusd-native-linux-x64", "expired": False}
 CHECKOUT_LOG = (
-    "native\tRun actions/checkout@pinned\t"
-    "2026-01-01T00:00:00Z [command]/usr/bin/git log -1 --format=%H\n"
-    f"native\tRun actions/checkout@pinned\t2026-01-01T00:00:01Z {CHECKOUT}\n"
+    "2026-01-01T00:00:00Z ##[group]Run actions/checkout@pinned\n"
+    "2026-01-01T00:00:01Z ##[endgroup]\n"
+    "2026-01-01T00:00:02Z ##[group]Checking out the ref\n"
+    "2026-01-01T00:00:03Z ##[endgroup]\n"
+    "2026-01-01T00:00:04Z [command]/usr/bin/git log -1 --format=%H\n"
+    f"2026-01-01T00:00:05Z {CHECKOUT}\n"
 )
 
 
@@ -201,21 +204,27 @@ class NativeDiagnosticSelectionTests(unittest.TestCase):
                     )
 
     def test_checkout_log_extracts_only_the_checkout_step_commit(self):
-        unrelated = (
-            "native\tBuild\t2026-01-01T00:00:00Z "
-            "[command]/usr/bin/git log -1 --format=%H\n"
-            f"native\tBuild\t2026-01-01T00:00:01Z {HEAD}\n"
+        before = (
+            "2026-01-01T00:00:00Z ##[group]Run unrelated\n"
+            "2026-01-01T00:00:01Z [command]/usr/bin/git log -1 --format=%H\n"
+            f"2026-01-01T00:00:02Z {HEAD}\n"
         )
+        after = before.replace("Run unrelated", "Run build")
 
-        self.assertEqual(selector.checkout_from_log(unrelated + CHECKOUT_LOG), CHECKOUT)
+        self.assertEqual(selector.checkout_from_log(before + CHECKOUT_LOG + after), CHECKOUT)
 
     def test_checkout_log_rejects_missing_invalid_or_ambiguous_commits(self):
         for log in (
             "",
-            CHECKOUT_LOG.splitlines()[0],
+            "\n".join(CHECKOUT_LOG.splitlines()[:-1]),
             CHECKOUT_LOG.replace(CHECKOUT, "not-a-commit"),
             CHECKOUT_LOG + CHECKOUT_LOG,
-            CHECKOUT_LOG.replace("Run actions/checkout@pinned", "Build"),
+            CHECKOUT_LOG.replace("Run actions/checkout@pinned", "Run build"),
+            CHECKOUT_LOG.replace(
+                f"2026-01-01T00:00:05Z {CHECKOUT}",
+                "2026-01-01T00:00:05Z ##[group]Run another step\n"
+                f"2026-01-01T00:00:06Z {CHECKOUT}",
+            ),
         ):
             with self.subTest(log=log):
                 with self.assertRaisesRegex(ValueError, "native checkout log"):
@@ -237,8 +246,8 @@ class NativeDiagnosticSelectionTests(unittest.TestCase):
             (CHECKOUT, TREE),
         )
         self.assertEqual(execute.call_args_list[0].args[0], [
-            "gh", "run", "view", "10", "--repo", "owner/repo",
-            "--job", str(JOB_ID), "--log",
+            "gh", "api", "--allow-escape-sequences",
+            f"repos/owner/repo/actions/jobs/{JOB_ID}/logs",
         ])
         github.assert_called_once_with([
             "api", f"repos/owner/repo/git/commits/{CHECKOUT}",
