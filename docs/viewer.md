@@ -23,6 +23,15 @@ Without it every reference fails to resolve, the Viewer opens an effectively emp
 renderer legitimately reports zero draws while logging one `Could not open asset` warning per
 unresolved reference.
 
+The distributable Viewer archive does not include SPIRV-Cross or DXC. On Windows, runtime-generated
+MaterialX shaders for the D3D12 backend require `spirv-cross.dll` from `Silk.NET.SPIRV.Cross.Native`
+2.23.0 separately. Place its `runtimes/win-x64/native/spirv-cross.dll` beside
+`OpenUsd.Viewer.App.exe` or on `PATH` before starting Viewer, and supply `dxc.exe` through
+`OPENUSD_DXC_PATH`, the application directory, or `PATH`. If compilation fails, Viewer renders the
+checked placeholder and reports the compiler error in its diagnostics. Restart Viewer after supplying
+the missing dependency so a previously failed shader key can be compiled again. This archive policy
+does not change the SPIRV-Cross dependency restored by `OpenUsd.Rendering.Silk` NuGet consumers.
+
 ## Authored RenderProduct captures
 
 **File > Render Authored Product...** and the command palette open a Viewer-owned dialog for bounded

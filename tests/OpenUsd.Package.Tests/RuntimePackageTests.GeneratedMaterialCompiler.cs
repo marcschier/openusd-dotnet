@@ -217,6 +217,16 @@ public sealed partial class RuntimePackageTests
                     executable, publishRoot, cache, "external", Path.Combine(externalDxc, "dxc.exe"));
                 await Assert.That(compiled.ExitCode).IsEqualTo(0).Because(compiled.Output);
                 await Assert.That(compiled.Output).Contains("PACKAGED_SPIRV_CROSS_AND_EXTERNAL_DXC_OK");
+
+                if (framework == "net10.0")
+                {
+                    await AssertViewerStyleExternalSpirvCrossAsync(
+                        consumerRoot,
+                        packages,
+                        crossVersion,
+                        restoredCross,
+                        Path.Combine(externalDxc, "dxc.exe"));
+                }
             }
         }
         finally
@@ -235,12 +245,59 @@ public sealed partial class RuntimePackageTests
     private static string[] SplitDependencyAssets(string? value) =>
         value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 
+    private static async Task AssertViewerStyleExternalSpirvCrossAsync(
+        string consumerRoot,
+        string packages,
+        string crossVersion,
+        string restoredCross,
+        string dxc)
+    {
+        string projectPath = Path.Combine(consumerRoot, "Consumer.csproj");
+        XDocument project = XDocument.Load(projectPath);
+        project.Root!.Elements("ItemGroup").Single().Add(
+            new XElement("PackageReference",
+                new XAttribute("Include", "Silk.NET.SPIRV.Cross.Native"),
+                new XAttribute("Version", crossVersion),
+                new XAttribute("ExcludeAssets", "native")));
+        project.Save(projectPath);
+
+        string publishRoot = Path.Combine(consumerRoot, "viewer-style-publish");
+        CommandResult publish = await RunDotnetAsync(
+            consumerRoot,
+            [
+                "publish", "Consumer.csproj", "-c", "Release", "-r", "win-x64",
+                "--self-contained", "false", "--nologo", "-m:1",
+                "-p:UseSharedCompilation=false", "-p:UseArtifactsOutput=false",
+                "--configfile", "NuGet.config", "-o", publishRoot,
+            ],
+            packages);
+        await Assert.That(publish.ExitCode).IsEqualTo(0).Because(publish.Output);
+        await Assert.That(File.Exists(Path.Combine(publishRoot, "spirv-cross.dll")))
+            .IsFalse().Because("The Viewer-style publish excludes the native compiler asset.");
+
+        string executable = Path.Combine(publishRoot, "Consumer.exe");
+        string cache = Path.Combine(consumerRoot, "viewer-style-shader-cache");
+        CommandResult missing = await RunGeneratedMaterialConsumerAsync(
+            executable, publishRoot, cache, "missing-cross", dxc);
+        await Assert.That(missing.ExitCode).IsEqualTo(0).Because(missing.Output);
+        await Assert.That(missing.Output).Contains("MISSING_SPIRV_CROSS_REPORTED");
+
+        string externalCross = Path.Combine(consumerRoot, "external-spirv-cross");
+        Directory.CreateDirectory(externalCross);
+        File.Copy(restoredCross, Path.Combine(externalCross, "spirv-cross.dll"));
+        CommandResult compiled = await RunGeneratedMaterialConsumerAsync(
+            executable, publishRoot, cache, "external-cross", dxc, externalCross);
+        await Assert.That(compiled.ExitCode).IsEqualTo(0).Because(compiled.Output);
+        await Assert.That(compiled.Output).Contains("EXTERNAL_SPIRV_CROSS_AND_DXC_OK");
+    }
+
     private static async Task<CommandResult> RunGeneratedMaterialConsumerAsync(
         string executable,
         string workingDirectory,
         string cache,
         string mode,
-        string dxc)
+        string dxc,
+        string? externalCrossDirectory = null)
     {
         using var process = new Process
         {
@@ -254,9 +311,18 @@ public sealed partial class RuntimePackageTests
             },
         };
         process.StartInfo.ArgumentList.Add(mode);
-        process.StartInfo.Environment["PATH"] = workingDirectory;
+        process.StartInfo.Environment["PATH"] = externalCrossDirectory ?? workingDirectory;
         process.StartInfo.Environment["OPENUSD_DXC_PATH"] = dxc;
         process.StartInfo.Environment["OPENUSD_SILK_SHADER_CACHE_DIR"] = cache;
+        if (externalCrossDirectory is null)
+        {
+            process.StartInfo.Environment.Remove("OPENUSD_TEST_SPIRV_CROSS_PATH");
+        }
+        else
+        {
+            process.StartInfo.Environment["OPENUSD_TEST_SPIRV_CROSS_PATH"] =
+                Path.Combine(externalCrossDirectory, "spirv-cross.dll");
+        }
         process.StartInfo.Environment.Remove("DOTNET_ADDITIONAL_DEPS");
         process.StartInfo.Environment.Remove("DOTNET_SHARED_STORE");
         process.StartInfo.Environment.Remove("DOTNET_STARTUP_HOOKS");
@@ -291,7 +357,7 @@ public sealed partial class RuntimePackageTests
         using OpenUsd.Rendering.Silk;
 
         if (!OperatingSystem.IsWindows() || args.Length != 1 ||
-            args[0] is not ("missing" or "external"))
+            args[0] is not ("missing" or "external" or "missing-cross" or "external-cross"))
         {
             throw new InvalidOperationException("The Windows consumer needs a compiler mode.");
         }
@@ -314,13 +380,24 @@ public sealed partial class RuntimePackageTests
         {
             Console.WriteLine("MISSING_DXC_REPORTED");
         }
+        catch (DllNotFoundException exception) when (
+            args[0] == "missing-cross" &&
+            exception.Message.Contains("SPIRV-Cross", StringComparison.Ordinal) &&
+            exception.Message.Contains("spirv-cross.dll", StringComparison.OrdinalIgnoreCase) &&
+            exception.Message.Contains("PATH", StringComparison.Ordinal))
+        {
+            Console.WriteLine("MISSING_SPIRV_CROSS_REPORTED");
+            return;
+        }
 
         using Process current = Process.GetCurrentProcess();
         string[] modules = current.Modules.Cast<ProcessModule>()
             .Where(module => string.Equals(module.ModuleName, "spirv-cross.dll", StringComparison.OrdinalIgnoreCase))
             .Select(module => Path.GetFullPath(module.FileName!))
             .ToArray();
-        string expectedCross = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "spirv-cross.dll"));
+        string expectedCross = Path.GetFullPath(
+            Environment.GetEnvironmentVariable("OPENUSD_TEST_SPIRV_CROSS_PATH") ??
+            Path.Combine(AppContext.BaseDirectory, "spirv-cross.dll"));
         if (modules.Length != 1 || !string.Equals(modules[0], expectedCross, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("The packaged SPIRV-Cross library was not loaded.");
@@ -349,6 +426,8 @@ public sealed partial class RuntimePackageTests
         {
             throw new InvalidOperationException("DXC scratch files were not cleaned.");
         }
-        Console.WriteLine("PACKAGED_SPIRV_CROSS_AND_EXTERNAL_DXC_OK");
+        Console.WriteLine(args[0] == "external-cross"
+            ? "EXTERNAL_SPIRV_CROSS_AND_DXC_OK"
+            : "PACKAGED_SPIRV_CROSS_AND_EXTERNAL_DXC_OK");
         """;
 }

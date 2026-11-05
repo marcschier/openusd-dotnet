@@ -403,7 +403,19 @@ internal static partial class SilkD3D12GeneratedMaterialCompiler
         nint context = 0;
         try
         {
-            ThrowIfFailed(SpirvCross.spvc_context_create(out context), context);
+            int createResult;
+            try
+            {
+                createResult = SpirvCross.spvc_context_create(out context);
+            }
+            catch (DllNotFoundException exception)
+            {
+                throw new DllNotFoundException(
+                    "D3D12 generated MaterialX compilation requires SPIRV-Cross. " +
+                    "Install a compatible spirv-cross.dll beside the application or make it available on PATH.",
+                    exception);
+            }
+            ThrowIfFailed(createResult, context);
             fixed (byte* spirvBytes = spirv)
             {
                 ThrowIfFailed(

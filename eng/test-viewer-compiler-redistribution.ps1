@@ -92,6 +92,93 @@ try
     {
         throw 'The Viewer archive guard must run after publish and before signing, except for -NoArchive.'
     }
+
+    $bundleFixtureRoot = Join-Path $root 'bundle-fixture'
+    $publisherPath = Join-Path $PSScriptRoot 'publish-viewer-bundle.ps1'
+    function dotnet
+    {
+        if ($args[0] -cne 'publish')
+        {
+            throw 'The Viewer fixture only supports dotnet publish.'
+        }
+
+        [xml]$project = Get-Content -LiteralPath $args[1] -Raw
+        $outputIndex = [Array]::IndexOf($args, '-o')
+        if ($outputIndex -lt 0 -or $outputIndex + 1 -ge $args.Count)
+        {
+            throw 'The Viewer fixture did not receive a publish output directory.'
+        }
+        $output = $args[$outputIndex + 1]
+        $usd = Join-Path $output 'plugin/usd'
+        $storm = Join-Path $usd 'hdStorm/resources'
+        New-Item -ItemType Directory -Force -Path $storm | Out-Null
+        [IO.File]::WriteAllText((Join-Path $usd 'plugInfo.json'), '{}')
+        [IO.File]::WriteAllText((Join-Path $storm 'plugInfo.json'), '{}')
+        [IO.File]::WriteAllText((Join-Path $output 'fixture.pdb'), 'fixture')
+
+        $reference = @($project.Project.ItemGroup.PackageReference | Where-Object {
+            $_.Include -ceq 'Silk.NET.SPIRV.Cross.Native'
+        })
+        $excluded = $reference.Count -eq 1 -and
+            @($reference[0].ExcludeAssets -split '[,;]' | Where-Object {
+                $_.Trim() -ieq 'native'
+            }).Count -eq 1
+        if (-not $excluded)
+        {
+            [IO.File]::WriteAllText((Join-Path $output 'libspirv-cross.so'), 'fixture')
+        }
+        if ($global:openUsdViewerFixtureIncludeDxc)
+        {
+            [IO.File]::WriteAllText((Join-Path $output 'dxc.exe'), 'fixture')
+        }
+        $global:LASTEXITCODE = 0
+    }
+
+    try
+    {
+        $global:openUsdViewerFixtureIncludeDxc = $false
+        & $publisherPath -Rid linux-x64 -OutputRoot $bundleFixtureRoot -PackageVersion '0.0.0'
+        $archiveLayout = Join-Path $bundleFixtureRoot 'layout/linux-x64'
+        if (Test-Path -LiteralPath (Join-Path $archiveLayout 'libspirv-cross.so'))
+        {
+            throw 'The Viewer archive layout included the external SPIRV-Cross library.'
+        }
+
+        & $publisherPath -Rid linux-x64 -OutputRoot $bundleFixtureRoot `
+            -PackageVersion '0.0.0' -NoArchive
+        if (-not (Test-Path -LiteralPath (Join-Path $archiveLayout 'libspirv-cross.so')))
+        {
+            throw 'A non-archive Viewer publish no longer includes its native dependency.'
+        }
+
+        $global:openUsdViewerFixtureIncludeDxc = $true
+        $unexpectedRejected = $false
+        try
+        {
+            & $publisherPath -Rid linux-x64 -OutputRoot $bundleFixtureRoot -PackageVersion '0.0.0'
+        }
+        catch
+        {
+            if (-not $_.Exception.Message.Contains('dxc.exe'))
+            {
+                throw
+            }
+            $unexpectedRejected = $true
+        }
+        if (-not $unexpectedRejected)
+        {
+            throw 'The Viewer archive accepted an unexpected compiler binary.'
+        }
+    }
+    finally
+    {
+        if (Test-Path -LiteralPath $bundleFixtureRoot)
+        {
+            Remove-Item -LiteralPath $bundleFixtureRoot -Recurse -Force
+        }
+        Remove-Item Function:\dotnet
+        Remove-Variable openUsdViewerFixtureIncludeDxc -Scope Global
+    }
     Write-Host 'Viewer compiler redistribution guard passed.'
 }
 finally

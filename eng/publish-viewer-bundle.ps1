@@ -138,6 +138,14 @@ New-Item -ItemType Directory -Force -Path $layoutRoot, $objRoot, $artifactRoot |
 $generatedProject = Join-Path $objRoot 'OpenUsd.Viewer.Distribution.App.csproj'
 $program = Join-Path $objRoot 'Program.cs'
 $nugetConfig = Join-Path $objRoot 'nuget.config'
+$externalCompilerReference = if ($NoArchive)
+{
+    ''
+}
+else
+{
+    '    <PackageReference Include="Silk.NET.SPIRV.Cross.Native" ExcludeAssets="native" />'
+}
 
 @"
 // Copyright (c) marcschier. Licensed under the MIT License.
@@ -174,6 +182,7 @@ internal static class Program
     <PackageReference Include="Avalonia.Fonts.Inter" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Avalonia.Wayland" />
+$externalCompilerReference
   </ItemGroup>
 </Project>
 "@ | Set-Content $generatedProject
