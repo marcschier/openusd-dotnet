@@ -31,7 +31,7 @@ LINUX_ARCHIVE = "openusd-native-linux-x64"
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 
 
-def select_candidate(runs, compatible, jobs_for, artifacts_for):
+def select_candidate(runs, compatible, jobs_for, artifacts_for, checkout_for):
     for run in runs:
         status = run["status"]
         if status != "in_progress" and not (
@@ -52,7 +52,13 @@ def select_candidate(runs, compatible, jobs_for, artifacts_for):
             if artifact["name"] == LINUX_ARCHIVE
         ]
         if len(archives) == 1 and archives[0]["expired"] is False:
-            return run_id, source, status, run["conclusion"]
+            job_id = jobs[0].get("databaseId")
+            if type(job_id) is not int or job_id <= 0:
+                raise ValueError("Invalid native producer job identity.")
+            checkout = checkout_for(run_id, job_id, source)
+            if checkout is not None:
+                checkout_commit, checkout_tree = checkout
+                return run_id, source, status, run["conclusion"], checkout_commit, checkout_tree
     return None
 
 
@@ -79,6 +85,60 @@ def github_json(arguments):
     if result.returncode:
         raise RuntimeError(f"GitHub CLI failed: {result.stderr.strip()}")
     return json.loads(result.stdout)
+
+
+def checkout_from_log(log):
+    checkout_lines = []
+    for line in log.splitlines():
+        fields = line.split("\t", 2)
+        if len(fields) == 3 and fields[1].startswith("Run actions/checkout@"):
+            checkout_lines.append(fields[2])
+
+    commits = []
+    for index, line in enumerate(checkout_lines):
+        if re.search(r"\[command\].*\bgit(?:\.exe)? log -1 --format=%H\s*$", line):
+            if index + 1 >= len(checkout_lines):
+                raise ValueError("The native checkout log is missing its commit.")
+            match = re.search(r"(?:^|\s)([0-9a-f]{40})\s*$", checkout_lines[index + 1])
+            if match is None:
+                raise ValueError("The native checkout log has an invalid commit.")
+            commits.append(match[1])
+    if len(commits) != 1:
+        raise ValueError("The native checkout log must contain exactly one checkout commit.")
+    return commits[0]
+
+
+def verified_checkout(repository, run_id, job_id, source):
+    # A pull-request run's head SHA can differ from its checked-out merge tree.
+    result = subprocess.run(
+        ["gh", "run", "view", str(run_id), "--repo", repository,
+         "--job", str(job_id), "--log"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if result.returncode:
+        raise RuntimeError(f"Native producer log retrieval failed: {result.stderr.strip()}")
+    checkout = checkout_from_log(result.stdout)
+    metadata = github_json(["api", f"repos/{repository}/git/commits/{checkout}"])
+    tree = metadata.get("tree") if isinstance(metadata, dict) else None
+    actual_tree = tree.get("sha") if isinstance(tree, dict) else None
+    if (not isinstance(metadata, dict) or metadata.get("sha") != checkout
+            or not isinstance(actual_tree, str)
+            or not COMMIT.fullmatch(actual_tree)):
+        raise ValueError("Invalid native checkout commit metadata.")
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{source}^{{tree}}"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    expected_tree = result.stdout.strip()
+    if result.returncode or not COMMIT.fullmatch(expected_tree):
+        raise RuntimeError(f"Could not resolve the native source tree: {result.stderr.strip()}")
+    if actual_tree != expected_tree:
+        print(
+            f"::notice::Skipping native run {run_id}: checkout {checkout} has a "
+            f"different source tree than producer head {source}."
+        )
+        return None
+    return checkout, actual_tree
 
 
 def write_outputs(values):
@@ -126,23 +186,28 @@ def main():
         return [artifact for page in pages for artifact in page["artifacts"]]
 
     selected = select_candidate(
-        runs, lambda source: source_is_compatible(source, args.head), jobs_for, artifacts_for
+        runs, lambda source: source_is_compatible(source, args.head), jobs_for, artifacts_for,
+        lambda run_id, job_id, source: verified_checkout(
+            args.repository, run_id, job_id, source),
     )
     if selected is None:
         write_outputs({"compatible": "false"})
         print("::notice::No source-compatible completed Linux native archive is available for diagnosis.")
         return
-    run_id, source, status, conclusion = selected
+    run_id, source, status, conclusion, checkout, checkout_tree = selected
     write_outputs({
         "compatible": "true",
         "native_run_id": run_id,
         "native_source": source,
+        "native_checkout": checkout,
+        "native_tree": checkout_tree,
         "native_status": status,
         "native_conclusion": conclusion,
     })
     print(
         f"::notice::Using Linux native run {run_id} at {source} "
-        f"({status}, {conclusion or 'no conclusion'}) for diagnosis only; "
+        f"(checkout {checkout}, tree {checkout_tree}; {status}, "
+        f"{conclusion or 'no conclusion'}) for diagnosis only; "
         "this does not qualify the complete native pipeline."
     )
 

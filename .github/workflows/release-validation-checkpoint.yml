@@ -111,12 +111,14 @@ jobs:
           SOURCE_HEAD: ${{ github.event.pull_request.head.sha }}
           NATIVE_RUN: ${{ steps.diagnostic.outputs.native_run_id }}
           NATIVE_SOURCE: ${{ steps.diagnostic.outputs.native_source }}
+          NATIVE_CHECKOUT: ${{ steps.diagnostic.outputs.native_checkout }}
+          NATIVE_TREE: ${{ steps.diagnostic.outputs.native_tree }}
           NATIVE_STATUS: ${{ steps.diagnostic.outputs.native_status }}
           NATIVE_CONCLUSION: ${{ steps.diagnostic.outputs.native_conclusion }}
         run: |
           mkdir -p artifacts/shadow-volume-repro
-          printf 'diagnosticHead=%s\nnativeRunId=%s\nnativeSource=%s\nnativeStatus=%s\nnativeConclusion=%s\n' \
-            "$SOURCE_HEAD" "$NATIVE_RUN" "$NATIVE_SOURCE" "$NATIVE_STATUS" "$NATIVE_CONCLUSION" \
+          printf 'diagnosticHead=%s\nnativeRunId=%s\nnativeSource=%s\nnativeCheckout=%s\nnativeTree=%s\nnativeStatus=%s\nnativeConclusion=%s\n' \
+            "$SOURCE_HEAD" "$NATIVE_RUN" "$NATIVE_SOURCE" "$NATIVE_CHECKOUT" "$NATIVE_TREE" "$NATIVE_STATUS" "$NATIVE_CONCLUSION" \
             > artifacts/shadow-volume-repro/native-source.txt
       - name: Download source-compatible native artifact for diagnosis
         if: steps.diagnostic.outputs.compatible == 'true'
