@@ -134,6 +134,10 @@ public sealed class SilkPointShadowNativeConformanceTests
         string movedDarkPixelRows = string.Join(",", movedDarkPixels
             .GroupBy(pixel => pixel / Size)
             .Select(group => $"{group.Key}={group.Count()}"));
+        string movedDarkPixelSampleRows = string.Join(";", Enumerable.Range(SampleY - 2, 5)
+            .Select(y => $"{y}=[{string.Join(",", movedDarkPixels
+                .Where(pixel => pixel / Size == y)
+                .Select(pixel => pixel % Size))}]"));
         string movedDarkPixelLocations = string.Join(",", movedDarkPixels
             .Take(64)
             .Select(pixel => $"{pixel % Size}:{pixel / Size}"));
@@ -142,6 +146,7 @@ public sealed class SilkPointShadowNativeConformanceTests
             $"moved point shadow; second red={movedAgain.Pixels[movedOffset]}, " +
             $"fresh red={freshMoved.Pixels[movedOffset]}, dark pixels={movedDarkPixels.Length}, " +
             $"bounds=[{movedDarkPixelBounds}], rows=[{movedDarkPixelRows}], " +
+            $"sample rows={movedDarkPixelSampleRows}, " +
             $"first x:y=[{movedDarkPixelLocations}]");
         await AssertDarkened(before, movedAgain, MovedShadowX, "repeated moved point shadow");
         await AssertDarkened(before, freshMoved, MovedShadowX, "fresh moved point shadow");
