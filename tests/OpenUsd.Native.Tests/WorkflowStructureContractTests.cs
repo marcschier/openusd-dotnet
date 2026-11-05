@@ -356,6 +356,9 @@ public sealed class WorkflowStructureContractTests
             "joint-high-tint-overlap-1e-37-scalar", "joint-high-tint-overlap-1e-20-scalar",
             "joint-high-tint-overlap-1e-8-scalar", "joint-high-tint-overlap-1e-37-grid",
             "joint-high-tint-overlap-1e-20-grid", "joint-high-tint-overlap-1e-8-grid",
+            "joint-high-tint-single", "joint-high-tint-single-half", "joint-high-tint-single-opaque",
+            "joint-high-tint-single-reduced-exposure", "joint-high-tint-two", "joint-high-tint-eight",
+            "joint-tint-underflowing-weight", "joint-tint-dominant-dark-weight",
             "joint-signal-subnormal-scale-scalar", "joint-signal-step-underflow-scalar",
             "joint-signal-opacity-product-scalar", "joint-signal-subnormal-scale-grid",
             "joint-signal-step-underflow-grid", "joint-signal-opacity-product-grid",
@@ -376,7 +379,7 @@ public sealed class WorkflowStructureContractTests
             "joint-snapshot-budget-reuse", "joint-renderer-disposal-retry"
         ];
         await Assert.That(string.Join('\n', produced)).IsEqualTo(string.Join('\n', expected));
-        await Assert.That(produced.Distinct(StringComparer.Ordinal).Count()).IsEqualTo(114);
+        await Assert.That(produced.Distinct(StringComparer.Ordinal).Count()).IsEqualTo(122);
         foreach ((string file, string variable) in new[]
         {
             ("assert-volume-camera-evidence.ps1", "expectedCases"),

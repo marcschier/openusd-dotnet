@@ -477,6 +477,9 @@ try
         'joint-high-tint-overlap-1e-37-scalar', 'joint-high-tint-overlap-1e-20-scalar',
         'joint-high-tint-overlap-1e-8-scalar', 'joint-high-tint-overlap-1e-37-grid',
         'joint-high-tint-overlap-1e-20-grid', 'joint-high-tint-overlap-1e-8-grid',
+        'joint-high-tint-single', 'joint-high-tint-single-half', 'joint-high-tint-single-opaque',
+        'joint-high-tint-single-reduced-exposure', 'joint-high-tint-two', 'joint-high-tint-eight',
+        'joint-tint-underflowing-weight', 'joint-tint-dominant-dark-weight',
         'joint-signal-subnormal-scale-scalar', 'joint-signal-step-underflow-scalar',
         'joint-signal-opacity-product-scalar', 'joint-signal-subnormal-scale-grid',
         'joint-signal-step-underflow-grid', 'joint-signal-opacity-product-grid',
@@ -495,7 +498,13 @@ try
         'joint-failed-frame-cleanup-staged', 'joint-snapshot-rollback-staged',
         'joint-snapshot-budget-refusal-staged', 'joint-snapshot-budget-exact-staged',
         'joint-snapshot-budget-reuse', 'joint-renderer-disposal-retry')
-    $prior92CameraCases = @($cameraCases | Where-Object {
+    $prior114CameraCases = @($cameraCases | Where-Object {
+        $_ -cnotin @(
+            'joint-high-tint-single', 'joint-high-tint-single-half', 'joint-high-tint-single-opaque',
+            'joint-high-tint-single-reduced-exposure', 'joint-high-tint-two', 'joint-high-tint-eight',
+            'joint-tint-underflowing-weight', 'joint-tint-dominant-dark-weight')
+    })
+    $prior92CameraCases = @($prior114CameraCases | Where-Object {
         $_ -cnotin @(
             'joint-direct-retirement-none', 'joint-retirement-none-retained', 'joint-retirement-none-staged',
             'joint-direct-retirement-depth', 'joint-retirement-depth-retained', 'joint-retirement-depth-staged',
@@ -602,7 +611,8 @@ try
                 'forty-six-case-manifest', 'forty-eight-case-manifest', 'fifty-one-case-manifest',
                 'fifty-three-case-manifest', 'fifty-five-case-manifest', 'fifty-nine-case-manifest',
                 'sixty-five-case-manifest', 'sixty-nine-case-manifest', 'eighty-four-case-manifest',
-                'ninety-two-case-manifest', 'missing-snapshot-budget', 'missing-retirement', 'missing-disposal',
+                'ninety-two-case-manifest', 'one-hundred-fourteen-case-manifest',
+                'missing-snapshot-budget', 'missing-retirement', 'missing-disposal',
                 'missing-finite-scalar', 'missing-finite-grid',
                 'substituted-case'))
             {
@@ -751,6 +761,11 @@ try
                     'ninety-two-case-manifest' {
                         $changed.cases = @($prior92CameraCases)
                         if ($changed.cases.Count -ne 92) { throw 'Incorrect 92-case camera fixture.' }
+                        $reason = 'Missing, duplicate'
+                    }
+                    'one-hundred-fourteen-case-manifest' {
+                        $changed.cases = @($prior114CameraCases)
+                        if ($changed.cases.Count -ne 114) { throw 'Incorrect 114-case camera fixture.' }
                         $reason = 'Missing, duplicate'
                     }
                     'missing-snapshot-budget' {

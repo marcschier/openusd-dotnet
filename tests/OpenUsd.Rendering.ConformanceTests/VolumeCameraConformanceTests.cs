@@ -196,6 +196,22 @@ public sealed class VolumeCameraConformanceTests
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, true, 1e-20f));
             await run("joint-high-tint-overlap-1e-8-grid", () =>
                 jointPass.OverlappingHighFiniteTintsMatchTheIndependentComposite(backend, true, 1e-8f));
+            await run("joint-high-tint-single", () =>
+                jointPass.SingleHighTintFieldProducesFinitePixels(backend));
+            await run("joint-high-tint-single-half", () =>
+                jointPass.HalfMaximumTintFieldProducesFinitePixels(backend));
+            await run("joint-high-tint-single-opaque", () =>
+                jointPass.OpaqueHighTintFieldProducesFinitePixels(backend));
+            await run("joint-high-tint-single-reduced-exposure", () =>
+                jointPass.ReducedExposureHighTintFieldProducesFinitePixels(backend));
+            await run("joint-high-tint-two", () =>
+                jointPass.TwoCoincidentHighTintFieldsProduceFinitePixels(backend));
+            await run("joint-high-tint-eight", () =>
+                jointPass.EightCoincidentHighTintFieldsProduceFinitePixels(backend));
+            await run("joint-tint-underflowing-weight", () =>
+                jointPass.TinyTintContributionSurvivesUnderflowingWeight(backend));
+            await run("joint-tint-dominant-dark-weight", () =>
+                jointPass.TinyTintContributionSurvivesDominantDarkWeight(backend));
             await run("joint-signal-subnormal-scale-scalar", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, false, VolumeCameraJointPassConformanceTests.LowDensitySignal.SubnormalScale));
