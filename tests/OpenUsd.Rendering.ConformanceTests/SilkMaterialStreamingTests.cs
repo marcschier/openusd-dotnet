@@ -10,31 +10,37 @@ namespace OpenUsd.Rendering.ConformanceTests;
 [NotInParallel]
 public sealed class SilkMaterialStreamingTests
 {
+    private static readonly float[] UnsupportedPtexFallback = [0.11f, 0.23f, 0.47f, 0.71f];
+    private static readonly string[] MissingNormalTexturePath = ["N"];
+
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
-    public async Task UnsupportedPtexNormalUsesDefaultPixelsUntilImageReplacementAndRestoration(
+    public async Task UnsupportedPtexNormalUsesAuthoredFallbackUntilImageReplacementAndRestoration(
         SilkGraphicsBackend backend)
     {
         using var actual = new Fixture(backend, true, mixedColors: true);
-        using var expected = new Fixture(backend, false, mixedColors: true);
+        using var expected = new Fixture(backend, false, mixedColors: true, failFirstDecodePath: "N");
         using OpenUsdSilkPage geometry = Page(2, 1);
         _ = actual.Render(geometry);
         _ = expected.Render(geometry);
         byte[] imagePixels = actual.ColorBytes();
         actual.Decoded.Clear();
+        expected.Decoded.Clear();
 
         using var ptex = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
-            Material('A', false, normalMap: true, uvPrimvar: "", sourceKind: SilkTextureSourceKind.Ptex), 1);
-        using var defaults = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
-            Material('A', false, omitMaps: true), 1);
+            Material('A', false, normalMap: true, uvPrimvar: "", fallback: UnsupportedPtexFallback,
+                sourceKind: SilkTextureSourceKind.Ptex), 1);
+        using var imageFallback = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
+            Material('A', false, normalMap: true, uvPrimvar: "", fallback: UnsupportedPtexFallback), 1);
         _ = actual.Render(ptex);
-        _ = expected.Render(defaults);
-        byte[] defaultPixels = actual.ColorBytes();
-        await Assert.That(defaultPixels.SequenceEqual(expected.ColorBytes())).IsTrue();
+        _ = expected.Render(imageFallback);
+        byte[] fallbackPixels = actual.ColorBytes();
+        await Assert.That(fallbackPixels.SequenceEqual(expected.ColorBytes())).IsTrue();
         await Assert.That(actual.DepthValues().SequenceEqual(expected.DepthValues())).IsTrue();
-        await Assert.That(defaultPixels.SequenceEqual(imagePixels)).IsFalse();
+        await Assert.That(fallbackPixels.SequenceEqual(imagePixels)).IsFalse();
         await Assert.That(actual.Decoded.Count).IsEqualTo(0);
+        await Assert.That(expected.Decoded.SequenceEqual(MissingNormalTexturePath)).IsTrue();
         await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries.Count(static entry =>
             entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsEqualTo(1);
 
@@ -48,9 +54,10 @@ public sealed class SilkMaterialStreamingTests
             entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsFalse();
 
         using var restored = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 5,
-            Material('A', false, normalMap: true, uvPrimvar: "", sourceKind: SilkTextureSourceKind.Ptex), 1);
+            Material('A', false, normalMap: true, uvPrimvar: "", fallback: UnsupportedPtexFallback,
+                sourceKind: SilkTextureSourceKind.Ptex), 1);
         _ = actual.Render(restored);
-        await Assert.That(actual.ColorBytes().SequenceEqual(defaultPixels)).IsTrue();
+        await Assert.That(actual.ColorBytes().SequenceEqual(fallbackPixels)).IsTrue();
         await Assert.That(actual.Renderer.GpuResources.Diagnostics.Entries.Count(static entry =>
             entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsEqualTo(1);
         actual.ReleaseResources();
@@ -1620,15 +1627,39 @@ public sealed class SilkMaterialStreamingTests
             fixture.Renderer.ApplyPage(initial);
             using var update = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3,
                 VolumeCommandAuthoring.CreateVolumeMaterialCommand("/Volume", 1, grid, "2,2,2"), 1);
+            const ulong atlasBytes = 4 * 4 * 4 * sizeof(float);
+            const ulong uploadCopyBytes = atlasBytes;
+            const ulong sourceBytes = 2 * 2 * 2 * sizeof(float);
+            const ulong retainedMetadataBytes = 12;
+            const ulong peakPreparationBytes =
+                atlasBytes + uploadCopyBytes + sourceBytes + retainedMetadataBytes;
+            SilkVolumeAtlasLayout layout = SilkVolumeAtlas.Plan(
+                [new SilkVolumeAtlasInput(new SilkVolumeTextureExtent(2, 2, 2), default)]);
+            await Assert.That(layout.ByteCount).IsEqualTo((int)atlasBytes);
+            byte[] before = fixture.ColorBytes();
+            ulong texturesBefore = fixture.Textures.Usage.ReservedBytes;
             using (IDisposable pressure = fixture.Cpu.Reserve(
-                fixture.Cpu.MaximumBytes - fixture.Cpu.Usage.ReservedBytes - 64))
+                fixture.Cpu.MaximumBytes - fixture.Cpu.Usage.ReservedBytes - peakPreparationBytes + 1))
+            {
+                ulong reserved = fixture.Cpu.Usage.ReservedBytes;
+                await Assert.That(() => fixture.Render(update))
+                    .Throws<InvalidDataException>()
+                    .WithMessageContaining("bounded CPU allocation budget");
+                await Assert.That(fixture.Renderer.Scene.Revision).IsEqualTo(2ul);
+                await Assert.That(fixture.Cpu.Usage.ReservedBytes).IsEqualTo(reserved);
+                await Assert.That(fixture.Textures.Usage.ReservedBytes).IsEqualTo(texturesBefore);
+                await Assert.That(fixture.Staging.Usage.ReservedBytes).IsEqualTo(0ul);
+                await Assert.That(fixture.ColorBytes().SequenceEqual(before)).IsTrue();
+            }
+            using (IDisposable pressure = fixture.Cpu.Reserve(
+                fixture.Cpu.MaximumBytes - fixture.Cpu.Usage.ReservedBytes - peakPreparationBytes))
             {
                 ulong reserved = fixture.Cpu.Usage.ReservedBytes;
                 await Assert.That(fixture.Render(update).DrawCount).IsEqualTo(1);
-                await Assert.That(fixture.Cpu.Usage.ReservedBytes).IsEqualTo(reserved);
+                await Assert.That(fixture.Cpu.Usage.ReservedBytes)
+                    .IsEqualTo(reserved + retainedMetadataBytes);
                 await Assert.That(fixture.Cpu.Usage.PeakReservedBytes).IsEqualTo(fixture.Cpu.MaximumBytes);
             }
-            await Assert.That(fixture.Renderer.GpuResources.Statistics.TextureUploadBytes).IsEqualTo(32ul);
             await Assert.That(fixture.Renderer.GpuResources.Statistics.TextureCacheEntryCount).IsEqualTo(0);
             await Assert.That(fixture.ColorBytes().SequenceEqual(fixture.InitialColor)).IsFalse();
             fixture.ReleaseResources();

@@ -7,18 +7,32 @@ on:
       - '.github/workflows/release-validation-checkpoint.yml'
       - 'Directory.Packages.props'
       - 'eng/assert-viewer-compiler-redistribution.ps1'
+      - 'eng/diagnostics/metal-volume-math.metal'
+      - 'eng/diagnostics/metal-volume-math.swift'
+      - 'eng/mesa-lavapipe-test-runtime.lock.json'
+      - 'eng/metal-volume-repro-report.ps1'
       - 'eng/publish-viewer-bundle.ps1'
+      - 'eng/run-windows-lavapipe-primitive-probe.ps1'
+      - 'eng/test-metal-volume-repro-report.ps1'
+      - 'eng/test-windows-lavapipe-primitive-probe.ps1'
       - 'eng/test-viewer-compiler-redistribution.ps1'
       - 'eng/verify-nuget-promotion.py'
       - 'eng/verify-spirv-cross-provenance.py'
       - 'eng/tests/test_release_validation_checkpoint.py'
       - 'eng/tests/test_verify_nuget_promotion.py'
       - 'eng/tests/test_verify_spirv_cross_provenance.py'
+      - 'native/hdSilk/src/mesh.cpp'
+      - 'native/hdSilk/src/sceneState.cpp'
+      - 'native/hdSilk/tests/CMakeLists.txt'
+      - 'native/hdSilk/tests/geometry_sync_test_hook.cpp'
+      - 'native/hdSilk/tests/hdsilk_direct_lights_probe.cpp'
+      - 'native/hdSilk/tests/hdsilk_mesh_preparation_probe.cpp'
       - 'native/hdSilk/tests/hdsilk_direct_lights_session_probe.cpp'
       - 'native/hdSilk/tests/hdsilk_direct_lights_test_decode.h'
       - 'native/hdSilk/include/openusd_hdsilk.h'
       - 'native/openusd_dotnet/include/openusd_dotnet.h'
       - 'native/include/openusd_render_camera.h'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdProbeVulkanDevice.cs'
 
 permissions:
   actions: read
@@ -46,6 +60,92 @@ jobs:
             -Inative/openusd_dotnet/include \
             -Inative/include \
             native/hdSilk/tests/hdsilk_direct_lights_session_probe.cpp
+
+  linux-native-ctest-repro:
+    name: Linux native geometry and shadow repro
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install native prerequisites
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y
+          build-essential clang cmake ninja-build pkg-config patchelf binutils
+          libgl1-mesa-dev libgl1-mesa-dri libglu1-mesa-dev libx11-dev libxcursor-dev
+          libxi-dev libxinerama-dev libxrandr-dev libxt-dev libxtst-dev
+          libwayland-dev x11-utils xvfb xauth zlib1g-dev
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          fail-on-cache-miss: true
+          path: |
+            native/install/linux-x64
+            native/install/vulkan-sdk-1.4.363.0
+          key: >-
+            openusd-install-linux-x64-${{ hashFiles(
+              'eng/openusd.install.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
+            ) }}
+      - name: Verify native SDK inputs
+        shell: pwsh
+        run: ./eng/verify-sdk-build-input.ps1 -Rid linux-x64
+      - name: Build current native probes
+        shell: bash
+        env:
+          OPENUSD_ROOT: ${{ github.workspace }}/native/install/linux-x64
+          VULKAN_SDK: ${{ github.workspace }}/native/install/vulkan-sdk-1.4.363.0
+        run: |
+          set -euo pipefail
+          cd native
+          cmake --preset linux-x64
+          cmake --build --preset linux-x64 --target \
+            hdsilk_probe hdsilk_direct_lights_probe hdsilk_mesh_preparation_probe
+      - name: Repeat the failing native CTests
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$GITHUB_WORKSPACE/artifacts/linux-native-ctest-repro"
+          build="$GITHUB_WORKSPACE/native/build/shim/linux-x64"
+          mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/source-commit.txt"
+          failed=0
+          for test_name in hdsilk_geometry_non_geometry_sync hdsilk_direct_light_domes_shadows \
+            hdsilk_mesh_preparation; do
+            for attempt in 1 2; do
+              name="$test_name-$attempt"
+              rm -f -- "$build/Testing/Temporary/LastTest.log"
+              if xvfb-run -a ctest --test-dir "$build" \
+                -R "^${test_name}$" --no-tests=error --output-on-failure \
+                --output-junit "$evidence/$name.xml" 2>&1 | tee "$evidence/$name.txt"; then
+                :
+              else
+                failed=1
+              fi
+              if [[ -f "$build/Testing/Temporary/LastTest.log" ]]; then
+                cp "$build/Testing/Temporary/LastTest.log" "$evidence/$name-LastTest.log"
+              fi
+            done
+          done
+          exit "$failed"
+      - name: Upload native repro evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-native-ctest-repro-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/linux-native-ctest-repro/
+          if-no-files-found: warn
+          retention-days: 14
 
   viewer-compiler-redistribution-guard:
     name: Viewer compiler redistribution guard
@@ -347,6 +447,46 @@ jobs:
           }
           Copy-Item -LiteralPath $reportPath -Destination (
             Join-Path (Split-Path $reportPath) 'shader-diagnostic-lifecycle.json')
+      - name: Run unsupported Ptex fallback geometry tests
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-capture-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 5 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkMaterialCommandTests/UnsupportedPtex*')
+          $reportPath = 'tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.Tests-linux-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The Ptex fallback geometry report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkMaterialCommandTests'
+          } | ForEach-Object { $_.tests })
+          $expected = @(
+            'UnsupportedPtexInputSamplesItsNonDefaultAuthoredFallback(Normal)',
+            'UnsupportedPtexInputSamplesItsNonDefaultAuthoredFallback(Opacity)',
+            'UnsupportedPtexNormalFallbackBuildsTangentsAndRestoresGeometry(Normal)',
+            'UnsupportedPtexForbiddenInputIsRejectedAndCorrectedRetryWorks(DetailNormal)',
+            'UnsupportedPtexForbiddenInputIsRejectedAndCorrectedRetryWorks(Displacement)'
+          )
+          foreach ($name in $expected) {
+            if (@($cases | Where-Object {
+              $_.displayName -ceq $name -and $_.status -ceq 'passed'
+            }).Count -ne 1) {
+              throw "The Ptex fallback test '$name' did not pass exactly once."
+            }
+          }
+          if ($report.summary.total -ne 5 -or $report.summary.passed -ne 5 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $cases.Count -ne 5) {
+            throw 'All five Ptex fallback and refusal cases must pass without skips.'
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'ptex-fallback-geometry.json')
       - name: Upload capture evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -598,6 +738,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+      - name: Check lavapipe diagnostic report retention
+        shell: pwsh
+        run: ./eng/test-windows-lavapipe-primitive-probe.ps1
       - name: Validate shader receipt identity
         shell: pwsh
         env:
@@ -618,6 +761,7 @@ jobs:
         with:
           dotnet-version: 10.0.403
       - name: Build Windows conformance reproducers
+        id: windows_conformance_build
         shell: pwsh
         run: |
           $projects = @(
@@ -641,6 +785,19 @@ jobs:
               Names = @('WarpReleasesEverySubmissionResourceAfterProvenDeviceRemoval')
             },
             @{
+              Class = 'SilkGraphicsSubmissionRetirementTests'
+              Method = 'D3D12DeviceLossKeepsSubmissionInvalid'
+              Names = @(
+                'D3D12DeviceLossKeepsSubmissionInvalid(False)',
+                'D3D12DeviceLossKeepsSubmissionInvalid(True)'
+              )
+            },
+            @{
+              Class = 'SilkGraphicsSubmissionRetirementTests'
+              Method = 'D3D12TerminalLossRetainsOriginalFailureAcrossCleanupRetries'
+              Names = @('D3D12TerminalLossRetainsOriginalFailureAcrossCleanupRetries')
+            },
+            @{
               Class = 'SilkMaterialStreamingTests'
               Method = 'VolumePixelsReleaseAfterTheirUploadAndRenderTheDensityGrid'
               Names = @(
@@ -650,10 +807,10 @@ jobs:
             },
             @{
               Class = 'SilkMaterialStreamingTests'
-              Method = 'UnsupportedPtexNormalUsesDefaultPixelsUntilImageReplacementAndRestoration'
+              Method = 'UnsupportedPtexNormalUsesAuthoredFallbackUntilImageReplacementAndRestoration'
               Names = @(
-                'UnsupportedPtexNormalUsesDefaultPixelsUntilImageReplacementAndRestoration(D3D12)',
-                'UnsupportedPtexNormalUsesDefaultPixelsUntilImageReplacementAndRestoration(Vulkan)'
+                'UnsupportedPtexNormalUsesAuthoredFallbackUntilImageReplacementAndRestoration(D3D12)',
+                'UnsupportedPtexNormalUsesAuthoredFallbackUntilImageReplacementAndRestoration(Vulkan)'
               )
             },
             @{
@@ -734,6 +891,19 @@ jobs:
           name: windows-conformance-repro-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/windows-conformance-repro/*.tunit-report.json
           if-no-files-found: warn
+      - name: Diagnose Windows primitive transport on lavapipe
+        if: ${{ always() && !cancelled() && steps.windows_conformance_build.outcome == 'success' }}
+        shell: pwsh
+        run: >-
+          ./eng/run-windows-lavapipe-primitive-probe.ps1
+          -EvidenceRoot artifacts/windows-lavapipe-primitive
+      - name: Upload Windows lavapipe diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-lavapipe-primitive-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/windows-lavapipe-primitive/
+          if-no-files-found: warn
           retention-days: 14
 
   shader-receipts:
@@ -785,6 +955,56 @@ jobs:
             tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/
             tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/checked/
           if-no-files-found: error
+
+  metal-volume-math-diagnostic:
+    name: Metal volume math diagnostic
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Capture standalone fragment math under both compiler modes
+        shell: bash
+        env:
+          EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          evidence=artifacts/metal-volume-math
+          mkdir -p "$evidence"
+          actual_source="$(git rev-parse HEAD)"
+          if [[ "$actual_source" != "$EXPECTED_SOURCE" ]]; then
+            echo "Metal diagnostic checkout does not match the pull request head." >&2
+            exit 1
+          fi
+          printf '%s\n' "$actual_source" > "$evidence/source-commit.txt"
+          shasum -a 256 eng/diagnostics/metal-volume-math.metal \
+            eng/diagnostics/metal-volume-math.swift > "$evidence/source-sha256.txt"
+          xcodebuild -version | tee "$evidence/toolchain.txt"
+          xcrun -sdk macosx metal -std=macos-metal2.4 \
+            -c eng/diagnostics/metal-volume-math.metal -o "$RUNNER_TEMP/volume-math-default.air"
+          xcrun -sdk macosx metallib "$RUNNER_TEMP/volume-math-default.air" \
+            -o "$RUNNER_TEMP/volume-math-default.metallib"
+          xcrun -sdk macosx metal -std=macos-metal2.4 -fno-fast-math \
+            -c eng/diagnostics/metal-volume-math.metal -o "$RUNNER_TEMP/volume-math-precise.air"
+          xcrun -sdk macosx metallib "$RUNNER_TEMP/volume-math-precise.air" \
+            -o "$RUNNER_TEMP/volume-math-precise.metallib"
+          xcrun -sdk macosx swiftc -framework Metal \
+            eng/diagnostics/metal-volume-math.swift -o "$RUNNER_TEMP/volume-math-probe"
+          shasum -a 256 "$RUNNER_TEMP/volume-math-default.metallib" \
+            "$RUNNER_TEMP/volume-math-precise.metallib" "$RUNNER_TEMP/volume-math-probe" \
+            > "$evidence/binary-sha256.txt"
+          "$RUNNER_TEMP/volume-math-probe" "$RUNNER_TEMP/volume-math-default.metallib" \
+            "$RUNNER_TEMP/volume-math-precise.metallib" | tee "$evidence/results.json"
+      - name: Retain standalone diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: metal-volume-math-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/metal-volume-math/
+          if-no-files-found: warn
 
   metal-link:
     needs: shader-receipts
@@ -992,40 +1212,65 @@ jobs:
         run: |
           . ./eng/metal-volume-repro-report.ps1
           $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
-          if (Test-Path -LiteralPath $reportPath) {
-            throw 'The targeted Metal execution requires a fresh report.'
+          $evidence = 'artifacts/metal-volume-repro'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $cases = @(
+            @{ Method = 'LargeFiniteDensityInThinFieldRemainsVisible'; Minimum = 8 },
+            @{ Method = 'OverlappingHighFiniteTintsMatchTheIndependentComposite'; Minimum = 10 }
+          )
+          $failures = [Collections.Generic.List[string]]::new()
+          foreach ($case in $cases) {
+            if (Test-Path -LiteralPath $reportPath) {
+              throw 'The targeted Metal execution requires a fresh report.'
+            }
+            $started = [DateTime]::UtcNow
+            $executionFailure = $null
+            try {
+              ./eng/run-managed-tests.ps1 `
+                -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+                -Framework net10.0 -Configuration Release -MinimumExpectedTests $case.Minimum `
+                -TestArguments @('--treenode-filter', "/*/*/VolumeCameraJointPassConformanceTests/$($case.Method)")
+            }
+            catch {
+              $executionFailure = $_
+            }
+            $finished = [DateTime]::UtcNow
+            Write-Host "[metal-volume-repro] $($case.Method) execution_ms=$([long]($finished - $started).TotalMilliseconds)"
+            try {
+              if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+                throw "The targeted Metal report is missing. Execution: $executionFailure"
+              }
+              $retainedPath = Join-Path $evidence "$($case.Method).tunit-report.json"
+              Move-MetalVolumeReproReport -Source $reportPath -Destination $retainedPath
+              $reportTime = (Get-Item -LiteralPath $retainedPath).LastWriteTimeUtc
+              if ($reportTime -lt $started -or $reportTime -gt $finished) {
+                throw 'The targeted Metal report was not written during this execution.'
+              }
+              $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+              $result = Assert-MetalVolumeReproReport -Report $report `
+                -StartedUtc $started -FinishedUtc $finished -Method $case.Method
+              if ($null -ne $executionFailure) {
+                throw "The Metal test runner failed despite a passing report: $executionFailure"
+              }
+              Write-Host "[metal-volume-repro] $($case.Method) passed=$($result.passed) skipped=$($result.skipped)"
+            }
+            catch {
+              $failures.Add("$($case.Method): $($_.Exception.Message)")
+              if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+                break
+              }
+            }
           }
-          $started = [DateTime]::UtcNow
-          $executionFailure = $null
-          try {
-            ./eng/run-managed-tests.ps1 `
-              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-              -Framework net10.0 -Configuration Release -MinimumExpectedTests 10 `
-              -TestArguments @('--treenode-filter', '/*/*/VolumeCameraJointPassConformanceTests/OverlappingHighFiniteTintsMatchTheIndependentComposite')
+          if ($failures.Count -ne 0) {
+            throw ($failures -join [Environment]::NewLine)
           }
-          catch {
-            $executionFailure = $_
-          }
-          $finished = [DateTime]::UtcNow
-          Write-Host "[metal-volume-repro] execution_ms=$([long]($finished - $started).TotalMilliseconds)"
-          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
-            throw "The targeted Metal report is missing. Execution: $executionFailure"
-          }
-          $reportTime = (Get-Item -LiteralPath $reportPath).LastWriteTimeUtc
-          if ($reportTime -lt $started -or $reportTime -gt $finished) {
-            throw 'The targeted Metal report was not written during this execution.'
-          }
-          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
-          $result = Assert-MetalVolumeReproReport -Report $report -StartedUtc $started -FinishedUtc $finished
-          if ($null -ne $executionFailure) {
-            throw "The Metal test runner failed despite a passing report: $executionFailure"
-          }
-          Write-Host "[metal-volume-repro] passed=$($result.passed) skipped=$($result.skipped)"
       - name: Upload targeted Metal volume report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: metal-volume-repro-${{ github.run_id }}-${{ github.run_attempt }}
-          path: tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/*.tunit-report.json
+          path: |
+            artifacts/metal-volume-repro/*.tunit-report.json
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json
           if-no-files-found: warn
           retention-days: 14

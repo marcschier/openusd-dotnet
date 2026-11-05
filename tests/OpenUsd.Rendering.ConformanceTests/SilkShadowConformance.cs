@@ -718,8 +718,19 @@ internal static partial class SilkShadowConformance
             SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity), 1);
         _ = renderer.ApplyAndRender(blended, color, depth);
         byte[] continuous = ReadPixels(color);
-        await AssertShadowed(continuous, 16, "unit-opacity region of the blended caster");
-        await AssertLit(continuous, 24, "zero-opacity region of the blended caster");
+        await AssertLit(continuous, 16, "zero-opacity region of the blended caster");
+        await AssertShadowed(continuous, 24, "unit-opacity region of the blended caster");
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++rendered);
+        await Assert.That(HasCasterDiagnostic(renderer)).IsFalse();
+
+        using var reversedBlend = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 4,
+            SilkMaterialStreamingTests.Material('A', false, scalarParameter: SilkMaterialParameter.Opacity,
+                assetName: 'B'), 1);
+        _ = renderer.ApplyAndRender(reversedBlend, color, depth);
+        byte[] reversedContinuous = ReadPixels(color);
+        await AssertShadowed(reversedContinuous, 16, "updated unit-opacity region of the blended caster");
+        await AssertLit(reversedContinuous, 24, "updated zero-opacity region of the blended caster");
+        await Assert.That(renderer.ShadowMapRenderCount).IsEqualTo(++rendered);
         await Assert.That(HasCasterDiagnostic(renderer)).IsFalse();
 
         static SilkDecodedImage decode(string asset, bool _)

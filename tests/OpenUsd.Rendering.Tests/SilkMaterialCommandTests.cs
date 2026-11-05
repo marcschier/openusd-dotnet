@@ -5125,14 +5125,138 @@ public sealed class SilkMaterialCommandTests
 
         resources.BindMaterialTexture(commands, material, expected.Parameter, expected.Parameter, mesh);
 
-        SilkShaderFeatures expectedFeature = parameter == SilkMaterialParameter.Normal
-            ? SilkShaderFeatures.NormalMap : SilkShaderFeatures.OpacityMap;
+        SilkShaderFeatures expectedFeature = parameter switch
+        {
+            SilkMaterialParameter.Normal => SilkShaderFeatures.NormalMap,
+            _ => SilkShaderFeatures.OpacityMap
+        };
         await Assert.That(material.GetRenderableSurfaceTexture(parameter)).IsNotNull();
         await Assert.That(material.GetTextureFeatures().HasFlag(expectedFeature)).IsTrue();
         await Assert.That(commands.Uploads.Single().SequenceEqual(new byte[] { 28, 59, 120, 181 })).IsTrue();
         await Assert.That(resources.Diagnostics.Entries.Any(entry =>
             entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported &&
             entry.Message.Contains($"unsupported-{parameter}.ptx", StringComparison.Ordinal))).IsTrue();
+    }
+
+    [Test]
+    [Arguments(SilkMaterialParameter.Normal)]
+    public async Task UnsupportedPtexNormalFallbackBuildsTangentsAndRestoresGeometry(
+        SilkMaterialParameter parameter)
+    {
+        TextureSpec texture = new(
+            parameter,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: 3,
+            Scale: [1, 1, 1, 1],
+            Bias: [0, 0, 0, 0],
+            Fallback: [0.11f, 0.23f, 0.47f, 0.71f],
+            Asset: $"unsupported-{parameter}.ptx",
+            UvPrimvar: "",
+            SourceKind: SilkTextureSourceKind.Ptex);
+        byte[] textured = CreateMaterialUpsert(
+            "/Material/UnsupportedPtex", SilkSurfaceKind.PreviewSurface, [], [texture]);
+        byte[] untextured = CreateMaterialUpsert(
+            "/Material/UnsupportedPtex", SilkSurfaceKind.PreviewSurface, [], []);
+        using var scene = new SilkSceneState();
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            [.. textured, .. CreateMeshUpsert("/Mesh/UnsupportedPtex", "/Material/UnsupportedPtex")], 2);
+        using var removed = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, untextured, 1);
+        using var restored = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 3, textured, 1);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Ptex cannot use the ordinary image decoder."));
+
+        resources.Apply(scene, scene.Apply(first));
+        SilkMeshGpuResource initial = resources.MeshValues.Single();
+        await Assert.That(initial.Geometry.Key.HasTangents).IsTrue();
+        await Assert.That(initial.Geometry.VertexLayout.Attributes.Any(
+            attribute => attribute.Semantic == SilkVertexSemantic.Tangent)).IsTrue();
+        await Assert.That(resources.Diagnostics.Entries.Any(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsTrue();
+
+        resources.Apply(scene, scene.Apply(removed));
+        SilkMeshGpuResource withoutTexture = resources.MeshValues.Single();
+        await Assert.That(withoutTexture.Geometry.Key.HasTangents).IsFalse();
+        await Assert.That(withoutTexture.Geometry.VertexLayout.Attributes.Any(
+            attribute => attribute.Semantic == SilkVertexSemantic.Tangent)).IsFalse();
+
+        resources.Apply(scene, scene.Apply(restored));
+        SilkMeshGpuResource current = resources.MeshValues.Single();
+        await Assert.That(current.Geometry.Key.HasTangents).IsTrue();
+        await Assert.That(current.Geometry.VertexLayout.Attributes.Any(
+            attribute => attribute.Semantic == SilkVertexSemantic.Tangent)).IsTrue();
+        await Assert.That(resources.Diagnostics.Entries.Any(entry =>
+            entry.Code == SilkRenderDiagnosticCodes.TexturePtexUnsupported)).IsTrue();
+    }
+
+    [Test]
+    [Arguments(SilkMaterialParameter.DetailNormal)]
+    [Arguments(SilkMaterialParameter.Displacement)]
+    public async Task UnsupportedPtexForbiddenInputIsRejectedAndCorrectedRetryWorks(
+        SilkMaterialParameter parameter)
+    {
+        const string materialPath = "/Material/ForbiddenPtex";
+        TextureSpec invalid = new(
+            parameter,
+            SilkTextureWrap.Repeat,
+            SilkTextureWrap.Repeat,
+            SilkColorSpace.Raw,
+            ComponentCount: parameter == SilkMaterialParameter.DetailNormal ? 3 : 1,
+            Scale: [1, 1, 1, 1],
+            Bias: [0, 0, 0, 0],
+            Fallback: [0.11f, 0.23f, 0.47f, 0.71f],
+            Asset: $"forbidden-{parameter}.ptx",
+            UvPrimvar: "",
+            SourceKind: SilkTextureSourceKind.Ptex);
+        TextureSpec corrected = invalid with
+        {
+            Asset = $"corrected-{parameter}.png",
+            UvPrimvar = "st",
+            SourceKind = SilkTextureSourceKind.Standard
+        };
+        using var scene = new SilkSceneState();
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
+            [.. CreateMaterialUpsert(materialPath, SilkSurfaceKind.PreviewSurface, [], []),
+             .. CreateMeshUpsert("/Mesh/ForbiddenPtex", materialPath)], 2);
+        using var refused = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2,
+            CreateMaterialUpsert(materialPath, SilkSurfaceKind.PreviewSurface, [], [invalid]), 1);
+        using var retry = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2,
+            CreateMaterialUpsert(materialPath, SilkSurfaceKind.PreviewSurface, [], [corrected]), 1);
+        using var device = new TextureGraphicsDevice { MaxTextureDimension2D = 4096 };
+        int decodes = 0;
+        using var resources = new SilkSceneGpuResources(device, (_, _) =>
+        {
+            decodes++;
+            return new SilkDecodedImage(1, 1, [128, 128, 255, 255]);
+        });
+
+        resources.Apply(scene, scene.Apply(first));
+        SilkMaterialData originalMaterial = scene.Materials[materialPath];
+        SilkMeshGpuResource originalMesh = resources.MeshValues.Single();
+        ulong resourceRevision = resources.Revision;
+
+        await Assert.That(() => scene.Apply(refused)).Throws<InvalidDataException>()
+            .WithMessageContaining("A Ptex texture requires a direct Preview Surface input without UVs.");
+        await Assert.That(scene.Revision).IsEqualTo(1UL);
+        await Assert.That(scene.Materials[materialPath]).IsSameReferenceAs(originalMaterial);
+        await Assert.That(resources.Revision).IsEqualTo(resourceRevision);
+        await Assert.That(resources.MeshValues.Single()).IsSameReferenceAs(originalMesh);
+        await Assert.That(decodes).IsEqualTo(0);
+
+        SilkSceneDelta delta = scene.Apply(retry);
+        await Assert.That(scene.Revision).IsEqualTo(2UL);
+        await Assert.That(scene.Materials[materialPath].GetTexture(parameter)!.SourceKind)
+            .IsEqualTo(SilkTextureSourceKind.Standard);
+        if (parameter == SilkMaterialParameter.DetailNormal)
+        {
+            resources.Apply(scene, delta);
+            SilkMeshGpuResource updated = resources.MeshValues.Single();
+            await Assert.That(updated.Geometry.Key.HasTangents).IsTrue();
+            await Assert.That(updated.Geometry.VertexLayout.Attributes.Any(
+                attribute => attribute.Semantic == SilkVertexSemantic.Tangent)).IsTrue();
+        }
     }
 
     [Test]

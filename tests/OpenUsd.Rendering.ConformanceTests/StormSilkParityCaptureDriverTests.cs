@@ -450,8 +450,7 @@ def Xform "World"
                 {
                     await Assert.That(result.Passed)
                         .IsTrue()
-                        .Because(
-                            $"{scene.Name} {firstSilk.BackendName} must meet its measured adjusted-IoU floor.");
+                        .Because($"{scene.Name} {firstSilk.BackendName} must meet its measured parity tolerances.");
                     await AssertRequiredAdjustedIou(scene, firstSilk.BackendName, result)
                         .ConfigureAwait(false);
                 }

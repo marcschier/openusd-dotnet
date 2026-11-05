@@ -16,6 +16,8 @@ void Require(bool value, const char* message)
 
 void ReservationArithmeticIsExactAndRejectsOverflow()
 {
+    const HdSilkMeshPreparationPlan triangle(3, 1);
+    Require(triangle.bytes == 335, "The triangle reservation must include normal correspondence.");
     HdSilkMeshPreparationPlan plan(4, 2);
     Require(plan.bytes == 604, "The coarse reservation must include independent normal correspondence.");
     plan.Attribute(1, 3, true);

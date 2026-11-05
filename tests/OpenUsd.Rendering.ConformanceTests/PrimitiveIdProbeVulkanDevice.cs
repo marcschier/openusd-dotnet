@@ -82,6 +82,21 @@ internal sealed class PrimitiveIdProbeVulkanDevice : IDisposable
                     $"Expected SwiftShader for the primitive-ID probe, but Vulkan selected '{deviceName}'.");
             }
 
+            string? expectedDevice = Environment.GetEnvironmentVariable(
+                "OPENUSD_PRIMITIVE_PROBE_EXPECTED_DEVICE_NAME");
+            if (expectedDevice is not null)
+            {
+                if (string.IsNullOrWhiteSpace(expectedDevice))
+                {
+                    throw new InvalidOperationException("The expected primitive-ID device name cannot be empty.");
+                }
+                if (!software || !deviceName.Contains(expectedDevice, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"Expected software Vulkan device '{expectedDevice}', but Vulkan selected '{deviceName}'.");
+                }
+            }
+
             api.GetPhysicalDeviceFeatures(physicalDevice, out PhysicalDeviceFeatures supported);
             if (!supported.GeometryShader)
             {
@@ -89,6 +104,8 @@ internal sealed class PrimitiveIdProbeVulkanDevice : IDisposable
                     $"Vulkan device '{deviceName}' does not expose geometryShader, required for " +
                     "the fragment PrimitiveId SPIR-V capability; the probe cannot run.");
             }
+            Console.WriteLine(
+                $"Primitive-ID Vulkan device: '{deviceName}', software: {software}, geometryShader: true.");
 
             uint queueFamily = FindGraphicsQueue(api, physicalDevice);
             float priority = 1;

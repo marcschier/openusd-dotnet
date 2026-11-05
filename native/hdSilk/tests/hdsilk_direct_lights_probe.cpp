@@ -1135,7 +1135,8 @@ ShadowTableView ReadShadows(CommandView command)
     table.directCount = ReadU32Le(command, 12);
     table.reasons = ReadU32Le(command, 16);
     table.reserved = ReadU32Le(command, 20);
-    Require(count <= 4u && table.directCount <= 128u && (table.reasons & ~7u) == 0u &&
+    Require(count <= OPENUSD_SILK_MAX_SHADOW_MAPS && table.directCount <= 128u &&
+            (table.reasons & ~7u) == 0u &&
             table.reserved == 0u && command.size == 24 + 288 * static_cast<size_t>(count),
         "SHADOW: invalid header, reserved word or 288-byte descriptor stride");
     for (uint32_t index = 0; index < count; ++index)
@@ -4257,6 +4258,29 @@ void VerifyBoundedPointShadowBudgetAndPublicationRetry()
     const RetainedPage full = ReadRetainedPage(bytes, count);
     RequireShadowHeader(full, 24u, 5u, OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET,
         "five point lights under four-light limit");
+    std::vector<uint8_t> excessive = full.shadowBytes;
+    const size_t extraOffset = excessive.size();
+    excessive.insert(excessive.end(), full.shadowBytes.begin() + 24, full.shadowBytes.begin() + 24 + 288);
+    const uint32_t excessiveSize = static_cast<uint32_t>(excessive.size());
+    const uint32_t excessiveCount = OPENUSD_SILK_MAX_SHADOW_MAPS + 1u;
+    for (uint32_t byte = 0; byte < 4; ++byte)
+    {
+        excessive[4 + byte] = static_cast<uint8_t>(excessiveSize >> (byte * 8));
+        excessive[8 + byte] = static_cast<uint8_t>(excessiveCount >> (byte * 8));
+        excessive[extraOffset + 4 + byte] =
+            static_cast<uint8_t>(OPENUSD_SILK_MAX_SHADOW_MAPS >> (byte * 8));
+    }
+    bool excessiveRejected = false;
+    try
+    {
+        (void)ReadShadows({excessive.data(), excessive.size()});
+    }
+    catch (const std::runtime_error& error)
+    {
+        excessiveRejected = std::string(error.what()) ==
+            "SHADOW: invalid header, reserved word or 288-byte descriptor stride";
+    }
+    Require(excessiveRejected, "shadow decoder must reject an otherwise valid 25th descriptor");
     for (uint32_t index = 0; index < 4; ++index)
     {
         for (uint32_t face = 0; face < 6; ++face)

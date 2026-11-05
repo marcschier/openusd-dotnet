@@ -1,16 +1,32 @@
 #!/usr/bin/env pwsh
 # Copyright (c) marcschier. Licensed under the MIT License.
 
+function Move-MetalVolumeReproReport
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    $sourcePath = (Resolve-Path -LiteralPath $Source).ProviderPath
+    $destinationPath = [IO.Path]::GetFullPath($Destination, (Get-Location).ProviderPath)
+    [IO.File]::Move($sourcePath, $destinationPath)
+}
+
 function Assert-MetalVolumeReproReport
 {
     param(
         [Parameter(Mandatory = $true)][object]$Report,
         [Parameter(Mandatory = $true)][DateTime]$StartedUtc,
-        [Parameter(Mandatory = $true)][DateTime]$FinishedUtc
+        [Parameter(Mandatory = $true)][DateTime]$FinishedUtc,
+        [ValidateSet(
+            'OverlappingHighFiniteTintsMatchTheIndependentComposite',
+            'LargeFiniteDensityInThinFieldRemainsVisible')]
+        [string]$Method = 'OverlappingHighFiniteTintsMatchTheIndependentComposite'
     )
 
     $class = 'VolumeCameraJointPassConformanceTests'
-    $method = 'OverlappingHighFiniteTintsMatchTheIndependentComposite'
+    $method = $Method
     $generation = [Guid]::Empty
     if ($Report.schemaVersion -ne 1 -or
         $Report.assemblyName -cne 'OpenUsd.Rendering.ConformanceTests' -or
@@ -27,22 +43,35 @@ function Assert-MetalVolumeReproReport
     {
         throw 'The report does not identify the selected test class.'
     }
-    $tests = @($groups[0].tests)
-    if ($tests.Count -ne 30)
-    {
-        throw 'The report must contain all 30 selected case identities.'
-    }
-
     $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $thinField = $method -ceq 'LargeFiniteDensityInThinFieldRemainsVisible'
+    $densities = if ($thinField) { @('1E+20', '1E+30') } else { @('1E-37', '1E-20', '1E-08', '1', '1E+30') }
     foreach ($backend in @('D3D12', 'Vulkan', 'Metal'))
     {
         foreach ($sampled in @('False', 'True'))
         {
-            foreach ($density in @('1E-37', '1E-20', '1E-08', '1', '1E+30'))
+            foreach ($density in $densities)
             {
-                $null = $expected.Add("$method($backend, $sampled, $density)")
+                if ($thinField)
+                {
+                    foreach ($opacity in @('0.5', '1'))
+                    {
+                        $null = $expected.Add("$method($backend, $sampled, $density, $opacity)")
+                    }
+                }
+                else
+                {
+                    $null = $expected.Add("$method($backend, $sampled, $density)")
+                }
             }
         }
+    }
+    $expectedPassed = if ($thinField) { 8 } else { 10 }
+    $expectedSkipped = $expected.Count - $expectedPassed
+    $tests = @($groups[0].tests)
+    if ($tests.Count -ne $expected.Count)
+    {
+        throw "The report must contain all $($expected.Count) selected case identities."
     }
 
     $ids = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
@@ -121,7 +150,7 @@ function Assert-MetalVolumeReproReport
 
     foreach ($summary in @($Report.summary, $groups[0].summary))
     {
-        if ($summary.total -ne 30 -or $summary.passed -ne $passed -or
+        if ($summary.total -ne $expected.Count -or $summary.passed -ne $passed -or
             $summary.failed -ne $failures.Count -or $summary.skipped -ne $skipped -or
             $summary.cancelled -ne 0 -or $summary.timedOut -ne 0 -or $summary.flaky -ne 0)
         {
@@ -136,9 +165,9 @@ function Assert-MetalVolumeReproReport
     {
         throw "Metal cases failed without the expected NaN: $($failures -join '; ')"
     }
-    if ($passed -ne 10 -or $skipped -ne 20)
+    if ($passed -ne $expectedPassed -or $skipped -ne $expectedSkipped)
     {
-        throw 'Exactly ten Metal passes and twenty platform skips are required.'
+        throw "Exactly $expectedPassed Metal passes and $expectedSkipped platform skips are required."
     }
     return [pscustomobject]@{
         passed = $passed

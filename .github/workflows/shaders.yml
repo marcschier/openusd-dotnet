@@ -394,4 +394,6 @@ jobs:
             eng/shaders/out/metal-package/*.nupkg
             eng/shaders/out/logs/macos
             artifacts/platform-conformance
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0-report.html
           if-no-files-found: warn

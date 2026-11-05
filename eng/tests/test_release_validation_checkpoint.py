@@ -45,6 +45,57 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         )
         self.assertNotIn("|| true", job)
 
+    def test_linux_native_ctest_repro_uses_verified_inputs_and_preserves_each_run(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        triggers, jobs = workflow.split("\njobs:\n", 1)
+        job = jobs.split("\n  linux-native-ctest-repro:\n", 1)[1]
+        job = re.split(r"\n  [a-z0-9-]+:\n", job, maxsplit=1)[0]
+
+        for path in (
+            "native/hdSilk/src/mesh.cpp",
+            "native/hdSilk/src/sceneState.cpp",
+            "native/hdSilk/tests/CMakeLists.txt",
+            "native/hdSilk/tests/geometry_sync_test_hook.cpp",
+            "native/hdSilk/tests/hdsilk_direct_lights_probe.cpp",
+            "native/hdSilk/tests/hdsilk_mesh_preparation_probe.cpp",
+        ):
+            self.assertIn(f"      - '{path}'", triggers)
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", job)
+        self.assertIn("fail-on-cache-miss: true", job)
+        self.assertIn("./eng/verify-sdk-build-input.ps1 -Rid linux-x64", job)
+        native_workflow = (ROOT / ".github" / "workflows" / "native.yml").read_text(
+            encoding="utf-8"
+        )
+        native_cache = native_workflow.split("id: sdk-linux-restore", 1)[1]
+        native_cache = native_cache.split("id: sdk-linux-lookup", 1)[0]
+        cache_key = r"openusd-install-linux-x64-\$\{\{ hashFiles\((.*?)\)\s*\}\}"
+        repro_inputs = re.search(cache_key, job, re.DOTALL)
+        producer_inputs = re.search(cache_key, native_cache, re.DOTALL)
+        self.assertIsNotNone(repro_inputs)
+        self.assertIsNotNone(producer_inputs)
+        self.assertEqual(
+            re.findall(r"'([^']+)'", repro_inputs.group(1)),
+            re.findall(r"'([^']+)'", producer_inputs.group(1)),
+        )
+        self.assertIn(
+            "hdsilk_probe hdsilk_direct_lights_probe hdsilk_mesh_preparation_probe",
+            job,
+        )
+        self.assertIn(
+            "for test_name in hdsilk_geometry_non_geometry_sync hdsilk_direct_light_domes_shadows \\",
+            job,
+        )
+        self.assertIn("hdsilk_mesh_preparation; do", job)
+        self.assertIn("for attempt in 1 2", job)
+        self.assertIn('rm -f -- "$build/Testing/Temporary/LastTest.log"', job)
+        self.assertIn('--no-tests=error --output-on-failure', job)
+        self.assertIn('--output-junit "$evidence/$name.xml"', job)
+        self.assertIn('tee "$evidence/$name.txt"', job)
+        self.assertIn('"$evidence/$name-LastTest.log"', job)
+        self.assertIn("git rev-parse HEAD", job)
+        self.assertIn('exit "$failed"', job)
+        self.assertIn("path: artifacts/linux-native-ctest-repro/", job)
+
     def test_metal_reproducer_resolves_runner_temp_at_step_scope(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         job = workflow.split("\n  metal-volume-repro:", 1)[1]
@@ -62,6 +113,169 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
             run,
         )
         self.assertIn("eng/run-managed-tests.ps1", run)
+
+    def test_metal_math_diagnostic_is_separate_from_product_validation(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        triggers, jobs = workflow.split("\njobs:\n", 1)
+        job = jobs.split("\n  metal-volume-math-diagnostic:\n", 1)[1]
+        job = re.split(r"\n  [a-z0-9-]+:\n", job, maxsplit=1)[0]
+        for path in (
+            "eng/diagnostics/metal-volume-math.metal",
+            "eng/diagnostics/metal-volume-math.swift",
+        ):
+            self.assertIn(f"      - '{path}'", triggers)
+            self.assertIn(path, job)
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha }}", job)
+        self.assertIn("DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer", job)
+        self.assertIn("metal -std=macos-metal2.4 \\", job)
+        self.assertIn("metal -std=macos-metal2.4 -fno-fast-math", job)
+        self.assertIn("path: artifacts/metal-volume-math/", job)
+        self.assertIn("EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha }}", job)
+        self.assertIn('actual_source="$(git rev-parse HEAD)"', job)
+        self.assertIn('[[ "$actual_source" != "$EXPECTED_SOURCE" ]]', job)
+        self.assertIn('"$evidence/source-commit.txt"', job)
+        self.assertIn('"$evidence/source-sha256.txt"', job)
+        self.assertIn('"$evidence/binary-sha256.txt"', job)
+        self.assertNotIn("eng/shaders/checked/", job)
+        swift = (ROOT / "eng" / "diagnostics" / "metal-volume-math.swift").read_text(
+            encoding="utf-8"
+        )
+        metal = (ROOT / "eng" / "diagnostics" / "metal-volume-math.metal").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"baselineValid"', swift)
+        self.assertIn("variants.allSatisfy", swift)
+        self.assertIn("width: samples.count * 2", swift)
+        self.assertIn('"tintContribution"', swift)
+        self.assertIn('"tintAfterTransmittance"', swift)
+        self.assertIn("tint * (fieldDepth / opticalDepth)", metal)
+        self.assertIn("tint * (otherDepth / opticalDepth)", metal)
+        self.assertLess(
+            swift.index("FileHandle.standardOutput.write(json)"),
+            swift.index("variants.allSatisfy"),
+        )
+        product = jobs.split("\n  metal-volume-repro:\n", 1)[1]
+        self.assertIn("needs: [shader-receipts, metal-link]", product)
+        self.assertIn("eng/run-managed-tests.ps1", product)
+
+    def test_metal_reproducer_records_thin_and_overlapping_cases_independently(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        triggers = workflow.split("\njobs:\n", 1)[0]
+        for path in (
+            "eng/metal-volume-repro-report.ps1",
+            "eng/test-metal-volume-repro-report.ps1",
+        ):
+            self.assertIn(f"      - '{path}'", triggers)
+        job = workflow.split("\n  metal-volume-repro:", 1)[1]
+        run = job.split("\n      - name: Run targeted Metal volume reproduction", 1)[1]
+        run = run.split("\n      - name:", 1)[0]
+
+        for method, minimum in (
+            ("LargeFiniteDensityInThinFieldRemainsVisible", 8),
+            ("OverlappingHighFiniteTintsMatchTheIndependentComposite", 10),
+        ):
+            self.assertIn(f"Method = '{method}'; Minimum = {minimum}", run)
+        self.assertIn("-MinimumExpectedTests $case.Minimum", run)
+        self.assertIn("-Method $case.Method", run)
+        self.assertIn('"$($case.Method).tunit-report.json"', run)
+        self.assertLess(
+            run.index("Move-MetalVolumeReproReport -Source $reportPath"),
+            run.index("Get-Content -LiteralPath $retainedPath"),
+        )
+        self.assertNotIn("Remove-Item -LiteralPath $reportPath", run)
+        self.assertIn("if (Test-Path -LiteralPath $reportPath -PathType Leaf) {\n                break", run)
+        self.assertIn("throw ($failures -join [Environment]::NewLine)", run)
+        self.assertIn("artifacts/metal-volume-repro/*.tunit-report.json", job)
+        self.assertIn(
+            "tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/"
+            "TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json",
+            job.split("\n      - name: Upload targeted Metal volume report", 1)[1],
+        )
+
+    def test_ptex_fallback_repro_requires_geometry_and_backend_cases(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        managed = workflow.split(
+            "\n      - name: Run unsupported Ptex fallback geometry tests", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn(
+            "/*/*/SilkMaterialCommandTests/UnsupportedPtex*", managed
+        )
+        self.assertIn("-MinimumExpectedTests 5", managed)
+        for case in (
+            "UnsupportedPtexInputSamplesItsNonDefaultAuthoredFallback(Normal)",
+            "UnsupportedPtexInputSamplesItsNonDefaultAuthoredFallback(Opacity)",
+            "UnsupportedPtexNormalFallbackBuildsTangentsAndRestoresGeometry(Normal)",
+            "UnsupportedPtexForbiddenInputIsRejectedAndCorrectedRetryWorks(DetailNormal)",
+            "UnsupportedPtexForbiddenInputIsRejectedAndCorrectedRetryWorks(Displacement)",
+        ):
+            self.assertIn(f"'{case}'", managed)
+        self.assertNotIn(
+            "UnsupportedPtexInputSamplesItsNonDefaultAuthoredFallback(DetailNormal)",
+            managed,
+        )
+        self.assertNotIn(
+            "UnsupportedPtexNormalFallbackBuildsTangentsAndRestoresGeometry(DetailNormal)",
+            managed,
+        )
+        self.assertIn("$report.summary.total -ne 5", managed)
+        self.assertIn("$report.summary.passed -ne 5", managed)
+        self.assertIn("$report.summary.skipped -ne 0", managed)
+        self.assertIn("'ptex-fallback-geometry.json'", managed)
+
+        windows = workflow.split("\n  windows-conformance-repro:", 1)[1]
+        for backend in ("D3D12", "Vulkan"):
+            self.assertIn(
+                "UnsupportedPtexNormalUsesAuthoredFallbackUntilImageReplacementAndRestoration"
+                f"({backend})",
+                windows,
+            )
+
+    def test_windows_lavapipe_diagnostic_keeps_the_swiftshader_gate(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        triggers, jobs = workflow.split("\njobs:\n", 1)
+        job = jobs.split("\n  windows-conformance-repro:\n", 1)[1]
+        job = re.split(r"\n  [a-z0-9-]+:\n", job, maxsplit=1)[0]
+        for path in (
+            "eng/mesa-lavapipe-test-runtime.lock.json",
+            "eng/run-windows-lavapipe-primitive-probe.ps1",
+            "eng/test-windows-lavapipe-primitive-probe.ps1",
+            "tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdProbeVulkanDevice.cs",
+        ):
+            self.assertIn(f"      - '{path}'", triggers)
+        self.assertIn("./eng/test-windows-lavapipe-primitive-probe.ps1", job)
+        repro = job.split("\n      - name: Reproduce Windows conformance cases\n", 1)[
+            1
+        ].split("\n      - name:", 1)[0]
+        self.assertIn("./eng/run-vulkan-conformance-tests.ps1", repro)
+        self.assertNotIn("OPENUSD_PRIMITIVE_PROBE_BACKEND", triggers)
+        self.assertNotIn("OPENUSD_PRIMITIVE_PROBE_BACKEND", job)
+        self.assertIn("-MinimumExpectedTests $case.Names.Count", repro)
+        self.assertIn("$report.summary.passed -ne $case.Names.Count", repro)
+        self.assertIn("$report.summary.failed -ne 0", repro)
+        self.assertIn("$report.summary.skipped -ne 0", repro)
+        for backend in ("D3D12", "Vulkan"):
+            for boundary in (255, 32767, 65535):
+                with self.subTest(backend=backend, boundary=boundary):
+                    name = (
+                        "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex"
+                        f"({backend}, {boundary})"
+                    )
+                    self.assertEqual(repro.count(name), 1)
+        self.assertIn(
+            "always() && !cancelled() && steps.windows_conformance_build.outcome == 'success'",
+            job,
+        )
+        self.assertIn("./eng/run-windows-lavapipe-primitive-probe.ps1", job)
+        self.assertIn("path: artifacts/windows-lavapipe-primitive/", job)
+        probe = (
+            ROOT / "eng" / "run-windows-lavapipe-primitive-probe.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn("OPENUSD_PRIMITIVE_PROBE_BACKEND = 'Vulkan'", probe)
+        self.assertIn("foreach ($boundary in @(255, 32767, 65535))", probe)
+        self.assertIn(
+            '"SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, $boundary)"',
+            probe,
+        )
 
 
 if __name__ == "__main__":

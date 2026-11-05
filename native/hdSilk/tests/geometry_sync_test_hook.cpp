@@ -109,7 +109,11 @@ TestNonGeometryDirty(GeometryKind kind, int32_t dirtyKind, int32_t exactLimit)
     }
     const auto& state = renderDelegate.GetSceneState();
     const auto& budget = state->MeshPreparationBudget();
-    const uint64_t expected = kind == GeometryKind::Points ? 96ull : 267ull;
+    // The triangle also reserves independent normal identities, adjacency and point lookup.
+    constexpr uint64_t normalCorrespondenceBytes =
+        (3u + 6u * 3u + 4u * 3u) * sizeof(uint32_t);
+    const uint64_t expected = kind == GeometryKind::Points
+        ? 96ull : 267ull + normalCorrespondenceBytes;
     budget->Configure(expected * 4);
     HdDirtyBits dirty = rprim->GetInitialDirtyBitsMask();
     rprim->Sync(&scene, renderDelegate.GetRenderParam(), &dirty, TfToken("hull"));

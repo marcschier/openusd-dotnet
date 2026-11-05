@@ -7061,10 +7061,13 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         TextureCacheKey key,
         string reason)
     {
+        string diagnosticIdentity = material.GetPtexUnsupportedReason(texture) is null
+            ? string.Concat(material.Path, "\0", texture.Parameter, "\0", texture.Asset, "\0",
+                key.PtexSamplingIdentity.ToString(CultureInfo.InvariantCulture))
+            : string.Concat(material.Path, "\0", texture.Parameter);
         AddDiagnostic(
             SilkRenderDiagnosticCodes.TexturePtexUnsupported,
-            string.Concat(material.Path, "\0", texture.Parameter, "\0", texture.Asset, "\0",
-                key.PtexSamplingIdentity.ToString(CultureInfo.InvariantCulture)),
+            diagnosticIdentity,
             RenderDiagnosticSeverity.Warning,
             $"Material '{material.Path}' cannot sample Ptex texture '{texture.Asset}' for " +
             $"{texture.Parameter}: {reason} The authored fallback is used.");
@@ -8993,15 +8996,15 @@ public sealed partial class SilkSceneGpuResources : IDisposable
         }
         bool ptexAsSecondary = ptexAtlas is not null && material!.PtexUsesSecondaryUv;
         string uvPrimvar = material?.GetPrimaryUvPrimvar() ?? string.Empty;
-        bool normalMap = material?.GetRenderableTexture(SilkMaterialParameter.Normal) is not null ||
-            material?.GetRenderableTexture(SilkMaterialParameter.DetailNormal) is not null;
+        SilkShaderFeatures textureFeatures = material?.GetTextureFeatures() ?? SilkShaderFeatures.None;
+        bool normalMap = (textureFeatures &
+            (SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap)) != 0;
         SilkVertexAttributeData? uvAttribute = string.IsNullOrEmpty(uvPrimvar)
             ? null
             : mesh.FindTexCoord(uvPrimvar);
         // Exactly the rule SilkMeshGeometryBuilder.Build applies, evaluated here
         // so the key can be formed without building the geometry first.
-        bool requireTextureCoordinates = material?.GetTextureFeatures() is { } features &&
-            features != SilkShaderFeatures.None;
+        bool requireTextureCoordinates = textureFeatures != SilkShaderFeatures.None;
         bool hasTangents = (uvAttribute is not null || requireTextureCoordinates || ptexAtlas is not null) &&
             normalMap;
         bool hasUv = uvAttribute is not null || requireTextureCoordinates || ptexAtlas is not null;

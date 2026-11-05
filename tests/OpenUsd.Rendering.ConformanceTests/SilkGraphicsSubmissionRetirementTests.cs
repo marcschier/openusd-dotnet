@@ -97,6 +97,7 @@ public sealed class SilkGraphicsSubmissionRetirementTests
         using ISilkGraphicsCommandList commands = device.CreateCommandList();
         commands.UploadTexture(texture, new byte[64]);
         ISilkGraphicsSubmission submission = device.Submit(commands);
+        InvalidOperationException? terminalFailure = null;
         try
         {
             commands.Dispose();
@@ -106,25 +107,122 @@ public sealed class SilkGraphicsSubmissionRetirementTests
             {
                 device.SetTeardownHookForTesting(new RemovedD3D12Device());
             }
-            await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+            InvalidOperationException? initialFailure =
+                await Assert.That(submission.Wait).Throws<InvalidOperationException>();
             if (lossAtWait)
             {
+                terminalFailure = initialFailure;
                 device.FailFenceWaitsForTesting(null);
-                await Assert.That(submission.Wait).Throws<InvalidOperationException>();
-                await Assert.That(() => { _ = submission.IsCompleted; }).Throws<InvalidOperationException>();
+                InvalidOperationException? repeated =
+                    await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+                InvalidOperationException? polled =
+                    await Assert.That(() => { _ = submission.IsCompleted; }).Throws<InvalidOperationException>();
+                await Assert.That(repeated).IsSameReferenceAs(terminalFailure);
+                await Assert.That(polled).IsSameReferenceAs(terminalFailure);
                 device.FailFenceWaitsForTesting(() => new InvalidOperationException("Injected fence failure."));
             }
 
             device.SetTeardownHookForTesting(new RemovedD3D12Device());
             await Assert.That(device.WaitIdle).Throws<InvalidOperationException>();
-            await Assert.That(submission.Wait).Throws<InvalidOperationException>();
-            await Assert.That(() => { _ = submission.IsCompleted; }).Throws<InvalidOperationException>();
+            InvalidOperationException? waited =
+                await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+            InvalidOperationException? polledAfterLoss =
+                await Assert.That(() => { _ = submission.IsCompleted; }).Throws<InvalidOperationException>();
+            if (lossAtWait)
+            {
+                await Assert.That(waited).IsSameReferenceAs(terminalFailure);
+                await Assert.That(polledAfterLoss).IsSameReferenceAs(terminalFailure);
+            }
+            submission.Dispose();
+            submission.Dispose();
         }
         finally
         {
             device.FailFenceWaitsForTesting(null);
             device.SetTeardownHookForTesting(null);
+            try
+            {
+                submission.Dispose();
+            }
+            catch (InvalidOperationException failure) when (ReferenceEquals(failure, terminalFailure))
+            {
+                submission.Dispose();
+            }
+        }
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public async Task D3D12TerminalLossRetainsOriginalFailureAcrossCleanupRetries()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("D3D12 submission retirement requires Windows.");
+            return;
+        }
+
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        var waitFailure = new InvalidOperationException("Injected terminal fence failure.");
+        var failedLease = new FailingDisposable("Injected lease retirement failure.");
+        int firstReleases = 0;
+        int lastReleases = 0;
+        D3D12SilkGraphicsSubmission submission = CreateD3D12SubmissionForTesting(
+            device,
+            [
+                new CallbackDisposable(() => firstReleases++),
+                failedLease,
+                new CallbackDisposable(() => lastReleases++)
+            ]);
+        AggregateException? firstFailure = null;
+        device.SetTeardownHookForTesting(new RemovedD3D12Device());
+        device.FailFenceWaitsForTesting(() => waitFailure);
+        try
+        {
+            firstFailure = await Assert.That(submission.Wait).Throws<AggregateException>();
+            await Assert.That(firstFailure!.InnerExceptions.Count).IsEqualTo(2);
+            await Assert.That(firstFailure.InnerExceptions[0]).IsSameReferenceAs(waitFailure);
+            await Assert.That(firstFailure.InnerExceptions[1]).IsSameReferenceAs(failedLease.Failure);
+            await Assert.That(firstReleases).IsEqualTo(1);
+            await Assert.That(failedLease.Attempts).IsEqualTo(1);
+            await Assert.That(lastReleases).IsEqualTo(0);
+
+            AggregateException? repeatedWait =
+                await Assert.That(submission.Wait).Throws<AggregateException>();
+            AggregateException? repeatedPoll =
+                await Assert.That(() => { _ = submission.IsCompleted; }).Throws<AggregateException>();
+            await Assert.That(repeatedWait).IsSameReferenceAs(firstFailure);
+            await Assert.That(repeatedPoll).IsSameReferenceAs(firstFailure);
+
+            AggregateException? failedDisposal =
+                await Assert.That(submission.Dispose).Throws<AggregateException>();
+            await Assert.That(failedDisposal!.InnerExceptions.Count).IsEqualTo(2);
+            await Assert.That(failedDisposal.InnerExceptions[0]).IsSameReferenceAs(firstFailure);
+            await Assert.That(failedDisposal.InnerExceptions[1]).IsSameReferenceAs(failedLease.Failure);
+            await Assert.That(firstReleases).IsEqualTo(1);
+            await Assert.That(failedLease.Attempts).IsEqualTo(2);
+            await Assert.That(lastReleases).IsEqualTo(0);
+
+            failedLease.Refuse = false;
+            AggregateException? finalDisposal =
+                await Assert.That(submission.Dispose).Throws<AggregateException>();
+            await Assert.That(finalDisposal).IsSameReferenceAs(firstFailure);
             submission.Dispose();
+            await Assert.That(firstReleases).IsEqualTo(1);
+            await Assert.That(failedLease.Attempts).IsEqualTo(3);
+            await Assert.That(lastReleases).IsEqualTo(1);
+        }
+        finally
+        {
+            failedLease.Refuse = false;
+            try
+            {
+                submission.Dispose();
+            }
+            catch (AggregateException failure) when (ReferenceEquals(failure, firstFailure))
+            {
+            }
+            device.FailFenceWaitsForTesting(null);
+            device.SetTeardownHookForTesting(null);
         }
     }
 
@@ -1295,6 +1393,23 @@ public sealed class SilkGraphicsSubmissionRetirementTests
         }));
         retirement.Dispose();
         await Assert.That(attempts).IsEqualTo(1);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static unsafe D3D12SilkGraphicsSubmission CreateD3D12SubmissionForTesting(
+        D3D12SilkGraphicsDevice device,
+        IDisposable[] leases)
+    {
+        device.RegisterDependentObject();
+        try
+        {
+            return new D3D12SilkGraphicsSubmission(device, null, null, null, leases, [], []);
+        }
+        catch
+        {
+            device.ReleaseDependentObject();
+            throw;
+        }
     }
 
     private sealed class CallbackDisposable(Action callback) : IDisposable

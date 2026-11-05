@@ -3417,6 +3417,7 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
     private bool _retired;
     private bool _completionObserved;
     private bool _deviceLossObserved;
+    private ExceptionDispatchInfo? _deviceLossFailure;
     private bool _disposed;
 
     public bool IsCompleted
@@ -3443,10 +3444,14 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
                     }
                     return _completionObserved;
                 }
-                catch
+                catch (Exception failure)
                 {
-                    _deviceLossObserved |= !_completionObserved && _device.HasTerminalDeviceRemoval();
                     _device.RetainPendingSubmission(this);
+                    if (!_completionObserved && _device.HasTerminalDeviceRemoval())
+                    {
+                        _deviceLossObserved = true;
+                        _deviceLossFailure ??= ExceptionDispatchInfo.Capture(failure);
+                    }
                     throw;
                 }
             }
@@ -3493,9 +3498,13 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
                 }
                 ReleaseLeases();
             }
-            catch
+            catch (Exception failure)
             {
                 _device.RetainPendingSubmission(this);
+                if (_deviceLossObserved)
+                {
+                    _deviceLossFailure ??= ExceptionDispatchInfo.Capture(failure);
+                }
                 throw;
             }
         }
@@ -3513,13 +3522,14 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
             if (_retired)
             {
                 _disposed = true;
+                _deviceLossFailure = null;
                 return;
             }
             try
             {
                 try
                 {
-                    if (_fence != null)
+                    if (_fence != null || _deviceLossObserved)
                     {
                         Wait();
                     }
@@ -3575,6 +3585,10 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
         _device.ReleaseDependentObject();
         _retired = true;
         _disposed = _disposeRequested;
+        if (_disposed)
+        {
+            _deviceLossFailure = null;
+        }
         _device.RemovePendingSubmission(this);
     }
 
@@ -3582,6 +3596,7 @@ internal sealed unsafe class D3D12SilkGraphicsSubmission(
     {
         if (_deviceLossObserved)
         {
+            _deviceLossFailure?.Throw();
             throw new InvalidOperationException("The D3D12 device was removed before the submission completed.");
         }
     }

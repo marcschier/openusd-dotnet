@@ -12,28 +12,45 @@ $class = 'VolumeCameraJointPassConformanceTests'
 
 function New-Fixture
 {
+    param([string]$CaseMethod = $method)
+
     $tests = [Collections.Generic.List[object]]::new()
+    $thinField = $CaseMethod -ceq 'LargeFiniteDensityInThinFieldRemainsVisible'
+    $densities = if ($thinField) { @('1E+20', '1E+30') } else { @('1E-37', '1E-20', '1E-08', '1', '1E+30') }
     foreach ($backend in @('D3D12', 'Vulkan', 'Metal'))
     {
         foreach ($sampled in @('False', 'True'))
         {
-            foreach ($density in @('1E-37', '1E-20', '1E-08', '1', '1E+30'))
+            foreach ($density in $densities)
             {
-                $tests.Add([pscustomobject]@{
-                    id = "OpenUsd.Rendering.ConformanceTests.$class.fixture.$method.$($tests.Count)"
-                    className = $class
-                    methodName = $method
-                    displayName = "$method($backend, $sampled, $density)"
-                    status = if ($backend -ceq 'Metal') { 'passed' } else { 'skipped' }
-                    startTime = $started.AddSeconds(1).ToString('O')
-                    exception = $null
-                })
+                $opacities = if ($thinField) { @('0.5', '1') } else { @('') }
+                foreach ($opacity in $opacities)
+                {
+                    $name = if ($thinField)
+                    {
+                        "$CaseMethod($backend, $sampled, $density, $opacity)"
+                    }
+                    else
+                    {
+                        "$CaseMethod($backend, $sampled, $density)"
+                    }
+                    $tests.Add([pscustomobject]@{
+                        id = "OpenUsd.Rendering.ConformanceTests.$class.fixture.$CaseMethod.$($tests.Count)"
+                        className = $class
+                        methodName = $CaseMethod
+                        displayName = $name
+                        status = if ($backend -ceq 'Metal') { 'passed' } else { 'skipped' }
+                        startTime = $started.AddSeconds(1).ToString('O')
+                        exception = $null
+                    })
+                }
             }
         }
     }
+    $passed = if ($thinField) { 8 } else { 10 }
     $summary = {
         [pscustomobject]@{
-            total = 30; passed = 10; failed = 0; skipped = 20
+            total = $tests.Count; passed = $passed; failed = 0; skipped = $tests.Count - $passed
             cancelled = 0; timedOut = 0; flaky = 0
         }
     }
@@ -53,10 +70,11 @@ function New-Fixture
 
 function Assert-Rejected
 {
-    param([string]$Name, [object]$Report, [string]$Message)
+    param([string]$Name, [object]$Report, [string]$Message, [string]$CaseMethod = $method)
     try
     {
-        $null = Assert-MetalVolumeReproReport -Report $Report -StartedUtc $started -FinishedUtc $finished
+        $null = Assert-MetalVolumeReproReport -Report $Report -StartedUtc $started `
+            -FinishedUtc $finished -Method $CaseMethod
     }
     catch
     {
@@ -140,4 +158,76 @@ $wrongSummary = New-Fixture
 $wrongSummary.summary.passed = 9
 Assert-Rejected 'Wrong summary' $wrongSummary 'summary'
 
-Write-Host 'Passed: 12, Failed: 0, Skipped: 0'
+$thinMethod = 'LargeFiniteDensityInThinFieldRemainsVisible'
+$thin = New-Fixture -CaseMethod $thinMethod
+$thinResult = Assert-MetalVolumeReproReport -Report $thin -StartedUtc $started `
+    -FinishedUtc $finished -Method $thinMethod
+if ($thinResult.passed -ne 8 -or $thinResult.skipped -ne 16)
+{
+    throw 'The thin-field fixture did not report the expected Metal and platform counts.'
+}
+
+$thinNan = New-Fixture -CaseMethod $thinMethod
+$row = @($thinNan.groups[0].tests | Where-Object {
+    $_.displayName -ceq "$thinMethod(Metal, False, 1E+20, 1)"
+})[0]
+$row.status = 'error'
+$row.exception = [pscustomobject]@{ message = 'Component 4160 (pixel 1040, channel 0) was NaN.' }
+foreach ($summary in @($thinNan.summary, $thinNan.groups[0].summary))
+{
+    $summary.passed = 7
+    $summary.failed = 1
+}
+Assert-Rejected 'Thin-field NaN reproduction' $thinNan 'REPRODUCED_METAL_VOLUME_NAN' $thinMethod
+
+$thinMissing = New-Fixture -CaseMethod $thinMethod
+$thinMissing.groups[0].tests = @($thinMissing.groups[0].tests | Select-Object -Skip 1)
+Assert-Rejected 'Missing thin-field case' $thinMissing '24' $thinMethod
+
+$thinUnexpected = New-Fixture -CaseMethod $thinMethod
+$thinUnexpected.groups[0].tests[0].displayName = "$thinMethod(D3D12, False, 1E+20, 0.75)"
+Assert-Rejected 'Unexpected thin-field opacity' $thinUnexpected 'identity' $thinMethod
+
+$prefix = Join-Path ([IO.Path]::GetTempPath()) (
+    'openusd-metal-volume-report-' + [Guid]::NewGuid().ToString('N'))
+$source = "$prefix-source.json"
+$destination = "$prefix-retained.json"
+try
+{
+    [IO.File]::WriteAllText($source, 'source evidence')
+    [IO.File]::WriteAllText($destination, 'existing evidence')
+    $collisionRejected = $false
+    try
+    {
+        Move-MetalVolumeReproReport -Source $source -Destination $destination
+    }
+    catch
+    {
+        if ($_.Exception.InnerException -isnot [IO.IOException])
+        {
+            throw
+        }
+        $collisionRejected = $true
+    }
+    if (-not $collisionRejected -or
+        [IO.File]::ReadAllText($source) -cne 'source evidence' -or
+        [IO.File]::ReadAllText($destination) -cne 'existing evidence')
+    {
+        throw 'A report retention collision must preserve both files.'
+    }
+
+    [IO.File]::Delete($destination)
+    Move-MetalVolumeReproReport -Source $source -Destination $destination
+    if ([IO.File]::Exists($source) -or
+        [IO.File]::ReadAllText($destination) -cne 'source evidence')
+    {
+        throw 'A report retention retry must move the original evidence.'
+    }
+}
+finally
+{
+    [IO.File]::Delete($source)
+    [IO.File]::Delete($destination)
+}
+
+Write-Host 'Passed: 18, Failed: 0, Skipped: 0'
