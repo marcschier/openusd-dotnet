@@ -230,6 +230,60 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
                 windows,
             )
 
+    def test_native_ptex_admission_gate_keeps_both_reports_and_requires_exact_cases(self):
+        native = (ROOT / ".github" / "workflows" / "native.yml").read_text(
+            encoding="utf-8"
+        )
+        triggers, _ = native.split("\npermissions:\n", 1)
+        for path in (
+            "eng/ptex-atlas-admission-report.ps1",
+            "eng/test-ptex-atlas-admission-report.ps1",
+        ):
+            self.assertEqual(triggers.count(f"      - '{path}'"), 2)
+
+        decoder = native.split(
+            "\n      - name: Run Windows native Ptex decoder tests", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn("SilkNativePtexDecoderTests/*", decoder)
+        self.assertIn("if ($LASTEXITCODE -ne 0)", decoder)
+        self.assertIn("A stale Ptex report already exists", decoder)
+        self.assertIn("native-ptex-decoder.tunit-report.json", decoder)
+        self.assertIn("OPENUSD_PARITY_RUNTIME_ROOT", decoder)
+
+        admission = native.split(
+            "\n      - name: Run Windows native Ptex atlas admission tests", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'", admission)
+        self.assertIn("./eng/test-ptex-atlas-admission-report.ps1", admission)
+        self.assertIn("-MinimumExpectedTests 3", admission)
+        self.assertIn(
+            "/*/*/SilkMaterialCommandTests/"
+            "MappedPtexAtlasAdmissionRollsBackAtCpuAndGpuBoundaries",
+            admission,
+        )
+        self.assertIn("A stale Ptex admission report already exists", admission)
+        self.assertIn("if ($LASTEXITCODE -ne 0)", admission)
+        self.assertIn("OPENUSD_PARITY_RUNTIME_ROOT", admission)
+        self.assertIn("Assert-PtexAtlasAdmissionReport", admission)
+        self.assertIn("native-ptex-atlas-admission.tunit-report.json", admission)
+        self.assertLess(
+            admission.index("$started ="),
+            admission.index("./eng/run-native-managed-tests.ps1"),
+        )
+        self.assertLess(
+            admission.index("./eng/run-native-managed-tests.ps1"),
+            admission.index("$finished ="),
+        )
+
+        upload = native.split(
+            "\n      - name: Upload native Ptex decoder test reports", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn("if: always() && runner.os == 'Windows'", upload)
+        self.assertIn(
+            "tests/OpenUsd.Rendering.Tests/bin/Release/net10.0/TestResults/",
+            upload,
+        )
+
     def test_windows_lavapipe_diagnostic_keeps_the_swiftshader_gate(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         triggers, jobs = workflow.split("\njobs:\n", 1)

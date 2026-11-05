@@ -54,6 +54,8 @@ on:
       - 'eng/run-windows-native-tests.ps1'
       - 'eng/run-native-managed-tests.ps1'
       - 'eng/run-managed-tests.ps1'
+      - 'eng/ptex-atlas-admission-report.ps1'
+      - 'eng/test-ptex-atlas-admission-report.ps1'
       - 'eng/run-bounded-process.ps1'
       - 'eng/BoundedWindowsProcess.cs'
       - 'Directory.Packages.props'
@@ -120,6 +122,8 @@ on:
       - 'eng/run-windows-native-tests.ps1'
       - 'eng/run-native-managed-tests.ps1'
       - 'eng/run-managed-tests.ps1'
+      - 'eng/ptex-atlas-admission-report.ps1'
+      - 'eng/test-ptex-atlas-admission-report.ps1'
       - 'eng/run-bounded-process.ps1'
       - 'eng/BoundedWindowsProcess.cs'
       - 'Directory.Packages.props'
@@ -849,6 +853,9 @@ jobs:
           $testProject = Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\OpenUsd.Rendering.Tests.csproj'
           dotnet build $testProject --configuration Release --framework net10.0
           if ($LASTEXITCODE -ne 0) { throw 'Ptex decoder test build failed.' }
+          $results = Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\bin\Release\net10.0\TestResults'
+          $reportPath = Join-Path $results 'OpenUsd.Rendering.Tests-windows-net10.0.tunit-report.json'
+          if (Test-Path -LiteralPath $reportPath) { throw 'A stale Ptex report already exists.' }
           $env:OPENUSD_PARITY_RUNTIME_ROOT = Join-Path $PWD 'native\install\shim\win-x64'
           ./eng/run-native-managed-tests.ps1 `
             -Project $testProject `
@@ -857,14 +864,52 @@ jobs:
             -Configuration Release `
             -MinimumExpectedTests 5 `
             -TestArguments @('--treenode-filter', '/*/*/SilkNativePtexDecoderTests/*')
+          if ($LASTEXITCODE -ne 0) { throw 'Native Ptex decoder tests failed.' }
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The native Ptex decoder report is missing.'
+          }
+          [IO.File]::Move($reportPath, (Join-Path $results 'native-ptex-decoder.tunit-report.json'))
+          $html = Join-Path $results 'OpenUsd.Rendering.Tests-windows-net10.0-report.html'
+          if (Test-Path -LiteralPath $html -PathType Leaf) {
+            [IO.File]::Move($html, (Join-Path $results 'native-ptex-decoder-report.html'))
+          }
+      - name: Run Windows native Ptex atlas admission tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'
+        run: |
+          ./eng/test-ptex-atlas-admission-report.ps1
+          . ./eng/ptex-atlas-admission-report.ps1
+          $testProject = Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\OpenUsd.Rendering.Tests.csproj'
+          $results = Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\bin\Release\net10.0\TestResults'
+          $reportPath = Join-Path $results 'OpenUsd.Rendering.Tests-windows-net10.0.tunit-report.json'
+          if (Test-Path -LiteralPath $reportPath) { throw 'A stale Ptex admission report already exists.' }
+          $env:OPENUSD_PARITY_RUNTIME_ROOT = Join-Path $PWD 'native\install\shim\win-x64'
+          $started = [DateTime]::UtcNow
+          ./eng/run-native-managed-tests.ps1 `
+            -Project $testProject `
+            -Framework net10.0 `
+            -Rid win-x64 `
+            -Configuration Release `
+            -MinimumExpectedTests 3 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkMaterialCommandTests/MappedPtexAtlasAdmissionRollsBackAtCpuAndGpuBoundaries')
+          $finished = [DateTime]::UtcNow
+          if ($LASTEXITCODE -ne 0) { throw 'Native Ptex atlas admission tests failed.' }
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The native Ptex atlas admission report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          Assert-PtexAtlasAdmissionReport -Report $report -StartedUtc $started -FinishedUtc $finished
+          [IO.File]::Move($reportPath, (Join-Path $results 'native-ptex-atlas-admission.tunit-report.json'))
       - name: Upload native Ptex decoder test reports
         if: always() && runner.os == 'Windows'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: openusd-native-ptex-decoder-${{ github.run_attempt }}
           path: |
-            tests/OpenUsd.Rendering.Tests/TestResults/*.tunit-report.json
-            tests/OpenUsd.Rendering.Tests/TestResults/*-report.html
+            tests/OpenUsd.Rendering.Tests/bin/Release/net10.0/TestResults/
           if-no-files-found: warn
           retention-days: 14
       - name: Run required POSIX EXR codec probes
