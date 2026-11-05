@@ -75,17 +75,29 @@ internal static partial class SilkShadowConformance
 
     internal static async Task PointReceiverBeyondFarPlaneRemainsLit(ISilkGraphicsDevice device)
     {
+        const uint shadowResolution = 1024;
+        const float pcfRadius = 1;
+        const float casterScale = 0.12f;
+        const float lightZ = 50;
+        const float casterTranslationZ = 47;
+        double casterHalfWidth = 0.25 * casterScale;
         double centerX = (((32 + 0.5) * 2) / Size) - 1;
         double controlX = (((60 + 0.5) * 2) / Size) - 1;
-        double casterToLight = 50 - (47 + CasterDepth);
-        double receiverToLight = 50 - ReceiverDepth;
-        await Assert.That(Math.Abs(centerX * casterToLight / receiverToLight)).IsLessThan(0.03);
-        await Assert.That(Math.Abs(controlX * casterToLight / receiverToLight)).IsGreaterThan(0.03);
+        double casterToLight = lightZ - (casterTranslationZ + CasterDepth);
+        double receiverToLight = lightZ - ReceiverDepth;
+        double casterEdge = casterHalfWidth / casterToLight;
+        double center = Math.Abs(centerX) / receiverToLight;
+        double control = Math.Abs(controlX) / receiverToLight;
+        // Leave an extra texel beyond the PCF radius for nearest sampling and rasterization.
+        await Assert.That((casterEdge - center) * shadowResolution / 2)
+            .IsGreaterThan(pcfRadius + 1d);
+        await Assert.That((control - casterEdge) * shadowResolution / 2)
+            .IsGreaterThan(pcfRadius + 1d);
 
         using var renderer = new SilkMeshRenderer(device);
         using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(Size, Size));
         using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(Size, Size));
-        var position = new Vector3(0, 0, 50);
+        var position = new Vector3(0, 0, lightZ);
         byte[] frame = CreateShadowLightFrame(0, 0);
         BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(552), 2);
         BinaryPrimitives.WriteSingleLittleEndian(frame.AsSpan(580), 2500);
@@ -93,14 +105,16 @@ internal static partial class SilkShadowConformance
         WriteCubeMatrix(frame.AsSpan(584), Matrix4x4.CreateTranslation(position));
         byte[] caster = CreateCaster(0);
         WriteCubeMatrix(caster.AsSpan(80),
-            Matrix4x4.CreateScale(0.12f, 0.12f, 1) * Matrix4x4.CreateTranslation(0, 0, 47));
+            Matrix4x4.CreateScale(casterScale, casterScale, 1) *
+            Matrix4x4.CreateTranslation(0, 0, casterTranslationZ));
         SilkMeshRendererConformance.Apply(renderer, 1, frame, CreateReceiver(), caster);
         _ = renderer.Render(color, depth);
         byte[] unshadowed = ReadPixels(color);
         await Assert.That(unshadowed[Offset(32)]).IsGreaterThan((byte)40);
 
         SilkMeshRendererConformance.Apply(renderer, 2,
-            CreatePointCubeTable(position, resolution: 256, near: 1e-8, far: 4, depthBias: 0));
+            CreatePointCubeTable(
+                position, shadowResolution, near: 1e-8, far: 4, depthBias: 0, pcfRadius: pcfRadius));
         _ = renderer.Render(color, depth);
         byte[] outside = ReadPixels(color);
         Matrix4x4 matrix = renderer.ShadowBindingForTesting.GetWorldToLightClip(5);
@@ -121,13 +135,15 @@ internal static partial class SilkShadowConformance
         await Assert.That(atlas[checked((int)((atlasCenterY * edge) + atlasCenterX))]).IsLessThan(1f);
 
         SilkMeshRendererConformance.Apply(renderer, 3,
-            CreatePointCubeTable(position, resolution: 256, near: 1e-8, far: 100, depthBias: 0));
+            CreatePointCubeTable(
+                position, shadowResolution, near: 1e-8, far: 100, depthBias: 0, pcfRadius: pcfRadius));
         _ = renderer.Render(color, depth);
         byte[] inside = ReadPixels(color);
         await AssertShadowed(inside, 32, "receiver inside the expanded point far plane");
         await Assert.That(Math.Abs(inside[Offset(60)] - unshadowed[Offset(60)])).IsLessThanOrEqualTo(2);
         SilkMeshRendererConformance.Apply(renderer, 4,
-            CreatePointCubeTable(position, resolution: 256, near: 1e-8, far: 4, depthBias: 0));
+            CreatePointCubeTable(
+                position, shadowResolution, near: 1e-8, far: 4, depthBias: 0, pcfRadius: pcfRadius));
         _ = renderer.Render(color, depth);
         await Assert.That(Math.Abs(ReadPixels(color)[Offset(32)] - unshadowed[Offset(32)]))
             .IsLessThanOrEqualTo(2);
@@ -135,7 +151,7 @@ internal static partial class SilkShadowConformance
 
     private static byte[] CreatePointCubeTable(
         Vector3 position, uint resolution = 1024, double near = 0.001, double far = 4,
-        float depthBias = 0.000001f)
+        float depthBias = 0.000001f, float pcfRadius = 1)
     {
         var result = new byte[24 + (6 * 288)];
         BinaryPrimitives.WriteUInt32LittleEndian(result, (uint)SilkCommandType.Shadow);
@@ -164,7 +180,7 @@ internal static partial class SilkShadowConformance
             }
             BinaryPrimitives.WriteSingleLittleEndian(entry[272..], depthBias);
             BinaryPrimitives.WriteSingleLittleEndian(entry[276..], 0.005f);
-            BinaryPrimitives.WriteSingleLittleEndian(entry[280..], 1);
+            BinaryPrimitives.WriteSingleLittleEndian(entry[280..], pcfRadius);
         }
         return result;
     }

@@ -27,7 +27,7 @@ public sealed class SilkShadowAdmissionTests
         SilkGraphicsBackend backend)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
-        var budget = new SilkGpuTextureBudget(67_108_864);
+        var budget = new SilkGpuTextureBudget(134_217_728);
         budget.ConfigureDevice(device);
         await SilkShadowConformance.PointReceiverBeyondFarPlaneRemainsLit(device);
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
