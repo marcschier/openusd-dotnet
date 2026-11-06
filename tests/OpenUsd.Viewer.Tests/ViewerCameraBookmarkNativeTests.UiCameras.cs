@@ -219,7 +219,7 @@ public sealed partial class ViewerCameraBookmarkNativeTests
     {
         DateTime? stableSince = null;
         ViewportDimensions stableViewport = ViewportDimensions.Empty;
-        long stableRevision = -1;
+        ulong? stableRevision = null;
         return WaitBookmarkAsync(() =>
         {
             double scaling = TopLevel.GetTopLevel(viewportHost)?.RenderScaling ?? 1;
