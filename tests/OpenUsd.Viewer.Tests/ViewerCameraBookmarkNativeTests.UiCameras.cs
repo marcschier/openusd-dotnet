@@ -115,6 +115,7 @@ public sealed partial class ViewerCameraBookmarkNativeTests
         double width = window.Width;
         window.Width += 100;
         await WaitBookmarkAsync(() => !orthographic.HasMatchingAspect(session.CurrentRenderState.Viewport), token);
+        await WaitForViewportStateToSettleAsync(viewportHost, session, token);
         before = session.CurrentRenderState;
         Rect boundsBeforeManager = window.Bounds;
         Rect viewportBeforeManager = viewportHost.Bounds;
@@ -211,6 +212,35 @@ public sealed partial class ViewerCameraBookmarkNativeTests
             ClickBookmarkButton(window, "PlayPauseButton");
             await WaitBookmarkAsync(() => BookmarkControl<Button>(window, "PlayPauseButton").Content is "_Play", token);
         }
+    }
+
+    private static Task WaitForViewportStateToSettleAsync(
+        Control viewportHost, ViewerStageSession session, CancellationToken token)
+    {
+        DateTime? stableSince = null;
+        ViewportDimensions stableViewport = ViewportDimensions.Empty;
+        long stableRevision = -1;
+        return WaitBookmarkAsync(() =>
+        {
+            double scaling = TopLevel.GetTopLevel(viewportHost)?.RenderScaling ?? 1;
+            ViewportDimensions measured = ViewportPixelMath.ToPixels(
+                viewportHost.Bounds.Width, viewportHost.Bounds.Height, scaling);
+            StageRenderState current = session.CurrentRenderState;
+            if (current.Viewport != measured)
+            {
+                stableSince = null;
+                return false;
+            }
+            if (stableSince is null || stableViewport != measured || stableRevision != current.Revision)
+            {
+                stableViewport = measured;
+                stableRevision = current.Revision;
+                stableSince = DateTime.UtcNow;
+                return false;
+            }
+            return stableSince is { } settledAt &&
+                DateTime.UtcNow - settledAt >= TimeSpan.FromMilliseconds(250);
+        }, token);
     }
 
     private static async Task SetBookmarkTimeAsync(

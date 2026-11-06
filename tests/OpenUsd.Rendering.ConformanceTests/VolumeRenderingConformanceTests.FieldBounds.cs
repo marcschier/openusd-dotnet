@@ -8,6 +8,8 @@ namespace OpenUsd.Rendering.ConformanceTests;
 
 public sealed partial class VolumeRenderingConformanceTests
 {
+    private const double MinimumAnimatedBoundsMeanDelta = 0.5;
+
     [Test]
     public async Task SampledFieldBoundsMatchIndependentProxyOnD3D12Warp()
     {
@@ -305,8 +307,8 @@ public sealed partial class VolumeRenderingConformanceTests
         await Assert.That(offsetDensity!.SequenceEqual(unitDensity)).IsTrue()
             .Because("the offset fixture changes coordinates, not the voxel values.");
         await Assert.That(ImageDelta.Compare(unitReference, offsetReference).MeanChannelDelta)
-            .IsGreaterThanOrEqualTo(MinimumTranslatedMeanDelta)
-            .Because("different field bounds must produce distinguishable images.");
+            .IsGreaterThanOrEqualTo(MinimumAnimatedBoundsMeanDelta)
+            .Because("the translated field bounds must produce a repeatable RGB image difference.");
         await Assert.That(ImageDelta.Compare(unitReference, uniformReference).MaximumChannelDelta)
             .IsGreaterThanOrEqualTo(MinimumSampledVsUniformDelta);
 
