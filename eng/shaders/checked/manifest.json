@@ -239,7 +239,7 @@
     },
     {
       "path": "eng/shaders/shader-manifest.json",
-      "sha256": "5249b5d548a8252d2a44ff7939f10d50b9f0ea0b4bcbcc175f6d72280e65d78c"
+      "sha256": "cd406f6f0f20fe3141ae8593221567f44b11a4fde3438de2bd5ea871c3b4d86e"
     },
     {
       "path": "eng/shaders/sources/compute.slang",
@@ -355,7 +355,7 @@
     },
     {
       "path": "eng/shaders/sources/volume.camera.fragment.shared.slang",
-      "sha256": "d26bdcc14f5bf1c6404fd61262982ba6cdc534ab1d80b3ff8f452cfbbfb2069f"
+      "sha256": "592ef0b9c880cc597a4f5a7837851bb137ab7f5b2e52b799335203388b7bc18b"
     },
     {
       "path": "eng/shaders/sources/volume.camera.fragment.uniform.slang",
@@ -471,7 +471,7 @@
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkGraphicsPipeline.cs",
-      "sha256": "ef61d064fc8ffe9571879ab683fb547b42084e1eb16ac5a1b1a053b9ba1f31e3"
+      "sha256": "12212a2d795cf6f2d584245903927730cc5aa8005731f72e8633232d6bf9748c"
     },
     {
       "path": "src/OpenUsd.Rendering.Silk/SilkSceneGpuResources.IndexedNormals.cs",
@@ -8495,6 +8495,19 @@
           }
         },
         {
+          "name": "backgroundColorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
+            "set": 0
+          }
+        },
+        {
           "name": "volumeFields",
           "access": "read",
           "d3d": {
@@ -8654,23 +8667,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.dxil",
-          "sha256": "2d19591de39c9d748a6528193efbb1ead1c48c70258d03de530011e437e11727",
-          "size": 14580
+          "sha256": "85afe95884c0b5f8c462e5bebbfe5600dcb73833980853d2776121e2bc32c49c",
+          "size": 21268
         },
         "spv": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.spv",
-          "sha256": "570e8c9f8c993bb844250b42d5a2b826d9534a4de2fee7a9ed3a4b177995d288",
-          "size": 31596
+          "sha256": "9ab639d778611357a2ca1528d639cc939f2844cf5182fbfb2271c847287a8163",
+          "size": 62428
         },
         "metal": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.metal",
-          "sha256": "bafc43ae938bd6572bcb5a1012b0c73b4fe3f6208b65aa338499b58634b0b786",
-          "size": 38971
+          "sha256": "75b0538850f3a645c6b1ceb1aae50446276272939829fadc99aaccc779c32cd8",
+          "size": 89649
         },
         "reflection.json": {
           "path": "eng/shaders/checked/volume.camera.fragment.uniform.reflection.json",
-          "sha256": "cb957fd04fccf05e4071bde7bf0bb7f60c7b6a20dea88799afc42f665aef97b4",
-          "size": 5836
+          "sha256": "d49efee958d3a93cc82d6540878a3099145907a8ea060d746d82c98c0e7bdab8",
+          "size": 6821
         }
       }
     },
@@ -8691,6 +8704,19 @@
           },
           "vulkan": {
             "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "backgroundColorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
             "set": 0
           }
         },
@@ -8880,23 +8906,23 @@
       "artifacts": {
         "dxil": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.dxil",
-          "sha256": "1d6aa92969da346b77e76ff5e922e90206ba6ad5e7f878e83d7a858b88ef3ab9",
-          "size": 16508
+          "sha256": "64f79ed708b4f3ca10ad5356182c4ed6f9642061ccf3b6c6626a979300713138",
+          "size": 23112
         },
         "spv": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.spv",
-          "sha256": "cc7a6f414bc46da664ca63e112276a7e749900d744933e7ec8857c77d806813f",
-          "size": 35092
+          "sha256": "303f4a53c3449f50a81710c61cfa536eee4bf364b53fa875b8615d9e844d4022",
+          "size": 65924
         },
         "metal": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.metal",
-          "sha256": "0b0aeb7044f3d2167739fb4e0dbc329ba607bb0a57836ad62510ba1cffb62024",
-          "size": 44372
+          "sha256": "c2112e39c700704a9e72aac0a2a5395738b0764d1d0fc6c1b6554731d07b0e6c",
+          "size": 94964
         },
         "reflection.json": {
           "path": "eng/shaders/checked/volume.camera.fragment.atlas.reflection.json",
-          "sha256": "149573c2d0570d043fc476febedd88d61498a64e0d83c8afba2e90744fd87062",
-          "size": 7243
+          "sha256": "9c9b23c76bf5de7c0c23a890680328f3098df49b7b88ebf70112131b2ea38b86",
+          "size": 8228
         }
       }
     },

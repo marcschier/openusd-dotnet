@@ -377,14 +377,54 @@ public sealed class VolumeCameraJointPassConformanceTests
             Mesh(MeshA, MaterialA, -1, 1, 1));
         var options = SilkMeshRenderOptions.Default with
         {
-            ClearColor = new SilkColor(1, -0.5f, 0.25f, 0.25f),
+            ClearColor = new SilkColor(0, 0, 0, 0.25f),
             Exposure = 127
         };
         _ = renderer.ApplyAndRender(page, color, depth, options);
+        SilkShaderBinaryFormat format = backend switch
+        {
+            SilkGraphicsBackend.D3D12 => SilkShaderBinaryFormat.Dxil,
+            SilkGraphicsBackend.Vulkan => SilkShaderBinaryFormat.SpirV,
+            SilkGraphicsBackend.Metal => SilkShaderBinaryFormat.MetalLibrary,
+            _ => throw new ArgumentOutOfRangeException(nameof(backend))
+        };
+        using var pass = new SilkVolumeCameraPass(device, format, renderer.GpuResources);
+        using SilkVolumeCameraPass.Prepared prepared = pass.Prepare(
+            renderer.Scene,
+            null,
+            Size,
+            Size,
+            device.ClipSpaceYPointsDown,
+            [(renderer.Scene.Meshes.Values.Single(), renderer.Scene.Materials[MaterialA])]);
+        using ISilkGraphicsTexture background = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size,
+            Size,
+            SilkTextureFormat.Rgba32Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.Sampled));
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            float scale = MathF.Pow(2, 127);
+            commands.ClearColor(color, new SilkColor(scale, -0.5f * scale, 0.25f * scale, 0.25f));
+            if (commands is not ISilkTextureCopyGraphicsCommandList copyCommands)
+            {
+                throw new NotSupportedException("The volume camera pass requires render-target copies.");
+            }
+            copyCommands.CopyRenderTarget(color, background);
+            SilkVolumeCameraPass.Record(
+                prepared,
+                commands,
+                color,
+                background,
+                GetPublishedVolumeDepthSnapshot(renderer),
+                renderer.GpuResources.CurrentFrameBuffer);
+            using ISilkGraphicsSubmission submission = device.Submit(commands);
+            submission.Wait();
+        }
         float[] pixels = ReadPixels(color);
         int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
         double transmission = Math.Pow(2, 127) * Math.Exp(-20);
         double[] expected = [transmission, -0.5 * transmission, 0.25 * transmission];
+        await Assert.That(pixels.All(float.IsFinite)).IsTrue();
         for (int channel = 0; channel < expected.Length; channel++)
         {
             await Assert.That(Math.Abs(pixels[center + channel] / expected[channel] - 1))
@@ -2489,6 +2529,8 @@ public sealed class VolumeCameraJointPassConformanceTests
             Mesh(MeshA, MaterialA, -1, 2, 1));
         _ = renderer.ApplyAndRender(initial, color, depth);
         float[] publishedPixels = ReadPixels(color);
+        ISilkGraphicsTexture publishedDepthSnapshot = GetPublishedVolumeDepthSnapshot(renderer);
+        ISilkGraphicsTexture publishedColorSnapshot = GetPublishedVolumeColorSnapshot(renderer);
         ulong publishedGpuBytes = gpuBudget.Usage.ReservedBytes;
         ulong publishedCpuBytes = cpuBudget.Usage.ReservedBytes;
         int publishedAtlasCount = device.CreatedVolumeTextures;
@@ -2555,6 +2597,10 @@ public sealed class VolumeCameraJointPassConformanceTests
             heldAdmission = null;
             await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
             await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(publishedPixels)).IsTrue();
+            await Assert.That(ReferenceEquals(
+                GetPublishedVolumeDepthSnapshot(renderer), publishedDepthSnapshot)).IsTrue();
+            await Assert.That(ReferenceEquals(
+                GetPublishedVolumeColorSnapshot(renderer), publishedColorSnapshot)).IsTrue();
             await Assert.That(device.CreatedVolumeTextures)
                 .IsEqualTo(publishedAtlasCount + (failure == VolumeCameraFailure.AtlasSubmission ? 1 : 0));
             await Assert.That(gpuBudget.Usage.ReservedBytes).IsEqualTo(publishedGpuBytes);
@@ -2576,8 +2622,22 @@ public sealed class VolumeCameraJointPassConformanceTests
             .IsGreaterThan(publishedAtlasCount);
         ulong atlasGrowth = (10UL * 10 * 10 - 3UL * 3 * 3) * sizeof(float);
         ulong spareDepthBytes = (ulong)Size * Size * sizeof(float);
+        ulong spareColorBytes = (ulong)Size * Size * 4 * sizeof(float);
+        ulong retainedGpuBytes = publishedGpuBytes + atlasGrowth + spareDepthBytes + spareColorBytes;
+        await Assert.That(ReferenceEquals(
+            GetPublishedVolumeDepthSnapshot(renderer), publishedDepthSnapshot)).IsFalse();
+        await Assert.That(ReferenceEquals(
+            GetPublishedVolumeColorSnapshot(renderer), publishedColorSnapshot)).IsFalse();
         await Assert.That(gpuBudget.Usage.ReservedBytes)
-            .IsEqualTo(publishedGpuBytes + atlasGrowth + spareDepthBytes);
+            .IsEqualTo(retainedGpuBytes);
+
+        _ = renderer.Render(color, depth);
+        await Assert.That(ReferenceEquals(
+            GetPublishedVolumeDepthSnapshot(renderer), publishedDepthSnapshot)).IsTrue();
+        await Assert.That(ReferenceEquals(
+            GetPublishedVolumeColorSnapshot(renderer), publishedColorSnapshot)).IsTrue();
+        await Assert.That(ReadPixels(color).AsSpan().SequenceEqual(replacedPixels)).IsTrue();
+        await Assert.That(gpuBudget.Usage.ReservedBytes).IsEqualTo(retainedGpuBytes);
     }
 
     [Test]

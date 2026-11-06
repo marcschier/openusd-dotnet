@@ -67,14 +67,15 @@ neither that texture nor its sampler and also serves backends without 3D samplin
 
 The source layout has a 32-byte parameter buffer `b0`, field/frame storage `t6`/`t8`,
 atlas `t9` with sampler `s4` at Vulkan bindings 9/13, and opaque depth `t28` at
-Vulkan binding 45. It does not use environment bindings 46/47 or `t29`/`t30`, and
-the shared native frame ABI is unchanged. Admission permits at most eight active
-fields; zero-opacity fields do not consume those slots. Sampled field axes are
-1–512 voxels, and one-voxel repeated-boundary gutters isolate atlas regions. The
-existing Z stack is retained when it fits; otherwise a deterministic portable grid
-keeps every atlas axis at or below 2,048. The managed payload is limited to
-`int.MaxValue` bytes, and device limits and CPU/GPU reservations also apply. A
-packable atlas does not imply that the sampling workload is admitted.
+Vulkan binding 45. The captured background uses `t0` at Vulkan binding 2 and
+Metal texture index 0. The pass does not use environment bindings 46/47 or
+`t29`/`t30`, and the shared native frame ABI is unchanged. Admission permits at
+most eight active fields; zero-opacity fields do not consume those slots. Sampled
+field axes are 1–512 voxels, and one-voxel repeated-boundary gutters isolate atlas
+regions. The existing Z stack is retained when it fits; otherwise a deterministic
+portable grid keeps every atlas axis at or below 2,048. The managed payload is
+limited to `int.MaxValue` bytes, and device limits and CPU/GPU reservations also
+apply. A packable atlas does not imply that the sampling workload is admitted.
 
 The two phases use identical integer midpoint sampling lattices. For `N` active
 fields and `A` equal to the sum of their longest sampled axes, with axis 1 for a
@@ -101,8 +102,9 @@ bound for shorter clipped rays or interpolated samples. Admission also refuses
 a non-finite exposure or tint, an exposure scale above `float.MaxValue`, or a
 nonnegative tint/scale product above that limit. When a display transform is
 requested, it uses the larger of 1 and `2^exposure` because rendering can fall
-back to the direct path. The shader applies exposure before alpha blending, so
-this check can refuse a final composite that would fit. The ray, local-step,
+back to the direct path. The shader composites the exposure-adjusted volume
+source against the captured background without fixed-function blending. The
+admission check can refuse a final composite that would fit. The ray, local-step,
 tint and exposure arithmetic still lacks a finite-domain proof for every
 admitted input.
 
@@ -124,7 +126,9 @@ color on Metal. This path omits within-ray ordering only in the range where the
 relative color difference is below `0.101%` for nonnegative tint. The previous
 hosted Metal run failed the thin-field and high-tint cases at densities
 `1e-37`, `1e-20`, and `1e30`; D3D12 and Vulkan passed their high-tint cases.
-The scaled integration change has not yet run on Metal.
+A later provisional source passed ten overlapping high-tint Metal cases and 16
+of 17 targeted composition cases; the remaining case failed before rendering.
+Its complete camera gate and the current source remain to be qualified.
 
 Source preflight refuses a volume material with additional non-density textures,
 duplicate density entries, or a composited density texture before publication.

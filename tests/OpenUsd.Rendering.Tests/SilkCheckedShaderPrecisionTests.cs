@@ -122,7 +122,12 @@ public sealed class SilkCheckedShaderPrecisionTests
             .IsTrue();
         await Assert.That(Regex.IsMatch(
             metal,
-            @"\*\s*\(\s*length\(_S\d+\)\s*\*\s*_S\d+\s*\)"))
+            @"float\s+(?<speed>localSpeed_\d+)\s*=\s*length\(_S\d+\);\s*" +
+            @"float\s+(?<depth>fieldDepth_\d+)\s*=\s*fieldOpticalDepth_\d+\[(?<field>field_\d+)\]" +
+            @"\s*\*\s*\([^;\n]+\s*/\s*densityScales_\d+\[\k<field>\]\s*\*\s*" +
+            @"\(\s*\k<speed>\s*\*\s*_S\d+\s*\)\s*/\s*" +
+            @"normalizedDensityIntegrals_\d+\[\k<field>\]\s*\);\s*" +
+            @"float\s+opticalDepth_\d+\s*=\s*opticalDepth_\d+\s*\+\s*\k<depth>;"))
             .IsTrue();
     }
 

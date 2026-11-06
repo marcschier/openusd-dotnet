@@ -2345,12 +2345,19 @@ Windows software-backend camera gate also exercises representative finite-produc
 uniform and sampled fields; it does not execute the exact admission boundary on the GPU. Density integration,
 ray/clip arithmetic, tint accumulation and display exposure remain unqualified for arbitrary finite inputs.
 
-The volume shader applies exposure to its straight-alpha source tint before blending. A tint of 3 at exposure 127
-produced infinity on both Windows software backends even though the blended result would fit in a float. Camera
-preflight now checks each active field's fallback-adjusted, nonnegative tint against `2^exposure` in double precision
-and refuses a non-finite value, an exposure scale above `float.MaxValue`, or a tint/scale product above that limit.
-When a display transform is requested, admission uses the larger of 1 and `2^exposure` because rendering can fall back
-to the direct path. This bound can refuse a final composite that would fit after blending.
+The volume pass copies the material color target and composites against that background in the fragment shader,
+with fixed-function blending disabled. It adds the integrated volume source to the background attenuated by the
+accumulated optical depth. This representation can retain transmitted background after an opacity value rounds to
+one. The shader multiplies the background by the attenuation in three steps to preserve products that would be lost
+if `exp(-D)` underflowed first. The Windows D3D12 and Vulkan software-backend camera gate exercised bright and
+signed backgrounds, including a dark field with an optical depth of 100; Linux Vulkan and Metal remain unqualified.
+
+The earlier straight-alpha path produced infinity for a tint of 3 at exposure 127 on both Windows software backends,
+even though the blended result would fit in a float. Camera preflight checks each active field's fallback-adjusted,
+nonnegative tint against `2^exposure` in double precision and refuses a non-finite value, an exposure scale above
+`float.MaxValue`, or a tint/scale product above that limit. When a display transform is requested, admission uses
+the larger of 1 and `2^exposure` because rendering can fall back to the direct path. This bound can refuse a final
+composite that would fit after blending.
 
 The check runs before preparing replacement volume and output resources; refusal preserves the published scene and
 image. Zero-opacity fields and disabled scene materials bypass this tint/exposure check. The Windows camera gate
@@ -2372,20 +2379,25 @@ one-voxel repeated-boundary gutter covers each face, edge and corner, and metada
 The managed atlas payload cannot exceed `int.MaxValue` bytes. Device dimension limits and CPU/GPU budgets also apply,
 including the private 512 MiB camera CPU budget. A packable atlas does not imply that the sampling workload is admitted.
 
-Candidate preparation retains the published volume resources while reserving the replacement. When a GPU buffer,
-GPU texture, staging or CPU texture admission budget is configured, the renderer also prepares private output and a
-separate opaque-depth snapshot. If candidate allocation or output-copy submission is refused before publication, the
-previous snapshot, scene, physics overrides and image remain published and a corrected frame can retry. After two
-same-size, same-generation publications, the renderer alternates two snapshots. The spare adds
-`4 * width * height` bytes to a configured logical GPU texture budget. The volume pass separately prepares a D32
-depth target, so a first replacement without a spare can require two additional `4 * width * height` reservations at
-once, alongside its other candidate resources.
+Candidate preparation retains the published volume resources while reserving the replacement. Each camera pass uses
+an opaque-depth snapshot and a color snapshot with the target's dimensions and format. The renderer copies depth after
+opaque draws and before transparent draws, then copies color after the material draws. A color snapshot consumes
+`B * width * height` bytes of a configured logical GPU texture budget, where `B` is 4 for RGBA8, 8 for RGBA16Float and
+16 for RGBA32Float.
+
+When a GPU buffer, GPU texture, staging or CPU texture admission budget is configured, the renderer also prepares
+private output and preserves the published snapshots. If candidate allocation or output-copy submission is refused
+before publication, the previous snapshots, scene, physics overrides and image remain published and a corrected frame
+can retry. After two same-size, same-generation publications, each snapshot can alternate with a spare. Together the
+spares add `(4 + B) * width * height` bytes to the logical GPU texture budget. The volume pass separately prepares a
+D32 depth target, so a first replacement without spares can require two additional `4 * width * height` reservations
+and one additional `B * width * height` reservation alongside its other candidate resources.
 
 After output publication, a retirement failure cannot reverse the copied image. The renderer reports cleanup failures,
-keeps the published state and retries unfinished volume-resource and depth-snapshot releases during later preparation
-or disposal. A direct render without an admission budget can reuse the published snapshot in place and does not provide
-the same pre-publication rollback guarantee. Windows software-backend cases exercise snapshot reuse, exact and
-one-byte-short budget boundaries, retained and staged rollback, retirement failure and corrected retry.
+keeps the published state and retries unfinished volume-resource, depth-snapshot and color-snapshot releases during
+later preparation or disposal. A direct render without an admission budget can reuse the published snapshots in place
+and does not provide the same pre-publication rollback guarantee. Windows software-backend cases exercise depth and
+color snapshot reuse, budget boundaries, rollback, retirement failure and corrected retry.
 
 The pass admits at most eight active fields; zero-opacity fields do not consume those slots. Its two phases use
 identical integer midpoint sampling lattices. For `N` active fields, let `A` be the sum of their longest sampled
@@ -2422,8 +2434,9 @@ reports `false` with that reason rather than echoing the hardware tier, and the 
 The joint shader source declares `volume.camera.vertex`, `volume.camera.fragment.atlas` and
 `volume.camera.fragment.uniform`; the fragments share their ray integration source. Its layout uses parameter
 buffer `b0`, field/frame storage `t6`/`t8`, atlas `t9` with sampler `s4` at Vulkan bindings 9/13, and opaque depth
-`t28` at Vulkan binding 45. The uniform layout omits the atlas and sampler. It does not consume environment
-bindings 46/47 or change the shared frame ABI. Each D3D12 root signature must cover the resources its variant uses.
+`t28` at Vulkan binding 45. The background color snapshot uses `t0` at Vulkan binding 2 and Metal texture index 0.
+The uniform layout omits the atlas and sampler. It does not consume environment bindings 46/47 or change the shared
+frame ABI. Each D3D12 root signature must cover the resources its variant uses.
 
 The retained `mesh.volume.vertex` and `mesh.volume.fragment` programs describe the earlier proxy pipeline selected
 by `SilkGraphicsPipelineCache.GetOrCreateSampledVolumePipeline`. Before its checked fragment was added, volume
@@ -4422,18 +4435,18 @@ D3D12 platform skips. These four identities have their own report and receipt; t
 cannot substitute for finite-area execution. All four passed locally on the Windows software backends.
 
 For camera evidence, the runner selects only `VolumeCameraConformanceTests/CameraIntegrationBackendGate`.
-Each intended-backend receipt must contain the complete set of 114 named camera cases, including thin, high-density
+Each intended-backend receipt must contain the complete set of 134 named camera cases, including thin, high-density
 uniform and sampled fields, and staged refusal and corrected retry for non-finite density values and excessive finite
 sample/scale and tint/exposure products. The set also includes overlapping high-tint fields, low-signal refusals and
-inactive-material controls, snapshot budget and rollback cases, and resource-retirement failures. These cases
-are distinct from the three reported test identities. Those identities require D3D12 and Vulkan passes with Metal
-skipped on Windows, a Vulkan pass with D3D12 and Metal skipped on Linux, and a Metal pass with D3D12 and Vulkan
-skipped on macOS.
+inactive-material controls, background transmission, color-format and alpha cases, snapshot budget and rollback cases,
+and resource-retirement failures. These cases are distinct from the three reported test identities. Those identities
+require D3D12 and Vulkan passes with Metal skipped on Windows, a Vulkan pass with D3D12 and Metal skipped on Linux,
+and a Metal pass with D3D12 and Vulkan skipped on macOS.
 The same run validates the expected backend camera receipts against its UTC start, copies them
 into the evidence artifact, verifies source and copied hashes, and validates the retained copies.
 Missing, stale or incomplete receipts reject the run even when the TUnit report passed. The macOS
-job retains its required Metal-library build. Both Windows receipts passed this validation; Linux,
-macOS and the native producer-to-renderer chain remain to be qualified.
+job retains its required Metal-library build. Both 134-case Windows software-backend receipts passed this validation;
+Linux, macOS and the native producer-to-renderer chain remain to be qualified.
 
 If execution or report validation fails, the runner copies any present camera receipts into
 `camera-failure-receipts` and records the original error in `camera.failure.json`. These copies
