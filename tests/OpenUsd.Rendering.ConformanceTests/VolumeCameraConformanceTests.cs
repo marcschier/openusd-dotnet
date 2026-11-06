@@ -216,6 +216,14 @@ public sealed class VolumeCameraConformanceTests
                 jointPass.TinyTintContributionRemainsVisibleAboveNormalBackground(backend));
             await run("joint-tint-deep-attenuation", () =>
                 jointPass.HighTintSurvivesDeepForegroundAttenuation(backend));
+            await run("joint-tint-sequential-tiny", () =>
+                jointPass.SequentialTinyContributionsRemainVisible(backend));
+            await run("joint-tint-subnormal-exposure", () =>
+                jointPass.SubnormalTintSurvivesExposure(backend));
+            await run("joint-tint-clipped-tiny-depth", () =>
+                jointPass.ClippedTinyOpticalDepthRetainsBrightContribution(backend));
+            await run("joint-tint-dark-over-bright", () =>
+                jointPass.DeepDarkVolumeAttenuatesBrightBackground(backend));
             await run("joint-signal-subnormal-scale-scalar", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, false, VolumeCameraJointPassConformanceTests.LowDensitySignal.SubnormalScale));

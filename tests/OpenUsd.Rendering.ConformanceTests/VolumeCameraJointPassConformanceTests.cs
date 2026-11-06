@@ -214,6 +214,120 @@ public sealed class VolumeCameraJointPassConformanceTests
         }
     }
 
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public async Task SequentialTinyContributionsRemainVisible(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size,
+            Size,
+            SilkTextureFormat.Rgba32Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        const float foregroundDensity = 1e-8f;
+        const float foregroundTint = 1e-30f;
+        const float rearTint = 1e6f;
+        double expected =
+            foregroundTint * (1 - Math.Exp(-foregroundDensity)) +
+            Math.Exp(-foregroundDensity - 100d) * rearTint * (1 - Math.Exp(-1d));
+
+        foreach (bool rearFirst in new[] { false, true })
+        {
+            using var renderer = new SilkMeshRenderer(device);
+            using OpenUsdSilkPage page = Page(
+                1,
+                Frame(SilkMeshRendererConformance.Identity()),
+                Material(MaterialA, rearFirst ? 1 : foregroundDensity,
+                    [rearFirst ? rearTint : foregroundTint, 0, 0], string.Empty, false, false),
+                Material(MaterialB, 100, [0, 0, 0], string.Empty, false, false),
+                Material(MaterialC, rearFirst ? foregroundDensity : 1,
+                    [rearFirst ? foregroundTint : rearTint, 0, 0], string.Empty, false, false),
+                Mesh(MeshA, MaterialA, rearFirst ? -3 : -1, 1, 1),
+                Mesh(MeshB, MaterialB, -2, 1, 2),
+                Mesh(MeshC, MaterialC, rearFirst ? -1 : -3, 1, 3));
+            _ = renderer.ApplyAndRender(page, color, depth);
+            float[] pixels = ReadPixels(color);
+            int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
+            await Assert.That(pixels.All(float.IsFinite)).IsTrue();
+            await Assert.That(Math.Abs((pixels[center] / expected) - 1)).IsLessThan(0.01)
+                .Because($"Rear field first: {rearFirst}; red was {pixels[center]:R}, expected {expected:R}.");
+            await Assert.That(pixels[center + 1]).IsEqualTo(0f);
+            await Assert.That(pixels[center + 2]).IsEqualTo(0f);
+        }
+    }
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public Task SubnormalTintSurvivesExposure(SilkGraphicsBackend backend) =>
+        AssertCoincidentHighTintFields(backend, [1], 1e-40f, exposure: 64);
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public async Task ClippedTinyOpticalDepthRetainsBrightContribution(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size,
+            Size,
+            SilkTextureFormat.Rgba32Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device);
+        const float density = 1e-37f;
+        const double farPlane = 0.55;
+        double expected = float.MaxValue * (double)density * (farPlane - 0.5);
+        using OpenUsdSilkPage page = Page(
+            1,
+            Frame(SilkMeshRendererConformance.Identity(), farPlane),
+            Material(MaterialA, density, [float.MaxValue, 0, 0], string.Empty, false, false),
+            Mesh(MeshA, MaterialA, -1, 1, 1));
+        _ = renderer.ApplyAndRender(page, color, depth);
+        float[] pixels = ReadPixels(color);
+        int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
+        await Assert.That(pixels.All(float.IsFinite)).IsTrue();
+        await Assert.That(Math.Abs((pixels[center] / expected) - 1)).IsLessThan(0.01)
+            .Because($"Red was {pixels[center]:R}, expected {expected:R}.");
+        await Assert.That(pixels[center + 1]).IsEqualTo(0f);
+        await Assert.That(pixels[center + 2]).IsEqualTo(0f);
+    }
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public async Task DeepDarkVolumeAttenuatesBrightBackground(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size,
+            Size,
+            SilkTextureFormat.Rgba32Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device);
+        double expected = Math.Pow(2, 127) * Math.Exp(-100d);
+        using OpenUsdSilkPage page = Page(
+            1,
+            Frame(SilkMeshRendererConformance.Identity()),
+            Material(MaterialA, 100, [0, 0, 0], string.Empty, false, false),
+            Mesh(MeshA, MaterialA, -1, 1, 1));
+        SilkMeshRenderOptions options = SilkMeshRenderOptions.Default with
+        {
+            ClearColor = new SilkColor(1, 0, 0, 1),
+            Exposure = 127
+        };
+        _ = renderer.ApplyAndRender(page, color, depth, options);
+        float[] pixels = ReadPixels(color);
+        int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
+        await Assert.That(pixels.All(float.IsFinite)).IsTrue();
+        await Assert.That(Math.Abs((pixels[center] / expected) - 1)).IsLessThan(0.01)
+            .Because($"Red was {pixels[center]:R}, expected {expected:R}.");
+        await Assert.That(pixels[center + 1]).IsEqualTo(0f);
+        await Assert.That(pixels[center + 2]).IsEqualTo(0f);
+    }
+
     public static IEnumerable<SilkGraphicsBackend> AvailableBackends() =>
         SilkConformanceBackends.Available();
 

@@ -10,6 +10,13 @@ public sealed class SilkVolumeCameraShaderMathSourceTests
         string source = (await ReadShaderAsync()).Replace("\r\n", "\n", StringComparison.Ordinal);
         foreach (string signature in new[]
         {
+            "VolumeLogSum NewVolumeLogSum",
+            "float LogPositiveVolumeValue",
+            "void AddVolumeLog",
+            "float VolumeLogSumValue",
+            "void AddTintedVolumeDepth",
+            "void AddVolumeSource",
+            "float VolumeColorFromLog",
             "float3 ToObjectPoint",
             "float3 ToObjectDirection",
             "float OneMinusExpNegative",
@@ -25,6 +32,19 @@ public sealed class SilkVolumeCameraShaderMathSourceTests
         {
             await Assert.That(source).Contains($"[ForceInline]\n{signature}(");
         }
+    }
+
+    [Test]
+    public async Task NonfiniteLogAccumulationIsNotTreatedAsAnEmptySum()
+    {
+        string source = await ReadShaderAsync();
+        string result = FunctionBody(source, "VolumeLogSumValue");
+        string color = FunctionBody(source, "VolumeColorFromLog");
+
+        await Assert.That(result).Contains("total.sum == 0.0 ? NoLogValue");
+        await Assert.That(result).DoesNotContain("total.sum > 0.0 ? ");
+        await Assert.That(color).Contains("if (!isfinite(logarithm))");
+        await Assert.That(color).Contains("return exp(logarithm);");
     }
 
     [Test]

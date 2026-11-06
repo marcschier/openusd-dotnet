@@ -75,9 +75,13 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
             "TinyTintContributionSurvivesDominantDarkWeight(Vulkan)",
             "TinyTintContributionRemainsVisibleAboveNormalBackground(Vulkan)",
             "HighTintSurvivesDeepForegroundAttenuation(Vulkan)",
+            "SequentialTinyContributionsRemainVisible(Vulkan)",
+            "SubnormalTintSurvivesExposure(Vulkan)",
+            "ClippedTinyOpticalDepthRetainsBrightContribution(Vulkan)",
+            "DeepDarkVolumeAttenuatesBrightBackground(Vulkan)",
         ):
             self.assertIn(case, high_tint)
-        self.assertIn("$report.summary.passed -ne 10", high_tint)
+        self.assertIn("$report.summary.passed -ne 14", high_tint)
         self.assertIn("$report.summary.skipped -ne 0", high_tint)
         self.assertIn("artifacts/shadow-volume-repro/high-tint-volume.tunit-report.json", job)
         self.assertNotIn("continue-on-error", job)
@@ -112,7 +116,7 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
         )[1].split("\n      - name:", 1)[0]
         self.assertIn("always() && steps.windows_conformance_build.outcome == 'success'", high_tint)
         self.assertIn("./eng/run-vulkan-conformance-tests.ps1", high_tint)
-        self.assertIn("-MinimumExpectedTests 20", high_tint)
+        self.assertIn("-MinimumExpectedTests 28", high_tint)
         self.assertIn("foreach ($backend in @('D3D12', 'Vulkan'))", high_tint)
         for case in (
             "SingleHighTintFieldProducesFinitePixels",
@@ -125,9 +129,13 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
             "TinyTintContributionSurvivesDominantDarkWeight",
             "TinyTintContributionRemainsVisibleAboveNormalBackground",
             "HighTintSurvivesDeepForegroundAttenuation",
+            "SequentialTinyContributionsRemainVisible",
+            "SubnormalTintSurvivesExposure",
+            "ClippedTinyOpticalDepthRetainsBrightContribution",
+            "DeepDarkVolumeAttenuatesBrightBackground",
         ):
             self.assertIn(f"'{case}'", high_tint)
-        self.assertIn("$report.summary.passed -ne 20", high_tint)
+        self.assertIn("$report.summary.passed -ne 28", high_tint)
         self.assertIn("$report.summary.skipped -ne 0", high_tint)
         self.assertIn("high-tint-volume.tunit-report.json", high_tint)
         self.assertIn("artifacts/windows-conformance-repro/", job)
@@ -141,8 +149,8 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
             "\n      - name: Run Metal high-tint volume cases", 1
         )[1].split("\n      - name:", 1)[0]
         self.assertIn("always() && !cancelled() && steps.metal_volume_payload.outcome == 'success'", high_tint)
-        self.assertIn("-MinimumExpectedTests 10", high_tint)
-        self.assertIn("$report.summary.passed -ne 10", high_tint)
+        self.assertIn("-MinimumExpectedTests 14", high_tint)
+        self.assertIn("$report.summary.passed -ne 14", high_tint)
         self.assertIn("$report.summary.skipped -ne 0", high_tint)
         self.assertIn("high-tint-volume.tunit-report.json", high_tint)
         self.assertIn("finally {", high_tint)
@@ -157,6 +165,10 @@ class ReleaseValidationCheckpointTests(unittest.TestCase):
             "TinyTintContributionSurvivesDominantDarkWeight",
             "TinyTintContributionRemainsVisibleAboveNormalBackground",
             "HighTintSurvivesDeepForegroundAttenuation",
+            "SequentialTinyContributionsRemainVisible",
+            "SubnormalTintSurvivesExposure",
+            "ClippedTinyOpticalDepthRetainsBrightContribution",
+            "DeepDarkVolumeAttenuatesBrightBackground",
         ):
             self.assertIn(f"'{case}'", high_tint)
             self.assertIn(case, high_tint.split("--treenode-filter", 1)[1])

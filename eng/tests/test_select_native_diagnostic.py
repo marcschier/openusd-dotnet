@@ -44,7 +44,7 @@ def run(run_id=10, head=HEAD, status="in_progress", conclusion=""):
 
 
 class NativeDiagnosticSelectionTests(unittest.TestCase):
-    def test_exclusions_are_limited_to_diagnostics_and_promotion_inputs(self):
+    def test_exclusions_are_limited_to_linux_archive_independent_inputs(self):
         self.assertEqual(set(selector.NON_REPRODUCTION_PATHS), {
             ".github/workflows/nuget.yml",
             ".github/workflows/release-validation-checkpoint.yml",
@@ -54,6 +54,8 @@ class NativeDiagnosticSelectionTests(unittest.TestCase):
             "eng/diagnostics/metal-volume-math.metal",
             "eng/diagnostics/metal-volume-math.swift",
             "eng/select_native_diagnostic.py",
+            "eng/shaders/sources/volume.camera.fragment.shared.slang",
+            "eng/shaders/tests/test_volume_log_math.py",
             "eng/test-silk-cubic-shadow-report.ps1",
             "eng/tests/test_release_validation_checkpoint.py",
             "eng/tests/test_select_native_diagnostic.py",
@@ -64,6 +66,7 @@ class NativeDiagnosticSelectionTests(unittest.TestCase):
             "tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraConformanceTests.cs",
             "tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraJointPassConformanceTests.cs",
             "tests/OpenUsd.Rendering.Tests/SilkShadowNormalSpaceSourceContractTests.cs",
+            "tests/OpenUsd.Rendering.Tests/SilkVolumeCameraShaderMathSourceTests.cs",
         })
 
     def test_completed_linux_job_is_usable_while_other_platforms_are_running(self):

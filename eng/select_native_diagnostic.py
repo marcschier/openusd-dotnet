@@ -11,8 +11,9 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# These paths do not change the native archive. The diagnostic rebuilds its
-# managed test at the requested head rather than using a test from the archive.
+# These paths do not change the Linux native archive. The diagnostic rebuilds
+# its managed tests and verifies a generated shader receipt at the requested
+# head instead of using managed binaries from the archive.
 NON_REPRODUCTION_PATHS = (
     ".github/workflows/nuget.yml",
     ".github/workflows/release-validation-checkpoint.yml",
@@ -22,6 +23,8 @@ NON_REPRODUCTION_PATHS = (
     "eng/diagnostics/metal-volume-math.metal",
     "eng/diagnostics/metal-volume-math.swift",
     "eng/select_native_diagnostic.py",
+    "eng/shaders/sources/volume.camera.fragment.shared.slang",
+    "eng/shaders/tests/test_volume_log_math.py",
     "eng/test-silk-cubic-shadow-report.ps1",
     "eng/tests/test_release_validation_checkpoint.py",
     "eng/tests/test_select_native_diagnostic.py",
@@ -32,6 +35,7 @@ NON_REPRODUCTION_PATHS = (
     "tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraConformanceTests.cs",
     "tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraJointPassConformanceTests.cs",
     "tests/OpenUsd.Rendering.Tests/SilkShadowNormalSpaceSourceContractTests.cs",
+    "tests/OpenUsd.Rendering.Tests/SilkVolumeCameraShaderMathSourceTests.cs",
 )
 LINUX_JOB = "linux-x64 verified native archive"
 LINUX_ARCHIVE = "openusd-native-linux-x64"
