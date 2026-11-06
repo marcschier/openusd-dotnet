@@ -1555,6 +1555,19 @@
           }
         },
         {
+          "name": "backgroundColorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
+            "set": 0
+          }
+        },
+        {
           "name": "volumeFields",
           "access": "read",
           "d3d": {
@@ -1613,6 +1626,19 @@
           },
           "vulkan": {
             "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "backgroundColorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
             "set": 0
           }
         },

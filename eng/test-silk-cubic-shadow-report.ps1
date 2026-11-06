@@ -482,7 +482,9 @@ try
         'joint-tint-underflowing-weight', 'joint-tint-dominant-dark-weight',
         'joint-tint-normal-background', 'joint-tint-deep-attenuation',
         'joint-tint-sequential-tiny', 'joint-tint-subnormal-exposure',
-        'joint-tint-clipped-tiny-depth', 'joint-tint-dark-over-bright',
+        'joint-tint-clipped-tiny-depth', 'joint-tint-clipped-tiny-overlap',
+        'joint-tint-dark-over-bright',
+        'joint-signed-background-transmission', 'joint-color-format-transform-alpha',
         'joint-signal-subnormal-scale-scalar', 'joint-signal-step-underflow-scalar',
         'joint-signal-opacity-product-scalar', 'joint-signal-subnormal-scale-grid',
         'joint-signal-step-underflow-grid', 'joint-signal-opacity-product-grid',
@@ -493,6 +495,7 @@ try
         'joint-output-frame-submission-staged', 'joint-output-publication-staged',
         'joint-direct-retirement-none', 'joint-retirement-none-retained', 'joint-retirement-none-staged',
         'joint-direct-retirement-depth', 'joint-retirement-depth-retained', 'joint-retirement-depth-staged',
+        'joint-direct-retirement-color', 'joint-retirement-color-retained', 'joint-retirement-color-staged',
         'joint-direct-retirement-resources', 'joint-retirement-resources-retained',
         'joint-retirement-resources-staged', 'joint-direct-retirement-both',
         'joint-retirement-both-retained', 'joint-retirement-both-staged',
@@ -501,7 +504,13 @@ try
         'joint-failed-frame-cleanup-staged', 'joint-snapshot-rollback-staged',
         'joint-snapshot-budget-refusal-staged', 'joint-snapshot-budget-exact-staged',
         'joint-snapshot-budget-reuse', 'joint-renderer-disposal-retry')
-    $prior126CameraCases = @($cameraCases | Where-Object {
+    $prior128CameraCases = @($cameraCases | Where-Object {
+        $_ -cnotin @(
+            'joint-signed-background-transmission', 'joint-color-format-transform-alpha',
+            'joint-direct-retirement-color', 'joint-retirement-color-retained', 'joint-retirement-color-staged',
+            'joint-tint-clipped-tiny-overlap')
+    })
+    $prior126CameraCases = @($prior128CameraCases | Where-Object {
         $_ -cnotin @('joint-tint-clipped-tiny-depth', 'joint-tint-dark-over-bright')
     })
     $prior124CameraCases = @($prior126CameraCases | Where-Object {

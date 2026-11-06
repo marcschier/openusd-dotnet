@@ -296,6 +296,37 @@ public sealed class VolumeCameraJointPassConformanceTests
 
     [Test]
     [MethodDataSource(nameof(AvailableBackends))]
+    public async Task ClippedTinyOpticalDepthSurvivesOverlappingDarkField(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size, Size, SilkTextureFormat.Rgba32Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device);
+        const float density = 1e-37f;
+        const double farPlane = 0.55;
+        double expected = float.MaxValue * (double)density * (1 - Math.Exp(-(farPlane - 0.5)));
+        using OpenUsdSilkPage page = Page(
+            1,
+            Frame(SilkMeshRendererConformance.Identity(), farPlane),
+            Material(MaterialA, density, [float.MaxValue, 0, 0], string.Empty, false, false),
+            Material(MaterialB, 1, [0, 0, 0], string.Empty, false, false),
+            Mesh(MeshA, MaterialA, -1, 1, 1),
+            Mesh(MeshB, MaterialB, -1, 1, 2));
+        _ = renderer.ApplyAndRender(page, color, depth);
+        float[] pixels = ReadPixels(color);
+        int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
+        await Assert.That(pixels.All(float.IsFinite)).IsTrue();
+        await Assert.That(Math.Abs(pixels[center] / expected - 1)).IsLessThan(0.01)
+            .Because($"Red was {pixels[center]:R}, expected {expected:R}.");
+        await Assert.That(pixels[center + 1]).IsEqualTo(0f);
+        await Assert.That(pixels[center + 2]).IsEqualTo(0f);
+    }
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
     public async Task DeepDarkVolumeAttenuatesBrightBackground(SilkGraphicsBackend backend)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
@@ -326,6 +357,99 @@ public sealed class VolumeCameraJointPassConformanceTests
             .Because($"Red was {pixels[center]:R}, expected {expected:R}.");
         await Assert.That(pixels[center + 1]).IsEqualTo(0f);
         await Assert.That(pixels[center + 2]).IsEqualTo(0f);
+    }
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public async Task DeepVolumePreservesSignedBackgroundTransmission(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size, Size, SilkTextureFormat.Rgba32Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device);
+        using OpenUsdSilkPage page = Page(
+            1,
+            Frame(SilkMeshRendererConformance.Identity()),
+            Material(MaterialA, 20, [0, 0, 0], string.Empty, false, false),
+            Mesh(MeshA, MaterialA, -1, 1, 1));
+        var options = SilkMeshRenderOptions.Default with
+        {
+            ClearColor = new SilkColor(1, -0.5f, 0.25f, 0.25f),
+            Exposure = 127
+        };
+        _ = renderer.ApplyAndRender(page, color, depth, options);
+        float[] pixels = ReadPixels(color);
+        int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
+        double transmission = Math.Pow(2, 127) * Math.Exp(-20);
+        double[] expected = [transmission, -0.5 * transmission, 0.25 * transmission];
+        for (int channel = 0; channel < expected.Length; channel++)
+        {
+            await Assert.That(Math.Abs(pixels[center + channel] / expected[channel] - 1))
+                .IsLessThan(0.01);
+        }
+        await Assert.That(pixels[center + 3]).IsEqualTo(1f);
+    }
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public async Task VolumeCompositionPreservesFormatTransformAndAlpha(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        foreach (SilkTextureFormat format in new[]
+        {
+            SilkTextureFormat.Rgba8Unorm,
+            SilkTextureFormat.Rgba16Float,
+            SilkTextureFormat.Rgba32Float
+        })
+        {
+            foreach (RenderOutputTransform transform in new[]
+            {
+                RenderOutputTransform.Identity,
+                RenderOutputTransform.Reinhard
+            })
+            {
+                using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+                    Size, Size, format, SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+                using ISilkGraphicsTexture depth = device.CreateTexture2D(
+                    SilkTextureDescriptor.DepthTarget(Size, Size));
+                using var renderer = new SilkMeshRenderer(device);
+                using OpenUsdSilkPage page = Page(
+                    1,
+                    Frame(SilkMeshRendererConformance.Identity()),
+                    Material(MaterialA, 0.8f, [0.2f, 0.3f, 0.4f], string.Empty, false, false),
+                    Mesh(MeshA, MaterialA, -1, 1, 1));
+                var options = SilkMeshRenderOptions.Default with
+                {
+                    ClearColor = new SilkColor(0.1f, 0.2f, 0.3f, 0.25f),
+                    Exposure = 1,
+                    OutputTransform = transform
+                };
+                _ = renderer.ApplyAndRender(page, color, depth, options);
+                double[] actual = ReadCenterColor(color);
+                double transmission = Math.Exp(-(double)0.8f);
+                double[] tint = [0.2f, 0.3f, 0.4f];
+                double[] background = [0.1f, 0.2f, 0.3f];
+                for (int channel = 0; channel < 3; channel++)
+                {
+                    double source = tint[channel] * 2;
+                    double destination = background[channel] * 2;
+                    if (transform == RenderOutputTransform.Reinhard)
+                    {
+                        source /= 1 + source;
+                        destination /= 1 + destination;
+                    }
+                    double expected = source * (1 - transmission) + destination * transmission;
+                    await Assert.That(Math.Abs(actual[channel] - expected)).IsLessThan(0.01)
+                        .Because($"{backend} {format} {transform}, channel {channel}: " +
+                            $"actual {actual[channel]:R}, expected {expected:R}.");
+                }
+                double expectedAlpha = 1 - (0.75 * transmission);
+                await Assert.That(Math.Abs(actual[3] - expectedAlpha)).IsLessThan(0.01);
+            }
+        }
     }
 
     public static IEnumerable<SilkGraphicsBackend> AvailableBackends() =>
@@ -781,26 +905,32 @@ public sealed class VolumeCameraJointPassConformanceTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.None, false)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.DepthSnapshot, false)]
+    [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.ColorSnapshot, false)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.VolumeResources, false)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.Both, false)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.None, true)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.DepthSnapshot, true)]
+    [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.ColorSnapshot, true)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.VolumeResources, true)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.Both, true)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.None, false)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.DepthSnapshot, false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.ColorSnapshot, false)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.VolumeResources, false)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.Both, false)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.None, true)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.DepthSnapshot, true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.ColorSnapshot, true)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.VolumeResources, true)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.Both, true)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.None, false)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.DepthSnapshot, false)]
+    [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.ColorSnapshot, false)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.VolumeResources, false)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.Both, false)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.None, true)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.DepthSnapshot, true)]
+    [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.ColorSnapshot, true)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.VolumeResources, true)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.Both, true)]
     public async Task PublishedVolumeFrameSurvivesRetirementFailure(
@@ -832,6 +962,12 @@ public sealed class VolumeCameraJointPassConformanceTests
             if (failure is VolumeCleanupFailure.DepthSnapshot or VolumeCleanupFailure.Both)
             {
                 device.FailTextureDisposals.Add(SilkTextureDescriptor.SampledDepthTarget(Size / 2, Size / 2));
+            }
+            if (failure == VolumeCleanupFailure.ColorSnapshot)
+            {
+                device.FailTextureDisposals.Add(new SilkTextureDescriptor(
+                    Size / 2, Size / 2, SilkTextureFormat.Rgba32Float,
+                    SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.Sampled));
             }
             if (failure is VolumeCleanupFailure.VolumeResources or VolumeCleanupFailure.Both)
             {
@@ -924,14 +1060,17 @@ public sealed class VolumeCameraJointPassConformanceTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.None)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.DepthSnapshot)]
+    [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.ColorSnapshot)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.VolumeResources)]
     [Arguments(SilkGraphicsBackend.D3D12, VolumeCleanupFailure.Both)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.None)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.DepthSnapshot)]
+    [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.ColorSnapshot)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.VolumeResources)]
     [Arguments(SilkGraphicsBackend.Vulkan, VolumeCleanupFailure.Both)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.None)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.DepthSnapshot)]
+    [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.ColorSnapshot)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.VolumeResources)]
     [Arguments(SilkGraphicsBackend.Metal, VolumeCleanupFailure.Both)]
     public async Task UnadmittedRetainedVolumeFrameSurvivesRetirementFailure(
@@ -966,6 +1105,12 @@ public sealed class VolumeCameraJointPassConformanceTests
             if (failure is VolumeCleanupFailure.DepthSnapshot or VolumeCleanupFailure.Both)
             {
                 device.FailTextureDisposals.Add(SilkTextureDescriptor.SampledDepthTarget(Size / 2, Size / 2));
+            }
+            if (failure == VolumeCleanupFailure.ColorSnapshot)
+            {
+                device.FailTextureDisposals.Add(new SilkTextureDescriptor(
+                    Size / 2, Size / 2, SilkTextureFormat.Rgba32Float,
+                    SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.Sampled));
             }
             if (failure is VolumeCleanupFailure.VolumeResources or VolumeCleanupFailure.Both)
             {
@@ -1204,9 +1349,11 @@ public sealed class VolumeCameraJointPassConformanceTests
             Mesh(MeshA, MaterialA, -1, 1, 1));
         _ = renderer.ApplyAndRender(initial, color, depth);
         ISilkGraphicsTexture snapshot = GetPublishedVolumeDepthSnapshot(renderer);
+        ISilkGraphicsTexture colorSnapshot = GetPublishedVolumeColorSnapshot(renderer);
         var snapshotPixels = new float[Size * Size];
         snapshot.ReadbackForTesting(snapshotPixels);
         await Assert.That(snapshotPixels.All(value => value == 1)).IsTrue();
+        float[] colorSnapshotPixels = ReadPixels(colorSnapshot);
         float[] publishedPixels = ReadPixels(color);
         var publishedDepth = new float[Size * Size];
         depth.ReadbackForTesting(publishedDepth);
@@ -1232,6 +1379,8 @@ public sealed class VolumeCameraJointPassConformanceTests
         depth.ReadbackForTesting(afterDepth);
         await Assert.That(afterDepth.AsSpan().SequenceEqual(publishedDepth)).IsTrue();
         await Assert.That(ReferenceEquals(GetPublishedVolumeDepthSnapshot(renderer), snapshot)).IsTrue();
+        await Assert.That(ReferenceEquals(GetPublishedVolumeColorSnapshot(renderer), colorSnapshot)).IsTrue();
+        await Assert.That(ReadPixels(colorSnapshot).AsSpan().SequenceEqual(colorSnapshotPixels)).IsTrue();
         var afterSnapshot = new float[snapshotPixels.Length];
         snapshot.ReadbackForTesting(afterSnapshot);
         await Assert.That(afterSnapshot.AsSpan().SequenceEqual(snapshotPixels)).IsTrue();
@@ -1266,16 +1415,20 @@ public sealed class VolumeCameraJointPassConformanceTests
             Mesh(MeshA, MaterialA, -1, 1, 1));
         _ = renderer.ApplyAndRender(initial, color, depth);
         ISilkGraphicsTexture first = GetPublishedVolumeDepthSnapshot(renderer);
+        ISilkGraphicsTexture firstColor = GetPublishedVolumeColorSnapshot(renderer);
         ulong firstBytes = textureBudget.Usage.ReservedBytes;
 
         _ = renderer.Render(color, depth);
         ISilkGraphicsTexture second = GetPublishedVolumeDepthSnapshot(renderer);
+        ISilkGraphicsTexture secondColor = GetPublishedVolumeColorSnapshot(renderer);
         await Assert.That(ReferenceEquals(first, second)).IsFalse();
+        await Assert.That(ReferenceEquals(firstColor, secondColor)).IsFalse();
         ulong steadyBytes = textureBudget.Usage.ReservedBytes;
-        await Assert.That(steadyBytes - firstBytes).IsEqualTo((ulong)Size * Size * sizeof(float));
+        await Assert.That(steadyBytes - firstBytes).IsEqualTo((ulong)Size * Size * 5 * sizeof(float));
 
         _ = renderer.Render(color, depth);
         await Assert.That(ReferenceEquals(GetPublishedVolumeDepthSnapshot(renderer), first)).IsTrue();
+        await Assert.That(ReferenceEquals(GetPublishedVolumeColorSnapshot(renderer), firstColor)).IsTrue();
         await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(steadyBytes);
         renderer.Dispose();
         await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(externalBytes);
@@ -1322,7 +1475,8 @@ public sealed class VolumeCameraJointPassConformanceTests
         depth.ReadbackForTesting(publishedDepth);
 
         ulong snapshotBytes = (ulong)Size * Size * sizeof(float);
-        ulong available = 2 * snapshotBytes - (exactBoundary ? 0UL : 1UL);
+        ulong colorSnapshotBytes = 4 * snapshotBytes;
+        ulong available = 2 * snapshotBytes + colorSnapshotBytes - (exactBoundary ? 0UL : 1UL);
         ulong pressureBytes = textureBudget.MaximumBytes - textureBudget.Usage.ReservedBytes - available;
         using IDisposable pressure = textureBudget.Reserve(
             new SilkTextureDescriptor(checked((uint)pressureBytes), 1, SilkTextureFormat.R8Unorm,
@@ -1339,13 +1493,14 @@ public sealed class VolumeCameraJointPassConformanceTests
         if (exactBoundary)
         {
             _ = renderAttempt();
-            await Assert.That(textureBudget.Usage.ReservedBytes).IsEqualTo(reservedUnderPressure + snapshotBytes);
+            await Assert.That(textureBudget.Usage.ReservedBytes)
+                .IsEqualTo(reservedUnderPressure + snapshotBytes + colorSnapshotBytes);
             pressure.Dispose();
         }
         else
         {
             var refusal = await Assert.That(renderAttempt).Throws<SilkGpuTextureBudgetExceededException>();
-            await Assert.That(refusal!.RequestedBytes).IsEqualTo(snapshotBytes);
+            await Assert.That(refusal!.RequestedBytes).IsEqualTo(colorSnapshotBytes);
             await Assert.That(renderer.Scene.Revision).IsEqualTo(1UL);
             await Assert.That(ReferenceEquals(GetPublishedVolumeDepthSnapshot(renderer), snapshot)).IsTrue();
             snapshot.ReadbackForTesting(afterSnapshot);
@@ -2589,14 +2744,53 @@ public sealed class VolumeCameraJointPassConformanceTests
         return pixels;
     }
 
+    private static double[] ReadCenterColor(ISilkGraphicsTexture color)
+    {
+        int center = checked((int)((Size / 2 * Size + Size / 2) * 4));
+        if (color.Format == SilkTextureFormat.Rgba32Float)
+        {
+            float[] pixels = ReadPixels(color);
+            return [pixels[center], pixels[center + 1], pixels[center + 2], pixels[center + 3]];
+        }
+
+        int bytesPerChannel = color.Format == SilkTextureFormat.Rgba16Float ? 2 : 1;
+        var bytes = new byte[checked((int)(Size * Size * 4) * bytesPerChannel)];
+        color.ReadbackForTesting(bytes);
+        var channels = new double[4];
+        for (int channel = 0; channel < channels.Length; channel++)
+        {
+            int offset = (center + channel) * bytesPerChannel;
+            channels[channel] = bytesPerChannel == 2
+                ? (float)BitConverter.UInt16BitsToHalf(BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(offset)))
+                : bytes[offset] / 255.0;
+        }
+        return channels;
+    }
+
     private static ISilkGraphicsTexture GetPublishedVolumeDepthSnapshot(SilkMeshRenderer renderer)
     {
-        var field = typeof(SilkMeshRenderer).GetField(
-            "_volumeDepthSnapshot",
+        return GetPublishedVolumeSnapshot(renderer, "_volumeDepthSnapshots");
+    }
+
+    private static ISilkGraphicsTexture GetPublishedVolumeColorSnapshot(SilkMeshRenderer renderer)
+    {
+        return GetPublishedVolumeSnapshot(renderer, "_volumeColorSnapshots");
+    }
+
+    private static ISilkGraphicsTexture GetPublishedVolumeSnapshot(SilkMeshRenderer renderer, string fieldName)
+    {
+        var stateField = typeof(SilkMeshRenderer).GetField(
+            fieldName,
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("The volume-depth observation seam changed.");
-        return field.GetValue(renderer) as ISilkGraphicsTexture
-            ?? throw new InvalidOperationException("The published volume-depth snapshot is missing.");
+            ?? throw new InvalidOperationException("The volume snapshot observation seam changed.");
+        object state = stateField.GetValue(renderer)
+            ?? throw new InvalidOperationException("The volume snapshot state is missing.");
+        var publishedField = state.GetType().GetField(
+            "Published",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("The volume snapshot publication seam changed.");
+        return publishedField.GetValue(state) as ISilkGraphicsTexture
+            ?? throw new InvalidOperationException("The published volume snapshot is missing.");
     }
 
     private static OpenUsdSilkPage Page(ulong revision, params byte[][] commands)
@@ -2642,6 +2836,7 @@ public sealed class VolumeCameraJointPassConformanceTests
     {
         None,
         DepthSnapshot,
+        ColorSnapshot,
         VolumeResources,
         Both,
     }

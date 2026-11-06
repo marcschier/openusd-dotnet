@@ -222,8 +222,14 @@ public sealed class VolumeCameraConformanceTests
                 jointPass.SubnormalTintSurvivesExposure(backend));
             await run("joint-tint-clipped-tiny-depth", () =>
                 jointPass.ClippedTinyOpticalDepthRetainsBrightContribution(backend));
+            await run("joint-tint-clipped-tiny-overlap", () =>
+                jointPass.ClippedTinyOpticalDepthSurvivesOverlappingDarkField(backend));
             await run("joint-tint-dark-over-bright", () =>
                 jointPass.DeepDarkVolumeAttenuatesBrightBackground(backend));
+            await run("joint-signed-background-transmission", () =>
+                jointPass.DeepVolumePreservesSignedBackgroundTransmission(backend));
+            await run("joint-color-format-transform-alpha", () =>
+                jointPass.VolumeCompositionPreservesFormatTransformAndAlpha(backend));
             await run("joint-signal-subnormal-scale-scalar", () =>
                 jointPass.UnderflowingVolumeSignalRefusesPublicationAndAllowsRetry(
                     backend, false, VolumeCameraJointPassConformanceTests.LowDensitySignal.SubnormalScale));
@@ -275,6 +281,7 @@ public sealed class VolumeCameraConformanceTests
             {
                 ("none", VolumeCameraJointPassConformanceTests.VolumeCleanupFailure.None),
                 ("depth", VolumeCameraJointPassConformanceTests.VolumeCleanupFailure.DepthSnapshot),
+                ("color", VolumeCameraJointPassConformanceTests.VolumeCleanupFailure.ColorSnapshot),
                 ("resources", VolumeCameraJointPassConformanceTests.VolumeCleanupFailure.VolumeResources),
                 ("both", VolumeCameraJointPassConformanceTests.VolumeCleanupFailure.Both),
             })

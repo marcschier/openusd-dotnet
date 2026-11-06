@@ -110,6 +110,28 @@ def color_from_log(logarithm):
     return shader_float(math.exp(logarithm))
 
 
+def clipped_field_log_depth(density, distance, field_opacity):
+    return shader_float(
+        shader_float(log_positive(density) + log_positive(distance))
+        + log_positive(field_opacity)
+    )
+
+
+def step_log_depth(field_log_depth, density, scale, speed, step_length, integral):
+    result = shader_float(field_log_depth + log_positive(density))
+    result = shader_float(result - shader_float(math.log(scale)))
+    result = shader_float(result + log_positive(speed))
+    result = shader_float(result + log_positive(step_length))
+    return shader_float(result - shader_float(math.log(integral)))
+
+
+def attenuate_background(value, depth):
+    third = shader_float(math.exp(shader_float(-depth / 3.0)))
+    first = shader_float(value * third)
+    second = shader_float(first * third)
+    return shader_float(second * third)
+
+
 def composite(segments, exposure=0.0):
     flat_fields = [field for segment in segments for field in segment]
     all_depth, weighted_tint = source_log(flat_fields)
@@ -215,11 +237,46 @@ class VolumeLogMathTests(unittest.TestCase):
         self.assertEqual(shader_float(density * local_distance), 0.0)
         self.assertGreater(MAX_FLOAT * density * local_distance, 1.0)
 
+    def test_clipped_subnormal_depth_remains_visible_in_log_composite(self):
+        density = stored_float(1e-37)
+        distance = stored_float(0.05)
+        for field_opacity in [stored_float(1.0), stored_float(0.1)]:
+            with self.subTest(field_opacity=field_opacity):
+                log_depth = clipped_field_log_depth(density, distance, field_opacity)
+                actual = color_from_log(shader_float(log_positive(MAX_FLOAT) + log_depth))
+                expected = MAX_FLOAT * density * distance * field_opacity
+                self.assertLess(abs(actual / expected - 1), 0.0001)
+
+    def test_clipped_subnormal_depth_contributes_with_a_dominant_dark_field(self):
+        density = stored_float(1e-37)
+        distance = stored_float(0.05)
+        field_log = clipped_field_log_depth(density, distance, 1.0)
+        self.assertEqual(shader_float(density * distance), 0.0)
+        log_step = step_log_depth(field_log, 1.0, 1.0, 1.0, distance, distance)
+        log_source = shader_float(log_positive(MAX_FLOAT) + log_step)
+        dark_depth = distance
+        log_alpha = shader_float(math.log(opacity(dark_depth)))
+        output_log = shader_float(
+            shader_float(log_source - shader_float(math.log(dark_depth))) + log_alpha
+        )
+        actual = color_from_log(output_log)
+        expected = MAX_FLOAT * density * -math.expm1(-distance)
+        self.assertLess(abs(actual / expected - 1), 0.0001)
+
     def test_straight_alpha_cannot_represent_deep_background_transmission(self):
         alpha = opacity(100.0)
         self.assertEqual(alpha, 1.0)
         self.assertEqual(shader_float(MAX_FLOAT * (1.0 - alpha)), 0.0)
         self.assertGreater(MAX_FLOAT * math.exp(-100.0), 1e-5)
+
+    def test_background_attenuation_preserves_normal_signed_results(self):
+        for depth in [0.0, 0.1, 10.0, 20.0, 100.0, 150.0, 175.0]:
+            for value in [MAX_FLOAT, -MAX_FLOAT]:
+                with self.subTest(depth=depth, value=value):
+                    actual = attenuate_background(value, depth)
+                    expected = value * math.exp(-depth)
+                    self.assertGreaterEqual(abs(expected), MIN_NORMAL)
+                    self.assertLess(abs(actual / expected - 1), 0.0001)
 
     def test_positive_finite_ranges_against_double_composite(self):
         generator = random.Random(3503)

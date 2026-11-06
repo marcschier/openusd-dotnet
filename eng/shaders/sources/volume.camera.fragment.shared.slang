@@ -35,6 +35,8 @@ cbuffer VolumeCameraParameters : register(b0)
 ByteAddressBuffer volumeFields : register(t6);
 [[vk::binding(8, 0)]]
 ByteAddressBuffer frameParameters : register(t8);
+[[vk::binding(2, 0)]]
+Texture2D<float4> backgroundColorTexture : register(t0);
 [[vk::binding(45, 0)]]
 Texture2D<float> opaqueDepthTexture : register(t28);
 
@@ -263,6 +265,45 @@ float ScaledIsolatedFieldOpticalDepth(
 }
 
 [ForceInline]
+float ScaledIsolatedFieldLogOpticalDepth(
+    float densityScale,
+    float normalizedDensityIntegral,
+    float opacity,
+    float opticalDepth)
+{
+    if (opticalDepth > 0.0)
+    {
+        return log(opticalDepth);
+    }
+
+    float logScale = LogPositiveVolumeValue(densityScale);
+    float logIntegral = LogPositiveVolumeValue(normalizedDensityIntegral);
+    float boundedOpacity = saturate(opacity);
+    float logOpacity = LogPositiveVolumeValue(boundedOpacity);
+    if (logScale == NoLogValue || logIntegral == NoLogValue || logOpacity == NoLogValue)
+    {
+        return NoLogValue;
+    }
+    logIntegral += logScale;
+    if (boundedOpacity >= 1.0 || logIntegral <= log(SmallOpticalDepthThreshold))
+    {
+        return logIntegral + logOpacity;
+    }
+
+    float densityIntegral = exp(min(logIntegral, log(MaximumFieldOpticalDepth)));
+    return logOpacity + log(OneMinusExpNegative(densityIntegral));
+}
+
+[ForceInline]
+float4 AttenuateVolumeBackground(float4 color, float opticalDepth)
+{
+    float thirdTransmission = exp(-opticalDepth / 3.0);
+    float4 first = color * thirdTransmission;
+    float4 second = first * thirdTransmission;
+    return second * thirdTransmission;
+}
+
+[ForceInline]
 uint FieldStepContribution(uint fieldOffset)
 {
     uint maxExtent = volumeFields.Load<uint>(fieldOffset + 92u);
@@ -361,15 +402,16 @@ bool IntersectUnitBox(
 
 float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target0
 {
+    uint2 pixel = uint2(input.position.xy);
+    float4 background = backgroundColorTexture.Load(int3(pixel, 0));
     uint4 frameShape = volumeHeader;
     uint fieldCount = min(frameShape.x, MaximumFields);
     if (fieldCount == 0u || frameShape.y == 0u || frameShape.z == 0u ||
         volumeHeader.x > MaximumFields)
     {
-        return float4(0.0, 0.0, 0.0, 0.0);
+        return background;
     }
 
-    uint2 pixel = uint2(input.position.xy);
     bool yPointsDown = frameShape.w != 0u;
     float2 pixelCoordinate = (float2(pixel) + 0.5) /
         float2(frameShape.yz);
@@ -384,7 +426,7 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     float4 farHomogeneous = mul(clipToEye, float4(clipXY, 1.0, 1.0));
     if (nearHomogeneous.w == 0.0)
     {
-        return float4(0.0, 0.0, 0.0, 0.0);
+        return background;
     }
 
     float3 rayOrigin = nearHomogeneous.xyz / nearHomogeneous.w;
@@ -406,7 +448,7 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
         {
             if (offset < 0.0)
             {
-                return float4(0.0, 0.0, 0.0, 0.0);
+                return background;
             }
         }
         else if (slope > 0.0)
@@ -433,7 +475,7 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     }
     if (intervalEnd <= intervalStart)
     {
-        return float4(0.0, 0.0, 0.0, 0.0);
+        return background;
     }
 
     float entries[MaximumFields];
@@ -441,6 +483,7 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     float densityScales[MaximumFields];
     float normalizedDensityIntegrals[MaximumFields];
     float fieldOpticalDepth[MaximumFields];
+    float fieldLogOpticalDepth[MaximumFields];
     float3 fieldLogTint[MaximumFields];
     bool fieldEnabled[MaximumFields];
     uint fieldOffsets[MaximumFields];
@@ -476,6 +519,7 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
         densityScales[field] = 0.0;
         normalizedDensityIntegrals[field] = 0.0;
         fieldOpticalDepth[field] = 0.0;
+        fieldLogOpticalDepth[field] = NoLogValue;
         if (fieldEnabled[field])
         {
             events[eventCount++] = entries[field];
@@ -563,6 +607,13 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
                 normalizedDensityIntegrals[field],
                 opacity)
             : 0.0;
+        fieldLogOpticalDepth[field] = fieldEnabled[field]
+            ? ScaledIsolatedFieldLogOpticalDepth(
+                densityScales[field],
+                normalizedDensityIntegrals[field],
+                opacity,
+                fieldOpticalDepth[field])
+            : NoLogValue;
     }
 
     VolumeLogSum accumulatedRed = NewVolumeLogSum();
@@ -570,24 +621,25 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
     VolumeLogSum accumulatedBlue = NewVolumeLogSum();
     float accumulatedOpticalDepth = 0.0;
     float totalFieldOpticalDepth = 0.0;
+    VolumeLogSum totalLogDepth = NewVolumeLogSum();
     for (uint field = 0u; field < fieldCount; field++)
     {
         totalFieldOpticalDepth += fieldOpticalDepth[field];
+        AddVolumeLog(totalLogDepth, fieldLogOpticalDepth[field]);
     }
 
-    if (totalFieldOpticalDepth <= SmallOpticalDepthThreshold)
+    float totalFieldLogDepth = VolumeLogSumValue(totalLogDepth);
+    bool smallOpticalDepth = totalFieldLogDepth != NoLogValue &&
+        totalFieldLogDepth <= log(SmallOpticalDepthThreshold);
+    if (smallOpticalDepth)
     {
-        if (totalFieldOpticalDepth <= 0.0)
-        {
-            return float4(0.0, 0.0, 0.0, 0.0);
-        }
         for (uint field = 0u; field < fieldCount; field++)
         {
-            if (fieldOpticalDepth[field] > 0.0)
+            if (fieldLogOpticalDepth[field] != NoLogValue)
             {
                 AddTintedVolumeDepth(
                     accumulatedRed, accumulatedGreen, accumulatedBlue,
-                    fieldLogTint[field], log(fieldOpticalDepth[field]));
+                    fieldLogTint[field], fieldLogOpticalDepth[field]);
             }
         }
         accumulatedOpticalDepth = totalFieldOpticalDepth;
@@ -629,10 +681,11 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
             {
                 float distance = SegmentSampleDistance(segmentStart, stepLength, step);
                 float opticalDepth = 0.0;
-                float fieldDepths[MaximumFields];
+                float fieldLogStepDepths[MaximumFields];
+                VolumeLogSum stepLogDepth = NewVolumeLogSum();
                 for (uint field = 0u; field < fieldCount; field++)
                 {
-                    fieldDepths[field] = 0.0;
+                    fieldLogStepDepths[field] = NoLogValue;
                     if (!active[field])
                     {
                         continue;
@@ -642,14 +695,38 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
                     float3 objectDirection = ToObjectDirection(eyeToObject, rayDirection);
                     float3 objectPosition = objectOrigin + (objectDirection * distance);
                     float density = DensityAt(fieldOffsets[field], objectPosition);
-                    float localStepLength = length(objectDirection) * stepLength;
+                    float localSpeed = length(objectDirection);
+                    float localStepLength = localSpeed * stepLength;
                     float densityFraction = density / densityScales[field];
                     float stepFraction =
                         (densityFraction * localStepLength) / normalizedDensityIntegrals[field];
-                    fieldDepths[field] = fieldOpticalDepth[field] * stepFraction;
-                    opticalDepth += fieldDepths[field];
+                    float fieldDepth = fieldOpticalDepth[field] * stepFraction;
+                    opticalDepth += fieldDepth;
+                    if (fieldDepth > 0.0)
+                    {
+                        fieldLogStepDepths[field] = log(fieldDepth);
+                    }
+                    else
+                    {
+                        float logDensity = LogPositiveVolumeValue(density);
+                        float logSpeed = LogPositiveVolumeValue(localSpeed);
+                        float logStepLength = LogPositiveVolumeValue(stepLength);
+                        if (fieldLogOpticalDepth[field] != NoLogValue &&
+                            logDensity != NoLogValue &&
+                            logSpeed != NoLogValue &&
+                            logStepLength != NoLogValue)
+                        {
+                            fieldLogStepDepths[field] =
+                                fieldLogOpticalDepth[field] + logDensity -
+                                log(densityScales[field]) + logSpeed + logStepLength -
+                                log(normalizedDensityIntegrals[field]);
+                            opticalDepth += exp(fieldLogStepDepths[field]);
+                        }
+                    }
+                    AddVolumeLog(stepLogDepth, fieldLogStepDepths[field]);
                 }
-                if (opticalDepth > 0.0)
+                float logDepth = VolumeLogSumValue(stepLogDepth);
+                if (logDepth != NoLogValue)
                 {
                     float alpha = OneMinusExpNegative(opticalDepth);
                     VolumeLogSum sourceRed = NewVolumeLogSum();
@@ -657,15 +734,14 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
                     VolumeLogSum sourceBlue = NewVolumeLogSum();
                     for (uint field = 0u; field < fieldCount; field++)
                     {
-                        if (fieldDepths[field] > 0.0)
+                        if (fieldLogStepDepths[field] != NoLogValue)
                         {
                             AddTintedVolumeDepth(
                                 sourceRed, sourceGreen, sourceBlue,
-                                fieldLogTint[field], log(fieldDepths[field]));
+                                fieldLogTint[field], fieldLogStepDepths[field]);
                         }
                     }
-                    float logDepth = log(opticalDepth);
-                    float logAlpha = log(alpha);
+                    float logAlpha = alpha > 0.0 ? log(alpha) : logDepth;
                     AddVolumeSource(
                         accumulatedRed, sourceRed, logDepth, logAlpha, accumulatedOpticalDepth);
                     AddVolumeSource(
@@ -678,25 +754,35 @@ float4 VOLUME_CAMERA_FRAGMENT_ENTRY(VolumeCameraFragmentInput input) : SV_Target
         }
     }
 
-    if (accumulatedOpticalDepth <= 0.0)
+    if (!smallOpticalDepth && accumulatedOpticalDepth <= 0.0)
     {
-        return float4(0.0, 0.0, 0.0, 0.0);
+        return background;
     }
     float outputOpacity = OneMinusExpNegative(accumulatedOpticalDepth);
-    float normalization = totalFieldOpticalDepth <= SmallOpticalDepthThreshold
-        ? log(totalFieldOpticalDepth)
-        : log(outputOpacity);
+    float logOpacity = outputOpacity > 0.0 ? log(outputOpacity) : totalFieldLogDepth;
+    float normalization = smallOpticalDepth ? totalFieldLogDepth : logOpacity;
     float logExposure = asfloat(frameParameters.Load<uint>(72u)) * LogTwo;
     float red = VolumeLogSumValue(accumulatedRed);
     float green = VolumeLogSumValue(accumulatedGreen);
     float blue = VolumeLogSumValue(accumulatedBlue);
-    float3 outputColor = float3(
-        VolumeColorFromLog(red == NoLogValue ? NoLogValue : red - normalization + logExposure),
-        VolumeColorFromLog(green == NoLogValue ? NoLogValue : green - normalization + logExposure),
-        VolumeColorFromLog(blue == NoLogValue ? NoLogValue : blue - normalization + logExposure));
+    float3 outputColor;
     if (frameParameters.Load<uint>(68u) == 1u)
     {
+        outputColor = float3(
+            VolumeColorFromLog(red == NoLogValue ? NoLogValue : red - normalization + logExposure),
+            VolumeColorFromLog(green == NoLogValue ? NoLogValue : green - normalization + logExposure),
+            VolumeColorFromLog(blue == NoLogValue ? NoLogValue : blue - normalization + logExposure));
         outputColor /= 1.0 + max(outputColor, float3(0.0, 0.0, 0.0));
+        outputColor *= outputOpacity;
     }
-    return float4(outputColor, outputOpacity);
+    else
+    {
+        float logScale = logOpacity - normalization + logExposure;
+        outputColor = float3(
+            VolumeColorFromLog(red == NoLogValue ? NoLogValue : red + logScale),
+            VolumeColorFromLog(green == NoLogValue ? NoLogValue : green + logScale),
+            VolumeColorFromLog(blue == NoLogValue ? NoLogValue : blue + logScale));
+    }
+    float4 transmittedBackground = AttenuateVolumeBackground(background, accumulatedOpticalDepth);
+    return float4(outputColor + transmittedBackground.rgb, outputOpacity + transmittedBackground.a);
 }

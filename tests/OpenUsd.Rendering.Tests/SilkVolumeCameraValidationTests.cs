@@ -415,6 +415,12 @@ public sealed class SilkVolumeCameraValidationTests
             static slot => slot.Binding == SilkBindingLayoutDescriptor.VolumeOpaqueDepthTextureBinding))
             .IsTrue();
         await Assert.That(uniform.MaterialSlots.Any(
+            static slot => slot.Binding == SilkBindingLayoutDescriptor.VolumeBackgroundColorTextureBinding &&
+                slot.Kind == SilkBindingKind.SampledTexture)).IsTrue();
+        await Assert.That(atlas.MaterialSlots.Any(
+            static slot => slot.Binding == SilkBindingLayoutDescriptor.VolumeBackgroundColorTextureBinding &&
+                slot.Kind == SilkBindingKind.SampledTexture)).IsTrue();
+        await Assert.That(uniform.MaterialSlots.Any(
             static slot => slot.Binding == SilkBindingLayoutDescriptor.VolumeDensityTextureBinding ||
                 slot.Binding == SilkBindingLayoutDescriptor.VolumeSamplerBinding)).IsFalse();
         await Assert.That(atlas.MaterialSlots.Any(

@@ -41,7 +41,12 @@ on:
       - 'native/hdSilk/include/openusd_hdsilk.h'
       - 'native/openusd_dotnet/include/openusd_dotnet.h'
       - 'native/include/openusd_render_camera.h'
+      - 'src/OpenUsd.Rendering.Silk/SilkGraphicsPipeline.cs'
+      - 'src/OpenUsd.Rendering.Silk/SilkMeshRenderer.cs'
+      - 'src/OpenUsd.Rendering.Silk/*Volume*.cs'
+      - 'tests/OpenUsd.Native.Tests/WorkflowStructureContractTests.cs'
       - 'tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdProbeVulkanDevice.cs'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraConformanceTests.cs'
       - 'tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraJointPassConformanceTests.cs'
 
 permissions:
@@ -298,10 +303,10 @@ jobs:
           try {
             ./eng/run-managed-tests.ps1 `
               -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-              -Framework net10.0 -Configuration Release -MinimumExpectedTests 14 `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 17 `
               -TestArguments @(
                 '--treenode-filter',
-                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation|SequentialTinyContributionsRemainVisible|SubnormalTintSurvivesExposure|ClippedTinyOpticalDepthRetainsBrightContribution|DeepDarkVolumeAttenuatesBrightBackground)')
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation|SequentialTinyContributionsRemainVisible|SubnormalTintSurvivesExposure|ClippedTinyOpticalDepthRetainsBrightContribution|ClippedTinyOpticalDepthSurvivesOverlappingDarkField|DeepDarkVolumeAttenuatesBrightBackground|DeepVolumePreservesSignedBackgroundTransmission|VolumeCompositionPreservesFormatTransformAndAlpha)')
           }
           finally {
             if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
@@ -317,10 +322,10 @@ jobs:
           } | ForEach-Object { $_.tests } | Where-Object {
             $_.status -ceq 'passed'
           })
-          if ($report.summary.total -ne 14 -or $report.summary.passed -ne 14 -or
+          if ($report.summary.total -ne 17 -or $report.summary.passed -ne 17 -or
               $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
               $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
-              $results.Count -ne 14) {
+              $results.Count -ne 17) {
             throw 'The Vulkan high-tint volume cases did not all pass without skips.'
           }
           foreach ($case in @(
@@ -337,7 +342,10 @@ jobs:
             'SequentialTinyContributionsRemainVisible(Vulkan)',
             'SubnormalTintSurvivesExposure(Vulkan)',
             'ClippedTinyOpticalDepthRetainsBrightContribution(Vulkan)',
-            'DeepDarkVolumeAttenuatesBrightBackground(Vulkan)')) {
+            'ClippedTinyOpticalDepthSurvivesOverlappingDarkField(Vulkan)',
+            'DeepDarkVolumeAttenuatesBrightBackground(Vulkan)',
+            'DeepVolumePreservesSignedBackgroundTransmission(Vulkan)',
+            'VolumeCompositionPreservesFormatTransformAndAlpha(Vulkan)')) {
             if (@($results | Where-Object { $_.displayName -ceq $case }).Count -ne 1) {
               throw "The Vulkan high-tint volume case '$case' did not pass exactly once."
             }
@@ -1343,10 +1351,10 @@ jobs:
           }
           try {
             ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release `
-              -MinimumExpectedTests 28 `
+              -MinimumExpectedTests 34 `
               -TestArguments @(
                 '--treenode-filter',
-                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation|SequentialTinyContributionsRemainVisible|SubnormalTintSurvivesExposure|ClippedTinyOpticalDepthRetainsBrightContribution|DeepDarkVolumeAttenuatesBrightBackground)')
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation|SequentialTinyContributionsRemainVisible|SubnormalTintSurvivesExposure|ClippedTinyOpticalDepthRetainsBrightContribution|ClippedTinyOpticalDepthSurvivesOverlappingDarkField|DeepDarkVolumeAttenuatesBrightBackground|DeepVolumePreservesSignedBackgroundTransmission|VolumeCompositionPreservesFormatTransformAndAlpha)')
           }
           finally {
             if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
@@ -1362,10 +1370,10 @@ jobs:
           } | ForEach-Object { $_.tests } | Where-Object {
             $_.status -ceq 'passed'
           })
-          if ($report.summary.total -ne 28 -or $report.summary.passed -ne 28 -or
+          if ($report.summary.total -ne 34 -or $report.summary.passed -ne 34 -or
               $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
               $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
-              $results.Count -ne 28) {
+              $results.Count -ne 34) {
             throw 'The Windows high-tint volume cases did not all pass without skips.'
           }
           foreach ($backend in @('D3D12', 'Vulkan')) {
@@ -1383,7 +1391,10 @@ jobs:
               'SequentialTinyContributionsRemainVisible',
               'SubnormalTintSurvivesExposure',
               'ClippedTinyOpticalDepthRetainsBrightContribution',
-              'DeepDarkVolumeAttenuatesBrightBackground')) {
+              'ClippedTinyOpticalDepthSurvivesOverlappingDarkField',
+              'DeepDarkVolumeAttenuatesBrightBackground',
+              'DeepVolumePreservesSignedBackgroundTransmission',
+              'VolumeCompositionPreservesFormatTransformAndAlpha')) {
               $name = "$method($backend)"
               if (@($results | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
                 throw "The Windows high-tint volume case '$name' did not pass exactly once."
@@ -1789,10 +1800,10 @@ jobs:
           try {
             ./eng/run-managed-tests.ps1 `
               -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-              -Framework net10.0 -Configuration Release -MinimumExpectedTests 14 `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 17 `
               -TestArguments @(
                 '--treenode-filter',
-                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation|SequentialTinyContributionsRemainVisible|SubnormalTintSurvivesExposure|ClippedTinyOpticalDepthRetainsBrightContribution|DeepDarkVolumeAttenuatesBrightBackground)')
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation|SequentialTinyContributionsRemainVisible|SubnormalTintSurvivesExposure|ClippedTinyOpticalDepthRetainsBrightContribution|ClippedTinyOpticalDepthSurvivesOverlappingDarkField|DeepDarkVolumeAttenuatesBrightBackground|DeepVolumePreservesSignedBackgroundTransmission|VolumeCompositionPreservesFormatTransformAndAlpha)')
           }
           finally {
             if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
@@ -1809,10 +1820,10 @@ jobs:
           } | ForEach-Object { $_.tests } | Where-Object {
             $_.status -ceq 'passed'
           })
-          if ($report.summary.total -ne 14 -or $report.summary.passed -ne 14 -or
+          if ($report.summary.total -ne 17 -or $report.summary.passed -ne 17 -or
               $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
               $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
-              $results.Count -ne 14) {
+              $results.Count -ne 17) {
             throw 'The Metal high-tint volume cases did not all pass without skips.'
           }
           foreach ($method in @(
@@ -1829,7 +1840,10 @@ jobs:
             'SequentialTinyContributionsRemainVisible',
             'SubnormalTintSurvivesExposure',
             'ClippedTinyOpticalDepthRetainsBrightContribution',
-            'DeepDarkVolumeAttenuatesBrightBackground')) {
+            'ClippedTinyOpticalDepthSurvivesOverlappingDarkField',
+            'DeepDarkVolumeAttenuatesBrightBackground',
+            'DeepVolumePreservesSignedBackgroundTransmission',
+            'VolumeCompositionPreservesFormatTransformAndAlpha')) {
             $name = "$method(Metal)"
             if (@($results | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
               throw "The Metal high-tint volume case '$name' did not pass exactly once."

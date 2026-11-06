@@ -150,13 +150,8 @@ public sealed partial class SilkMeshRenderer :
     private readonly Dictionary<BatchKey, List<SilkMeshGpuResource>> _batches = [];
     private readonly List<List<SilkMeshGpuResource>> _batchPool = [];
     private readonly List<BatchKey> _batchOrder = [];
-    private ISilkGraphicsTexture? _volumeDepthSnapshot;
-    private ISilkGraphicsTexture? _spareVolumeDepthSnapshot;
-    private ISilkGraphicsTexture? _retiredVolumeDepthSnapshot;
-    private uint _volumeDepthSnapshotWidth;
-    private uint _volumeDepthSnapshotHeight;
-    private ulong _volumeDepthSnapshotGeneration;
-    private ulong _spareVolumeDepthSnapshotGeneration;
+    private readonly VolumeSnapshotState _volumeDepthSnapshots = new("depth");
+    private readonly VolumeSnapshotState _volumeColorSnapshots = new("color");
     private readonly SilkVolumeCameraPass _volumeCameraPass;
     private bool _volumeCleanupActive;
     private List<Exception>? _volumeCleanupFailures;
@@ -1086,32 +1081,8 @@ public sealed partial class SilkMeshRenderer :
 
     private void DisposeVolumeCameraResources(ref List<Exception>? failures)
     {
-        try
-        {
-            DrainRetiredVolumeDepthSnapshot();
-        }
-        catch (Exception failure)
-        {
-            (failures ??= []).Add(failure);
-        }
-        try
-        {
-            _volumeDepthSnapshot?.Dispose();
-            _volumeDepthSnapshot = null;
-        }
-        catch (Exception failure)
-        {
-            (failures ??= []).Add(failure);
-        }
-        try
-        {
-            _spareVolumeDepthSnapshot?.Dispose();
-            _spareVolumeDepthSnapshot = null;
-        }
-        catch (Exception failure)
-        {
-            (failures ??= []).Add(failure);
-        }
+        _volumeDepthSnapshots.Dispose(ref failures);
+        _volumeColorSnapshots.Dispose(ref failures);
         try
         {
             _volumeCameraPass.Dispose();
@@ -1452,11 +1423,26 @@ public sealed partial class SilkMeshRenderer :
             }
         }
 
-        using PreparedVolumeDepthSnapshot? preparedVolumeDepth = volumeCamera.HasPass
-            ? new PreparedVolumeDepthSnapshot(
-                this, colorTarget.Width, colorTarget.Height, preservePublishedSnapshot: output is not null)
+        using PreparedVolumeSnapshot? preparedVolumeDepth = volumeCamera.HasPass
+            ? new PreparedVolumeSnapshot(
+                this,
+                _volumeDepthSnapshots,
+                SilkTextureDescriptor.SampledDepthTarget(colorTarget.Width, colorTarget.Height),
+                preservePublishedSnapshot: output is not null)
+            : null;
+        using PreparedVolumeSnapshot? preparedVolumeColor = volumeCamera.HasPass
+            ? new PreparedVolumeSnapshot(
+                this,
+                _volumeColorSnapshots,
+                new SilkTextureDescriptor(
+                    colorTarget.Width,
+                    colorTarget.Height,
+                    colorTarget.Format,
+                    SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.Sampled),
+                preservePublishedSnapshot: output is not null)
             : null;
         ISilkGraphicsTexture? volumeDepthSnapshot = preparedVolumeDepth?.Texture;
+        ISilkGraphicsTexture? volumeColorSnapshot = preparedVolumeColor?.Texture;
         commands.ClearColor(
             colorTarget,
             SilkDisplayConverter.TransformColor(
@@ -1665,10 +1651,12 @@ public sealed partial class SilkMeshRenderer :
             {
                 CopyVolumeDepthSnapshot(commands, depthTarget, volumeDepthSnapshot!);
             }
+            CopyVolumeColorSnapshot(commands, colorTarget, volumeColorSnapshot!);
             SilkVolumeCameraPass.Record(
                 volumeCamera,
                 commands,
                 colorTarget,
+                volumeColorSnapshot!,
                 volumeDepthSnapshot!,
                 frameBuffer);
             drawCount++;
@@ -1719,6 +1707,7 @@ public sealed partial class SilkMeshRenderer :
         }
         using ISilkGraphicsSubmission? publication = output?.Publish();
         preparedVolumeDepth?.Commit();
+        preparedVolumeColor?.Commit();
         if (!preparedPage)
         {
             volumeCamera.Commit();
@@ -1856,50 +1845,118 @@ public sealed partial class SilkMeshRenderer :
         boundSurface = next;
     }
 
-    private sealed class PreparedVolumeDepthSnapshot : IDisposable
+    private sealed class VolumeSnapshotState(string name)
+    {
+        internal ISilkGraphicsTexture? Published;
+        internal ISilkGraphicsTexture? Spare;
+        internal ulong PublishedGeneration;
+        internal ulong SpareGeneration;
+        private ISilkGraphicsTexture? _retired;
+
+        internal void Retire(ISilkGraphicsTexture? texture)
+        {
+            if (texture is null)
+            {
+                return;
+            }
+            if (_retired is not null)
+            {
+                throw new InvalidOperationException(
+                    $"A previous volume {name} snapshot is still awaiting retirement.");
+            }
+            _retired = texture;
+            DrainRetired();
+        }
+
+        internal void DrainRetired()
+        {
+            _retired?.Dispose();
+            _retired = null;
+        }
+
+        internal void Dispose(ref List<Exception>? failures)
+        {
+            try
+            {
+                DrainRetired();
+            }
+            catch (Exception failure)
+            {
+                (failures ??= []).Add(failure);
+            }
+            try
+            {
+                Published?.Dispose();
+                Published = null;
+            }
+            catch (Exception failure)
+            {
+                (failures ??= []).Add(failure);
+            }
+            try
+            {
+                Spare?.Dispose();
+                Spare = null;
+            }
+            catch (Exception failure)
+            {
+                (failures ??= []).Add(failure);
+            }
+        }
+    }
+
+    private sealed class PreparedVolumeSnapshot : IDisposable
     {
         private readonly SilkMeshRenderer _owner;
+        private readonly VolumeSnapshotState _state;
         private readonly ISilkGraphicsTexture? _previous;
-        private readonly uint _width;
-        private readonly uint _height;
+        private readonly SilkTextureDescriptor _descriptor;
         private readonly ulong _generation;
         private readonly ulong _previousGeneration;
         private bool _committed;
         private bool _disposed;
 
-        internal PreparedVolumeDepthSnapshot(
-            SilkMeshRenderer owner, uint width, uint height, bool preservePublishedSnapshot)
+        internal PreparedVolumeSnapshot(
+            SilkMeshRenderer owner,
+            VolumeSnapshotState state,
+            SilkTextureDescriptor descriptor,
+            bool preservePublishedSnapshot)
         {
             _owner = owner;
-            _width = width;
-            _height = height;
+            _state = state;
+            _descriptor = descriptor;
             _generation = owner.ReadDeviceGeneration();
-            _previous = owner._volumeDepthSnapshot;
-            _previousGeneration = owner._volumeDepthSnapshotGeneration;
+            _previous = state.Published;
+            _previousGeneration = state.PublishedGeneration;
             if (!preservePublishedSnapshot && _previous is { } current &&
-                owner._volumeDepthSnapshotWidth == width &&
-                owner._volumeDepthSnapshotHeight == height &&
-                _previousGeneration == _generation)
+                Matches(current, descriptor) && _previousGeneration == _generation)
             {
                 Texture = current;
                 return;
             }
-            if (owner._spareVolumeDepthSnapshot is { } spare)
+            if (state.Spare is { } spare)
             {
-                ulong spareGeneration = owner._spareVolumeDepthSnapshotGeneration;
-                owner._spareVolumeDepthSnapshot = null;
-                owner._spareVolumeDepthSnapshotGeneration = 0;
-                if (spare.Width == width && spare.Height == height && spareGeneration == _generation)
+                ulong spareGeneration = state.SpareGeneration;
+                state.Spare = null;
+                state.SpareGeneration = 0;
+                if (Matches(spare, descriptor) && spareGeneration == _generation)
                 {
                     Texture = spare;
                     return;
                 }
-                owner.RetireVolumeDepthSnapshot(spare);
+                state.Retire(spare);
             }
-            Texture = owner._device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(width, height));
+            Texture = owner._device.CreateTexture2D(descriptor);
         }
 
         internal ISilkGraphicsTexture Texture { get; }
+
+        private static bool Matches(ISilkGraphicsTexture texture, SilkTextureDescriptor descriptor) =>
+            texture.Width == descriptor.Width &&
+            texture.Height == descriptor.Height &&
+            texture.Format == descriptor.Format &&
+            texture.Usage == descriptor.Usage &&
+            texture.MipLevelCount == descriptor.MipLevelCount;
 
         internal void Commit()
         {
@@ -1908,10 +1965,8 @@ public sealed partial class SilkMeshRenderer :
             {
                 return;
             }
-            _owner._volumeDepthSnapshot = Texture;
-            _owner._volumeDepthSnapshotWidth = _width;
-            _owner._volumeDepthSnapshotHeight = _height;
-            _owner._volumeDepthSnapshotGeneration = _generation;
+            _state.Published = Texture;
+            _state.PublishedGeneration = _generation;
             _committed = true;
         }
 
@@ -1925,16 +1980,16 @@ public sealed partial class SilkMeshRenderer :
             if (!ReferenceEquals(_previous, Texture))
             {
                 if (_committed && _previous is { } previous &&
-                    previous.Width == _width && previous.Height == _height &&
-                    _previousGeneration == _generation && _owner._spareVolumeDepthSnapshot is null)
+                    Matches(previous, _descriptor) &&
+                    _previousGeneration == _generation && _state.Spare is null)
                 {
-                    _owner._spareVolumeDepthSnapshot = previous;
-                    _owner._spareVolumeDepthSnapshotGeneration = _previousGeneration;
+                    _state.Spare = previous;
+                    _state.SpareGeneration = _previousGeneration;
                     return;
                 }
                 try
                 {
-                    _owner.RetireVolumeDepthSnapshot(_committed ? _previous : Texture);
+                    _state.Retire(_committed ? _previous : Texture);
                 }
                 catch (Exception failure)
                 {
@@ -1972,26 +2027,6 @@ public sealed partial class SilkMeshRenderer :
         }
     }
 
-    private void RetireVolumeDepthSnapshot(ISilkGraphicsTexture? texture)
-    {
-        if (texture is null)
-        {
-            return;
-        }
-        if (_retiredVolumeDepthSnapshot is not null)
-        {
-            throw new InvalidOperationException("A previous volume depth snapshot is still awaiting retirement.");
-        }
-        _retiredVolumeDepthSnapshot = texture;
-        DrainRetiredVolumeDepthSnapshot();
-    }
-
-    private void DrainRetiredVolumeDepthSnapshot()
-    {
-        _retiredVolumeDepthSnapshot?.Dispose();
-        _retiredVolumeDepthSnapshot = null;
-    }
-
     private static void CopyVolumeDepthSnapshot(
         ISilkGraphicsCommandList commands,
         ISilkGraphicsTexture depthTarget,
@@ -2003,6 +2038,19 @@ public sealed partial class SilkMeshRenderer :
                 "Sampled-volume opaque-depth termination requires exact depth-target copies.");
         }
         copyCommands.CopyRenderTarget(depthTarget, snapshot);
+    }
+
+    private static void CopyVolumeColorSnapshot(
+        ISilkGraphicsCommandList commands,
+        ISilkGraphicsTexture colorTarget,
+        ISilkGraphicsTexture snapshot)
+    {
+        if (commands is not ISilkTextureCopyGraphicsCommandList copyCommands)
+        {
+            throw new NotSupportedException(
+                "Volume camera composition requires exact color-target copies.");
+        }
+        copyCommands.CopyRenderTarget(colorTarget, snapshot);
     }
 
     private static void BindVolumeOpaqueDepthTexture(
@@ -2371,7 +2419,8 @@ public sealed partial class SilkMeshRenderer :
         bool useSceneMaterials,
         bool wrapModelRefusal = false)
     {
-        DrainRetiredVolumeDepthSnapshot();
+        _volumeDepthSnapshots.DrainRetired();
+        _volumeColorSnapshots.DrainRetired();
         try
         {
             return _volumeCameraPass.Prepare(
@@ -2396,7 +2445,8 @@ public sealed partial class SilkMeshRenderer :
         bool useSceneMaterials,
         bool requiresRenderCandidate)
     {
-        DrainRetiredVolumeDepthSnapshot();
+        _volumeDepthSnapshots.DrainRetired();
+        _volumeColorSnapshots.DrainRetired();
         try
         {
             return _volumeCameraPass.PreparePage(

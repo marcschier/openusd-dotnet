@@ -591,6 +591,7 @@ internal sealed class SilkVolumeCameraPass : IDisposable
         Prepared prepared,
         ISilkGraphicsCommandList commands,
         ISilkGraphicsTexture colorTarget,
+        ISilkGraphicsTexture backgroundColor,
         ISilkGraphicsTexture opaqueDepth,
         ISilkGraphicsBuffer frameBuffer)
     {
@@ -620,6 +621,10 @@ internal sealed class SilkVolumeCameraPass : IDisposable
             0,
             SilkBindingLayoutDescriptor.VolumeOpaqueDepthTextureBinding,
             opaqueDepth);
+        commands.SetTexture(
+            0,
+            SilkBindingLayoutDescriptor.VolumeBackgroundColorTextureBinding,
+            backgroundColor);
         if (resources.AtlasTexture is not null)
         {
             commands.SetSampler(0, SilkBindingLayoutDescriptor.VolumeSamplerBinding, resources.Sampler!);
@@ -930,7 +935,7 @@ internal sealed class SilkVolumeCameraPass : IDisposable
                     SilkTextureFormat.D32Float,
                     SilkCullMode.None)
                 {
-                    BlendMode = SilkBlendMode.StraightAlphaOver,
+                    BlendMode = SilkBlendMode.None,
                     DepthWriteEnabled = false
                 });
             }

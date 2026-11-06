@@ -287,6 +287,33 @@ public sealed class BackendShaderRegisterConformanceTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task VolumeCameraBackgroundBindingMatchesCheckedReflection(bool densityAtlas)
+    {
+        SilkBindingLayoutDescriptor layout =
+            SilkBindingLayoutDescriptor.VolumeCameraParameters(densityAtlas);
+        layout.Validate();
+        SilkBindingSlot slot = layout.MaterialSlots.Single(
+            slot => slot.Binding == SilkBindingLayoutDescriptor.VolumeBackgroundColorTextureBinding);
+        string program = densityAtlas ? "atlas" : "uniform";
+        var resources = ReadCheckedResources($"volume.camera.fragment.{program}.reflection.json");
+        (string registerClass, uint register, uint binding) = resources["backgroundColorTexture"];
+
+        await Assert.That(slot.Kind).IsEqualTo(SilkBindingKind.SampledTexture);
+        await Assert.That(binding).IsEqualTo(slot.Binding);
+        await Assert.That(registerClass).IsEqualTo("t");
+        await Assert.That(D3D12ShaderRegisters.Map(slot)).IsEqualTo(register);
+        await Assert.That(MetalShaderResourceIndices.Map(slot.Kind, slot.Binding)).IsEqualTo(register);
+        await Assert.That(layout.MaterialSlots.Where(item => item.Kind == SilkBindingKind.SampledTexture)
+            .Select(D3D12ShaderRegisters.Map).Distinct().Count())
+            .IsEqualTo(layout.MaterialSlots.Count(item => item.Kind == SilkBindingKind.SampledTexture));
+        await Assert.That(layout.MaterialSlots.Where(item => item.Kind == SilkBindingKind.SampledTexture)
+            .Select(item => MetalShaderResourceIndices.Map(item.Kind, item.Binding)).Distinct().Count())
+            .IsEqualTo(layout.MaterialSlots.Count(item => item.Kind == SilkBindingKind.SampledTexture));
+    }
+
+    [Test]
     public async Task D3D12ShaderRegistersMatchTheCheckedReflection()
     {
         Dictionary<string, (string RegisterClass, uint Register, uint Binding)> declared =

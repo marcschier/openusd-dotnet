@@ -670,6 +670,7 @@ public readonly record struct SilkBindingLayoutDescriptor(
     /// <summary>The sampled 3D density texture used by volumes.</summary>
     internal const uint VolumeDensityTextureBinding = 9;
     internal const uint VolumeOpaqueDepthTextureBinding = 45;
+    internal const uint VolumeBackgroundColorTextureBinding = BaseColorTextureBinding;
     internal const uint VolumeCameraFieldBufferBinding = 6;
     internal const uint VolumeCameraParameterByteSize = 32;
 
@@ -758,7 +759,9 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 SilkShaderStageVisibility.Fragment),
             new(0, FrameParametersBinding, SilkBindingKind.StorageBuffer, 0,
                 SilkShaderStageVisibility.Fragment),
-            VolumeOpaqueDepthTextureSlot
+            VolumeOpaqueDepthTextureSlot,
+            new(0, VolumeBackgroundColorTextureBinding, SilkBindingKind.SampledTexture, 0,
+                SilkShaderStageVisibility.Fragment)
         };
         if (densityAtlas)
         {
@@ -1104,7 +1107,7 @@ public readonly record struct SilkBindingLayoutDescriptor(
 
     private bool IsVolumeCameraLayout(IReadOnlyList<SilkBindingSlot> slots)
     {
-        if (UniformByteSize != VolumeCameraParameterByteSize || slots.Count is not (3 or 5))
+        if (UniformByteSize != VolumeCameraParameterByteSize || slots.Count is not (4 or 6))
         {
             return false;
         }
@@ -1124,6 +1127,7 @@ public readonly record struct SilkBindingLayoutDescriptor(
                 (VolumeOpaqueDepthTextureBinding, SilkBindingKind.SampledTexture) => 4,
                 (VolumeSamplerBinding, SilkBindingKind.Sampler) => 8,
                 (VolumeDensityTextureBinding, SilkBindingKind.SampledTexture) => 16,
+                (VolumeBackgroundColorTextureBinding, SilkBindingKind.SampledTexture) => 32,
                 _ => 0
             };
             if (bit == 0 || (found & bit) != 0)
@@ -1132,7 +1136,7 @@ public readonly record struct SilkBindingLayoutDescriptor(
             }
             found |= bit;
         }
-        return found is 7 or 31;
+        return found is 39 or 63;
     }
 
     /// <summary>
