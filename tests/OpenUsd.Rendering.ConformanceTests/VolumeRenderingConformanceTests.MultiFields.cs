@@ -62,7 +62,7 @@ public sealed partial class VolumeRenderingConformanceTests
 
         ulong fieldBytes = checked((ulong)unit.Length);
         ulong fieldLimit = checked(fieldBytes * 6);
-        var residency = new SilkTextureResidencyOptions(fieldBytes * 2, fieldBytes * 2);
+        var residency = new SilkTextureResidencyOptions(fieldBytes * 2, MultiFieldGpuLimit);
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
         var gpuBudget = new SilkGpuTextureBudget(MultiFieldGpuLimit);
         gpuBudget.ConfigureDevice(device);
@@ -168,7 +168,7 @@ public sealed partial class VolumeRenderingConformanceTests
         {
             (ParityImage image, int drawCount) = RenderMultiFieldPage(
                 page, renderer, color, depth, options);
-            await Assert.That(drawCount).IsEqualTo(2);
+            await Assert.That(drawCount).IsEqualTo(1);
             await Assert.That(renderer.Scene.Meshes.Count).IsEqualTo(2);
             SilkMeshData leftProxy = renderer.Scene.Meshes.Values.Single(
                 static mesh => mesh.Path == "/World/Left/Volume/__hdSilkVolumeProxy");
@@ -186,11 +186,28 @@ public sealed partial class VolumeRenderingConformanceTests
                 .Because($"time {expected.Time} must match its separately authored static scene.");
 
             int sampledFields = (expected.Left is null ? 0 : 1) + (expected.Right is null ? 0 : 1);
-            ulong residentBytes = checked((ulong)sampledFields * fieldBytes);
             SilkSceneGpuStatistics statistics = renderer.GpuResources.Statistics;
-            await Assert.That(statistics.TextureResidentGpuBytes).IsEqualTo(residentBytes);
-            await Assert.That(statistics.TextureResidentDecodedBytes).IsEqualTo(residentBytes);
-            await Assert.That(statistics.TextureCacheEntryCount).IsEqualTo(sampledFields);
+            await Assert.That(statistics.TextureResidentGpuBytes).IsEqualTo(0UL)
+                .Because("volume fields are packed into the dedicated camera atlas, not ordinary texture entries.");
+            await Assert.That(statistics.TextureResidentDecodedBytes).IsEqualTo(0UL)
+                .Because("volume field memory is tracked by the volume-field budget.");
+            await Assert.That(statistics.TextureCacheEntryCount).IsEqualTo(0)
+                .Because("volume fields are not uploaded as per-field texture cache entries.");
+            SilkGpuTextureUsage? atlasUsage = renderer.GpuResources.VolumeCameraAtlasGpuUsage;
+            if (sampledFields == 0)
+            {
+                await Assert.That(atlasUsage?.ReservedBytes ?? 0UL).IsEqualTo(0UL);
+            }
+            else
+            {
+                await Assert.That(atlasUsage).IsNotNull();
+                SilkGpuTextureUsage atlas = atlasUsage
+                    ?? throw new InvalidOperationException("The sampled fields did not reserve a volume atlas.");
+                await Assert.That(atlas.MaximumBytes).IsEqualTo(MultiFieldGpuLimit);
+                await Assert.That(atlas.ReservedBytes).IsGreaterThan(0UL);
+                await Assert.That(atlas.ReservedBytes).IsLessThanOrEqualTo(MultiFieldGpuLimit);
+                await Assert.That(atlas.ReservationCount).IsEqualTo(1UL);
+            }
             SilkVolumeFieldUsage fieldUsage = fieldBudget.Usage;
             await Assert.That(fieldUsage.ReservedBytes).IsGreaterThanOrEqualTo(fieldBytes * 2);
             await Assert.That(fieldUsage.ReservedBytes)
@@ -239,7 +256,7 @@ public sealed partial class VolumeRenderingConformanceTests
         using (var replay = new SilkMeshRenderer(device, residency))
         {
             (ParityImage image, int drawCount) = RenderMultiFieldPage(firstPage, replay, color, depth, options);
-            await Assert.That(drawCount).IsEqualTo(2);
+            await Assert.That(drawCount).IsEqualTo(1);
             await Assert.That(ImageDelta.Compare(unitShifted, image).MaximumChannelDelta).IsLessThanOrEqualTo(1)
                 .Because("the earlier page must render both original fields after the session is disposed.");
         }
@@ -257,7 +274,7 @@ public sealed partial class VolumeRenderingConformanceTests
         depth.Dispose();
         await Assert.That(gpuBudget.Usage.ReservedBytes).IsEqualTo(0UL);
         await Assert.That(gpuBudget.Usage.ReservationCount).IsEqualTo(0UL);
-        await Assert.That(gpuBudget.Usage.PeakReservedBytes).IsGreaterThanOrEqualTo(fieldBytes * 2);
+        await Assert.That(gpuBudget.Usage.PeakReservedBytes).IsGreaterThan(0UL);
         await Assert.That(gpuBudget.Usage.PeakReservedBytes).IsLessThanOrEqualTo(MultiFieldGpuLimit);
     }
 
