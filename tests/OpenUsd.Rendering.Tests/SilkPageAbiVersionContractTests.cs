@@ -60,10 +60,20 @@ public sealed class SilkPageAbiVersionContractTests
         await Assert.That(Marshal.SizeOf<OpenUsdSilkRuntime.NativeSceneIngestionRequest>()).IsEqualTo(32);
         await Assert.That(Marshal.OffsetOf<OpenUsdSilkRuntime.NativeSceneIngestionRequest>(
             nameof(OpenUsdSilkRuntime.NativeSceneIngestionRequest.MaterialBindingPurpose)).ToInt64()).IsEqualTo(24L);
+        await Assert.That(Marshal.SizeOf<OpenUsdSilkRuntime.NativeVolumeBudgetUsage>()).IsEqualTo(40);
+        await Assert.That(Marshal.OffsetOf<OpenUsdSilkRuntime.NativeVolumeBudgetUsage>(
+            nameof(OpenUsdSilkRuntime.NativeVolumeBudgetUsage.ReservationCount)).ToInt64()).IsEqualTo(32L);
         await Assert.That(header).Contains("#define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u");
         await Assert.That(header).Contains("openusd_silk_get_session_abi_version");
         await Assert.That(header).Contains("openusd_silk_get_page_abi_version");
         await Assert.That(header).Contains("openusd_silk_session_sync_with_scene_ingestion");
+        await Assert.That(header).Contains("openusd_silk_page_retain_volume_assets");
+        await Assert.That(header).Contains("openusd_silk_volume_assets_copy");
+        await Assert.That(header).Contains("openusd_silk_volume_assets_release");
+        await Assert.That(header).Contains("openusd_silk_volume_budget_create");
+        await Assert.That(header).Contains("openusd_silk_session_set_volume_budget");
+        await Assert.That(header).Contains("openusd_silk_volume_budget_get_usage");
+        await Assert.That(header).Contains("openusd_silk_volume_budget_release");
     }
 
     [Test]
@@ -80,6 +90,87 @@ public sealed class SilkPageAbiVersionContractTests
 
         uint parser = SilkCommandParser.PageAbiVersion;
         await Assert.That(parser).IsEqualTo(locked);
+    }
+
+    [Test]
+    public async Task FixturePagesUseTheCurrentAbiUnlessTestingRejection()
+    {
+        string root = FindRepositoryRoot();
+        string[] testProjects =
+            ["OpenUsd.Rendering.Tests", "OpenUsd.Rendering.ConformanceTests", "OpenUsd.Package.Tests"];
+        HashSet<string> stale = [];
+        int constructorCount = 0;
+        int literalEnumeratorAbiCount = 0;
+        foreach (string project in testProjects)
+        {
+            string directory = Path.Combine(root, "tests", project);
+            foreach (string file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+            {
+                if (file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}") ||
+                    file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+                {
+                    continue;
+                }
+
+                string text = await File.ReadAllTextAsync(file);
+                constructorCount += Regex.Count(
+                    text, @"new\s+OpenUsdSilkPage\s*\(", RegexOptions.None, TimeSpan.FromSeconds(5));
+                foreach (Match match in Regex.Matches(
+                    text,
+                    @"new\s+OpenUsdSilkPage\s*\(\s*(?<version>\d+)u?\s*,",
+                    RegexOptions.None,
+                    TimeSpan.FromSeconds(5)))
+                {
+                    uint version = uint.Parse(match.Groups["version"].Value, CultureInfo.InvariantCulture);
+                    int lineStart = text.LastIndexOf('\n', match.Index) + 1;
+                    bool explicitRejection =
+                        Path.GetFileName(file) == "SilkCommandParserTests.cs" &&
+                        version == 1 &&
+                        text[lineStart..match.Index].Contains("Assert.That(() => ", StringComparison.Ordinal);
+                    if (version != SilkCommandParser.PageAbiVersion && !explicitRejection)
+                    {
+                        stale.Add($"{Path.GetRelativePath(root, file)}: {version}");
+                    }
+                }
+                foreach (Match match in Regex.Matches(
+                    text,
+                    @"SilkCommandParser\.Enumerate\s*\(\s*(?:[A-Za-z_]\w*|\[\])\s*,\s*\d+\s*,\s*(?<version>\d+)u?\s*\)",
+                    RegexOptions.None,
+                    TimeSpan.FromSeconds(5)))
+                {
+                    literalEnumeratorAbiCount++;
+                    uint version = uint.Parse(match.Groups["version"].Value, CultureInfo.InvariantCulture);
+                    string prefix = text[..match.Index];
+                    bool explicitRejection =
+                        Path.GetFileName(file) == "SilkMaterialCommandTests.cs" &&
+                        version == 4 &&
+                        prefix.LastIndexOf(
+                            "RejectsAPageFromThePreviousAbi",
+                            StringComparison.Ordinal) >
+                        prefix.LastIndexOf("[Test]", StringComparison.Ordinal);
+                    if (version != SilkCommandParser.PageAbiVersion && !explicitRejection)
+                    {
+                        stale.Add($"{Path.GetRelativePath(root, file)}: parser enumerator ABI {version}");
+                    }
+                }
+                foreach (Match match in Regex.Matches(
+                    text,
+                    @"(?m)^\s*SilkCommandParser\.ValidatePageAbi\s*\(\s*(?<version>\d+)u?\s*\)",
+                    RegexOptions.None,
+                    TimeSpan.FromSeconds(5)))
+                {
+                    stale.Add(
+                        $"{Path.GetRelativePath(root, file)}: positive ABI check uses literal " +
+                        $"{match.Groups["version"].Value}");
+                }
+            }
+        }
+
+        await Assert.That(constructorCount).IsGreaterThan(100);
+        await Assert.That(literalEnumeratorAbiCount).IsGreaterThan(0);
+        await Assert.That(stale)
+            .IsEmpty()
+            .Because("Fixture pages must use the current ABI: " + string.Join("; ", stale.Order()));
     }
 
     [Test]
@@ -285,20 +376,30 @@ public sealed class SilkPageAbiVersionContractTests
     }
 
     [Test]
-    public async Task DeclaredPageAndSessionAbiContractsAre24And6()
+    public async Task DeclaredPageAndSessionAbiContractsAre35And7()
     {
         uint page = SilkCommandParser.PageAbiVersion;
         uint session = RenderNativeAbiVersions.SilkSessionAbi;
         uint loader = OpenUsdSilkRuntime.RequiredSilkSessionAbiVersion;
-        await Assert.That(page).IsEqualTo(24u);
-        await Assert.That(session).IsEqualTo(6u);
-        await Assert.That(loader).IsEqualTo(6u);
+        await Assert.That(page).IsEqualTo(35u);
+        await Assert.That(session).IsEqualTo(7u);
+        await Assert.That(loader).IsEqualTo(7u);
     }
 
     [Test]
     [Arguments(22u)]
     [Arguments(23u)]
+    [Arguments(24u)]
     [Arguments(25u)]
+    [Arguments(26u)]
+    [Arguments(27u)]
+    [Arguments(28u)]
+    [Arguments(29u)]
+    [Arguments(30u)]
+    [Arguments(31u)]
+    [Arguments(32u)]
+    [Arguments(33u)]
+    [Arguments(34u)]
     public async Task ParserRejectsAdjacentAndStalePageAbiVersions(uint rejectedVersion)
     {
         byte[] page = new byte[272];
@@ -316,12 +417,14 @@ public sealed class SilkPageAbiVersionContractTests
         }
 
         (int width, int height, double viewDiagonal, bool finished) =
-            ReadVersionedFrame(page, 24u);
+            ReadVersionedFrame(page, SilkCommandParser.PageAbiVersion);
         await Assert.That(width).IsEqualTo(123);
         await Assert.That(height).IsEqualTo(47);
         await Assert.That(viewDiagonal).IsEqualTo(1d);
         await Assert.That(finished).IsTrue();
         await Assert.That(() => ReadVersionedFrame(page, rejectedVersion))
+            .Throws<InvalidDataException>();
+        await Assert.That(() => ReadVersionedFrame(page, SilkCommandParser.PageAbiVersion + 1))
             .Throws<InvalidDataException>();
     }
 

@@ -662,6 +662,15 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_get_linear_units")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageGetLinearUnits(
+            nint stage,
+            out OpenUsdNativeStageLinearUnits units,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_stage_get_world_bounds",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
@@ -1151,6 +1160,39 @@ public static unsafe partial class OpenUsdNativeRuntime
             int timeSampled,
             double timeCode,
             OpenUsdNativeVec3f* values,
+            nuint capacity,
+            out nuint required,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_set_vec4f_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageSetVec4fArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            OpenUsdNativeVec4f* values,
+            nuint count,
+            int timeSampled,
+            double timeCode,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_get_vec4f_array",
+            StringMarshalling = StringMarshalling.Custom,
+            StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageGetVec4fArray(
+            nint stage,
+            string primPath,
+            string attributeName,
+            int timeSampled,
+            double timeCode,
+            OpenUsdNativeVec4f* values,
             nuint capacity,
             out nuint required,
             ref NativeErrorBuffer error);
@@ -4900,6 +4942,14 @@ public static unsafe partial class OpenUsdNativeRuntime
 
         [LibraryImport(
             OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_review_source_acknowledge_publication")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageReviewSourceAcknowledgePublication(
+            nint stage,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
             EntryPoint = "openusd_layer_review_capture",
             StringMarshalling = StringMarshalling.Custom,
             StringMarshallingCustomType = typeof(NativeUtf8StringMarshaller))]
@@ -4951,6 +5001,16 @@ public static unsafe partial class OpenUsdNativeRuntime
             byte* binding,
             nuint bindingSize,
             out int outcome,
+            out nint owner,
+            ref NativeEditBufferView view,
+            ref NativeErrorBuffer error);
+
+        [LibraryImport(
+            OpenUsdNativeContract.LibraryName,
+            EntryPoint = "openusd_stage_review_adopt")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial OpenUsdNativeStatus StageReviewAdopt(
+            nint stage,
             out nint owner,
             ref NativeEditBufferView view,
             ref NativeErrorBuffer error);

@@ -56,8 +56,8 @@ internal sealed partial class OpenUsdMcpService
                 throw new ArgumentOutOfRangeException(
                     nameof(request), "A selected frame is outside this completed job.");
             }
-            int columns = (int)Math.Ceiling(Math.Sqrt(indices.Length));
-            int rows = (indices.Length + columns - 1) / columns;
+            (int columns, int rows) = PreviewCaptureProcessor.GetContactSheetGrid(
+                request.Width, request.Height, indices.Length);
             int width = request.Width / columns;
             int height = request.Height / rows;
             var views = new CaptureView[indices.Length];
@@ -70,7 +70,14 @@ internal sealed partial class OpenUsdMcpService
                 frames.Add(name, frame);
                 views[index] = new CaptureView(name, CameraState.Default, frame.State.Time.TimeCode);
                 tiles[index] = new McpSequenceSheetTileDto(frame.Index, frame.State.Time.TimeCode,
-                    index % columns * width, index / columns * height, width, height);
+                    index % columns * width, index / columns * height, width, height)
+                {
+                    Simulation = frame.Simulation is { } simulation ? McpSimulationFrameDto.From(simulation) : null,
+                    CameraRequest = McpCameraRequestDto.From(frame.State.Camera),
+                    RenderRequest = McpRenderRequestDto.From(frame.State),
+                    ProductRaster = sequence.ProductFrames?[frame.Index].Raster,
+                    ProductCamera = sequence.ProductFrames?[frame.Index].Camera
+                };
             }
             IArtifactResourceStore store = services.GetRequiredService<IArtifactResourceStore>();
             var factory = new CompletedFrameSheetSource(
@@ -87,7 +94,10 @@ internal sealed partial class OpenUsdMcpService
                 sequence.Revision.SessionId, sequence.Revision.Generation, sequence.Revision.StageRevision,
                 request.JobId, request.Width, request.Height, ToArtifact(artifact),
                 new OwnedReadOnlyList<McpSequenceSheetTileDto>(tiles),
-                new OwnedReadOnlyList<ArtifactResourceDescriptor>(result.Artifacts.ToArray()));
+                new OwnedReadOnlyList<ArtifactResourceDescriptor>(result.Artifacts.ToArray()))
+            {
+                AuthoredProduct = sequence.AuthoredProduct
+            };
         }
         finally
         {
@@ -112,7 +122,7 @@ internal sealed partial class OpenUsdMcpService
             {
                 PngRgba8Image image = CompletedRenderFrameReader.ReadThumbnail(
                     input, frame, width, height, cancellationToken);
-                return new ImageRgba8(image.Width, image.Height, image.Pixels);
+                return new ImageRgba8(image);
             }
             catch (InvalidDataException exception)
             {

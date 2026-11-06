@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 2,
+  "programs": [
+    "flat-ordinal.fragment",
+    "flat-ordinal.vertex"
+  ],
+  "toolchain": {
+    "slangVersion": "2026.19",
+    "slangCommit": "0fb6b7587a94fa33d88141ec9930766eedc6f59a",
+    "spirvToolsCommit": "ef96ed763b43b59b33b31b362f09a02b729fa1c9",
+    "shaderModel": "6.0",
+    "vulkanVersion": "1.2",
+    "spirvVersion": "1.5",
+    "metalVersion": "2.4"
+  },
+  "inputs": [
+    {
+      "path": "eng/shaders/scripts/normalize-reflection.py",
+      "sha256": "684cd3dcf0e39d0634cbd6c9b254b0a43b57da7edbf610b720c2691c86e62a47",
+      "size": 19761
+    },
+    {
+      "path": "eng/shaders/scripts/shader_model.py",
+      "sha256": "6314ab1596edb3347210ef4b636d67c3accade0bafc2582fbbdfbe9adb3423e1",
+      "size": 32300
+    },
+    {
+      "path": "eng/shaders/toolchain.lock.json",
+      "sha256": "bf01cd837d2c9dbbc7d2713771dae3be24b882991eaaec8f6c88e53cd8ed7fd7",
+      "size": 2459
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/build_flat_ordinal_shader.py",
+      "sha256": "6a4421b3315c76df5fc02facd274b4c4d4c943fdb951b6aa26ce1b163496a051",
+      "size": 22547
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/flat-ordinal.fragment.slang",
+      "sha256": "2cfc63ab8e538e67e20598aafcc89ee4761d098a05bf9b84aad8003725c42d1a",
+      "size": 573
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/flat-ordinal.manifest.json",
+      "sha256": "10ef593372e0269eb43a59e710be099c1e01121e5a357a633db0aabb06692598",
+      "size": 1115
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/flat-ordinal.vertex.slang",
+      "sha256": "814c18ec8691067bd529a4193cf037c324613909500716ddcc84285fdc23dee5",
+      "size": 897
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/flat-ordinal.fragment.dxil",
+      "sha256": "b445b0cd6322acc312f145e05bb488e3f19b958fc9253654377d591b307f7c33",
+      "size": 3152
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/flat-ordinal.fragment.dxil-reflection.json",
+      "sha256": "24f86e16315d3407df64be7ca99a40c7c9f72ee4821f710b8e043f2111f6de06",
+      "size": 5324
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/flat-ordinal.fragment.metal",
+      "sha256": "b14bf166e55afb457938abe2fba82aa08af51dd046823d1f4b6c48d4ed08cfad",
+      "size": 620
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/flat-ordinal.fragment.reflection.json",
+      "sha256": "89a1241bc9a8193f2d65ec5992cdf3090e8c7513da3ce288792e5c6b31cabf03",
+      "size": 1308
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/flat-ordinal.fragment.spirv-reflection.json",
+      "sha256": "a1529beb04e68945a3da3cd86e72dc20b61dd92435317e62c22f16f8dc1abbfe",
+      "size": 5353
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/flat-ordinal.fragment.spv",
+      "sha256": "d9fb67fe36b500f719235fe82f78b99f17f38aab93175fd7c20a39eb767dc40b",
+      "size": 912
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/flat-ordinal.vertex.dxil",
+      "sha256": "babb82f0332c6b0d51317149be427973e10506d698eec1ee7f48cc1907c4570d",
+      "size": 5088
+    },
+    {
+      "path": "tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/flat-ordinal.vertex.dxil-reflection.json",
+      "sha256": "44198ee1015a1e16ced3b441117f2054ab41a7b070e02d09f79db9fb565e08f0",
+      "size": 16247
+    }
+  ]
+}

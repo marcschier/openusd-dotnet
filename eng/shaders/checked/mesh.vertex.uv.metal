@@ -11,6 +11,7 @@ struct vertexMain_uv_Result_0
     float4 tint_0 [[user(COLOR)]];
     float3 worldNormal_0 [[user(TEXCOORD_3)]];
     float2 texCoord_0 [[user(TEXCOORD)]];
+    float2 texCoord1_0 [[user(TEXCOORD_5)]];
 };
 
 struct vertexInput_0
@@ -18,6 +19,7 @@ struct vertexInput_0
     float3 position_1 [[attribute(0)]];
     float3 normal_1 [[attribute(1)]];
     float2 texCoord_1 [[attribute(2)]];
+    float2 texCoord1_1 [[attribute(3)]];
 };
 
 struct _MatrixStorage_float4x4natural_0
@@ -52,6 +54,7 @@ struct VertexOutput_0
     float4 tint_2;
     float3 worldNormal_1;
     float2 texCoord_2;
+    float2 texCoord1_2;
 };
 
 [[vertex]] vertexMain_uv_Result_0 vertexMain_uv(vertexInput_0 _S1 [[stage_in]], uint instanceId_0 [[instance_id]], uint base_instance_0 [[base_instance]], InstanceParameters_natural_0 device* instanceParameters_1 [[buffer(6)]], uint32_t device* frameParameters_1 [[buffer(8)]])
@@ -117,6 +120,7 @@ struct VertexOutput_0
     float3 basisZ_0 = float3(objectToWorld_0[int(0)][int(2)], objectToWorld_0[int(1)][int(2)], objectToWorld_0[int(2)][int(2)]);
     (&output_0)->worldNormal_1 = cross(basisY_0, basisZ_0) * float3(_S1.normal_1.x)  + cross(basisZ_0, basisX_0) * float3(_S1.normal_1.y)  + cross(basisX_0, basisY_0) * float3(_S1.normal_1.z) ;
     (&output_0)->texCoord_2 = _S1.texCoord_1;
+    (&output_0)->texCoord1_2 = _S1.texCoord1_1;
     thread vertexMain_uv_Result_0 _S42;
     (&_S42)->position_0 = output_0.position_2;
     (&_S42)->eyePosition_0 = output_0.eyePosition_1;
@@ -125,5 +129,6 @@ struct VertexOutput_0
     (&_S42)->tint_0 = output_0.tint_2;
     (&_S42)->worldNormal_0 = output_0.worldNormal_1;
     (&_S42)->texCoord_0 = output_0.texCoord_2;
+    (&_S42)->texCoord1_0 = output_0.texCoord1_2;
     return _S42;
 }

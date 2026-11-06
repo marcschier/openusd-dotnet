@@ -39,6 +39,10 @@ internal sealed class ViewerFrameCaptureResult
     internal RenderDiagnosticsState Diagnostics { get; }
     internal RenderJobDeviceDepth? DeviceDepth { get; init; }
     internal RenderJobHdrColor? HdrColor { get; init; }
+    internal RenderJobPrimId? PrimId { get; init; }
+    internal RenderJobInstanceId? InstanceId { get; init; }
+    internal RenderJobNormal? Normal { get; init; }
+    internal RenderJobElementId? ElementId { get; init; }
 
     internal static int GetByteCount(int width, int height)
     {

@@ -176,7 +176,8 @@ internal sealed partial class ViewerAuthoredEditController
                 FilePath = SavedReviewPath,
                 HasChanges = review.IsDirty || _publicationUnacknowledged
             },
-            stage.EditTargetLayerIdentifier, ReviewAbsenceConfirmed: review is null,
+            stage.EditTargetLayerIdentifier, SourceEditOptIn: _sourceEditOptIn,
+            ReviewAbsenceConfirmed: review is null,
             HasOtherLayerChanges: otherChanged.Count != 0 || (_publicationUnacknowledged && review is null));
         return new ViewerDocumentObservation(document, layers, otherChanged);
     }
@@ -214,7 +215,14 @@ internal sealed partial class ViewerAuthoredEditController
     }
 
     private static ViewerDocumentLayerState ToLayerState(
-        UsdLayerEditingState layer, ViewerDocumentLayerRole role) => new(
+        UsdLayerEditingState layer, ViewerDocumentLayerRole role)
+    {
+        bool isWritable = role == ViewerDocumentLayerRole.Source
+            ? layer.Role == UsdLayerRole.Root && layer.CurrentlyLocal &&
+                layer.PermissionToEdit && layer.PermissionToSave
+            : layer.CanAttemptAuthoredEdits;
+        return new ViewerDocumentLayerState(
             layer.Identifier, role, layer.IsAnonymous ? null : layer.RealPath,
-            layer.Revision, layer.IsDirty, layer.CanAttemptAuthoredEdits);
+            layer.Revision, layer.IsDirty, isWritable);
+    }
 }

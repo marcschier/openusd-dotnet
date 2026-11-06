@@ -251,27 +251,34 @@ public sealed class OmniverseBridgeClient : IAsyncDisposable
     /// </remarks>
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
-        {
-            throw new InvalidOperationException(
-                "The client is already running. One client owns one connection loop.");
-        }
-
         using var scope =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
-        Task run = RunLoopAsync(scope.Token);
+        var runCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_stateGate)
         {
-            _run = run;
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
+            {
+                throw new InvalidOperationException(
+                    "The client is already running. One client owns one connection loop.");
+            }
+
+            _run = runCompletion.Task;
         }
 
         try
         {
-            await run.ConfigureAwait(false);
+            await RunLoopAsync(scope.Token).ConfigureAwait(false);
+            runCompletion.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            runCompletion.TrySetException(exception);
+            throw;
         }
         finally
         {
+            runCompletion.TrySetResult();
             Volatile.Write(ref _running, 0);
         }
     }

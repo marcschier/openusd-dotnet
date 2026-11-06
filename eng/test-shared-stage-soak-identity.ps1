@@ -4,8 +4,7 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'shared-stage-soak-identity.ps1')
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$scratch = Join-Path $repoRoot ".soak-identity-test-$PID"
+$scratch = Join-Path ([IO.Path]::GetTempPath()) "openusd-soak-identity-test-$([guid]::NewGuid().ToString('N'))"
 $backendDirectory = Join-Path $scratch 'src/OpenUsd.Rendering.Silk.D3D12'
 $backendSource = Join-Path $backendDirectory 'Mutation.cs'
 $privateDirectory = Join-Path $scratch 'native/private'

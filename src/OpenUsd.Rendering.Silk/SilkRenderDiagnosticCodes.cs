@@ -23,14 +23,28 @@ public static class SilkRenderDiagnosticCodes
     /// </remarks>
     public const string MaterialMdlUnavailable = "OPENUSD_SILK_MATERIAL_MDL_UNAVAILABLE";
 
+    /// <summary>A runtime material shader failed to compile and the checked placeholder is drawn instead.</summary>
+    /// <remarks>
+    /// A failed key remains in the compiler's memory cache until eviction or disposal.
+    /// Requests for that key keep the checked placeholder while the failure is cached;
+    /// a later request after eviction can queue compilation again.
+    /// </remarks>
+    public const string MaterialShaderCompilationFailed = "OPENUSD_SILK_MATERIAL_SHADER_COMPILATION_FAILED";
+
     /// <summary>A referenced texture asset could not be found.</summary>
     public const string TextureAssetNotFound = "OPENUSD_SILK_TEXTURE_ASSET_NOT_FOUND";
 
     /// <summary>A referenced texture asset could not be decoded.</summary>
     public const string TextureDecodeFailed = "OPENUSD_SILK_TEXTURE_DECODE_FAILED";
 
-    /// <summary>An authored texture fallback value was used.</summary>
+    /// <summary>A Ptex texture input, source format, or mesh mapping is unsupported.</summary>
+    public const string TexturePtexUnsupported = "OPENUSD_SILK_TEXTURE_PTEX_UNSUPPORTED";
+
+    /// <summary>A material texture value or address fallback was used.</summary>
     public const string TextureFallbackUsed = "OPENUSD_SILK_TEXTURE_FALLBACK_USED";
+
+    /// <summary>The material samples default coordinates because the selected mesh primvar is absent.</summary>
+    public const string TextureCoordinatesUnavailable = "OPENUSD_SILK_TEXTURE_COORDINATES_UNAVAILABLE";
 
     /// <summary>
     /// An authored UsdPreviewSurface <c>displacement</c> input moved the geometry
@@ -241,16 +255,14 @@ public static class SilkRenderDiagnosticCodes
     public const string ShadowUnsupported = "OPENUSD_SILK_SHADOW_UNSUPPORTED";
 
     /// <summary>
-    /// A prim that would cast a shadow was excluded from every shadow map because its
-    /// material is opacity-masked.
+    /// A prim that would cast a shadow was excluded because its material requires
+    /// unsupported density-volume transport or non-PreviewSurface or Ptex opacity coverage.
     /// </summary>
     /// <remarks>
-    /// The depth-only shadow caster program binds no material and cannot discard a
-    /// fragment, so an alpha-tested cutout or a blended surface would cast the solid
-    /// shadow of its geometry rather than of its visible coverage -- a leaf card would
-    /// shadow as an opaque quad. That is the plausible-but-wrong image this profile
-    /// exists to prevent, so the caster is dropped from the map and named here instead.
-    /// The prim is still lit and still receives shadows normally.
+    /// PreviewSurface cutoffs use material-aware depth rendering; continuous opacity
+    /// uses bounded transmittance layers. Other surface models with opacity inputs,
+    /// Ptex opacity inputs and density volumes are excluded rather than approximated as
+    /// opaque geometry. The exclusion does not suppress rendering of the prim.
     /// </remarks>
     public const string ShadowCasterUnsupported = "OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED";
 

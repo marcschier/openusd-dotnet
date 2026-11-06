@@ -4,7 +4,7 @@
 // ABI. It distils the authored USD input values of an accepted Omniverse MDL
 // material into the renderer-neutral, UsdPreviewSurface-compatible record
 // hdSilk publishes. Its optional SDK backend resolves module defaults and
-// compiler-proven OmniPBR/OmniGlass material variants behind the same C ABI.
+// compiler-proven OmniPBR/OmniGlass/OmniSurface material variants behind the same C ABI.
 
 #include "openusd_mdl.h"
 
@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -394,6 +395,9 @@ struct DistillationResult
     /// sets it from the layer that answered, and every Add* call in this file
     /// immediately follows its Try*, so the pairing is local and auditable.
     uint32_t currentOrigin = OPENUSD_MDL_ORIGIN_AUTHORED;
+    bool hasUvTransform = false;
+    uint32_t uvTransformOrigin = OPENUSD_MDL_ORIGIN_MODULE_DEFAULT;
+    float uvTransform[6] = {1, 0, 0, 1, 0, 0};
 
     void AddScalar(uint32_t input, uint32_t componentCount, const float* values)
     {
@@ -532,6 +536,101 @@ TryAsset(
     return false;
 }
 
+bool ReadUvPair(ParameterTable& parameters, const char* name, DistillationResult& result, float (&out)[2])
+{
+    const openusd_mdl_parameter* value = parameters.Find(name);
+    if (!value)
+    {
+        return !parameters.Has(name);
+    }
+    if (value->kind != OPENUSD_MDL_VALUE_FLOAT2 || value->component_count != 2 ||
+        !std::isfinite(value->value[0]) || !std::isfinite(value->value[1]))
+    {
+        result.unsupported.emplace_back(name);
+        return false;
+    }
+    out[0] = value->value[0];
+    out[1] = value->value[1];
+    if (parameters.LastOrigin() == OPENUSD_MDL_ORIGIN_AUTHORED ||
+        result.uvTransformOrigin == OPENUSD_MDL_ORIGIN_AUTHORED)
+    {
+        result.uvTransformOrigin = OPENUSD_MDL_ORIGIN_AUTHORED;
+    }
+    else if (parameters.LastOrigin() == OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION)
+    {
+        result.uvTransformOrigin = OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION;
+    }
+    return true;
+}
+
+void ReadTextureUv(
+    ParameterTable& parameters, DistillationResult& result, const std::string& prefix)
+{
+    const std::string scaleName = prefix + "texture_scale";
+    const std::string translationName = prefix + "texture_translate";
+    const std::string rotationName = prefix + "texture_rotate";
+    bool valid = true;
+    float scale[2] = {1, 1};
+    float translation[2] = {0, 0};
+    valid = ReadUvPair(parameters, scaleName.c_str(), result, scale) && valid;
+    valid = ReadUvPair(parameters, translationName.c_str(), result, translation) && valid;
+    float degrees = 0;
+    if (TryFloat(parameters, rotationName.c_str(), result, &degrees))
+    {
+        if (parameters.LastOrigin() == OPENUSD_MDL_ORIGIN_AUTHORED ||
+            result.uvTransformOrigin == OPENUSD_MDL_ORIGIN_AUTHORED)
+        {
+            result.uvTransformOrigin = OPENUSD_MDL_ORIGIN_AUTHORED;
+        }
+        else if (parameters.LastOrigin() == OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION)
+        {
+            result.uvTransformOrigin = OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION;
+        }
+        valid = std::isfinite(degrees) && valid;
+    }
+    else if (parameters.Has(rotationName.c_str())) { valid = false; }
+    if (!valid)
+    {
+        for (const std::string& name : {scaleName, translationName, rotationName})
+        {
+            if (parameters.Has(name.c_str())) { result.unsupported.emplace_back(name); }
+        }
+        return;
+    }
+    const float radians = degrees / 180.0F * 3.14159265358979323846F;
+    const float cosine = std::cos(radians);
+    const float sine = std::sin(radians);
+    // The pinned OmniPBR helper is column-major scale/translation * clockwise rotation.
+    result.uvTransform[0] = scale[0] * cosine;
+    result.uvTransform[1] = scale[0] * sine;
+    result.uvTransform[2] = -scale[1] * sine;
+    result.uvTransform[3] = scale[1] * cosine;
+    result.uvTransform[4] = translation[0];
+    result.uvTransform[5] = translation[1];
+    result.hasUvTransform = true;
+}
+
+void DistillOmniPbrUv(ParameterTable& parameters, DistillationResult& result)
+{
+    bool projected = false;
+    const bool valid = TryBool(parameters, "project_uvw", result, &projected) || !parameters.Has("project_uvw");
+    if (projected)
+    {
+        result.unsupported.emplace_back("project_uvw");
+        return;
+    }
+    const openusd_mdl_parameter* space = parameters.Find("uv_space_index");
+    if ((space && (space->kind != OPENUSD_MDL_VALUE_INT || space->integer_value != 0)) ||
+        (!space && parameters.Has("uv_space_index")))
+    {
+        result.unsupported.emplace_back("uv_space_index");
+        return;
+    }
+    if (!valid) { return; }
+    (void)parameters.Find("world_or_object");
+    ReadTextureUv(parameters, result, "");
+}
+
 /// Resolves the colour space a distilled texture must be decoded in.
 ///
 /// Hydra's scene-index adapter carries a texture input's authored `colorSpace`
@@ -566,10 +665,8 @@ ResolveColorSpace(
     return fallback;
 }
 
-/// Publishes a texture only when its authored influence is exactly on. OmniPBR
-/// blends a texture against its constant by `*_texture_influence`; hdSilk binds
-/// one source per surface input and cannot blend, so a partial influence is
-/// reported rather than rendered as if it were full.
+/// A fractional texture/constant blend fits the existing affine texture record
+/// when both the influence and constant stay within the byte-texture range.
 enum class TextureInfluence
 {
     Off,
@@ -581,20 +678,25 @@ TextureInfluence
 ClassifyInfluence(
     ParameterTable& parameters,
     const char* influenceName,
-    DistillationResult& result)
+    DistillationResult& result,
+    float* factor)
 {
+    *factor = kUnauthored;
     float influence = kUnauthored;
     if (!TryFloat(parameters, influenceName, result, &influence))
     {
-        // OmniPBR defaults every *_texture_influence to 1.0, so an unauthored
-        // influence means the authored texture drives the input outright.
-        return parameters.Has(influenceName) ? TextureInfluence::Partial : TextureInfluence::Full;
+        // Preserve the authored-only profile when no module default is available.
+        // SDK-backed requests resolve the actual module's default before reaching here.
+        if (parameters.Has(influenceName)) { return TextureInfluence::Partial; }
+        *factor = 1.0F;
+        return TextureInfluence::Full;
     }
-    if (influence <= 0.0F)
+    *factor = influence;
+    if (influence == 0.0F)
     {
         return TextureInfluence::Off;
     }
-    if (influence >= 1.0F)
+    if (influence == 1.0F)
     {
         return TextureInfluence::Full;
     }
@@ -602,17 +704,385 @@ ClassifyInfluence(
 }
 
 void
-DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
+ReportUnmappedScalarInfluence(
+    ParameterTable& parameters,
+    DistillationResult& result,
+    const char* influenceName)
 {
-    float color[3] = {0.0F, 0.0F, 0.0F};
-    if (TryColor(parameters, "diffuse_color_constant", result, color))
+    if (!parameters.Has(influenceName))
     {
+        return;
+    }
+    float factor = kUnauthored;
+    // Only exact zero proves that an unavailable lookup cannot change the constant.
+    if (ClassifyInfluence(parameters, influenceName, result, &factor) != TextureInfluence::Off)
+    {
+        result.unsupported.emplace_back(influenceName);
+    }
+}
+
+void
+ProjectScalarTexture(
+    ParameterTable& parameters,
+    DistillationResult& result,
+    const char* influenceName,
+    uint32_t surfaceInput,
+    uint32_t channel,
+    bool hasConstant,
+    float constant,
+    uint32_t textureOrigin,
+    uint32_t colorSpace,
+    const std::string& asset)
+{
+    float factor = kUnauthored;
+    const TextureInfluence influence = ClassifyInfluence(parameters, influenceName, result, &factor);
+    if (influence == TextureInfluence::Off)
+    {
+        return;
+    }
+    const bool affine = influence == TextureInfluence::Partial && factor > 0 && factor < 1 &&
+        hasConstant && std::isfinite(constant) && constant >= 0 && constant <= 1;
+    if (influence != TextureInfluence::Full && !affine)
+    {
+        result.unsupported.emplace_back(influenceName);
+        return;
+    }
+    result.currentOrigin = textureOrigin;
+    result.AddTexture(surfaceInput, 1, channel, colorSpace, asset);
+    if (affine)
+    {
+        result.textures.back().scale[channel] = factor;
+        result.textures.back().bias[channel] = (1.0F - factor) * constant;
+    }
+}
+
+void
+ProjectAlbedoGrading(ParameterTable& parameters, DistillationResult& result, bool hasTexture)
+{
+    float brightness = 1.0F;
+    float addition = 0.0F;
+    bool valid = TryFloat(parameters, "albedo_brightness", result, &brightness) ||
+        !parameters.Has("albedo_brightness");
+    valid = (TryFloat(parameters, "albedo_add", result, &addition) || !parameters.Has("albedo_add")) && valid;
+    valid = valid && std::isfinite(brightness) && std::isfinite(addition);
+    float scale[3]{};
+    float bias[3]{};
+    if (valid && hasTexture)
+    {
+        const auto& texture = result.textures.back();
+        for (size_t component = 0; component < 3; ++component)
+        {
+            // The module applies brightness/addition to the lookup, then multiplies by tint.
+            scale[component] = brightness * texture.scale[component];
+            bias[component] = addition * texture.scale[component];
+            valid = valid && std::isfinite(scale[component]) && std::isfinite(bias[component]) &&
+                std::isfinite(scale[component] + bias[component]);
+        }
+    }
+    if (!valid)
+    {
+        for (const char* name : {"albedo_brightness", "albedo_add"})
+        {
+            if (parameters.Has(name)) { result.unsupported.emplace_back(name); }
+        }
+        return;
+    }
+    if (hasTexture)
+    {
+        for (size_t component = 0; component < 3; ++component)
+        {
+            result.textures.back().scale[component] = scale[component];
+            result.textures.back().bias[component] = bias[component];
+        }
+    }
+}
+
+void
+ProjectOpacityTexture(ParameterTable& parameters, DistillationResult& result,
+    const std::string& asset, uint32_t textureOrigin)
+{
+    const openusd_mdl_parameter* mode = parameters.Find("opacity_mode");
+    uint32_t channel = OPENUSD_MDL_CHANNEL_AVERAGE_RGB;
+    if (mode)
+    {
+        if (mode->kind != OPENUSD_MDL_VALUE_INT || mode->integer_value < 0 || mode->integer_value > 3)
+        {
+            result.unsupported.emplace_back("opacity_mode");
+            return;
+        }
+        const uint32_t channels[] = {OPENUSD_MDL_CHANNEL_A, OPENUSD_MDL_CHANNEL_AVERAGE_RGB,
+            OPENUSD_MDL_CHANNEL_LUMINANCE_RGB, OPENUSD_MDL_CHANNEL_MAXIMUM_RGB};
+        channel = channels[mode->integer_value];
+    }
+    else if (parameters.Has("opacity_mode"))
+    {
+        result.unsupported.emplace_back("opacity_mode");
+        return;
+    }
+    result.currentOrigin = textureOrigin;
+    result.AddTexture(OPENUSD_MDL_SURFACE_OPACITY, 1, channel,
+        ResolveColorSpace(parameters, "opacity_texture", OPENUSD_MDL_COLOR_SPACE_RAW), asset);
+}
+
+void
+DistillOmniPbrEmission(ParameterTable& parameters, DistillationResult& result, bool radianceProfile)
+{
+    bool enabled = false;
+    const bool hasEnabled = TryBool(parameters, "enable_emission", result, &enabled);
+    float color[3] = {0, 0, 0};
+    const bool hasColor = TryColor(parameters, "emissive_color", result, color);
+    const uint32_t colorOrigin = result.currentOrigin;
+    std::string asset;
+    const bool hasTexture = TryAsset(parameters, "emissive_color_texture", result, &asset);
+    const uint32_t textureOrigin = result.currentOrigin;
+    float intensity = 1;
+    const bool hasIntensity = TryFloat(parameters, "emissive_intensity", result, &intensity);
+    const uint32_t intensityOrigin = result.currentOrigin;
+    if (!hasEnabled || !enabled)
+    {
+        if (hasColor) { result.unsupported.emplace_back("emissive_color"); }
+        if (hasTexture) { result.unsupported.emplace_back("emissive_color_texture"); }
+        return;
+    }
+    if (!radianceProfile)
+    {
+        if (hasColor)
+        {
+            result.currentOrigin = colorOrigin;
+            result.AddScalar(OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, 3, color);
+        }
+        if (hasTexture)
+        {
+            result.currentOrigin = textureOrigin;
+            result.AddTexture(OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, 3, OPENUSD_MDL_CHANNEL_RGB,
+                ResolveColorSpace(parameters, "emissive_color_texture", OPENUSD_MDL_COLOR_SPACE_SRGB), asset);
+        }
+        if (hasIntensity && intensity != 1)
+        {
+            result.unsupported.emplace_back("emissive_intensity");
+        }
+        return;
+    }
+    if (!hasIntensity || !std::isfinite(intensity) || intensity < 0)
+    {
+        result.unsupported.emplace_back("emissive_intensity");
+        return;
+    }
+    if (intensity == 0)
+    {
+        const float zero[3] = {0, 0, 0};
+        result.currentOrigin = intensityOrigin;
+        result.AddScalar(OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, 3, zero);
+        return;
+    }
+
+    // Pinned OmniPBRBase uses radiant exitance and diffuse_edf, whose value is 1/pi.
+    constexpr float inversePi = 0.31830988618379067154F;
+    const float factor = intensity * inversePi;
+    float radiance[3] = {0, 0, 0};
+    if (hasColor && !hasTexture)
+    {
+        for (size_t component = 0; component < 3; ++component)
+        {
+            const float exitance = color[component] * intensity;
+            radiance[component] = exitance * inversePi;
+            if (!std::isfinite(exitance) || !std::isfinite(radiance[component]))
+            {
+                result.unsupported.emplace_back("emissive_color");
+                result.unsupported.emplace_back("emissive_intensity");
+                return;
+            }
+        }
+        result.currentOrigin = colorOrigin == OPENUSD_MDL_ORIGIN_AUTHORED ||
+            intensityOrigin == OPENUSD_MDL_ORIGIN_AUTHORED ? OPENUSD_MDL_ORIGIN_AUTHORED
+            : colorOrigin == OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION ||
+                intensityOrigin == OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION
+                ? OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION : OPENUSD_MDL_ORIGIN_MODULE_DEFAULT;
+        result.AddScalar(OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, 3, radiance);
+    }
+    else if (!hasTexture)
+    {
+        result.unsupported.emplace_back("emissive_color");
+        return;
+    }
+    std::string mask;
+    const bool hasMask = TryAsset(parameters, "emissive_mask_texture", result, &mask);
+    const uint32_t maskOrigin = result.currentOrigin;
+    if (hasTexture)
+    {
+        result.currentOrigin = textureOrigin;
+        result.AddTexture(OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, 3, OPENUSD_MDL_CHANNEL_RGB,
+            ResolveColorSpace(parameters, "emissive_color_texture", OPENUSD_MDL_COLOR_SPACE_SRGB), asset);
+        for (size_t component = 0; component < 3; ++component)
+        {
+            result.textures.back().scale[component] = factor;
+        }
+    }
+    if (hasMask)
+    {
+        result.currentOrigin = maskOrigin;
+        result.AddTexture(OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, 3, OPENUSD_MDL_CHANNEL_RGB,
+            ResolveColorSpace(parameters, "emissive_mask_texture", OPENUSD_MDL_COLOR_SPACE_RAW), mask);
+        if (hasTexture)
+        {
+            result.textures.back().composite_operator = OPENUSD_MDL_COMPOSITE_MULTIPLY;
+        }
+        else
+        {
+            for (size_t component = 0; component < 3; ++component)
+            {
+                result.textures.back().scale[component] = radiance[component];
+            }
+        }
+    }
+}
+
+void AppendNormalTexture(
+    ParameterTable& parameters, DistillationResult& result, const char* input,
+    const std::string& asset, float strength, bool flipU, bool flipV, uint32_t origin,
+    uint32_t surfaceInput = OPENUSD_MDL_SURFACE_NORMAL)
+{
+    result.currentOrigin = origin;
+    result.AddTexture(surfaceInput, 3, OPENUSD_MDL_CHANNEL_RGB,
+        ResolveColorSpace(parameters, input, OPENUSD_MDL_COLOR_SPACE_RAW), asset);
+    const float scaleU = flipU ? -strength : strength;
+    const float scaleV = flipV ? -strength : strength;
+    result.textures.back().scale[0] = scaleU;
+    result.textures.back().scale[1] = scaleV;
+    result.textures.back().bias[0] = 0.5F - 0.5F * scaleU;
+    result.textures.back().bias[1] = 0.5F - 0.5F * scaleV;
+}
+
+void DistillDetailNormal(ParameterTable& parameters, DistillationResult& result, bool neutralBase)
+{
+    const auto reportDetailInputs = [&] {
+        for (const char* name : {"detail_normalmap_texture", "detail_bump_factor",
+                 "detail_texture_scale", "detail_texture_translate", "detail_texture_rotate"})
+        {
+            if (parameters.Has(name)) { result.unsupported.emplace_back(name); }
+        }
+    };
+    std::string asset;
+    if (!TryAsset(parameters, "detail_normalmap_texture", result, &asset)) { return; }
+    const uint32_t origin = result.currentOrigin;
+    float strength = 0.3F;
+    if ((!TryFloat(parameters, "detail_bump_factor", result, &strength) &&
+            parameters.Has("detail_bump_factor")) || !std::isfinite(strength))
+    {
+        result.unsupported.emplace_back("detail_bump_factor");
+        result.unsupported.emplace_back("detail_normalmap_texture");
+        return;
+    }
+    if (strength == 0) { return; }
+    DistillationResult detailUv;
+    ReadTextureUv(parameters, detailUv, "detail_");
+    const bool sharedUv = std::equal(
+        detailUv.uvTransform, detailUv.uvTransform + 6, result.uvTransform);
+    if (!detailUv.hasUvTransform)
+    {
+        result.unsupported.insert(result.unsupported.end(), detailUv.unsupported.begin(), detailUv.unsupported.end());
+        reportDetailInputs();
+        return;
+    }
+    bool flipU = false, flipV = false;
+    if ((!TryBool(parameters, "flip_tangent_u", result, &flipU) && parameters.Has("flip_tangent_u")) ||
+        (!TryBool(parameters, "flip_tangent_v", result, &flipV) && parameters.Has("flip_tangent_v")))
+    {
+        reportDetailInputs();
+        return;
+    }
+    if (neutralBase && (result.textures.empty() || sharedUv))
+    {
+        if (result.textures.empty())
+        {
+            std::copy_n(detailUv.uvTransform, 6, result.uvTransform);
+            result.uvTransformOrigin = detailUv.uvTransformOrigin;
+        }
+        // RNM over state::normal() is exactly the detail normal.
+        AppendNormalTexture(parameters, result, "detail_normalmap_texture", asset, strength, flipU, flipV, origin);
+        return;
+    }
+    AppendNormalTexture(parameters, result, "detail_normalmap_texture", asset, strength, flipU, flipV, origin,
+        OPENUSD_MDL_SURFACE_DETAIL_NORMAL);
+    result.currentOrigin = detailUv.uvTransformOrigin;
+    const float row0[] = {detailUv.uvTransform[0], detailUv.uvTransform[1], detailUv.uvTransform[4]};
+    const float row1[] = {detailUv.uvTransform[2], detailUv.uvTransform[3], detailUv.uvTransform[5]};
+    result.AddScalar(OPENUSD_MDL_SURFACE_DETAIL_UV_ROW0, 3, row0);
+    result.AddScalar(OPENUSD_MDL_SURFACE_DETAIL_UV_ROW1, 3, row1);
+}
+
+void
+DistillOmniPbr(ParameterTable& parameters, DistillationResult& result, bool radianceProfile = false)
+{
+    if (radianceProfile)
+    {
+        float level = 0.5F;
+        if (TryFloat(parameters, "specular_level", result, &level))
+        {
+            if (std::isfinite(level) && level >= 0 && level <= 1)
+            {
+                result.AddScalar(OPENUSD_MDL_SURFACE_OMNIPBR_SPECULAR_LEVEL, level);
+            }
+            else
+            {
+                result.unsupported.emplace_back("specular_level");
+            }
+        }
+    }
+    DistillOmniPbrUv(parameters, result);
+    float color[3] = {0.0F, 0.0F, 0.0F};
+    const bool hasColor = TryColor(parameters, "diffuse_color_constant", result, color);
+    uint32_t colorOrigin = result.currentOrigin;
+    float tint[3] = {1.0F, 1.0F, 1.0F};
+    bool hasTint = TryColor(parameters, "diffuse_tint", result, tint);
+    const uint32_t tintOrigin = result.currentOrigin;
+    std::string asset;
+    const bool hasTexture = TryAsset(parameters, "diffuse_texture", result, &asset);
+    const uint32_t diffuseTextureOrigin = result.currentOrigin;
+    if (hasTint && (!std::isfinite(tint[0]) || !std::isfinite(tint[1]) || !std::isfinite(tint[2])))
+    {
+        result.unsupported.emplace_back("diffuse_tint");
+        hasTint = false;
+    }
+    if (hasColor && hasTint)
+    {
+        float tinted[3];
+        bool finite = true;
+        for (size_t component = 0; component < 3; ++component)
+        {
+            tinted[component] = color[component] * tint[component];
+            finite = finite && std::isfinite(tinted[component]);
+        }
+        if (finite)
+        {
+            for (size_t component = 0; component < 3; ++component)
+            {
+                color[component] = tinted[component];
+            }
+            if (tint[0] != 1.0F || tint[1] != 1.0F || tint[2] != 1.0F)
+            {
+                colorOrigin = colorOrigin == OPENUSD_MDL_ORIGIN_AUTHORED ||
+                    tintOrigin == OPENUSD_MDL_ORIGIN_AUTHORED ? OPENUSD_MDL_ORIGIN_AUTHORED
+                    : colorOrigin == OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION ||
+                        tintOrigin == OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION
+                        ? OPENUSD_MDL_ORIGIN_MODULE_EXPRESSION : OPENUSD_MDL_ORIGIN_MODULE_DEFAULT;
+            }
+        }
+        else
+        {
+            result.unsupported.emplace_back("diffuse_tint");
+            hasTint = false;
+        }
+    }
+    if (hasColor)
+    {
+        result.currentOrigin = colorOrigin;
         result.AddScalar(OPENUSD_MDL_SURFACE_DIFFUSE_COLOR, 3, color);
     }
 
-    std::string asset;
-    if (TryAsset(parameters, "diffuse_texture", result, &asset))
+    if (hasTexture)
     {
+        result.currentOrigin = diffuseTextureOrigin;
         result.AddTexture(
             OPENUSD_MDL_SURFACE_DIFFUSE_COLOR,
             3,
@@ -620,100 +1090,119 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
             ResolveColorSpace(
                 parameters, "diffuse_texture", OPENUSD_MDL_COLOR_SPACE_SRGB),
             asset);
+        if (hasTint)
+        {
+            for (size_t component = 0; component < 3; ++component)
+            {
+                result.textures.back().scale[component] = tint[component];
+            }
+        }
+    }
+    else if (hasTint && !hasColor && (tint[0] != 1.0F || tint[1] != 1.0F || tint[2] != 1.0F))
+    {
+        // The authored-only adapter has no proven unauthored base color to multiply.
+        result.unsupported.emplace_back("diffuse_tint");
     }
 
+    ProjectAlbedoGrading(parameters, result, hasTexture);
+
+    float desaturation = 0;
+    if (TryFloat(parameters, "albedo_desaturation", result, &desaturation))
+    {
+        if (!std::isfinite(desaturation))
+        {
+            result.unsupported.emplace_back("albedo_desaturation");
+        }
+        else if (hasTexture && desaturation != 0)
+        {
+            const float mix[4] = {0.212671F, 0.715160F, 0.072169F, desaturation};
+            result.AddScalar(OPENUSD_MDL_SURFACE_DIFFUSE_TEXTURE_LUMINANCE_MIX, 4, mix);
+        }
+    }
+
+    bool ormEnabled = false;
+    const bool ormAuthored = TryBool(parameters, "enable_ORM_texture", result, &ormEnabled);
     float roughness = 0.0F;
-    if (TryFloat(parameters, "reflection_roughness_constant", result, &roughness))
+    const bool hasRoughness = TryFloat(parameters, "reflection_roughness_constant", result, &roughness);
+    if (hasRoughness)
     {
         result.AddScalar(OPENUSD_MDL_SURFACE_ROUGHNESS, roughness);
     }
-    if (TryAsset(parameters, "reflectionroughness_texture", result, &asset))
+    if (TryAsset(parameters, "reflectionroughness_texture", result, &asset) && !(ormAuthored && ormEnabled))
     {
         const uint32_t textureOrigin = result.currentOrigin;
-        const TextureInfluence influence = ClassifyInfluence(
-            parameters, "reflection_roughness_texture_influence", result);
-        if (influence == TextureInfluence::Full)
-        {
-            result.currentOrigin = textureOrigin;
-            result.AddTexture(
-                OPENUSD_MDL_SURFACE_ROUGHNESS,
-                1,
-                OPENUSD_MDL_CHANNEL_R,
-                ResolveColorSpace(
-                    parameters,
-                    "reflectionroughness_texture",
-                    OPENUSD_MDL_COLOR_SPACE_RAW),
-                asset);
-        }
-        else
-        {
-            result.unsupported.emplace_back("reflectionroughness_texture");
-        }
+        ProjectScalarTexture(parameters, result, "reflection_roughness_texture_influence",
+            OPENUSD_MDL_SURFACE_ROUGHNESS, OPENUSD_MDL_CHANNEL_R, hasRoughness, roughness, textureOrigin,
+            ResolveColorSpace(parameters, "reflectionroughness_texture", OPENUSD_MDL_COLOR_SPACE_RAW), asset);
+    }
+    else if (!(ormAuthored && ormEnabled))
+    {
+        ReportUnmappedScalarInfluence(parameters, result, "reflection_roughness_texture_influence");
     }
 
     float metallic = 0.0F;
-    if (TryFloat(parameters, "metallic_constant", result, &metallic))
+    const bool hasMetallic = TryFloat(parameters, "metallic_constant", result, &metallic);
+    if (hasMetallic)
     {
         result.AddScalar(OPENUSD_MDL_SURFACE_METALLIC, metallic);
     }
-    if (TryAsset(parameters, "metallic_texture", result, &asset))
+    if (TryAsset(parameters, "metallic_texture", result, &asset) && !(ormAuthored && ormEnabled))
     {
         const uint32_t textureOrigin = result.currentOrigin;
-        const TextureInfluence influence =
-            ClassifyInfluence(parameters, "metallic_texture_influence", result);
-        if (influence == TextureInfluence::Full)
-        {
-            result.currentOrigin = textureOrigin;
-            result.AddTexture(
-                OPENUSD_MDL_SURFACE_METALLIC,
-                1,
-                OPENUSD_MDL_CHANNEL_R,
-                ResolveColorSpace(
-                    parameters, "metallic_texture", OPENUSD_MDL_COLOR_SPACE_RAW),
-                asset);
-        }
-        else
-        {
-            result.unsupported.emplace_back("metallic_texture");
-        }
+        ProjectScalarTexture(parameters, result, "metallic_texture_influence",
+            OPENUSD_MDL_SURFACE_METALLIC, OPENUSD_MDL_CHANNEL_R, hasMetallic, metallic, textureOrigin,
+            ResolveColorSpace(parameters, "metallic_texture", OPENUSD_MDL_COLOR_SPACE_RAW), asset);
+    }
+    else if (!(ormAuthored && ormEnabled))
+    {
+        ReportUnmappedScalarInfluence(parameters, result, "metallic_texture_influence");
+    }
+
+    float aoWeight = 1.0F;
+    const bool hasAoWeight = TryFloat(parameters, "ao_to_diffuse", result, &aoWeight);
+    const bool aoDisabled = hasAoWeight && aoWeight == 0.0F;
+    if (hasAoWeight && !aoDisabled)
+    {
+        // Nonzero MDL AO modifies diffuse color, not only ambient lighting.
+        result.unsupported.emplace_back("ao_to_diffuse");
     }
 
     // The ORM convention packs occlusion, roughness and metallic into one
     // texture's R, G and B. hdSilk binds a channel per surface input, so the
     // three inputs read the same asset through three entries rather than
     // needing a packed-texture concept on the wire.
-    bool ormEnabled = false;
-    const bool ormAuthored =
-        TryBool(parameters, "enable_ORM_texture", result, &ormEnabled);
     if (TryAsset(parameters, "ORM_texture", result, &asset))
     {
         if (ormAuthored && ormEnabled)
         {
+            const uint32_t ormOrigin = result.currentOrigin;
             const uint32_t ormColorSpace = ResolveColorSpace(
                 parameters, "ORM_texture", OPENUSD_MDL_COLOR_SPACE_RAW);
-            result.AddTexture(
-                OPENUSD_MDL_SURFACE_OCCLUSION,
-                1,
-                OPENUSD_MDL_CHANNEL_R,
-                ormColorSpace,
-                asset);
-            result.AddTexture(
-                OPENUSD_MDL_SURFACE_ROUGHNESS,
-                1,
-                OPENUSD_MDL_CHANNEL_G,
-                ormColorSpace,
-                asset);
-            result.AddTexture(
-                OPENUSD_MDL_SURFACE_METALLIC,
-                1,
-                OPENUSD_MDL_CHANNEL_B,
-                ormColorSpace,
-                asset);
+            if (!aoDisabled)
+            {
+                result.AddTexture(
+                    OPENUSD_MDL_SURFACE_OCCLUSION,
+                    1,
+                    OPENUSD_MDL_CHANNEL_R,
+                    ormColorSpace,
+                    asset);
+            }
+            ProjectScalarTexture(parameters, result, "reflection_roughness_texture_influence",
+                OPENUSD_MDL_SURFACE_ROUGHNESS, OPENUSD_MDL_CHANNEL_G, hasRoughness, roughness,
+                ormOrigin, ormColorSpace, asset);
+            ProjectScalarTexture(parameters, result, "metallic_texture_influence",
+                OPENUSD_MDL_SURFACE_METALLIC, OPENUSD_MDL_CHANNEL_B, hasMetallic, metallic,
+                ormOrigin, ormColorSpace, asset);
         }
         else
         {
             result.unsupported.emplace_back("ORM_texture");
         }
+    }
+    else if (ormAuthored && ormEnabled)
+    {
+        ReportUnmappedScalarInfluence(parameters, result, "reflection_roughness_texture_influence");
+        ReportUnmappedScalarInfluence(parameters, result, "metallic_texture_influence");
     }
 
     bool opacityEnabled = false;
@@ -733,29 +1222,30 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
     {
         if (opacityConstantAuthored)
         {
-            result.currentOrigin = opacityOrigin;
-            result.AddScalar(OPENUSD_MDL_SURFACE_OPACITY, opacity);
+            if (std::isfinite(opacity) && opacity >= 0 && opacity <= 1)
+            {
+                result.currentOrigin = opacityOrigin;
+                result.AddScalar(OPENUSD_MDL_SURFACE_OPACITY, opacity);
+            }
+            else { result.unsupported.emplace_back("opacity_constant"); }
         }
         if (opacityTextureAuthored && opacityTextureGateAuthored &&
             opacityTextureEnabled)
         {
-            result.currentOrigin = opacityTextureOrigin;
-            result.AddTexture(
-                OPENUSD_MDL_SURFACE_OPACITY,
-                1,
-                OPENUSD_MDL_CHANNEL_R,
-                ResolveColorSpace(
-                    parameters, "opacity_texture", OPENUSD_MDL_COLOR_SPACE_RAW),
-                asset);
+            ProjectOpacityTexture(parameters, result, asset, opacityTextureOrigin);
         }
-        else if (opacityTextureAuthored)
+        else if (opacityTextureAuthored || (opacityTextureGateAuthored && opacityTextureEnabled))
         {
             result.unsupported.emplace_back("opacity_texture");
         }
         float threshold = 0.0F;
         if (TryFloat(parameters, "opacity_threshold", result, &threshold))
         {
-            result.AddScalar(OPENUSD_MDL_SURFACE_OPACITY_THRESHOLD, threshold);
+            if (std::isfinite(threshold) && threshold >= 0 && threshold <= 1)
+            {
+                result.AddScalar(OPENUSD_MDL_SURFACE_OPACITY_THRESHOLD, threshold);
+            }
+            else { result.unsupported.emplace_back("opacity_threshold"); }
         }
     }
     else
@@ -778,69 +1268,37 @@ DistillOmniPbr(ParameterTable& parameters, DistillationResult& result)
         }
     }
 
-    bool emissionEnabled = false;
-    const bool emissionAuthored =
-        TryBool(parameters, "enable_emission", result, &emissionEnabled);
-    float emissive[3] = {0.0F, 0.0F, 0.0F};
-    const bool emissiveAuthored =
-        TryColor(parameters, "emissive_color", result, emissive);
-    const uint32_t emissiveOrigin = result.currentOrigin;
-    const bool emissiveTextureAuthored =
-        TryAsset(parameters, "emissive_color_texture", result, &asset);
-    const uint32_t emissiveTextureOrigin = result.currentOrigin;
-    float intensity = 1.0F;
-    const bool intensityAuthored =
-        TryFloat(parameters, "emissive_intensity", result, &intensity);
-    if (emissionAuthored && emissionEnabled)
-    {
-        if (emissiveAuthored)
-        {
-            result.currentOrigin = emissiveOrigin;
-            result.AddScalar(OPENUSD_MDL_SURFACE_EMISSIVE_COLOR, 3, emissive);
-        }
-        if (emissiveTextureAuthored)
-        {
-            result.currentOrigin = emissiveTextureOrigin;
-            result.AddTexture(
-                OPENUSD_MDL_SURFACE_EMISSIVE_COLOR,
-                3,
-                OPENUSD_MDL_CHANNEL_RGB,
-                ResolveColorSpace(
-                    parameters,
-                    "emissive_color_texture",
-                    OPENUSD_MDL_COLOR_SPACE_SRGB),
-                asset);
-        }
-        // emissive_intensity is a photometric multiplier on the emitted
-        // radiance. UsdPreviewSurface's emissiveColor carries no unit, so a
-        // multiplier other than one has no faithful destination here and is
-        // reported instead of being folded into the colour.
-        if (intensityAuthored && intensity != 1.0F)
-        {
-            result.unsupported.emplace_back("emissive_intensity");
-        }
-    }
-    else
-    {
-        if (emissiveAuthored)
-        {
-            result.unsupported.emplace_back("emissive_color");
-        }
-        if (emissiveTextureAuthored)
-        {
-            result.unsupported.emplace_back("emissive_color_texture");
-        }
-    }
+    DistillOmniPbrEmission(parameters, result, radianceProfile);
 
+    const openusd_mdl_parameter* baseNormal = parameters.Find("normalmap_texture");
+    bool neutralBase = !parameters.Has("normalmap_texture") ||
+        (baseNormal && baseNormal->kind == OPENUSD_MDL_VALUE_ASSET && baseNormal->text.size == 0);
     if (TryAsset(parameters, "normalmap_texture", result, &asset))
     {
-        result.AddTexture(
-            OPENUSD_MDL_SURFACE_NORMAL,
-            3,
-            OPENUSD_MDL_CHANNEL_RGB,
-            ResolveColorSpace(
-                parameters, "normalmap_texture", OPENUSD_MDL_COLOR_SPACE_RAW),
-            asset);
+        const uint32_t normalOrigin = result.currentOrigin;
+        float strength = 1.0F;
+        const bool hasStrength = TryFloat(parameters, "bump_factor", result, &strength);
+        if ((!hasStrength && parameters.Has("bump_factor")) || !std::isfinite(strength))
+        {
+            result.unsupported.emplace_back("bump_factor");
+            strength = 1.0F;
+        }
+        bool flipU = false;
+        bool flipV = false;
+        (void)TryBool(parameters, "flip_tangent_u", result, &flipU);
+        (void)TryBool(parameters, "flip_tangent_v", result, &flipV);
+        neutralBase = strength == 0;
+        if (!neutralBase)
+        {
+            AppendNormalTexture(parameters, result, "normalmap_texture",
+                asset, strength, flipU, flipV, normalOrigin);
+        }
+    }
+    const bool hasBaseNormal = std::any_of(result.textures.begin(), result.textures.end(),
+        [](const auto& texture) { return texture.surface_input == OPENUSD_MDL_SURFACE_NORMAL; });
+    if (radianceProfile && (neutralBase || hasBaseNormal) && result.hasUvTransform)
+    {
+        DistillDetailNormal(parameters, result, neutralBase);
     }
 }
 
@@ -1089,6 +1547,12 @@ Freeze(openusd_mdl_adapter* adapter, DistillationResult& result)
         : storage->unsupportedViews.data();
     storage->view.unsupported_parameter_count =
         static_cast<uint32_t>(storage->unsupportedViews.size());
+    storage->view.has_uv_transform = result.hasUvTransform ? 1u : 0u;
+    storage->view.uv_transform_origin = result.uvTransformOrigin;
+    for (size_t index = 0; index < 6; ++index)
+    {
+        storage->view.uv_transform[index] = result.uvTransform[index];
+    }
 
     const openusd_mdl_distilled_material* view = &storage->view;
     adapter->live.push_back(std::move(storage));
@@ -1140,7 +1604,7 @@ openusd_mdl_describe(char* buffer, uint32_t capacity)
         description = "openusd_mdl SDK-backed distiller (" +
             openusd_mdl::SdkBackend::Instance().Describe() +
             "); authored values first, then module defaults and constant "
-            "expressions; bounded SDK-proven OmniPBR/OmniGlass variants";
+            "expressions; bounded SDK-proven OmniPBR/OmniGlass/OmniSurface variants";
     }
     else
     {
@@ -1295,6 +1759,10 @@ openusd_mdl_adapter_distill(
             {
                 accepted = AcceptedMaterial::OmniGlass;
             }
+            else if (moduleResolution.kind == openusd_mdl::SdkMaterialKind::OmniSurface)
+            {
+                accepted = AcceptedMaterial::OmniSurface;
+            }
         }
     }
 
@@ -1350,7 +1818,9 @@ openusd_mdl_adapter_distill(
     switch (accepted)
     {
         case AcceptedMaterial::OmniPbr:
-            DistillOmniPbr(parameters, distilled);
+            DistillOmniPbr(parameters, distilled,
+                moduleConsulted && moduleResolution.status == OPENUSD_MDL_STATUS_OK &&
+                    moduleResolution.kind == openusd_mdl::SdkMaterialKind::OmniPbr);
             break;
         case AcceptedMaterial::OmniSurface:
             DistillOmniSurface(parameters, distilled);

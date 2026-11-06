@@ -20,14 +20,6 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 struct HdSilkMeshRecord;
 
-/// HdSilkBasisCurves supports the linear/segmented curves emitted by
-/// UsdImagingGLDrawModeAdapter for origin and bounds draw modes, and plain
-/// linear segmented BasisCurves prims. It publishes each segment through the
-/// existing mesh scene-state path as line-list topology so the page ABI stays
-/// unchanged while matching Storm's measured one-pixel line rasterization.
-/// Authored widths are resolved onto the emitted line vertices for constant,
-/// uniform, varying, and vertex interpolation and published through the vertex
-/// attribute table.
 class HdSilkBasisCurves final : public HdBasisCurves
 {
 public:
@@ -47,16 +39,22 @@ protected:
     HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
 
 private:
+    uint64_t _PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) const;
+    void _Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, HdDirtyBits* dirtyBits);
+
     std::vector<HdSilkMeshRecord> _BuildInstanceRecords(
         HdSceneDelegate* sceneDelegate,
         HdSilkMeshRecord record);
 
+    std::shared_ptr<HdSilkMeshPreparationLease> _preparationLease;
     HdBasisCurvesTopology _topology;
     GfMatrix4d _transform;
     VtVec3fArray _points;
     HdSilkCurveWidths _widths;
+    bool _cubicWidthsVarying = false;
     GfVec3f _displayColor{0.7f};
     uint64_t _topologyRevision = 0;
+    uint64_t _materialBindingGeneration = 0;
     bool _topologySupported = false;
 
     HdSilkBasisCurves(const HdSilkBasisCurves&) = delete;

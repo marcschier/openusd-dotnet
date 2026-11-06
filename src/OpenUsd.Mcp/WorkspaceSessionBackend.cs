@@ -9,12 +9,17 @@ public sealed record WorkspaceSessionBackendContext(
     string SessionId,
     string SourcePath,
     string OutputDirectory,
-    string OverlayPath);
+    string OverlayPath)
+{
+    /// <summary>Gets optional explicit root settings; null retains the source-sublayer behavior.</summary>
+    public WorkspaceStageSettings? StageSettings { get; init; }
+}
 
 /// <summary>Creates native-operation backends for isolated workspace sessions.</summary>
 public interface IWorkspaceSessionBackendFactory
 {
     /// <summary>Creates and initializes a backend.</summary>
+    /// <remarks>Explicit stage settings must be honored or refused, never silently ignored.</remarks>
     ValueTask<IWorkspaceSessionBackend> CreateAsync(
         WorkspaceSessionBackendContext context,
         CancellationToken cancellationToken);

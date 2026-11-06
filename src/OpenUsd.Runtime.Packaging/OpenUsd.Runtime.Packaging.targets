@@ -29,6 +29,9 @@
     <_OpenUsdPhysicsWorldHeader>$(MSBuildThisFileDirectory)../../native/openusd_physx/include/openusd_physx_world.h</_OpenUsdPhysicsWorldHeader>
     <_OpenUsdPhysicsWorldHeader
       Condition="Exists('$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physx_world.h')">$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physx_world.h</_OpenUsdPhysicsWorldHeader>
+    <_OpenUsdPhysicsMeshHeader>$(MSBuildThisFileDirectory)../../native/openusd_physx/include/openusd_physx_mesh.h</_OpenUsdPhysicsMeshHeader>
+    <_OpenUsdPhysicsMeshHeader
+      Condition="Exists('$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physx_mesh.h')">$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physx_mesh.h</_OpenUsdPhysicsMeshHeader>
     <_OpenUsdPhysicsExtractHeader>$(MSBuildThisFileDirectory)../../native/openusd_dotnet/include/openusd_physics_extract.h</_OpenUsdPhysicsExtractHeader>
     <_OpenUsdPhysicsExtractHeader
       Condition="Exists('$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physics_extract.h')">$(OpenUsdPhysicsShimInstallRoot)/include/openusd_physics_extract.h</_OpenUsdPhysicsExtractHeader>
@@ -39,6 +42,7 @@
     <_OpenUsdMacOsValidationEvidence>$([MSBuild]::NormalizePath('$(_OpenUsdRuntimePackageIntermediateRoot)', 'macos-native-validation.json'))</_OpenUsdMacOsValidationEvidence>
     <_OpenUsdCesiumNotice>$(MSBuildThisFileDirectory)../../native/install/cesium/$(RuntimePackageRid)/THIRD-PARTY-CESIUM.md</_OpenUsdCesiumNotice>
     <_OpenUsdPhysXNotice>$(OpenUsdPhysXInstallRoot)/THIRD-PARTY-PHYSX.md</_OpenUsdPhysXNotice>
+    <_OpenUsdVhacdNotice>$(OpenUsdPhysicsShimInstallRoot)/share/licenses/openusd_physx/V-HACD-LICENSE.txt</_OpenUsdVhacdNotice>
     <!--
       Cesium and physics ship only their own opt-in payload, so neither consumes the base shim
       install that Core and Imaging are built from. The physics shim does link the OpenUSD
@@ -122,11 +126,13 @@
     <_OpenUsdCesiumShimLibrary Include="$(OpenUsdCesiumShimInstallRoot)/bin/openusd_cesium.dll" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'linux-x64'">
+    <_OpenUsdExrCoreDependency Include="$(OpenUsdInstallRoot)/lib/libOpenEXR-3_5.so;$(OpenUsdInstallRoot)/lib/libOpenEXRCore-3_5.so;$(OpenUsdInstallRoot)/lib/libIex-3_5.so;$(OpenUsdInstallRoot)/lib/libIlmThread-3_5.so" />
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.so.*" />
     <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.so.*;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.9;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.so.9.0.0" />
     <_OpenUsdCesiumShimLibrary Include="$(OpenUsdCesiumShimInstallRoot)/lib/libopenusd_cesium.so;$(OpenUsdCesiumShimInstallRoot)/lib/libopenusd_cesium.so.*" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimePackageRid)' == 'osx-arm64'">
+    <_OpenUsdExrCoreDependency Include="$(OpenUsdInstallRoot)/lib/libOpenEXR-3_5.dylib;$(OpenUsdInstallRoot)/lib/libOpenEXRCore-3_5.dylib;$(OpenUsdInstallRoot)/lib/libIex-3_5.dylib;$(OpenUsdInstallRoot)/lib/libIlmThread-3_5.dylib" />
     <_OpenUsdCoreShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_dotnet.dylib" />
     <_OpenUsdImagingShimLibrary Include="$(OpenUsdShimInstallRoot)/lib/libopenusd_hydra.dylib;$(OpenUsdShimInstallRoot)/lib/libopenusd_hdsilk.dylib;$(OpenUsdShimInstallRoot)/lib/libopenusd_storm_child.dylib" />
     <_OpenUsdCesiumShimLibrary Include="$(OpenUsdCesiumShimInstallRoot)/lib/libopenusd_cesium.dylib" />
@@ -178,6 +184,7 @@
       leaving a reader to infer that everything PhysX ships is BSD-3-Clause.
     -->
     <None Include="$(_OpenUsdPhysXNotice)" Pack="true" PackagePath="THIRD-PARTY-PHYSX.md" Condition="'$(RuntimePackageKind)' == 'Physics'" />
+    <None Include="$(_OpenUsdVhacdNotice)" Pack="true" PackagePath="THIRD-PARTY-V-HACD.txt" Condition="'$(RuntimePackageKind)' == 'Physics'" />
     <None Include="$(OpenUsdInstallRoot)/THIRD-PARTY.md" Pack="true" PackagePath="THIRD-PARTY-NOTICES.md" Condition="'$(RuntimePackageKind)' == 'Physics'" />
     <None Include="$(MSBuildProjectDirectory)/buildTransitive/$(PackageId).targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
   </ItemGroup>
@@ -189,7 +196,7 @@
            Text="The Core SDK requires verified runtime-patch provenance before packing. Rebuild the pinned SDK." />
     <Exec Condition="'$(RuntimePackageKind)' == 'Core' and Exists('$(OpenUsdInstallRoot)/.openusd-runtime-patches.json')"
           Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)../../eng/sdk-runtime-patch-metadata.ps1&quot; -Operation Verify -SdkRoot &quot;$(OpenUsdInstallRoot)&quot; -Rid &quot;$(RuntimePackageRid)&quot;" />
-    <Error Condition="'$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'win-x64' and !Exists('%(_OpenUsdExrCoreDependency.Identity)')"
+    <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('%(_OpenUsdExrCoreDependency.Identity)')"
            Text="The Core EXR output dependency is missing: '%(_OpenUsdExrCoreDependency.Identity)'." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and Exists('$(OpenUsdInstallRoot)/include/pxr/usd/sdf/storageAdmission.h') and !Exists('$(OpenUsdInstallRoot)/.openusd-storage-admission.json')"
            Text="The storage-admission SDK profile requires verified patch/header/binary provenance before packing." />
@@ -200,6 +207,7 @@
     <Error Condition="'$(RuntimePackageKind)' == 'Physics' and '$(RuntimePackageRid)' != 'win-x64' and '$(RuntimePackageRid)' != 'linux-x64'" Text="$(PackageId) targets $(RuntimePackageRid), which the pinned vcpkg PhysX port does not support. The port declares '(windows &amp; x64 &amp; !mingw &amp; !uwp) | (linux &amp; x64) | (linux &amp; arm64)', so no physics package exists outside win-x64 and linux-x64." />
     <Error Condition="'$(RuntimePackageKind)' == 'Physics' and !Exists('$(_OpenUsdPhysicsLibrary)')" Text="The OpenUsd physics shim is missing: '$(_OpenUsdPhysicsLibrary)'. Run eng/build-physx-native.ps1 -Rid $(RuntimePackageRid) and eng/build-physx-shim.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Physics' and !Exists('$(_OpenUsdPhysXNotice)')" Text="The PhysX redistribution notice is missing: '$(_OpenUsdPhysXNotice)'. Run eng/build-physx-native.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
+    <Error Condition="'$(RuntimePackageKind)' == 'Physics' and !Exists('$(_OpenUsdVhacdNotice)')" Text="The V-HACD redistribution license is missing: '$(_OpenUsdVhacdNotice)'. Run eng/build-physx-shim.ps1 -Rid $(RuntimePackageRid) before packing $(PackageId)." />
     <Error Condition="'$(RuntimePackageKind)' == 'Core' and !Exists('$(_OpenUsdMonolithicLibrary)')" Text="The locked OpenUSD install is incomplete: '$(_OpenUsdMonolithicLibrary)' is missing." />
     <Error Condition="'$(OpenUsdRequireLinuxCodecRuntime)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64' and !Exists('$(_OpenUsdBloscLibrary)')" Text="The pinned Linux Blosc runtime is missing: '$(_OpenUsdBloscLibrary)'." />
     <Error Condition="'$(OpenUsdRequireLinuxCodecRuntime)' == 'true' and '$(RuntimePackageKind)' == 'Core' and '$(RuntimePackageRid)' == 'linux-x64' and !Exists('$(_OpenUsdZstdLibrary)')" Text="The pinned Linux Zstandard runtime is missing: '$(_OpenUsdZstdLibrary)'." />
@@ -257,7 +265,7 @@
     <Error
       Condition="'$(_OpenUsdPhysicsPackedAssetNames)' != '$(_OpenUsdPhysicsExpectedAssetNames)'"
       Text="$(PackageId) would publish native assets '$(_OpenUsdPhysicsPackedAssetNames)' but must publish exactly '$(_OpenUsdPhysicsExpectedAssetNames)'. The physics shim install also contains the Core and Imaging shims and the proprietary NVIDIA GPU modules; publishing either is a defect." />
-    <Exec Command="pwsh -NoProfile -File &quot;$(_OpenUsdPhysicsValidationScript)&quot; -PackageId &quot;$(PackageId)&quot; -Rid &quot;$(RuntimePackageRid)&quot; -WorldHeader &quot;$(_OpenUsdPhysicsWorldHeader)&quot; -ExtractHeader &quot;$(_OpenUsdPhysicsExtractHeader)&quot; -EvidencePath &quot;$(_OpenUsdPhysicsValidationEvidence)&quot; -Assets &quot;$(_OpenUsdPhysicsPackedAssetPaths)&quot;" />
+    <Exec Command="pwsh -NoProfile -File &quot;$(_OpenUsdPhysicsValidationScript)&quot; -PackageId &quot;$(PackageId)&quot; -Rid &quot;$(RuntimePackageRid)&quot; -WorldHeader &quot;$(_OpenUsdPhysicsWorldHeader)&quot; -MeshHeader &quot;$(_OpenUsdPhysicsMeshHeader)&quot; -ExtractHeader &quot;$(_OpenUsdPhysicsExtractHeader)&quot; -EvidencePath &quot;$(_OpenUsdPhysicsValidationEvidence)&quot; -Assets &quot;$(_OpenUsdPhysicsPackedAssetPaths)&quot;" />
   </Target>
 
   <Target

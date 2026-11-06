@@ -338,7 +338,10 @@ public sealed class SilkOpenColorIoLatticeProvider : ISilkDisplayTransformLattic
     public static SilkOpenColorIoLatticeProvider Shared { get; } = new();
 
     /// <inheritdoc/>
-    public SilkDisplayTransformLattice Create(RenderDisplayTransform transform)
+    public SilkDisplayTransformLattice Create(RenderDisplayTransform transform) => CreateCore(transform, null);
+
+    internal static SilkDisplayTransformLattice CreateCore(
+        RenderDisplayTransform transform, SilkCpuTextureBudget? budget)
     {
         ArgumentNullException.ThrowIfNull(transform);
         if (!File.Exists(transform.ConfigPath))
@@ -359,6 +362,7 @@ public sealed class SilkOpenColorIoLatticeProvider : ISilkDisplayTransformLattic
         int width = size * size;
         int height = size;
         int pixelCount = width * height;
+        using IDisposable? workspace = budget?.Reserve(checked((ulong)pixelCount * 16));
         byte[] source = new byte[checked(pixelCount * 16)];
         byte[] destination = new byte[checked(pixelCount * 4)];
         WriteShapedLattice(source, size, transform.ShaperMinimumLog2, transform.ShaperRangeLog2);
@@ -527,6 +531,7 @@ public sealed class SilkDisplayTransformLatticeCache
     private readonly LinkedList<string> _failureOrder = new();
     private readonly ISilkDisplayTransformLatticeProvider _provider;
     private readonly ISilkDisplayTransformConfigIdentityProvider _identities;
+    internal SilkCpuTextureBudget? CpuBudget { get; }
     private long _byteSize;
     private ulong _builds;
     private ulong _hits;
@@ -554,6 +559,17 @@ public sealed class SilkDisplayTransformLatticeCache
         _identities = identityProvider ?? SilkOpenColorIoConfigIdentityProvider.Shared;
         MaximumEntries = maximumEntries;
         MaximumByteSize = maximumByteSize;
+    }
+
+    internal SilkDisplayTransformLatticeCache(
+        SilkCpuTextureBudget budget,
+        ISilkDisplayTransformLatticeProvider? provider,
+        int maximumEntries = DefaultMaximumEntries,
+        ISilkDisplayTransformConfigIdentityProvider? identityProvider = null)
+        : this(provider, maximumEntries, DefaultMaximumByteSize, identityProvider)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        CpuBudget = budget;
     }
 
     /// <summary>Gets the maximum retained lattice count.</summary>
@@ -663,6 +679,16 @@ public sealed class SilkDisplayTransformLatticeCache
     /// </exception>
     public SilkDisplayTransformLattice Get(RenderDisplayTransform transform)
     {
+        if (CpuBudget is not null)
+        {
+            throw new InvalidOperationException("Admitted display lattices require an explicit pixel-ownership lease.");
+        }
+        return GetOwned(transform, out _);
+    }
+
+    internal SilkDisplayTransformLattice GetOwned(RenderDisplayTransform transform, out IDisposable? ownership)
+    {
+        ownership = null;
         ArgumentNullException.ThrowIfNull(transform);
         SilkDisplayTransformConfigIdentity identity =
             _identities.GetIdentity(transform.ConfigPath);
@@ -697,6 +723,7 @@ public sealed class SilkDisplayTransformLatticeCache
                 _order.Remove(existing);
                 _order.AddFirst(existing);
                 _hits++;
+                ownership = existing.Value.Pixels?.Acquire();
                 return existing.Value.Lattice;
             }
             if (_failures.TryGetValue(key, out FailureEntry failure))
@@ -711,37 +738,70 @@ public sealed class SilkDisplayTransformLatticeCache
         // Baking runs outside the lock so one slow config parse cannot stall every
         // other renderer sharing this cache. A concurrent duplicate bake is possible
         // and harmless: the loser's lattice is discarded, never published twice.
-        SilkDisplayTransformLattice lattice;
+        ulong expectedBytes = checked((ulong)transform.LatticeSize * (ulong)transform.LatticeSize *
+            (ulong)transform.LatticeSize * 4);
+        IDisposable? reservation = CpuBudget?.Reserve(expectedBytes);
         try
         {
-            lattice = _provider.Create(transform);
-        }
-        catch (SilkDisplayTransformException exception)
-        {
+            SilkDisplayTransformLattice lattice;
+            try
+            {
+                lattice = _provider is SilkOpenColorIoLatticeProvider
+                    ? SilkOpenColorIoLatticeProvider.CreateCore(transform, CpuBudget) : _provider.Create(transform);
+            }
+            catch (SilkDisplayTransformException exception)
+            {
+                lock (_gate)
+                {
+                    RecordFailure(key, transform.ConfigPath, identity.Value, exception);
+                }
+                throw;
+            }
+            if (CpuBudget is not null &&
+                (lattice.Size != transform.LatticeSize || (ulong)lattice.ByteCount != expectedBytes))
+            {
+                throw new InvalidDataException("The display provider returned a lattice outside its admitted shape.");
+            }
             lock (_gate)
             {
-                RecordFailure(key, transform.ConfigPath, identity.Value, exception);
+                if (_entries.TryGetValue(key, out LinkedListNode<CacheEntry>? raced))
+                {
+                    _order.Remove(raced);
+                    _order.AddFirst(raced);
+                    _hits++;
+                    ownership = raced.Value.Pixels?.Acquire();
+                    return raced.Value.Lattice;
+                }
+
+                _entries.EnsureCapacity(checked(_entries.Count + 1));
+                var entry = new CacheEntry(key, transform.ConfigPath, identity.Value, lattice);
+                var node = new LinkedListNode<CacheEntry>(entry);
+                if (reservation is not null)
+                {
+                    entry.Pixels = new SilkSharedReservation(reservation);
+                    entry.Ownership = entry.Pixels.Acquire();
+                    try
+                    {
+                        ownership = entry.Pixels.Acquire();
+                    }
+                    catch
+                    {
+                        entry.Ownership.Dispose();
+                        throw;
+                    }
+                    reservation = null;
+                }
+                _order.AddFirst(node);
+                _entries.Add(key, node);
+                _byteSize += lattice.ByteCount;
+                _builds++;
+                Trim();
+                return lattice;
             }
-            throw;
         }
-
-        lock (_gate)
+        finally
         {
-            if (_entries.TryGetValue(key, out LinkedListNode<CacheEntry>? raced))
-            {
-                _order.Remove(raced);
-                _order.AddFirst(raced);
-                _hits++;
-                return raced.Value.Lattice;
-            }
-
-            LinkedListNode<CacheEntry> node = _order.AddFirst(
-                new CacheEntry(key, transform.ConfigPath, identity.Value, lattice));
-            _entries.Add(key, node);
-            _byteSize += lattice.ByteCount;
-            _builds++;
-            Trim();
-            return lattice;
+            reservation?.Dispose();
         }
     }
 
@@ -756,6 +816,7 @@ public sealed class SilkDisplayTransformLatticeCache
                 _order.Remove(node);
                 _entries.Remove(node.Value.Key);
                 _byteSize -= node.Value.Lattice.ByteCount;
+                node.Value.Ownership?.Dispose();
                 _invalidations++;
             }
             node = next;
@@ -780,6 +841,10 @@ public sealed class SilkDisplayTransformLatticeCache
     {
         lock (_gate)
         {
+            foreach (CacheEntry entry in _order)
+            {
+                entry.Ownership?.Dispose();
+            }
             _entries.Clear();
             _order.Clear();
             _failures.Clear();
@@ -808,6 +873,7 @@ public sealed class SilkDisplayTransformLatticeCache
                 _order.Remove(node);
                 _entries.Remove(node.Value.Key);
                 _byteSize -= node.Value.Lattice.ByteCount;
+                node.Value.Ownership?.Dispose();
                 _invalidations++;
             }
             node = next;
@@ -869,14 +935,19 @@ public sealed class SilkDisplayTransformLatticeCache
             _order.RemoveLast();
             _entries.Remove(last.Value.Key);
             _byteSize -= last.Value.Lattice.ByteCount;
+            last.Value.Ownership?.Dispose();
         }
     }
 
-    private readonly record struct CacheEntry(
+    private sealed record CacheEntry(
         string Key,
         string ConfigPath,
         string Identity,
-        SilkDisplayTransformLattice Lattice);
+        SilkDisplayTransformLattice Lattice)
+    {
+        internal SilkSharedReservation? Pixels { get; set; }
+        internal IDisposable? Ownership { get; set; }
+    }
 
     private readonly record struct FailureEntry(
         string ConfigPath,

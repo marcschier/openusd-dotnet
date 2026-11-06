@@ -1,0 +1,30 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+def Xform "World"
+{
+    def PointInstancer "Outer"
+    {
+        rel prototypes = [</World/Outer/Inner>]
+        int[] protoIndices = [0, 0, 0]
+        int64[] invisibleIds = [1]
+        point3f[] positions = [(0, 0, 0), (50, 0, 0), (100, 0, 0)]
+        def PointInstancer "Inner"
+        {
+            rel prototypes = [</World/Outer/Inner/Leaf>]
+            int[] protoIndices = [0, 0, 0]
+            int64[] invisibleIds = [1]
+            point3f[] positions = [(0, 0, 0), (1, 0, 0), (2, 0, 0)]
+            def Mesh "Leaf"
+            {
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+}

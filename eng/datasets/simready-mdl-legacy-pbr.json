@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "simready-mdl-legacy-pbr",
+  "scope": "Optional isolated OmniPBR 2.1.0 module closure from the public Gatling renderer; third-party redistribution of NVIDIA BSD-noticed sources, not a first-party NVIDIA distribution. Acquisition does not change current module selection or establish renderer fidelity.",
+  "license": "NVIDIA BSD-3-Clause notices are embedded in every unmodified MDL source and retained in full.",
+  "sourceRepository": "pablode/gatling",
+  "files": [
+    {
+      "path": "OmniPBR.mdl",
+      "repository": "pablode/gatling",
+      "revision": "4e2be6758a004876fb558ffee684f67c03197439",
+      "sourcePath": "src/gi/mdl/OmniPBR.mdl",
+      "size": 14466,
+      "gitBlobSha1": "d12daa8117e4ada8d812e8da5941684fb40eaf92"
+    },
+    {
+      "path": "OmniPBR_ClearCoat_Opacity.mdl",
+      "repository": "pablode/gatling",
+      "revision": "4e2be6758a004876fb558ffee684f67c03197439",
+      "sourcePath": "src/gi/mdl/OmniPBR_ClearCoat_Opacity.mdl",
+      "size": 29860,
+      "gitBlobSha1": "a13f88f2cf996d6f551c86f238b3ea0b5e54da95"
+    },
+    {
+      "path": "nvidia/core_definitions.mdl",
+      "repository": "pablode/gatling",
+      "revision": "4e2be6758a004876fb558ffee684f67c03197439",
+      "sourcePath": "src/gi/mdl/nvidia/core_definitions.mdl",
+      "size": 143530,
+      "gitBlobSha1": "ac28e80431e58dc6059b2b6c1cc5cf8a66bf8db8"
+    }
+  ]
+}

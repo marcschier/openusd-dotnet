@@ -602,6 +602,30 @@ public static unsafe partial class OpenUsdNativeRuntime
     internal static void SetTimeCodesPerSecond(OpenUsdNativeStage stage, double value) =>
         SetStageDouble(stage, value, NativeMethods.StageSetTimeCodesPerSecond);
 
+    internal static OpenUsdNativeStageLinearUnits GetLinearUnits(OpenUsdNativeStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        if ((Capabilities & OpenUsdNativeContract.StageLinearUnitsCapability) == 0)
+        {
+            throw new NotSupportedException(
+                "The loaded native runtime does not export stage linear units " +
+                "(OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS, data ABI 26).");
+        }
+
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            OpenUsdNativeStatus status = NativeMethods.StageGetLinearUnits(
+                lease.Handle,
+                out OpenUsdNativeStageLinearUnits units,
+                ref error);
+            ThrowIfFailed(status, errorBytes, error);
+            return units;
+        }
+    }
+
     internal static string GetDefaultPrimPath(OpenUsdNativeStage stage)
     {
         ArgumentNullException.ThrowIfNull(stage);
@@ -1388,6 +1412,22 @@ public static unsafe partial class OpenUsdNativeRuntime
             attributeName,
             timeCode,
             NativeMethods.StageGetVec3fArray);
+
+    internal static void SetVec4fArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        ReadOnlySpan<OpenUsdNativeVec4f> values,
+        double? timeCode) =>
+        SetArray(stage, primPath, attributeName, values, timeCode, NativeMethods.StageSetVec4fArray);
+
+    internal static OpenUsdNativeVec4f[] GetVec4fArray(
+        OpenUsdNativeStage stage,
+        string primPath,
+        string attributeName,
+        double? timeCode) =>
+        GetArray<OpenUsdNativeVec4f>(
+            stage, primPath, attributeName, timeCode, NativeMethods.StageGetVec4fArray, "vec4f");
 
     internal static void SetColor3fArray(
         OpenUsdNativeStage stage,

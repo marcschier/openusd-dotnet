@@ -24,13 +24,19 @@ on:
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
       - 'eng/fetch-native.ps1'
+      - 'eng/test-native-download.ps1'
       - 'eng/build-native.ps1'
       - 'eng/physx.lock.json'
+      - 'eng/vhacd.lock.json'
+      - 'eng/fetch-vhacd.ps1'
       - 'eng/fetch-physx-native.ps1'
       - 'eng/build-physx-native.ps1'
       - 'eng/build-physx-shim.ps1'
       - 'eng/mdl.lock.json'
       - 'eng/fetch-mdl-sdk.ps1'
+      - 'eng/fetch_simready_mdl.py'
+      - 'eng/simready_warehouse.py'
+      - 'eng/datasets/simready-mdl-core.json'
       - 'eng/build-mdl-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/cmake/ShaderCompiler.cmake'
@@ -46,11 +52,24 @@ on:
       - 'eng/create-native-archive.ps1'
       - 'eng/run-native-fuzz.ps1'
       - 'eng/run-windows-native-tests.ps1'
+      - 'eng/run-native-managed-tests.ps1'
+      - 'eng/run-managed-tests.ps1'
+      - 'eng/ptex-atlas-admission-report.ps1'
+      - 'eng/test-ptex-atlas-admission-report.ps1'
+      - 'eng/run-bounded-process.ps1'
+      - 'eng/BoundedWindowsProcess.cs'
+      - 'Directory.Packages.props'
+      - 'src/OpenUsd.Mcp/**'
+      - 'tests/OpenUsd.Mcp.Tests/**'
+      - 'src/OpenUsd.Rendering.Silk/**'
+      - 'tests/OpenUsd.Rendering.Tests/**'
+      - 'test-assets/native-profile/ptex/**'
       - 'eng/prepare-mesa-wgl-test-runtime.ps1'
       - 'eng/mesa-wgl-test-runtime.lock.json'
       - 'eng/native-fuzz-lsan.supp'
       - 'native/**'
       - 'test-assets/fuzz-seeds/**'
+      - 'test-assets/mdl/**'
       - 'test-assets/omniverse/mdl-only-omnipbr.usda'
   pull_request:
     branches: [ master, main ]
@@ -73,13 +92,19 @@ on:
       - 'eng/sdk-runtime-patch-metadata.ps1'
       - 'eng/test-sdk-runtime-patch-metadata.ps1'
       - 'eng/fetch-native.ps1'
+      - 'eng/test-native-download.ps1'
       - 'eng/build-native.ps1'
       - 'eng/physx.lock.json'
+      - 'eng/vhacd.lock.json'
+      - 'eng/fetch-vhacd.ps1'
       - 'eng/fetch-physx-native.ps1'
       - 'eng/build-physx-native.ps1'
       - 'eng/build-physx-shim.ps1'
       - 'eng/mdl.lock.json'
       - 'eng/fetch-mdl-sdk.ps1'
+      - 'eng/fetch_simready_mdl.py'
+      - 'eng/simready_warehouse.py'
+      - 'eng/datasets/simready-mdl-core.json'
       - 'eng/build-mdl-shim.ps1'
       - 'eng/build-vulkan-sdk.ps1'
       - 'eng/cmake/ShaderCompiler.cmake'
@@ -95,11 +120,24 @@ on:
       - 'eng/create-native-archive.ps1'
       - 'eng/run-native-fuzz.ps1'
       - 'eng/run-windows-native-tests.ps1'
+      - 'eng/run-native-managed-tests.ps1'
+      - 'eng/run-managed-tests.ps1'
+      - 'eng/ptex-atlas-admission-report.ps1'
+      - 'eng/test-ptex-atlas-admission-report.ps1'
+      - 'eng/run-bounded-process.ps1'
+      - 'eng/BoundedWindowsProcess.cs'
+      - 'Directory.Packages.props'
+      - 'src/OpenUsd.Mcp/**'
+      - 'tests/OpenUsd.Mcp.Tests/**'
+      - 'src/OpenUsd.Rendering.Silk/**'
+      - 'tests/OpenUsd.Rendering.Tests/**'
+      - 'test-assets/native-profile/ptex/**'
       - 'eng/prepare-mesa-wgl-test-runtime.ps1'
       - 'eng/mesa-wgl-test-runtime.lock.json'
       - 'eng/native-fuzz-lsan.supp'
       - 'native/**'
       - 'test-assets/fuzz-seeds/**'
+      - 'test-assets/mdl/**'
       - 'test-assets/omniverse/mdl-only-omnipbr.usda'
 
 permissions:
@@ -122,6 +160,91 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  mdl-adapter:
+    name: ${{ matrix.rid }} standalone MDL adapter
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+          - rid: linux-x64
+            runner: ubuntu-24.04
+          - rid: osx-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Configure standalone MDL adapter
+        run: >-
+          cmake -S native/openusd_mdl -B artifacts/mdl-standalone
+          -DCMAKE_BUILD_TYPE=Release -Werror=dev
+      - name: Build standalone MDL adapter and probe
+        run: cmake --build artifacts/mdl-standalone --config Release --target mdl_sdk_probe
+      - name: Test standalone MDL adapter
+        run: >-
+          ctest --test-dir artifacts/mdl-standalone -C Release
+          -R "^mdl_adapter_probe$" --no-tests=error --output-on-failure
+
+  mdl-sdk-adapter:
+    name: ${{ matrix.rid }} standalone MDL SDK ${{ matrix.qualification }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+            qualification: compile-only
+          - rid: linux-x64
+            runner: ubuntu-24.04
+            qualification: compile-only
+          - rid: osx-arm64
+            runner: macos-15
+            qualification: module tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Acquire pinned MDL SDK
+        shell: pwsh
+        run: ./eng/fetch-mdl-sdk.ps1 -Rid ${{ matrix.rid }}
+      - name: Configure SDK adapter and acquire executable module fixtures
+        shell: pwsh
+        run: |
+          $moduleRoot = ''
+          if ($IsMacOS)
+          {
+            $dataRoot = Join-Path $PWD 'artifacts/mdl-modules'
+            $report = & python ./eng/fetch_simready_mdl.py --data-root $dataRoot
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $moduleRoot = ($report -join "`n" | ConvertFrom-Json).moduleRoot
+          }
+          $sdkRoot = Join-Path $PWD 'native/install/mdl-sdk/${{ matrix.rid }}'
+          cmake -S native/openusd_mdl -B artifacts/mdl-sdk-standalone `
+            -DCMAKE_BUILD_TYPE=Release -Werror=dev `
+            "-DOPENUSD_MDL_SDK_ROOT=$sdkRoot" `
+            "-DOPENUSD_MDL_SDK_RUNTIME_DIR=$sdkRoot/runtime" `
+            "-DOPENUSD_MDL_REAL_MODULE_ROOT=$moduleRoot"
+      - name: Build standalone MDL SDK adapter and probes
+        run: cmake --build artifacts/mdl-sdk-standalone --config Release
+      - name: Test standalone MDL SDK adapter and real modules
+        if: runner.os == 'macOS'
+        run: >-
+          ctest --test-dir artifacts/mdl-sdk-standalone -C Release
+          --no-tests=error --output-on-failure
+
   build:
     name: ${{ matrix.rid }} verified native archive
     runs-on: ${{ matrix.runner }}
@@ -148,7 +271,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.401
+          dotnet-version: 10.0.403
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
@@ -182,6 +305,7 @@ jobs:
       - name: Validate archive producer and consumer
         shell: pwsh
         run: |
+          ./eng/test-native-download.ps1
           ./eng/test-sdk-runtime-patch-metadata.ps1
           ./eng/test-render-native-archive.ps1
       - name: Validate native fuzz source contract
@@ -568,7 +692,17 @@ jobs:
         # configured no tests at all would otherwise report success.
         # Hosted Windows has no WGL 4.5 driver. Stage the already-pinned Mesa
         # runtime beside the Storm probes so AOV coverage executes rather than skips.
-        run: ./eng/run-windows-native-tests.ps1 -BuildRoot native/build/shim/win-x64
+        run: |
+          $buildRoot = 'native\build\shim\win-x64'
+          $discovery = ctest --test-dir $buildRoot -C Release --show-only=json-v1
+          if ($LASTEXITCODE -ne 0) { throw 'Native CTest discovery failed.' }
+          $testNames = @(($discovery -join "`n" | ConvertFrom-Json).tests.name)
+          foreach ($required in @('hdsilk_point_preparation', 'hdsilk_geometry_non_geometry_sync'))
+          {
+            if ($required -notin $testNames) { throw "Required native CTest '$required' is missing." }
+          }
+          ./eng/run-windows-native-tests.ps1 -BuildRoot $buildRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native CTest failed.' }
       - name: Export exact Windows base render admission inputs (diagnostic only)
         if: >-
           always() && runner.os == 'Windows' &&
@@ -662,6 +796,143 @@ jobs:
             -Rid win-x64 `
             -Configuration Release `
             -MinimumExpectedTests 31
+      - name: Run Windows native MCP integration
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_PHYSICS_RECORDING_REQUIRED: '1'
+          OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'
+          OPENUSD_EXR_EXECUTION_REQUIRED: '1'
+        run: |
+          $testProject = Join-Path $PWD 'tests\OpenUsd.Mcp.Tests\OpenUsd.Mcp.Tests.csproj'
+          dotnet build $testProject --configuration Release --framework net10.0
+          $runner = (Get-Command pwsh -CommandType Application).Source
+          $runnerArguments = @(
+            '-NoLogo',
+            '-NoProfile',
+            '-NonInteractive',
+            '-File',
+            (Join-Path $PWD 'eng\run-native-managed-tests.ps1'),
+            '-Project',
+            $testProject,
+            '-Framework',
+            'net10.0',
+            '-Rid',
+            'win-x64',
+            '-Configuration',
+            'Release',
+            '-MinimumExpectedTests',
+            '278'
+          )
+          ./eng/run-bounded-process.ps1 `
+            -Executable $runner `
+            -Arguments $runnerArguments `
+            -MaximumCommitBytes 3221225472 `
+            -MaximumWorkingSetBytes 3221225472 `
+            -OutputDirectory (Join-Path $PWD 'artifacts\native-mcp-integration\win-x64') `
+            -WorkingDirectory $PWD `
+            -TimeoutSeconds 900
+      - name: Upload native MCP integration evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openusd-native-mcp-integration-win-x64-${{ github.run_attempt }}
+          path: |
+            artifacts/native-mcp-integration/win-x64/
+            tests/OpenUsd.Mcp.Tests/bin/Release/net10.0/TestResults/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Run Windows native Ptex decoder tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'
+        run: |
+          $testProject = Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\OpenUsd.Rendering.Tests.csproj'
+          dotnet build $testProject --configuration Release --framework net10.0
+          if ($LASTEXITCODE -ne 0) { throw 'Ptex decoder test build failed.' }
+          $results = Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\bin\Release\net10.0\TestResults'
+          $reportPath = Join-Path $results 'OpenUsd.Rendering.Tests-windows-net10.0.tunit-report.json'
+          if (Test-Path -LiteralPath $reportPath) { throw 'A stale Ptex report already exists.' }
+          $env:OPENUSD_PARITY_RUNTIME_ROOT = Join-Path $PWD 'native\install\shim\win-x64'
+          ./eng/run-native-managed-tests.ps1 `
+            -Project $testProject `
+            -Framework net10.0 `
+            -Rid win-x64 `
+            -Configuration Release `
+            -MinimumExpectedTests 5 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkNativePtexDecoderTests/*')
+          if ($LASTEXITCODE -ne 0) { throw 'Native Ptex decoder tests failed.' }
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The native Ptex decoder report is missing.'
+          }
+          [IO.File]::Move($reportPath, (Join-Path $results 'native-ptex-decoder.tunit-report.json'))
+          $html = Join-Path $results 'OpenUsd.Rendering.Tests-windows-net10.0-report.html'
+          if (Test-Path -LiteralPath $html -PathType Leaf) {
+            [IO.File]::Move($html, (Join-Path $results 'native-ptex-decoder-report.html'))
+          }
+      - name: Run Windows native Ptex atlas admission tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          Platform: ''
+          OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED: '1'
+        run: |
+          ./eng/test-ptex-atlas-admission-report.ps1
+          . ./eng/ptex-atlas-admission-report.ps1
+          $testProject = Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\OpenUsd.Rendering.Tests.csproj'
+          $results = Join-Path $PWD 'tests\OpenUsd.Rendering.Tests\bin\Release\net10.0\TestResults'
+          $reportPath = Join-Path $results 'OpenUsd.Rendering.Tests-windows-net10.0.tunit-report.json'
+          if (Test-Path -LiteralPath $reportPath) { throw 'A stale Ptex admission report already exists.' }
+          $env:OPENUSD_PARITY_RUNTIME_ROOT = Join-Path $PWD 'native\install\shim\win-x64'
+          $started = [DateTime]::UtcNow
+          ./eng/run-native-managed-tests.ps1 `
+            -Project $testProject `
+            -Framework net10.0 `
+            -Rid win-x64 `
+            -Configuration Release `
+            -MinimumExpectedTests 3 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkMaterialCommandTests/MappedPtexAtlasAdmissionRollsBackAtCpuAndGpuBoundaries')
+          $finished = [DateTime]::UtcNow
+          if ($LASTEXITCODE -ne 0) { throw 'Native Ptex atlas admission tests failed.' }
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The native Ptex atlas admission report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          Assert-PtexAtlasAdmissionReport -Report $report -StartedUtc $started -FinishedUtc $finished
+          [IO.File]::Move($reportPath, (Join-Path $results 'native-ptex-atlas-admission.tunit-report.json'))
+      - name: Upload native Ptex decoder test reports
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openusd-native-ptex-decoder-${{ github.run_attempt }}
+          path: |
+            tests/OpenUsd.Rendering.Tests/bin/Release/net10.0/TestResults/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Run required POSIX EXR codec probes
+        if: runner.os != 'Windows'
+        shell: pwsh
+        env:
+          OPENUSD_EXR_EXECUTION_REQUIRED: '1'
+        run: |
+          $buildRoot = 'native/build/shim/${{ matrix.rid }}'
+          $expected = @('roundtrip', 'invalid-input', 'invalid-handles', 'quota',
+            'cancel', 'faults', 'posix-descriptors') |
+              ForEach-Object { "openusd_image_exr_$_" }
+          $discovery = ctest --test-dir $buildRoot -C Release `
+            -R '^openusd_image_exr_' --show-only=json-v1
+          if ($LASTEXITCODE -ne 0) { throw 'EXR probe discovery failed.' }
+          $actual = @((($discovery -join "`n") | ConvertFrom-Json).tests.name)
+          if (@(Compare-Object $expected $actual).Count -ne 0)
+          {
+            throw "Required EXR probe set differs: expected=$expected; actual=$actual"
+          }
+          ctest --test-dir $buildRoot -C Release `
+            -R '^openusd_image_exr_' --no-tests=error --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Required POSIX EXR codec probes failed.' }
       - name: Run Linux native CTest under Xvfb
         if: runner.os == 'Linux'
         run: |

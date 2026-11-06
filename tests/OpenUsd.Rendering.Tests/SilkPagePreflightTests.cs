@@ -718,7 +718,7 @@ public sealed class SilkPagePreflightTests
         byte[] pathBytes = Encoding.UTF8.GetBytes(MeshPath);
         float[] points = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -752,8 +752,8 @@ public sealed class SilkPagePreflightTests
                 bytes.AsSpan(80 + (element * 8)),
                 element % 5 == 0 ? 1 : 0);
         }
-        pathBytes.CopyTo(bytes, 268);
-        int offset = 268 + pathBytes.Length;
+        pathBytes.CopyTo(bytes, 276);
+        int offset = 276 + pathBytes.Length;
         foreach (float value in points)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset), value);
@@ -781,6 +781,13 @@ public sealed class SilkPagePreflightTests
             .. BitConverter.GetBytes(0u),
             .. pathBytes,
             .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
             .. BitConverter.GetBytes(0u),
             .. BitConverter.GetBytes(1f),
             .. BitConverter.GetBytes(0f),
@@ -816,9 +823,11 @@ public sealed class SilkPagePreflightTests
         var scene = new SilkSceneState();
         UInt128 high96 = UInt128.One << 96;
         UInt128 high127 = UInt128.One << 127;
+        byte[] initialFrame = WideFrame(128, 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(initialFrame.AsSpan(552 + (127 * 176)), 1u);
         _ = scene.Apply(
             [
-                .. WideFrame(128, 2),
+                .. initialFrame,
                 .. Mesh(),
                 .. Material(),
                 .. WideLinks(128, 2,
@@ -836,6 +845,7 @@ public sealed class SilkPagePreflightTests
         await Assert.That(scene.Shadows.ResolveSlot(127)).IsEqualTo(0);
 
         byte[] frame = WideFrame(97, 2, width: 640, flags: 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(552 + (96 * 176)), 1u);
         byte[] links = WideLinks(97, 2,
             (MeshPath, -1, high96 | 1, high96 | 2, 2u),
             (MeshPath, 0, high96 | 4, high96 | 8, 1u));
@@ -1063,7 +1073,7 @@ public sealed class SilkPagePreflightTests
 
     private static WideState CaptureWideState(SilkSceneState scene)
     {
-        var bytes = new byte[15296];
+        var bytes = new byte[19264];
         SilkShadowFrameBinding binding = scene.Shadows.HasShadows
             ? SilkShadowFrameBinding.Create(scene.Shadows.Descriptors,
                 SilkShadowAtlasLayout.Create(scene.Shadows.Descriptors)!)

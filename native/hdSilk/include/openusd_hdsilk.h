@@ -29,9 +29,48 @@ extern "C" {
 /// ABI version of the openusd_silk_page_view struct and the wire format
 /// written into its data buffer. Bump whenever either changes in a way that
 /// is not purely additive.
-#define OPENUSD_SILK_PAGE_ABI_VERSION 24u
-#define OPENUSD_SILK_SESSION_ABI_VERSION 6u
+#define OPENUSD_SILK_PAGE_ABI_VERSION 35u
+#define OPENUSD_SILK_NORMAL_IDENTITY_TRIANGLE_LOCAL 0x80000000u
+#define OPENUSD_SILK_SESSION_ABI_VERSION 7u
 #define OPENUSD_SILK_SCENE_INGESTION_VERSION 1u
+#define OPENUSD_SILK_PTEX_DECODE_VERSION 1u
+
+typedef enum openusd_silk_ptex_mesh_type
+{
+    OPENUSD_SILK_PTEX_MESH_TRIANGLE = 0,
+    OPENUSD_SILK_PTEX_MESH_QUAD = 1
+} openusd_silk_ptex_mesh_type;
+
+typedef enum openusd_silk_ptex_data_type
+{
+    OPENUSD_SILK_PTEX_DATA_UINT8 = 0,
+    OPENUSD_SILK_PTEX_DATA_UINT16 = 1,
+    OPENUSD_SILK_PTEX_DATA_HALF = 2,
+    OPENUSD_SILK_PTEX_DATA_FLOAT = 3
+} openusd_silk_ptex_data_type;
+
+typedef enum openusd_silk_ptex_face_flags
+{
+    OPENUSD_SILK_PTEX_FACE_CONSTANT = 1,
+    OPENUSD_SILK_PTEX_FACE_OBSOLETE = 2,
+    OPENUSD_SILK_PTEX_FACE_NEIGHBORHOOD_CONSTANT = 4,
+    OPENUSD_SILK_PTEX_FACE_SUBFACE = 8
+} openusd_silk_ptex_face_flags;
+
+typedef enum openusd_silk_ptex_mapping_status
+{
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_NOT_REQUESTED = 0,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED = 1,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_REFINER_UNAVAILABLE = 2,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_INVALID_BUFFERS = 3,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_FACE_INDEX_OVERFLOW = 4,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_UNSUPPORTED_TOPOLOGY = 5,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_TRIANGLE_MISMATCH = 6,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_EXCEEDS_BOUNDS = 7,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_INVALID_POINTS = 8,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_INVALID_FACE_OFFSETS = 9,
+    OPENUSD_SILK_PTEX_MAPPING_STATUS_TEXTURE_FACE_OUT_OF_RANGE = 10
+} openusd_silk_ptex_mapping_status;
 
 /// Command types written into openusd_silk_page_view::data. Every command
 /// starts with a little-endian uint32 "type" followed by a little-endian
@@ -82,7 +121,9 @@ extern "C" {
 ///      256    4 uint32   authored_point_count
 ///      260    4 uint32   instancer_path_byte_count
 ///      264    4 uint32   instancer_context_count
-///      268    * uint8    path[path_byte_count] (UTF-8, no NUL)
+///      268    4 uint32   ptex_mapping_count (0 or triangle_count)
+///      272    4 uint32   ptex_mapping_status
+///      276    * uint8    path[path_byte_count] (UTF-8, no NUL)
 ///        *    * float    points[point_count * 3]
 ///        *    * uint32   indices[index_count] (triangle list)
 ///        *    * uint32   triangle_subprims[triangle_count]
@@ -93,6 +134,40 @@ extern "C" {
 ///        *    * uint32   corner_edges[corner_edge_count]
 ///        *    * uint8    instancer_path[instancer_path_byte_count]
 ///        *    *          instancer_context[instancer_context_count]
+///        *    *          ptex_mappings[ptex_mapping_count]
+///        *    4 uint32   normal_identity_count_and_mode
+///        *    4 uint32   normal_corner_count
+///        *    4 uint32   normal_extra_point_count
+///        *    * uint32   normal_identities[normal_identity_count]
+///        *    * uint32   normal_corners[normal_corner_count * 3]
+///        *    * float    normal_extra_points[normal_extra_point_count * 3]
+///
+/// ABI v34 retains normal correspondence independently of optional picking.
+/// Each normal identity names one source vertex in this emitted topology;
+/// distinct vertices never share an identity merely because positions coincide.
+/// Each normal corner is (previous, current, next), indexing emitted points
+/// around an original polygon (a final-level polygon for subdivision).
+/// Coarse smooth adjacency includes hole faces, matching pinned Storm. A
+/// corner can index a normal-only point after the emitted point array; these
+/// points preserve hole neighbors absent from face-varying emitted geometry.
+/// Consumers sum cross(next-current, previous-current).
+/// Copies share this sum only while both identity and current position match.
+/// The complete trailing normal block, including its counts, is absent for
+/// topology without polygon normal correspondence and for lightweight instance
+/// references. Authored normals take precedence. The fixed header is unchanged.
+/// ABI v35 uses the high bit of normal_identity_count_and_mode to request
+/// triangle-local fallback normals; the remaining bits carry point_count.
+/// This mode describes the fallback even when authored normals are present, so
+/// consumers can recompute it after simulated points replace those normals.
+///
+/// Each Ptex mapping is 28 bytes: uint32 face_index followed by float
+/// corner_coordinates[6] in triangle-corner order. Status is NOT_REQUESTED
+/// when no ptexFaceOffset primvar is present, MAPPED when one entry exists for
+/// each emitted triangle, or a specific refusal status when mapping could not
+/// be established. A refused mapping has a zero count.
+///
+/// ABI v32 appends the Ptex count and status after the v23 instancer-context
+/// count. The variable mapping block follows the instancer-context entries.
 ///
 /// ABI v23 adds the ordered instancer context. Every fixed offset up to and
 /// including instancer_path_byte_count is unchanged from v22; the only fixed
@@ -439,10 +514,24 @@ extern "C" {
 /// output entries must not introduce a camera headlight into an authored scene.
 /// The no-light scene keeps the deterministic headlight default.
 ///
-/// The four supported FRAME sizes are 272, 536, 23096 (lighting) and 23368
-/// (lighting plus domes) bytes, including the command header. The direct count
-/// is at 536, lighting_flags at 540, the 176-byte entries at 552, ambient at
-/// 23080, dome count at 23096 and the 32-byte dome entries at 23112.
+/// The five supported FRAME sizes are 272, 536, 23096 (lighting), 23368
+/// (lighting plus domes) and 25416 (lighting, domes and shaping) bytes,
+/// including the command header. The direct count is at 536, lighting_flags at
+/// 540, the 176-byte entries at 552, ambient at 23080, dome count at 23096, the
+/// 32-byte dome entries at 23112 and the 16-byte shaping entries at 23368.
+/// hdSilk writes the 25416-byte form.
+///
+/// ABI v28 appends one shaping entry per direct-light slot, in the same order
+/// as the direct-light table:
+///   float  cone_angle (degrees, 0..180; 180 is unshaped)
+///   float  focus (cosine exponent, >= 0)
+///   uint32 reserved[2] (0)
+/// Rect and disk lights carry the Storm area-light approximation: ShapingAPI
+/// cone angle (default 90, so these lights are lit on their -Z side only) and
+/// focus. Zero-radius sphere lights also carry cone and focus when the authored
+/// cone is below 180 degrees, shaping spot emission. Finite-radius spheres and
+/// other published types write 180 and 0. A slot past the direct-light count
+/// is all zero. Cone softness and IES profiles are not published.
 ///
 /// ABI v21 appends the bounded dome table after ambient_intensity. It exists so
 /// that a dome light can be addressed by a per-prim UsdLux collection, which the
@@ -583,6 +672,8 @@ extern "C" {
 ///        *    4 uint32   generated_fragment_msl_source_byte_count
 ///        *    * uint8    generated_fragment_msl_source_bytes
 ///        *   24 float    uv_transform[6]
+///        *    4 uint32   alternate_uv_parameter_mask (ABI v30)
+///        *   24 float    alternate_uv_transform[6] (ABI v30)
 ///
 /// Each scalar entry is:
 ///        0    4 uint32   parameter (OPENUSD_SILK_MATERIAL_*)
@@ -603,8 +694,19 @@ extern "C" {
 ///       76    4 uint32   output_channel (OPENUSD_SILK_TEXTURE_CHANNEL_*)
 ///       80    4 uint32   composite_op (OPENUSD_SILK_COMPOSITE_*)
 ///       84    4 float    composite_factor
-///       88    * uint8    asset[asset_byte_count] (UTF-8, resolved, no NUL)
+///       88    4 uint32   source_kind (OPENUSD_SILK_TEXTURE_SOURCE_*)
+///       92    * uint8    asset[asset_byte_count] (UTF-8, resolved when available, no NUL)
 ///        *    * uint8    uv_primvar[uv_primvar_byte_count] (UTF-8, no NUL)
+///
+/// ABI v33 identifies Ptex sources independently of their asset names.
+/// A Ptex entry has no UV primvar or composite operand. Its per-corner face
+/// mappings come from the bound mesh, not from an ordinary image coordinate.
+///
+/// For OPENUSD_SILK_MATERIAL_VOLUME_DENSITY, uv_primvar contains the
+/// comma-separated width, height and depth of the R32 field. A native sampled
+/// field's asset begins with "hdsilk-volume:" followed by the resolved source
+/// VDB path; it is not a decoded-file path. Retain the page's volume assets and
+/// copy the field by material path before releasing that lease.
 ///
 /// ABI v13 adds output_channel. It is the resolved output port of the connected
 /// UsdUVTexture -- the "r", "g", "b", "a" or "rgb" token the surface input is
@@ -620,37 +722,46 @@ extern "C" {
 ///
 /// wrap_s, wrap_t, and fallback are resolved from whichever schema the connected
 /// image node belongs to, not from one fixed set of names. A UsdUVTexture states
-/// them as wrapS/wrapT and fallback, and an unauthored wrap resolves to
-/// OPENUSD_SILK_WRAP_BLACK. A MaterialX ND_image_* states them as uaddressmode,
-/// vaddressmode, and default, and an unauthored address mode resolves to
+/// them as wrapS/wrapT and fallback, and an unauthored wrap publishes
+/// OPENUSD_SILK_WRAP_USE_METADATA. A MaterialX ND_image_* states them as
+/// uaddressmode, vaddressmode, and default, and an unauthored address mode resolves to
 /// OPENUSD_SILK_WRAP_REPEAT because MaterialX defaults both axes to periodic.
-/// MaterialX "constant" addressing is carried as OPENUSD_SILK_WRAP_BLACK, which
-/// is the wire's "neither periodic nor mirrored" mode. That is an approximation
-/// and is documented as one: see OPENUSD_SILK_WRAP_BLACK below. An address mode
+/// MaterialX "constant" addressing is carried as OPENUSD_SILK_WRAP_CONSTANT,
+/// whose border is this entry's fallback, the node's `default`. An address mode
 /// outside the four MaterialX names is rejected with a diagnostic and the input
 /// keeps its documented default.
 ///
-/// ABI v14 appends uv_transform, the one constant texture-coordinate transform
-/// every texture of this material samples through, as the row-major affine
+/// ABI v14 appends uv_transform, the primary constant texture-coordinate
+/// transform, as the row-major affine
 /// (m00, m01, m10, m11, tx, ty) applied as u' = m00*u + m01*v + tx and
 /// v' = m10*u + m11*v + ty. It is the identity (1, 0, 0, 1, 0, 0) unless the
 /// graph routes texture coordinates through a chain of MaterialX place2d or
 /// UsdPreviewSurface UsdTransform2d nodes whose inputs are all constant, in
 /// which case that chain is folded exactly and composed into one affine,
 /// including place2d's SRT and TRS operation orders and UsdTransform2d's
-/// opposite, counter-clockwise rotation sense. hdSilk carries one transform per
-/// material because the renderer samples every texture of a material from one
-/// coordinate stream, and it reconciles both halves of that stream: a texture
-/// asking for a different transform, or naming a different uv_primvar, than the
-/// material's first texture is dropped with a diagnostic rather than sampled
-/// with coordinates it did not author. Every uv_primvar surviving in one
-/// MATERIAL_UPSERT is therefore either equal to the material's stream or empty,
-/// which is what lets a consumer take the stream from the first entry that names
-/// one. A chain with a non-constant input, a
-/// chain passing through any other node, and a chain that never reaches a
-/// coordinate node are likewise rejected with a diagnostic and leave the input
+/// opposite, counter-clockwise rotation sense. It is the transform of the
+/// material's first surface texture. Since ABI v30 a material may carry a second
+/// one; see alternate_uv_transform below. hdSilk reconciles both halves of the
+/// coordinate stream: a texture asking for a third transform, or naming a third
+/// uv_primvar, is dropped with a diagnostic rather than sampled with coordinates
+/// it did not author. Every surface uv_primvar surviving in one MATERIAL_UPSERT
+/// is therefore one of at most two names or empty. Displacement can name its
+/// own coordinate set. A chain with a non-constant input, a chain passing
+/// through any other node, and a chain that never reaches a coordinate node are
+/// likewise rejected with a diagnostic and leave the input
 /// at the documented default, because folding part of an authored chain would
 /// render coordinates the graph never produced.
+///
+/// ABI v30 appends alternate_uv_parameter_mask and alternate_uv_transform, so one
+/// material can sample its images through two different folded transforms. The
+/// mask has bit (1u << parameter) set for every surface parameter whose texture
+/// entries read the alternate transform; every other surface entry reads
+/// uv_transform. The alternate transform is the first surface transform, in the
+/// fixed input order, that differs from uv_transform. When no entry differs, the
+/// mask is zero and the transform is the identity. Both entries of a composited
+/// parameter read one transform, and a mask bit always names a surface texture
+/// the record carries; displacement is never masked, because the CPU samples it
+/// through uv_transform.
 ///
 /// Like the vertex attribute table, both tables are keyed by an explicit
 /// parameter id, so supporting a further UsdPreviewSurface input needs a new
@@ -688,8 +799,8 @@ extern "C" {
 /// parameter has *both* entries of that second parameter dropped with a
 /// diagnostic, leaving that input at its documented default; publishing only its
 /// first operand would render one of two authored images and look plausible.
-/// Both operands read the material's single texture-coordinate stream, which the
-/// uv_primvar reconciliation above already guarantees.
+/// Both operands must use the same texture-coordinate stream and folded
+/// transform. Other inputs may use the alternate stream or transform.
 ///
 /// surface_kind is OPENUSD_SILK_SURFACE_UNSUPPORTED when the bound network is
 /// not a UsdPreviewSurface. Such a material is still published, with empty
@@ -1092,12 +1203,13 @@ extern "C" {
 #define OPENUSD_SILK_MAX_SUBPRIM_IDENTITY_BYTES 67108864u
 
 /// The largest number of shadow maps one page describes. The bound is a memory
-/// bound as much as a wire bound: a consumer allocates one square depth map per
-/// descriptor, so four 2048-square D32 maps is the 64 MiB ceiling this ABI
-/// permits. A scene with more shadow-casting lights than fit publishes the
+/// bound as much as a wire bound: 24 maps occupy a five-by-five atlas, at most
+/// 400 MiB for 2048-square D32 tiles, subject to consumer admission.
+/// A scene with more than four shadow-casting lights publishes the
 /// lowest light indices and sets
 /// OPENUSD_SILK_SHADOW_UNSUPPORTED_MAP_BUDGET.
-#define OPENUSD_SILK_MAX_SHADOW_MAPS 4u
+#define OPENUSD_SILK_MAX_SHADOW_MAPS 24u
+#define OPENUSD_SILK_MAX_SHADOW_LIGHTS 4u
 
 /// The square shadow-map resolutions a descriptor may name. Both bounds are
 /// inclusive and every published value is a power of two, so a consumer can
@@ -1107,20 +1219,29 @@ extern "C" {
 #define OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION 1024u
 
 /// Descriptor flags. ORTHOGRAPHIC states that the projection has no perspective
-/// divide, which is exact for a distant light and is the only projection hdSilk
-/// derives today. CASTER_LINKED states that at least one published prim is
-/// excluded from this light's caster collection, so a consumer that ignores the
-/// LIGHT_LINK shadow mask renders a knowably different image.
+/// divide; it is used for distant lights. A zero-radius sphere spot uses a
+/// perspective projection with no flag. CUBE_FACE groups six perspective maps
+/// for one point light in world-axis order +X, -X, +Y, -Y, +Z, -Z.
+/// EMITTER_SAMPLE groups five perspective maps for one finite-area light, one
+/// map per deterministic point on the emitter surface.
+/// CASTER_LINKED states that at least one
+/// published prim is excluded from this light's caster collection, so a consumer
+/// that ignores the LIGHT_LINK shadow mask renders a knowably different image.
 #define OPENUSD_SILK_SHADOW_FLAG_NONE 0u
 #define OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC 1u
 #define OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED 2u
+#define OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE 4u
+#define OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE 8u
 
 /// Authored shadow state hdSilk did not put on the SHADOW command.
-/// LIGHT_TYPE is set when a shadow-enabled direct light is not a distant light:
-/// only a distant light has an exact light-space projection here, and a sphere,
-/// rect, disk or cylinder light would need a projection this producer has not
-/// derived. MAP_BUDGET is set when more lights asked for a map than
-/// OPENUSD_SILK_MAX_SHADOW_MAPS allows. NO_CASTERS is set when a light asked for
+/// LIGHT_TYPE is set when a light has no supported projection: distant lights
+/// use orthographic maps, zero-radius sphere spots use one perspective map when
+/// their ShapingAPI cone half-angle is in (0, 90) degrees, wider or unshaped
+/// zero-radius lights use six cube faces, and finite-area lights use five
+/// perspective maps from deterministic emitter-surface samples when every sample
+/// can project the complete caster bounds. MAP_BUDGET is set when more lights
+/// asked for maps than OPENUSD_SILK_MAX_SHADOW_LIGHTS allows, or their complete
+/// projection groups exceed OPENUSD_SILK_MAX_SHADOW_MAPS. NO_CASTERS is set when a light asked for
 /// a map but the published geometry has no world extent to derive one from.
 #define OPENUSD_SILK_SHADOW_UNSUPPORTED_NONE 0u
 #define OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE 1u
@@ -1243,26 +1364,29 @@ extern "C" {
 #define OPENUSD_SILK_MATERIAL_OPACITY 8u
 #define OPENUSD_SILK_MATERIAL_OPACITY_THRESHOLD 9u
 #define OPENUSD_SILK_MATERIAL_IOR 10u
+/// A NORMAL texture's scale and bias map texels to encoded [0,1] directions, which the
+/// consumer decodes once as 2x-1. The producer folds an authored UsdPreviewSurface decode into that space.
 #define OPENUSD_SILK_MATERIAL_NORMAL 11u
 #define OPENUSD_SILK_MATERIAL_DISPLACEMENT 12u
 #define OPENUSD_SILK_MATERIAL_OCCLUSION 13u
 #define OPENUSD_SILK_MATERIAL_USE_SPECULAR_WORKFLOW 14u
 #define OPENUSD_SILK_MATERIAL_VOLUME_DENSITY 15u
+/// Four scalar components: nonnegative normalized RGB luminance weights and a finite mix amount.
+/// Applies only to diffuse textures, before their scale/bias, preserving alpha and constant diffuse color.
+#define OPENUSD_SILK_MATERIAL_DIFFUSE_TEXTURE_LUMINANCE_MIX 16u
+/// OmniPBR dielectric custom-curve layer weight, one finite scalar in [0,1].
+#define OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL 17u
+/// Independent detail normal, combined with the primary normal using RNM.
+#define OPENUSD_SILK_MATERIAL_DETAIL_NORMAL 18u
+/// Three finite components each: (m00, m01, tx) and (m10, m11, ty).
+#define OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0 19u
+#define OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW1 20u
 
 /// Texture wrap modes.
 ///
-/// OPENUSD_SILK_WRAP_BLACK is the value published for UsdUVTexture's
-/// "black"/unauthored wrap and for MaterialX "constant" addressing. Its name
-/// describes what those schemas ask for, not what this renderer currently does:
-/// no supported backend is given a border colour, and every consumer in this
-/// repository resolves BLACK to clamp-to-edge, so it renders identically to
-/// OPENUSD_SILK_WRAP_CLAMP. A sample outside the unit range therefore returns
-/// the edge texel rather than black or the MaterialX node's `default` value.
-/// The wire carries no border colour at all, so a consumer that wants true
-/// border sampling needs a new field and an ABI bump rather than a different
-/// reading of this one. The two values stay distinct because they record
-/// different authored intent, which a consumer that does implement border
-/// sampling must be able to tell apart.
+/// OPENUSD_SILK_WRAP_BLACK is published for UsdUVTexture's authored "black" and
+/// unrecognized wrap tokens. Fragment sampling and vertex-stage displacement
+/// both use a transparent-black border for BLACK.
 #define OPENUSD_SILK_WRAP_BLACK 0u
 #define OPENUSD_SILK_WRAP_CLAMP 1u
 #define OPENUSD_SILK_WRAP_REPEAT 2u
@@ -1274,20 +1398,37 @@ extern "C" {
 /// Carried distinctly from OPENUSD_SILK_WRAP_BLACK because the two record
 /// different authored intent: `black` states the addressing, while
 /// `useMetadata` defers it to wrap metadata inside the image file. This delegate
-/// reads no image metadata, so both resolve to the same addressing -- USD's
-/// documented fallback when no metadata is present is `black` -- but a consumer
-/// that does read metadata must be able to tell them apart, and a consumer that
-/// reports what it resolved must be able to say which one it resolved.
+/// reads no image metadata. Consumers resolve the observed wrap on each axis,
+/// or use USD's `black` fallback without a diagnostic when a queried image has
+/// no wrap metadata. For a decoded image, an unavailable query or unsupported
+/// wrap mode makes fragment sampling report a black-border fallback; vertex
+/// displacement refuses the field.
 #define OPENUSD_SILK_WRAP_USE_METADATA 4u
+
+/// MaterialX `constant` addressing (ABI v29). Outside the unit range the
+/// texture reads the entry's own `fallback`, which for a MaterialX image node is
+/// its authored `default`. Before v29 this was published as
+/// OPENUSD_SILK_WRAP_BLACK and rendered a transparent-black border. The fallback
+/// passes through the entry's channel selection and affine exactly as a texel
+/// would, and a filtered sample near the edge blends into it as a border-colour
+/// sampler does.
+#define OPENUSD_SILK_WRAP_CONSTANT 5u
 
 /// UsdUVTexture sourceColorSpace values.
 #define OPENUSD_SILK_COLOR_SPACE_AUTO 0u
 #define OPENUSD_SILK_COLOR_SPACE_RAW 1u
 #define OPENUSD_SILK_COLOR_SPACE_SRGB 2u
 
-/// Connected UsdUVTexture output ports, carried by the ABI v13 texture table.
-/// These are exactly the outputs UsdUVTexture declares: four single-channel
-/// outputs and one three-channel output. A MaterialX image node's single "out"
+/// Texture source kinds, carried by the ABI v33 texture table.
+/// STANDARD covers ordinary image and volume sources; PTEX identifies a
+/// direct HwPtexTexture_1 source independently of the resolved file name.
+#define OPENUSD_SILK_TEXTURE_SOURCE_STANDARD 0u
+#define OPENUSD_SILK_TEXTURE_SOURCE_PTEX 1u
+
+/// Connected texture output ports, carried by the ABI v13 texture table.
+/// Values 0-4 are the outputs UsdUVTexture declares: four single-channel
+/// outputs and one three-channel output. Values 5-7 are explicit scalar opacity
+/// reductions. A MaterialX image node's single "out"
 /// port resolves to RGB for a colour or vector input and to R for a scalar input,
 /// which is what its one decoded channel occupies. There is no "unspecified"
 /// value: an entry whose output cannot be resolved is rejected, never published.
@@ -1296,6 +1437,10 @@ extern "C" {
 #define OPENUSD_SILK_TEXTURE_CHANNEL_B 2u
 #define OPENUSD_SILK_TEXTURE_CHANNEL_A 3u
 #define OPENUSD_SILK_TEXTURE_CHANNEL_RGB 4u
+/// Explicit scalar opacity reductions. Other parameters must not use these selectors.
+#define OPENUSD_SILK_TEXTURE_CHANNEL_AVERAGE_RGB 5u
+#define OPENUSD_SILK_TEXTURE_CHANNEL_LUMINANCE_RGB 6u
+#define OPENUSD_SILK_TEXTURE_CHANNEL_MAXIMUM_RGB 7u
 
 /// How a texture entry combines with the primary entry of the same parameter.
 ///
@@ -1371,6 +1516,8 @@ extern "C" {
 
 typedef struct openusd_silk_session openusd_silk_session;
 typedef struct openusd_silk_page openusd_silk_page;
+typedef struct openusd_silk_volume_assets openusd_silk_volume_assets;
+typedef struct openusd_silk_volume_budget openusd_silk_volume_budget;
 
 /// A native-owned, immutable view over a single serialized page of wire
 /// commands. The memory referenced by "data" remains valid until the
@@ -1406,14 +1553,153 @@ typedef struct openusd_silk_scene_ingestion_request
 
 #define OPENUSD_SILK_MESH_PREPARATION_VERSION 1u
 #define OPENUSD_SILK_MESH_PREPARATION_PAGE_VERSION 2u
+#define OPENUSD_SILK_COMMAND_STORAGE_VERSION 1u
+#define OPENUSD_SILK_VOLUME_BUDGET_VERSION 1u
+#define OPENUSD_SILK_SOURCE_IDENTITY_VERSION 1u
+#define OPENUSD_SILK_MAX_SOURCE_IDENTITY_QUERIES 1024u
+#define OPENUSD_SILK_MAX_SOURCE_IDENTITY_PATH_BYTES 4096u
+#define OPENUSD_SILK_MAX_SOURCE_IDENTITY_RESULT_BYTES 8388608u
 
-/// Optional v1 admission of coarse, smooth-shaded mesh preparation. The limit is
-/// a conservative logical buffer-reservation charge, not process memory or actual
-/// allocator bytes. Charges cover old/new mesh owners and worst-case numeric
-/// preparation buffers; shared record/producer leases are counted once. USD/Hydra
-/// source materialization, allocator/container overhead, materials, instance
-/// metadata, page copies and GPU storage are outside this metric.
-/// Skel/computed geometry, non-mesh Rprims, volumes and refinement are refused.
+/// An exact retained Hydra mesh key, not a source-stage path. The UTF-8 path
+/// is borrowed for the call, NUL-terminated and at most 4096 bytes before NUL.
+/// instance_index is non-negative and reserved must be zero. Size is 16 bytes.
+typedef struct openusd_silk_source_identity_query
+{
+    const char* path;
+    int32_t instance_index;
+    uint32_t reserved;
+} openusd_silk_source_identity_query;
+
+/// Optional source-identity extension, independent of session/page ABI versions.
+/// Requires the latest successful page revision and an unchanged source stage.
+/// Up to 1024 queries are resolved atomically in input order. Result admission
+/// is 8 through 8388608 serialized bytes; allocator overhead is separate.
+/// Size is 32 bytes on shipped 64-bit RIDs.
+typedef struct openusd_silk_source_identity_request
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint64_t page_revision;
+    const openusd_silk_source_identity_query* queries;
+    uint32_t query_count;
+    uint32_t maximum_result_bytes;
+} openusd_silk_source_identity_request;
+
+/// Resolves retained mesh keys to authored prim paths and ordered point-instancer
+/// contexts using USD's origin data. Native USD instances resolve to instance-proxy
+/// paths without a synthetic Hydra instancer context. Returned paths are source
+/// identities, not replacements for renderer cache keys.
+/// The little-endian result begins with uint32 version, uint32 count. Each record:
+/// uint32 pathByteCount, uint32 contextCount, UTF-8 path (no NUL), then each context
+/// level: int32 instanceIndex, uint32 pathByteCount, UTF-8 instancer path (no NUL).
+/// Contexts have at most 64 levels; paths have at most 4096 bytes. No partial
+/// records are copied on failure. BUFFER_TOO_SMALL reports the exact required
+/// capacity without writing buffer; a zero-capacity/null buffer may size the result.
+/// Stale revisions/stage edits, unknown keys and unsupported origins fail explicitly.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_resolve_source_identities(
+    const openusd_silk_session* session,
+    const openusd_silk_source_identity_request* request,
+    uint8_t* buffer,
+    size_t capacity,
+    size_t* required,
+    openusd_error_buffer* error);
+
+/// One selected Ptex face in a full-resolution selection. data_offset_bytes
+/// addresses the first byte in the corresponding packed pixel buffer.
+/// Flags use OPENUSD_SILK_PTEX_FACE_* bits. Adjacency entries use Ptex edge
+/// order: bottom, right, top, left; -1 means no adjacent face. Size is 64 bytes
+/// on shipped 64-bit RIDs.
+typedef struct openusd_silk_ptex_face_layout
+{
+    uint32_t struct_size;
+    uint32_t face_id;
+    uint32_t width;
+    uint32_t height;
+    uint32_t row_stride_bytes;
+    uint32_t flags;
+    uint64_t data_offset_bytes;
+    int32_t adjacent_face_ids[4];
+    uint32_t adjacent_edge_ids[4];
+} openusd_silk_ptex_face_layout;
+
+/// Format and extent for one Ptex face decode request. mesh_type and data_type
+/// use OPENUSD_SILK_PTEX_MESH_* and OPENUSD_SILK_PTEX_DATA_* values.
+/// alpha_channel is -1 when the texture has no alpha channel.
+/// required_byte_count is the packed pixel extent. The packet is 40 bytes on
+/// shipped 64-bit RIDs.
+typedef struct openusd_silk_ptex_decode_info
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t mesh_type;
+    uint32_t data_type;
+    uint32_t channel_count;
+    int32_t alpha_channel;
+    uint32_t file_face_count;
+    uint32_t requested_face_count;
+    uint64_t required_byte_count;
+} openusd_silk_ptex_decode_info;
+
+/// Opt-in immutable limits for file-backed updates. All live files from this
+/// session share maximum_live_bytes, including acknowledged/replay owners.
+/// The pool outlives the session while any file remains owned. Quotas count
+/// logical file bytes, not filesystem cache, metadata or total process memory.
+/// maximum_update_bytes <= maximum_live_bytes; 8 <= maximum_command_bytes <=
+/// INT32_MAX; 0 < transfer_buffer_bytes <= maximum_command_bytes.
+typedef struct openusd_silk_command_storage_limits
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint64_t maximum_live_bytes;
+    uint64_t maximum_update_bytes;
+    uint32_t maximum_command_bytes;
+    uint32_t transfer_buffer_bytes;
+} openusd_silk_command_storage_limits;
+
+/// Metadata for an immutable file-backed update. No native data pointer is
+/// exposed. Read bounded chunks with page_read_storage, then acknowledge/release
+/// with the ordinary page ownership functions. Size is 40 bytes on shipped RIDs.
+typedef struct openusd_silk_command_storage_view
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t page_abi_version;
+    uint32_t command_count;
+    uint64_t revision;
+    uint64_t data_size;
+    uint32_t maximum_command_bytes;
+    uint32_t maximum_transfer_bytes;
+} openusd_silk_command_storage_view;
+
+typedef struct openusd_silk_command_storage_usage
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint64_t maximum_live_bytes;
+    uint64_t live_bytes;
+    uint64_t peak_live_bytes;
+} openusd_silk_command_storage_usage;
+
+/// One consistent snapshot of logical decoded-field reservations. The packet
+/// is 40 bytes. A reservation is counted once while any session, page or lease
+/// owns the corresponding field.
+typedef struct openusd_silk_volume_budget_usage
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint64_t maximum_bytes;
+    uint64_t reserved_bytes;
+    uint64_t peak_reserved_bytes;
+    uint64_t reservation_count;
+} openusd_silk_volume_budget_usage;
+
+/// Optional v1 admission of coarse meshes, point Rprims and supported linear curves at
+/// Low complexity and SmoothShaded draw mode. The limit is a conservative logical buffer-reservation
+/// charge, not process memory or actual allocator bytes. Charges cover old/new geometry
+/// owners and worst-case numeric preparation buffers; shared record/producer leases
+/// are counted once. USD/Hydra source materialization, allocator/container overhead,
+/// materials, instance metadata, page copies and GPU storage are outside this metric.
+/// Skel/computed geometry, cubic or unsupported curves, volumes and refinement are refused.
 /// maximum_reserved_bytes must be positive. Both packets are 16/32 bytes on every RID.
 typedef struct openusd_silk_mesh_preparation_limits
 {
@@ -1454,6 +1740,87 @@ OPENUSD_HDSILK_API uint32_t openusd_silk_get_session_abi_version(void)
 OPENUSD_HDSILK_API uint32_t openusd_silk_get_page_abi_version(void)
     OPENUSD_HDSILK_NOEXCEPT;
 
+/// Decodes the selected faces at full resolution into one packed caller-owned
+/// buffer. maximum_face_dimension limits each face dimension.
+/// maximum_decoded_bytes limits the packed pixel bytes, not Ptex's internal
+/// allocations, layout buffers, allocator overhead or later GPU storage.
+/// path is passed to Ptex unchanged. Face IDs are preserved in request order,
+/// including duplicates; a request admits at most 65,536 IDs. A short faces or
+/// pixels buffer returns BUFFER_TOO_SMALL, sets info to the exact required face
+/// and byte counts, and leaves both data buffers unchanged. A sizing call with
+/// both output buffers null inspects face metadata but does not decode texels.
+/// The caller can reserve the reported byte count before calling again with
+/// output buffers. info must be initialized with
+/// sizeof(openusd_silk_ptex_decode_info) and version 1. Requires no session and
+/// does not change session/page ABI versions.
+OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_decode_faces(
+    const char* path,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    uint8_t* pixels,
+    uint64_t pixel_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) OPENUSD_HDSILK_NOEXCEPT;
+
+/// Describes selected Ptex faces without requesting their pixels. Face IDs,
+/// limits, info initialization and request ordering follow ptex_decode_faces.
+/// Layout offsets and required_byte_count describe the packed pixel buffer a
+/// matching decode would require. A short faces buffer returns BUFFER_TOO_SMALL,
+/// sets info to the required counts and leaves faces unchanged. Each call opens
+/// the asset independently. Matching layouts do not establish that its texels
+/// stayed unchanged. Callers requiring one source across calls can use the
+/// memory-source functions below. Requires no session and does not change the
+/// session/page ABI versions.
+OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_describe_faces(
+    const char* path,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) OPENUSD_HDSILK_NOEXCEPT;
+
+/// Decodes faces from caller-owned encoded Ptex bytes. The caller must keep
+/// source unchanged and valid until the call returns; the function does not
+/// retain the pointer. To use the same source for discovery and decode, pass
+/// the same immutable bytes to each memory-source call. The input bytes and
+/// Ptex's internal allocations are outside maximum_decoded_bytes. Face,
+/// capacity, info and error behavior otherwise follows ptex_decode_faces.
+OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_decode_faces_from_memory(
+    const uint8_t* source,
+    uint64_t source_size,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    uint8_t* pixels,
+    uint64_t pixel_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) OPENUSD_HDSILK_NOEXCEPT;
+
+/// Describes faces from caller-owned encoded Ptex bytes without decoding
+/// texels. Source ownership and lifetime follow ptex_decode_faces_from_memory;
+/// face and output-capacity behavior follows ptex_describe_faces.
+OPENUSD_HDSILK_API openusd_status openusd_silk_ptex_describe_faces_from_memory(
+    const uint8_t* source,
+    uint64_t source_size,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) OPENUSD_HDSILK_NOEXCEPT;
+
 /// Compatibility path API. Registers hdSilk, opens a temporary data-stage
 /// handle, and delegates to openusd_silk_session_create_from_stage.
 OPENUSD_HDSILK_API openusd_status openusd_silk_session_create(
@@ -1491,12 +1858,77 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_session_set_preparation_limits(
     const openusd_silk_mesh_preparation_page_limits* limits,
     openusd_error_buffer* error);
 
+/// Explicitly opts into file-backed sync before the first sync. Requires
+/// configured mesh preparation ceilings and acknowledgement mode. Existing
+/// contiguous syncs keep their page limits. Stored syncs additionally apply that
+/// page limit to each command; their total extent uses maximum_update_bytes.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_set_command_storage_limits(
+    openusd_silk_session* session,
+    const openusd_silk_command_storage_limits* limits,
+    openusd_error_buffer* error);
+
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_get_command_storage_usage(
+    openusd_silk_session* session,
+    openusd_silk_command_storage_usage* usage,
+    openusd_error_buffer* error);
+
+/// Creates an optional shared decoded-field budget with a positive byte limit.
+/// The limit covers private decoded-field storage, not Hio's earlier decode
+/// allocations, filesystem cache, allocator overhead, host memory or GPU memory.
+/// This extension is independent of the session and page ABI versions.
+OPENUSD_HDSILK_API openusd_status openusd_silk_volume_budget_create(
+    uint64_t maximum_bytes,
+    openusd_silk_volume_budget** budget,
+    openusd_error_buffer* error);
+
+/// Installs a shared budget before the first sync attempt. Repeating the same
+/// budget is allowed; replacement and retroactive configuration are refused.
+/// Each session retains the budget independently of the caller's handle.
+/// Admission failure rejects the sync without publishing a page.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_set_volume_budget(
+    openusd_silk_session* session,
+    const openusd_silk_volume_budget* budget,
+    openusd_error_buffer* error);
+
+/// Copies a version-1 accounting snapshot. The caller must serialize release
+/// of its budget handle against calls that use that same handle.
+OPENUSD_HDSILK_API openusd_status openusd_silk_volume_budget_get_usage(
+    const openusd_silk_volume_budget* budget,
+    openusd_silk_volume_budget_usage* usage,
+    openusd_error_buffer* error);
+
+/// Releases this handle. Sessions and field leases retain their own ownership.
+OPENUSD_HDSILK_API void openusd_silk_volume_budget_release(
+    openusd_silk_volume_budget* budget) OPENUSD_HDSILK_NOEXCEPT;
+
 /// Copies the successful page's immutable version-1 reservation snapshot.
 /// An unbounded page reports zero counters. The page need not retain its session.
 OPENUSD_HDSILK_API openusd_status openusd_silk_page_get_preparation_usage(
     const openusd_silk_page* page,
     openusd_silk_mesh_preparation_usage* usage,
     openusd_error_buffer* error);
+
+/// Retains the immutable decoded volume fields associated with a page. An empty
+/// page returns a null lease. The lease remains valid after page or session
+/// release and must be released with openusd_silk_volume_assets_release.
+OPENUSD_HDSILK_API openusd_status openusd_silk_page_retain_volume_assets(
+    const openusd_silk_page* page,
+    openusd_silk_volume_assets** assets,
+    openusd_error_buffer* error);
+
+/// Copies the complete R32 density field for a material from a retained lease.
+/// The destination size must exactly match the dimensions in the material
+/// command. A missing material or incorrect size is refused without copying.
+/// A storage read failure can leave a partial copy; discard the destination.
+OPENUSD_HDSILK_API openusd_status openusd_silk_volume_assets_copy(
+    openusd_silk_volume_assets* assets,
+    const char* material_path,
+    uint8_t* destination,
+    size_t destination_size,
+    openusd_error_buffer* error);
+
+OPENUSD_HDSILK_API void openusd_silk_volume_assets_release(
+    openusd_silk_volume_assets* assets) OPENUSD_HDSILK_NOEXCEPT;
 
 /// Enables explicit page acknowledgement before this session's first sync.
 /// Existing C callers that do not opt in retain their historical immediate publication.
@@ -1596,6 +2028,30 @@ OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync_with_mesh_preparatio
     openusd_silk_mesh_preparation_usage* usage,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
+    openusd_error_buffer* error);
+
+/// Writes one complete update to private delete-on-close storage under the
+/// configured policy. No readable handle or output metadata is published until
+/// final flush succeeds. Optional preparation limits can only tighten admission.
+OPENUSD_HDSILK_API openusd_status openusd_silk_session_sync_to_storage(
+    openusd_silk_session* session,
+    int32_t width,
+    int32_t height,
+    double time_code,
+    const openusd_render_camera* camera,
+    const openusd_silk_scene_ingestion_request* request,
+    const openusd_silk_mesh_preparation_limits* limits,
+    openusd_silk_mesh_preparation_usage* usage,
+    openusd_silk_page** page,
+    openusd_silk_command_storage_view* view,
+    openusd_error_buffer* error);
+
+/// Reads exactly count bytes, bounded by the returned transfer ceiling.
+/// Offset/count outside the immutable extent are refused before copying.
+/// On I/O failure destination bytes are unspecified; no partial read is success.
+/// Concurrent reads are serialized. The caller must not release the page while reading.
+OPENUSD_HDSILK_API openusd_status openusd_silk_page_read_storage(
+    openusd_silk_page* page, uint64_t offset, uint8_t* destination, size_t count,
     openusd_error_buffer* error);
 
 /// Marks the next sync for current native scene repopulation. This is not replay:

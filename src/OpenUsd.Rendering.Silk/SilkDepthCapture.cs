@@ -80,7 +80,13 @@ public sealed class SilkDepthCaptureOptions
     /// The managed pixel-array budget, charged conservatively at 20 bytes per pixel:
     /// 8 for RGBA16Float staging, 4 for RGBA8 output, 4 for float32 depth, and 4 for the
     /// managed RGBA8 selection-upload copy. Every capture path uses this uniform
-    /// charge, including GPU display transforms or disabled selection.
+    /// charge, including GPU display transforms or disabled selection. Setting
+    /// <see cref="IncludePrimId"/>, <see cref="IncludeInstanceId"/> or <see cref="IncludeElementId"/>
+    /// adds 8 bytes per pixel: 4 for the shared RGBA8 pick-token readback and 4 for the first
+    /// int32 output raster. Each further requested pick plane adds 4 more bytes per pixel for its
+    /// own int32 output raster.
+    /// Setting <see cref="IncludeNormal"/> adds 28 bytes per pixel: 16 for the RGBA32Float
+    /// normal readback and 12 for the float32 RGB output.
     /// </param>
     public SilkDepthCaptureOptions(
         int maximumPixelCount = 16_777_216,
@@ -101,6 +107,182 @@ public sealed class SilkDepthCaptureOptions
 
     /// <summary>Gets the maximum managed pixel-array charge in bytes.</summary>
     public long MaximumReadbackBytes { get; }
+
+    /// <summary>
+    /// Gets or initializes whether the visible prim identity plane is returned in
+    /// <see cref="SilkFrameCaptureResult.PrimId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The identity plane is drawn by the prim-level pick pass over the whole viewport,
+    /// so it requires a pick-capable graphics device; other devices refuse the capture
+    /// with <see cref="NotSupportedException"/>. It adds 8 bytes per pixel to the
+    /// managed readback charge.
+    /// </remarks>
+    public bool IncludePrimId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the visible instance index plane is returned in
+    /// <see cref="SilkFrameCaptureResult.InstanceId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The plane is derived from the same prim-level pick pass and token readback as
+    /// <see cref="IncludePrimId"/>; requesting both runs one pass. It requires a
+    /// pick-capable graphics device and adds 8 bytes per pixel to the managed readback
+    /// charge, or 4 bytes per pixel when <see cref="IncludePrimId"/> is also set.
+    /// </remarks>
+    public bool IncludeInstanceId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the visible authored face index plane is returned in
+    /// <see cref="SilkFrameCaptureResult.ElementId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The plane is derived from the same pick pass and token readback as
+    /// <see cref="IncludePrimId"/> and <see cref="IncludeInstanceId"/>; requesting any
+    /// combination runs one pass. It requires a pick-capable graphics device and adds
+    /// 8 bytes per pixel to the managed readback charge, or 4 bytes per pixel when another
+    /// pick plane is also set.
+    /// </remarks>
+    public bool IncludeElementId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the world-space normal plane is returned in
+    /// <see cref="SilkFrameCaptureResult.Normal"/>.
+    /// </summary>
+    /// <remarks>
+    /// The plane is drawn by a dedicated normal pass over the whole viewport of the
+    /// built-in <see cref="SilkMeshRenderer"/>, and adds 28 bytes per pixel to the
+    /// managed readback charge.
+    /// </remarks>
+    public bool IncludeNormal { get; init; }
+}
+
+/// <summary>One distinct visible prim identity listed by a prim identity capture.</summary>
+/// <param name="Path">The retained Hydra prim path.</param>
+/// <param name="InstanceIndex">The retained instance ordinal, or -1 when the prim is not instanced.</param>
+public readonly record struct SilkPrimIdentity(string Path, int InstanceIndex);
+
+/// <summary>Managed-owned per-pixel visible prim identity indices.</summary>
+/// <remarks>
+/// Each value indexes <see cref="Identities"/>, which lists every distinct visible
+/// (path, instance index) of the frame exactly once, sorted by ordinal path and then
+/// instance index. Background pixels are -1. Storage is detached from the renderer and
+/// graphics device.
+/// </remarks>
+public sealed class SilkPrimIdCaptureResult
+{
+    internal SilkPrimIdCaptureResult(int width, int height, int[] values, SilkPrimIdentity[] identities)
+    {
+        Width = width;
+        Height = height;
+        Values = values;
+        Identities = Array.AsReadOnly(identities);
+    }
+
+    /// <summary>Gets the width in pixels, equal to the accompanying color capture.</summary>
+    public int Width { get; }
+
+    /// <summary>Gets the height in pixels, equal to the accompanying color capture.</summary>
+    public int Height { get; }
+
+    /// <summary>
+    /// Gets exactly Width * Height identity indices in top-down, left-to-right row order,
+    /// without padding; -1 marks background.
+    /// </summary>
+    public ReadOnlyMemory<int> Values { get; }
+
+    /// <summary>Gets the dense, deterministically ordered identity table.</summary>
+    public IReadOnlyList<SilkPrimIdentity> Identities { get; }
+}
+
+/// <summary>Managed-owned per-pixel visible instance indices.</summary>
+/// <remarks>
+/// Each value is the <see cref="SilkPrimIdentity.InstanceIndex"/> of the visible prim
+/// identity at that pixel: the retained instance ordinal within its innermost instancer,
+/// or -1 for background and for prims that are not instanced. Storage is detached from
+/// the renderer and graphics device.
+/// </remarks>
+public sealed class SilkInstanceIdCaptureResult
+{
+    internal SilkInstanceIdCaptureResult(int width, int height, int[] values)
+    {
+        Width = width;
+        Height = height;
+        Values = values;
+    }
+
+    /// <summary>Gets the width in pixels, equal to the accompanying color capture.</summary>
+    public int Width { get; }
+
+    /// <summary>Gets the height in pixels, equal to the accompanying color capture.</summary>
+    public int Height { get; }
+
+    /// <summary>
+    /// Gets exactly Width * Height instance indices in top-down, left-to-right row order,
+    /// without padding; -1 marks background and non-instanced prims.
+    /// </summary>
+    public ReadOnlyMemory<int> Values { get; }
+}
+
+/// <summary>Managed-owned per-pixel visible authored face indices.</summary>
+/// <remarks>
+/// Each value is the authored mesh face index of the front-most surface at that pixel:
+/// the face the rasterized triangle was triangulated from, which for a refined
+/// subdivision surface is the coarse authored face. Background pixels, and surfaces whose
+/// record publishes no authored face identity such as curves, points and meshes drawn as
+/// points, are -1. Storage is detached from the renderer and graphics device.
+/// </remarks>
+public sealed class SilkElementIdCaptureResult
+{
+    internal SilkElementIdCaptureResult(int width, int height, int[] values)
+    {
+        Width = width;
+        Height = height;
+        Values = values;
+    }
+
+    /// <summary>Gets the width in pixels, equal to the accompanying color capture.</summary>
+    public int Width { get; }
+
+    /// <summary>Gets the height in pixels, equal to the accompanying color capture.</summary>
+    public int Height { get; }
+
+    /// <summary>
+    /// Gets exactly Width * Height authored face indices in top-down, left-to-right row
+    /// order, without padding; -1 marks background and surfaces without face identity.
+    /// </summary>
+    public ReadOnlyMemory<int> Values { get; }
+}
+
+/// <summary>Managed-owned per-pixel world-space shading normals.</summary>
+/// <remarks>
+/// Each pixel holds the unit world-space normal of the front-most rasterized surface:
+/// the interpolated vertex normal transformed by the inverse transpose of the
+/// object-to-world matrix and flipped toward the viewer on back faces. Normal maps are
+/// not applied. Background pixels, pixels removed by authored clip planes, and surfaces
+/// whose normal is degenerate hold (0, 0, 0). Storage is detached from the renderer and
+/// graphics device.
+/// </remarks>
+public sealed class SilkNormalCaptureResult
+{
+    internal SilkNormalCaptureResult(int width, int height, float[] values)
+    {
+        Width = width;
+        Height = height;
+        Values = values;
+    }
+
+    /// <summary>Gets the width in pixels, equal to the accompanying color capture.</summary>
+    public int Width { get; }
+
+    /// <summary>Gets the height in pixels, equal to the accompanying color capture.</summary>
+    public int Height { get; }
+
+    /// <summary>
+    /// Gets exactly Width * Height * 3 float32 components, X, Y and Z per pixel, in
+    /// top-down, left-to-right row order without padding; (0, 0, 0) marks background.
+    /// </summary>
+    public ReadOnlyMemory<float> Values { get; }
 }
 
 internal sealed class SilkDepthCaptureRequest
@@ -111,6 +293,25 @@ internal sealed class SilkDepthCaptureRequest
     private readonly CancellationToken _cancellationToken;
     private readonly bool _includeDeviceDepth;
     private readonly bool _includeHdrColor;
+    private readonly bool _includePrimId;
+    private readonly bool _includeInstanceId;
+    private readonly bool _includeNormal;
+    private readonly bool _includeElementId;
+
+    private SilkDepthCaptureRequest(SilkDepthCaptureRequest source)
+    {
+        _width = source._width;
+        _height = source._height;
+        _pixelCount = source._pixelCount;
+        _includeDeviceDepth = source._includeDeviceDepth;
+        _includeHdrColor = source._includeHdrColor;
+        _includePrimId = source._includePrimId;
+        _includeInstanceId = source._includeInstanceId;
+        _includeNormal = source._includeNormal;
+        _includeElementId = source._includeElementId;
+    }
+
+    internal SilkDepthCaptureRequest ForReplay() => new(this);
 
     internal SilkDepthCaptureRequest(
         int width,
@@ -118,7 +319,11 @@ internal sealed class SilkDepthCaptureRequest
         SilkDepthCaptureOptions? options,
         CancellationToken cancellationToken,
         bool includeDeviceDepth = true,
-        bool includeHdrColor = false)
+        bool includeHdrColor = false,
+        bool includePrimId = false,
+        bool includeInstanceId = false,
+        bool includeNormal = false,
+        bool includeElementId = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
@@ -126,13 +331,18 @@ internal sealed class SilkDepthCaptureRequest
         ArgumentOutOfRangeException.ThrowIfGreaterThan(width, 16_384);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(height, 16_384);
         options ??= SilkDepthCaptureOptions.Default;
+        includePrimId |= options.IncludePrimId;
+        includeInstanceId |= options.IncludeInstanceId;
+        includeNormal |= options.IncludeNormal;
+        includeElementId |= options.IncludeElementId;
         long pixelCount = (long)width * height;
         if (pixelCount > options.MaximumPixelCount)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(width), "The depth capture exceeds the configured raster pixel quota.");
         }
-        if (pixelCount * 20 > options.MaximumReadbackBytes)
+        if (pixelCount * BytesPerPixel(includePrimId, includeInstanceId, includeNormal, includeElementId) >
+            options.MaximumReadbackBytes)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(width), "The color-and-depth capture exceeds the managed readback byte quota.");
@@ -143,7 +353,38 @@ internal sealed class SilkDepthCaptureRequest
         _cancellationToken = cancellationToken;
         _includeDeviceDepth = includeDeviceDepth;
         _includeHdrColor = includeHdrColor;
+        _includePrimId = includePrimId;
+        _includeInstanceId = includeInstanceId;
+        _includeNormal = includeNormal;
+        _includeElementId = includeElementId;
     }
+
+    internal bool IncludePrimId => _includePrimId;
+
+    internal bool IncludeInstanceId => _includeInstanceId;
+
+    internal bool IncludeNormal => _includeNormal;
+
+    internal bool IncludeElementId => _includeElementId;
+
+    internal bool IncludesPickRaster => _includePrimId || _includeInstanceId || _includeElementId;
+
+    /// <summary>
+    /// The uniform 20-byte color-and-depth charge plus exactly the identity storage
+    /// allocated: one shared RGBA8 token readback and one int32 raster per requested plane.
+    /// An instance-only capture resolves its instance indices in place of the index raster,
+    /// and an element-only capture allocates its face raster instead of the index raster.
+    /// A normal plane adds its RGBA32Float readback and its float32 RGB output.
+    /// </summary>
+    internal static int BytesPerPixel(
+        bool includePrimId, bool includeInstanceId, bool includeNormal = false, bool includeElementId = false)
+    {
+        int pickPlanes = (includePrimId ? 1 : 0) + (includeInstanceId ? 1 : 0) + (includeElementId ? 1 : 0);
+        return 20 + (pickPlanes == 0 ? 0 : 4 + (4 * pickPlanes)) + (includeNormal ? NormalBytesPerPixel : 0);
+    }
+
+    /// <summary>16 bytes of RGBA32Float readback and 12 bytes of float32 RGB output.</summary>
+    internal const int NormalBytesPerPixel = 28;
 
     internal static SilkDepthCaptureRequest ForHdrColor(
         int width,
@@ -159,7 +400,9 @@ internal sealed class SilkDepthCaptureRequest
         options ??= SilkHdrColorCaptureOptions.Default;
         return new SilkDepthCaptureRequest(
             width, height, options.Limits, cancellationToken,
-            options.IncludeDeviceDepth, includeHdrColor: true);
+            options.IncludeDeviceDepth, includeHdrColor: true, includePrimId: options.IncludePrimId,
+            includeInstanceId: options.IncludeInstanceId, includeNormal: options.IncludeNormal,
+            includeElementId: options.IncludeElementId);
     }
 
     internal void ThrowIfCancellationRequested() => _cancellationToken.ThrowIfCancellationRequested();
@@ -207,6 +450,15 @@ internal sealed class SilkDepthCaptureRequest
         ThrowIfCancellationRequested();
         return new SilkHdrColorCaptureResult(_width, _height, rgba16Float);
     }
+
+    internal (SilkPrimIdCaptureResult? PrimId, SilkInstanceIdCaptureResult? InstanceId,
+        SilkElementIdCaptureResult? ElementId) ReadbackPickPlanes(SilkMeshRenderer renderer) =>
+        IncludesPickRaster
+            ? renderer.CapturePickPlanes(_width, _height, this)
+            : (null, null, null);
+
+    internal SilkNormalCaptureResult? ReadbackNormal(SilkMeshRenderer renderer) =>
+        _includeNormal ? renderer.CaptureNormalPlane(_width, _height, this) : null;
 
     internal SilkDepthCaptureResult? Readback(ISilkGraphicsTexture texture)
     {

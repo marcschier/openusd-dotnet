@@ -19,7 +19,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// could carry the source asset instead.
 ///
 /// This scene index folds the two `nodeTypeInfo` values into the node
-/// identifier as `mdl:<module>:<material>` before the network reaches any
+/// identifier as `mdl:len:<module-byte-count>:<module><material>` before the network reaches any
 /// delegate. It changes no parameter and no connection, and it never touches a
 /// node that already has an identifier, so a stage whose MDL nodes do resolve
 /// through an installed Sdr plugin is left exactly as it was.

@@ -38,6 +38,21 @@ public sealed class OpenUsdSilkSession : IDisposable
     /// <summary>Gets immutable session ceilings, or null for historical per-request-only admission.</summary>
     public SilkPreparationLimits? PreparationLimits { get; }
 
+    /// <summary>Configures a shared decoded-field budget before the first sync attempt.</summary>
+    /// <remarks>
+    /// Repeating the same budget is allowed. Replacing it or configuring an already-used unbounded
+    /// session is refused. The session and its retained fields remain valid if the budget handle is disposed.
+    /// </remarks>
+    public void ConfigureVolumeFieldBudget(SilkVolumeFieldBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_handle.IsClosed || _handle.IsInvalid, this);
+            budget.Configure(_handle.DangerousGetHandle());
+        }
+    }
+
     internal bool HasSynchronized
     {
         get
@@ -102,7 +117,10 @@ public sealed class OpenUsdSilkSession : IDisposable
                 }
                 if (_replayRejectedPage is not { } pending)
                 {
-                    OpenUsdSilkPage page = ingestionOptions is null
+                    OpenUsdSilkPage page = PreparationLimits?.CommandStorage is not null
+                        ? OpenUsdSilkRuntime.SyncStored(_handle.DangerousGetHandle(), width, height, timeCode,
+                            camera, complexity, drawMode, PreparationLimits, ingestionOptions)
+                        : ingestionOptions is null
                         ? OpenUsdSilkRuntime.Sync(_handle.DangerousGetHandle(), width, height, timeCode,
                             camera, complexity, drawMode, PreparationLimits)
                         : OpenUsdSilkRuntime.Sync(_handle.DangerousGetHandle(), width, height, timeCode,
@@ -124,6 +142,33 @@ public sealed class OpenUsdSilkSession : IDisposable
                     _replayRejectedPage = null;
                 }
             }
+        }
+    }
+
+    /// <summary>Resolves retained Hydra mesh keys to authored source selections in one bounded batch.</summary>
+    /// <remarks>
+    /// Requires the latest successful page revision, no pending renderer replay, and an unchanged
+    /// source stage. Up to 1,024 keys and an 8-MiB serialized result are supported. Native instances
+    /// resolve to instance-proxy paths; point instances retain their complete source instancer chain.
+    /// These source paths must not replace retained Hydra keys used by GPU resources or picking.
+    /// Requires the optional native source-identity extension; older runtimes fail explicitly.
+    /// </remarks>
+    public IReadOnlyList<SelectionItem> ResolveSourceIdentities(
+        ulong pageRevision, ReadOnlySpan<(string Path, int InstanceIndex)> queries)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_handle.IsClosed || _handle.IsInvalid, this);
+            if (!_hasSynchronized || pageRevision != _lastPageRevision ||
+                _replayConflict || _replayRejectedPage is not null)
+            {
+                throw new InvalidOperationException(
+                    "Source identities require the latest synchronized page without pending renderer replay.");
+            }
+            IReadOnlyList<SelectionItem> result =
+                OpenUsdSilkRuntime.ResolveSourceIdentities(_handle.DangerousGetHandle(), pageRevision, queries);
+            GC.KeepAlive(_handle);
+            return result;
         }
     }
 

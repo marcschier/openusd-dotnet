@@ -31,7 +31,8 @@ typedef enum openusd_physx_status
     OPENUSD_PHYSX_STATUS_INVALID_PAGE = 5,
     OPENUSD_PHYSX_STATUS_INVALID_STATE = 6,
     OPENUSD_PHYSX_STATUS_UNSUPPORTED = 7,
-    OPENUSD_PHYSX_STATUS_CAPACITY_EXCEEDED = 8
+    OPENUSD_PHYSX_STATUS_CAPACITY_EXCEEDED = 8,
+    OPENUSD_PHYSX_STATUS_CANCELLED = 9
 } openusd_physx_status;
 
 typedef struct openusd_physx_error_buffer

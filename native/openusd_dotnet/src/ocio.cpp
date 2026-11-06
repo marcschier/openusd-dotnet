@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <clocale>
 #include <cstdlib>
 #include <filesystem>
 #include <set>
@@ -244,6 +245,126 @@ std::string FromPath(const std::filesystem::path& path)
 #else
     return path.string();
 #endif
+}
+
+#if defined(_WIN32) && defined(_MSC_VER) && defined(_DLL)
+OCIO::ConstConfigRcPtr LoadWindowsArchive(const std::string& path)
+{
+    const int previousMode = _configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
+    if (previousMode == -1)
+    {
+        throw OCIO::Exception("Could not enable the calling thread's OpenColorIO locale.");
+    }
+
+    OCIO::ConstConfigRcPtr config;
+    try
+    {
+        const char* currentLocale = std::setlocale(LC_CTYPE, nullptr);
+        if (currentLocale == nullptr)
+        {
+            throw OCIO::Exception("Could not read the calling thread's OpenColorIO locale.");
+        }
+        const std::string previousLocale(currentLocale);
+        if (std::setlocale(LC_CTYPE, ".UTF8") == nullptr)
+        {
+            throw OCIO::Exception("Could not enable UTF-8 for the calling thread's OpenColorIO locale.");
+        }
+
+        try
+        {
+            config = OCIO::Config::CreateFromFile(path.c_str());
+        }
+        catch (...)
+        {
+            if (std::setlocale(LC_CTYPE, previousLocale.c_str()) == nullptr)
+            {
+                throw OCIO::Exception("Could not restore the calling thread's OpenColorIO locale.");
+            }
+            throw;
+        }
+        if (std::setlocale(LC_CTYPE, previousLocale.c_str()) == nullptr)
+        {
+            throw OCIO::Exception("Could not restore the calling thread's OpenColorIO locale.");
+        }
+    }
+    catch (...)
+    {
+        if (_configthreadlocale(previousMode) == -1)
+        {
+            throw OCIO::Exception("Could not restore the calling thread's OpenColorIO locale mode.");
+        }
+        throw;
+    }
+
+    if (_configthreadlocale(previousMode) == -1)
+    {
+        throw OCIO::Exception("Could not restore the calling thread's OpenColorIO locale mode.");
+    }
+    return config;
+}
+#endif
+
+OCIO::ConstConfigRcPtr LoadConfig(const char* configPath)
+{
+#ifdef _WIN32
+    const std::string supplied(configPath);
+    if (supplied.find("ocio://") == std::string::npos)
+    {
+        const std::filesystem::path absolute = std::filesystem::absolute(ToPath(supplied));
+        const std::string utf8Path = FromPath(absolute);
+        const bool nonAscii = std::any_of(
+            utf8Path.begin(), utf8Path.end(), [](unsigned char value) { return value >= 0x80; });
+        if (nonAscii)
+        {
+            // OpenColorIO's Windows file-existence preflight interprets UTF-8 as the active code page.
+            std::ifstream stream = OpenBinary(utf8Path);
+            if (!stream)
+            {
+                const std::string message = "Could not open OpenColorIO configuration '" + supplied + "'.";
+                throw OCIO::Exception(message.c_str());
+            }
+
+            char signature[2]{};
+            stream.read(signature, sizeof(signature));
+            if (stream.gcount() == static_cast<std::streamsize>(sizeof(signature)) &&
+                signature[0] == 'P' && signature[1] == 'K')
+            {
+#if defined(_MSC_VER) && defined(_DLL)
+                // OCIO's archive reader accepts UTF-8; its filesystem preflight uses the
+                // CRT locale. Restrict that change to this thread and restore it on failure.
+                stream.close();
+                return LoadWindowsArchive(utf8Path);
+#else
+                throw OCIO::Exception(
+                    "OpenColorIO archives at non-ASCII Windows paths require the shared Windows CRT.");
+#endif
+            }
+            stream.clear();
+            stream.seekg(0);
+            if (!stream)
+            {
+                const std::string message = "Could not read OpenColorIO configuration '" + supplied + "'.";
+                throw OCIO::Exception(message.c_str());
+            }
+
+            try
+            {
+                OCIO::ConfigRcPtr config = OCIO::Config::CreateFromStream(stream)->createEditableCopy();
+                // Stream loading does not set the working directory used to resolve relative LUTs.
+                const std::string workingDirectory = FromPath(absolute.parent_path());
+                config->setWorkingDir(workingDirectory.c_str());
+                return config;
+            }
+            catch (const OCIO::Exception& error)
+            {
+                const std::string message =
+                    "Could not load OpenColorIO configuration '" + supplied + "': " + error.what();
+                throw OCIO::Exception(message.c_str());
+            }
+        }
+    }
+#endif
+    return OCIO::Config::CreateFromFile(configPath);
 }
 
 // Resolves a path to a stable identity for the visited set.
@@ -1092,7 +1213,7 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_processor_create(
 
     try
     {
-        OCIO::ConstConfigRcPtr config = OCIO::Config::CreateFromFile(config_path);
+        OCIO::ConstConfigRcPtr config = LoadConfig(config_path);
 
         const char* effectiveDisplay = (display != nullptr && display[0] != '\0')
             ? display
@@ -1492,7 +1613,7 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_config_cache_id(
         // The parsed config is discarded immediately: what is wanted is a fresh
         // observation of the config and of the files it references, so an identity
         // that outlived an edit would defeat the purpose of asking.
-        OCIO::ConstConfigRcPtr config = OCIO::Config::CreateFromFile(config_path);
+        OCIO::ConstConfigRcPtr config = LoadConfig(config_path);
         const char* cacheId = config->getCacheID(config->getCurrentContext());
         if (cacheId == nullptr)
         {
@@ -1572,13 +1693,19 @@ OPENUSD_DOTNET_API openusd_status openusd_ocio_config_cache_id(
 
         enqueue(configPath);
 
-        std::vector<std::string> sources;
-        CollectConfigFileTransforms(config, sources);
-        std::sort(sources.begin(), sources.end());
-        sources.erase(std::unique(sources.begin(), sources.end()), sources.end());
-        for (const std::string& source : sources)
+        // An OCIOZ config owns a proxy that resolves all LUTs inside the archive.
+        // Hashing the archive accounts for those bytes without treating similarly named
+        // files in the process working directory as dependencies.
+        if (!config->getConfigIOProxy())
         {
-            enqueue(resolveThroughContext(source));
+            std::vector<std::string> sources;
+            CollectConfigFileTransforms(config, sources);
+            std::sort(sources.begin(), sources.end());
+            sources.erase(std::unique(sources.begin(), sources.end()), sources.end());
+            for (const std::string& source : sources)
+            {
+                enqueue(resolveThroughContext(source));
+            }
         }
 
         uint64_t digest = 1469598103934665603ull;

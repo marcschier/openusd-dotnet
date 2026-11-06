@@ -9,18 +9,88 @@ public sealed partial class RuntimePackageTests
     private const string ExrExecutionRequiredVariable = "OPENUSD_EXR_EXECUTION_REQUIRED";
 
     [Test]
+    [Arguments("linux-x64", ".so")]
+    [Arguments("osx-arm64", ".dylib")]
+    public async Task PosixCorePackagesCarryExrCodecClosure(string rid, string extension)
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            (string installRoot, string shimRoot) = CreateSyntheticUnixInstall(workRoot, rid);
+            string packageRoot = Directory.CreateDirectory(Path.Combine(workRoot, "packages")).FullName;
+            PackedPackage package = await PackAsync(
+                repositoryRoot, $"OpenUsd.Runtime.Core.{rid}", installRoot, shimRoot, string.Empty, packageRoot);
+            foreach (string library in new[] { "OpenEXR-3_5", "OpenEXRCore-3_5", "Iex-3_5",
+                "IlmThread-3_5", "Imath-3_2" })
+            {
+                string name = $"lib{library}{extension}";
+                await AssertPackageEntryMatchesFileAsync(
+                    package.Path, $"runtimes/{rid}/native/{name}", Path.Combine(installRoot, "lib", name));
+            }
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("linux-x64", "libOpenEXR-3_5.so")]
+    [Arguments("linux-x64", "libOpenEXRCore-3_5.so")]
+    [Arguments("linux-x64", "libIex-3_5.so")]
+    [Arguments("linux-x64", "libIlmThread-3_5.so")]
+    [Arguments("osx-arm64", "libOpenEXR-3_5.dylib")]
+    [Arguments("osx-arm64", "libOpenEXRCore-3_5.dylib")]
+    [Arguments("osx-arm64", "libIex-3_5.dylib")]
+    [Arguments("osx-arm64", "libIlmThread-3_5.dylib")]
+    public async Task MissingExrCodecDependencyFailsPosixCorePackClearly(string rid, string dependency)
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            (string installRoot, string shimRoot) = CreateSyntheticUnixInstall(workRoot, rid);
+            File.Delete(Path.Combine(installRoot, "lib", dependency));
+            string packageRoot = Directory.CreateDirectory(Path.Combine(workRoot, "packages")).FullName;
+            InvalidOperationException? failure = null;
+            try
+            {
+                _ = await PackAsync(
+                    repositoryRoot, $"OpenUsd.Runtime.Core.{rid}", installRoot, shimRoot, string.Empty, packageRoot);
+            }
+            catch (InvalidOperationException exception)
+            {
+                failure = exception;
+            }
+            await Assert.That(failure).IsNotNull();
+            await Assert.That(failure!.Message).Contains("Core EXR output dependency is missing");
+            await Assert.That(failure.Message).Contains(dependency);
+            await Assert.That(Directory.GetFiles(packageRoot, "*.nupkg").Length).IsEqualTo(0);
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task CorePackagesExecuteBoundedExrFromCleanNativeAotFeed()
     {
         if (Environment.GetEnvironmentVariable(ExrExecutionRequiredVariable) != "1")
         {
-            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 to require the Windows x64 Core EXR execution proof.");
+            Skip.Test("Set OPENUSD_EXR_EXECUTION_REQUIRED=1 to require the current-host Core EXR execution proof.");
             return;
         }
-        if (!OperatingSystem.IsWindows() ||
-            System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture !=
-                System.Runtime.InteropServices.Architecture.X64)
+        System.Runtime.InteropServices.Architecture architecture =
+            System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+        if (!BitConverter.IsLittleEndian ||
+            !(OperatingSystem.IsWindows() && architecture == System.Runtime.InteropServices.Architecture.X64 ||
+            (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) &&
+            architecture is System.Runtime.InteropServices.Architecture.X64 or
+                System.Runtime.InteropServices.Architecture.Arm64))
         {
-            throw new InvalidOperationException("Required Core EXR execution needs the Windows x64 handle profile.");
+            throw new InvalidOperationException("Required Core EXR execution needs a supported regular-file profile.");
         }
         if (RequiredDataAbiVersion < 24 || (RequiredDataCapabilities & (1UL << 32)) == 0)
         {
@@ -34,8 +104,11 @@ public sealed partial class RuntimePackageTests
             throw new InvalidOperationException($"Required Core EXR execution is unavailable: {reason}");
         }
 
+        ExecutionPlatform platform = inputs.Platform;
+        string coreId = $"OpenUsd.Runtime.Core.{platform.Rid}";
+        string shimDirectory = platform.Rid == "win-x64" ? "bin" : "lib";
         string expectedDataSha256 = GetFileSha256(Path.Combine(
-            inputs.ShimRoot, "bin", inputs.Platform.DotnetLibrary));
+            inputs.ShimRoot, shimDirectory, platform.DotnetLibrary));
         string expectedUsdSha256 = GetFileSha256(Path.Combine(
             inputs.InstallRoot, "lib", inputs.Platform.OpenUsdLibrary));
         string workRoot = CreateWorkRoot(repositoryRoot);
@@ -53,15 +126,15 @@ public sealed partial class RuntimePackageTests
                 produced.Add(package);
             }
             PackedPackage core = await PackAsync(
-                repositoryRoot, "OpenUsd.Runtime.Core.win-x64", inputs.InstallRoot,
+                repositoryRoot, coreId, inputs.InstallRoot,
                 inputs.ShimRoot, inputs.VulkanRuntimeLibrary, packageRoot);
             await Assert.That(core.Version).IsEqualTo(version);
             produced.Add(core);
             await AssertPackageEntryMatchesFileAsync(
-                core.Path, "runtimes/win-x64/native/openusd_dotnet.dll",
-                Path.Combine(inputs.ShimRoot, "bin", inputs.Platform.DotnetLibrary));
+                core.Path, $"runtimes/{platform.Rid}/native/{platform.DotnetLibrary}",
+                Path.Combine(inputs.ShimRoot, shimDirectory, platform.DotnetLibrary));
             await AssertPackageEntryMatchesFileAsync(
-                core.Path, "runtimes/win-x64/native/usd_ms.dll",
+                core.Path, $"runtimes/{platform.Rid}/native/{platform.OpenUsdLibrary}",
                 Path.Combine(inputs.InstallRoot, "lib", inputs.Platform.OpenUsdLibrary));
             await AssertPackageDoesNotContainAsync(core.Path, "ntdll.dll");
 
@@ -89,7 +162,7 @@ public sealed partial class RuntimePackageTests
                 <Project Sdk="Microsoft.NET.Sdk">
                   <PropertyGroup>
                     <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
-                    <RuntimeIdentifier>win-x64</RuntimeIdentifier><PublishAot>true</PublishAot>
+                    <RuntimeIdentifier>{platform.Rid}</RuntimeIdentifier><PublishAot>true</PublishAot>
                     <AllowUnsafeBlocks>true</AllowUnsafeBlocks><ImplicitUsings>enable</ImplicitUsings>
                     <Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
                     <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
@@ -100,7 +173,7 @@ public sealed partial class RuntimePackageTests
                   </PropertyGroup>
                   <ItemGroup>
                     <PackageReference Include="OpenUsd.Rendering" Version="{version}" />
-                    <PackageReference Include="OpenUsd.Runtime.Core.win-x64" Version="{version}" />
+                    <PackageReference Include="{coreId}" Version="{version}" />
                   </ItemGroup>
                 </Project>
                 """);
@@ -116,14 +189,15 @@ public sealed partial class RuntimePackageTests
                 Path.Combine(workRoot, "exr-packages"));
             await Assert.That(publish.ExitCode).IsEqualTo(0).Because(publish.Output);
             AssertPackageOnlyGraph(Path.Combine(consumer, "obj", "project.assets.json"),
-                [.. managedIds, "OpenUsd.Runtime.Core.win-x64"]);
+                [.. managedIds, coreId]);
             await Assert.That(File.Exists(Path.Combine(publishRoot, "Consumer.dll"))).IsFalse();
-            await Assert.That(File.Exists(Path.Combine(publishRoot, "openusd_hydra.dll"))).IsFalse();
-            await Assert.That(File.Exists(Path.Combine(publishRoot, "openusd_hdsilk.dll"))).IsFalse();
+            await Assert.That(File.Exists(Path.Combine(publishRoot, platform.HydraLibrary))).IsFalse();
+            await Assert.That(File.Exists(Path.Combine(publishRoot, platform.HdSilkLibrary))).IsFalse();
 
             string executable = GetExecutablePath(publishRoot, "Consumer");
             CommandResult execution = await RunExecutableAsync(
-                executable, publishRoot, [expectedDataSha256, expectedUsdSha256]);
+                executable, publishRoot,
+                [expectedDataSha256, expectedUsdSha256, platform.DotnetLibrary, platform.OpenUsdLibrary]);
             await Assert.That(execution.ExitCode).IsEqualTo(0).Because(execution.Output);
             await Assert.That(execution.Output).Contains("PUBLIC_EXR_NATIVE_AOT=true");
             await Assert.That(execution.Output).Contains("PUBLIC_EXR_INDEPENDENT_HALF_BITS=passed");
@@ -143,6 +217,7 @@ public sealed partial class RuntimePackageTests
                 Test = nameof(CorePackagesExecuteBoundedExrFromCleanNativeAotFeed),
                 RequiredSwitch = ExrExecutionRequiredVariable,
                 PackageVersion = version,
+                RuntimeIdentifier = platform.Rid,
                 DataAbi = RequiredDataAbiVersion,
                 DataCapabilities = RequiredDataCapabilities,
                 DataSha256 = expectedDataSha256,

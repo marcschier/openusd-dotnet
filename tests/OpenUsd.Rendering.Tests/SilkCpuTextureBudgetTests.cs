@@ -52,6 +52,31 @@ public sealed class SilkCpuTextureBudgetTests
     }
 
     [Test]
+    public async Task DecodedPixelsReleaseTheirSingleReservationOnceAndRefuseASecondOwner()
+    {
+        var budget = new SilkCpuTextureBudget(16);
+        IDisposable owned = budget.Reserve(4);
+        IDisposable rejected = budget.Reserve(8);
+        var image = new SilkDecodedImage(1, 1, new byte[4]);
+        image.OwnReservation(owned);
+        image.OwnReservation(null);
+
+        await Assert.That(() => image.OwnReservation(rejected)).Throws<InvalidOperationException>();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(12ul);
+        image.Dispose();
+        await Assert.That(image.Pixels).IsEmpty();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(8ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+        image.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(8ul);
+        await Assert.That(image.TransferReservation()).IsNull();
+
+        rejected.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
     public async Task RefusedCopyLeavesEarlierOwnershipAndSourceBytesUnchanged()
     {
         var budget = new SilkCpuTextureBudget(8);

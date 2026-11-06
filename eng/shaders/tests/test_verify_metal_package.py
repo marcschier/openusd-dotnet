@@ -44,26 +44,27 @@ def lock() -> dict:
 def shader_manifest() -> dict:
     programs = []
     for program_name, entry_point, stage in CONTRACTS:
-        programs.append(
-            {
-                "name": program_name,
-                "source": (
-                    "eng/shaders/sources/mesh.slang"
-                    if program_name.startswith("mesh.")
-                    else (
-                        (
-                            "eng/shaders/sources/pick.vertex.slang"
-                            if program_name == "pick.vertex"
-                            else "eng/shaders/sources/pick.fragment.slang"
-                        )
-                        if program_name.startswith("pick.")
-                        else "eng/shaders/sources/compute.slang"
+        program = {
+            "name": program_name,
+            "source": (
+                "eng/shaders/sources/mesh.slang"
+                if program_name.startswith("mesh.")
+                else (
+                    (
+                        "eng/shaders/sources/pick.vertex.slang"
+                        if program_name == "pick.vertex"
+                        else "eng/shaders/sources/pick.fragment.slang"
                     )
-                ),
-                "entryPoint": entry_point,
-                "stage": stage,
-            }
-        )
+                    if program_name.startswith("pick.")
+                    else "eng/shaders/sources/compute.slang"
+                )
+            ),
+            "entryPoint": entry_point,
+            "stage": stage,
+        }
+        if program_name == "mesh.fragment":
+            program["floatingPointMode"] = "precise"
+        programs.append(program)
     return {"programs": programs}
 
 
@@ -104,20 +105,22 @@ def valid_sidecar() -> dict:
                 "stage": stage,
             }
         )
+        compile_arguments = [
+            "-sdk",
+            "macosx",
+            "metal",
+            "-std=macos-metal2.4",
+        ]
+        if program_name == "mesh.fragment":
+            compile_arguments.append("-fno-fast-math")
+        compile_arguments.extend(
+            ["-c", source_path, "-o", air_path]
+        )
         compile_commands.append(
             {
                 "programName": program_name,
                 "executable": "xcrun",
-                "arguments": [
-                    "-sdk",
-                    "macosx",
-                    "metal",
-                    "-std=macos-metal2.4",
-                    "-c",
-                    source_path,
-                    "-o",
-                    air_path,
-                ],
+                "arguments": compile_arguments,
             }
         )
         symbol_commands.append(
@@ -203,6 +206,37 @@ def validate(sidecar: dict) -> None:
 class VerifyMetalPackageTests(unittest.TestCase):
     def test_complete_schema_v4_is_accepted(self) -> None:
         validate(valid_sidecar())
+
+    def test_precise_metal_compile_disables_fast_math_only_for_that_entry(
+        self,
+    ) -> None:
+        sidecar = valid_sidecar()
+        commands = {
+            command["programName"]: command["arguments"]
+            for command in sidecar["library"]["commands"]["compile"]
+        }
+        self.assertIn("-fno-fast-math", commands["mesh.fragment"])
+        self.assertNotIn("-fno-fast-math", commands["mesh.vertex"])
+
+        missing_flag = copy.deepcopy(sidecar)
+        precise_arguments = next(
+            command["arguments"]
+            for command in missing_flag["library"]["commands"]["compile"]
+            if command["programName"] == "mesh.fragment"
+        )
+        precise_arguments.remove("-fno-fast-math")
+        with self.assertRaises(ValueError):
+            validate(missing_flag)
+
+        extra_flag = copy.deepcopy(sidecar)
+        nonprecise_arguments = next(
+            command["arguments"]
+            for command in extra_flag["library"]["commands"]["compile"]
+            if command["programName"] == "mesh.vertex"
+        )
+        nonprecise_arguments.insert(4, "-fno-fast-math")
+        with self.assertRaises(ValueError):
+            validate(extra_flag)
 
     def test_missing_fields_and_records_are_rejected(self) -> None:
         mutations = [
@@ -341,6 +375,24 @@ class VerifyMetalPackageTests(unittest.TestCase):
             verify_checked_files=True,
             library_content=metal_pack_fixture.LIBRARY_BYTES,
         )
+        program_modes = {
+            program["name"]: program.get("floatingPointMode")
+            for program in shader_model.metal_library_programs(actual_manifest)
+        }
+        compile_arguments = {
+            command["programName"]: command["arguments"]
+            for command in sidecar["library"]["commands"]["compile"]
+        }
+        precise_programs = [
+            name for name, mode in program_modes.items() if mode == "precise"
+        ]
+        self.assertTrue(precise_programs)
+        for program_name in precise_programs:
+            with self.subTest(program_name=program_name):
+                self.assertIn(
+                    "-fno-fast-math",
+                    compile_arguments[program_name],
+                )
 
         mutations = [
             lambda value: value["library"]["sources"][0].__setitem__(

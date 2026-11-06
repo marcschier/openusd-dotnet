@@ -1,4 +1,7 @@
 add_executable(openusd_native_probe native_probe.cpp)
+if(OPENUSD_IMAGE_EXR_WINDOWS_X64 OR OPENUSD_IMAGE_EXR_POSIX)
+    add_subdirectory(../openusd_dotnet/tests/image_exr image_exr)
+endif()
 target_compile_features(openusd_native_probe PRIVATE cxx_std_17)
 target_compile_definitions(openusd_native_probe PRIVATE OPENUSD_DOTNET_BUILD)
 target_precompile_headers(openusd_native_probe PRIVATE <algorithm>)

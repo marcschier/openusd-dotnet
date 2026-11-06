@@ -34,9 +34,9 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
-            8.0.x
-            9.0.x
-            10.0.401
+            8.0.426
+            9.0.319
+            10.0.403
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
@@ -62,6 +62,7 @@ jobs:
           --lock eng/shaders/toolchain.lock.json
           --manifest eng/shaders/shader-manifest.json
       - name: Build
+        id: solution-build
         run: >
           dotnet build OpenUsd.slnx -c Release --no-restore
           -p:OpenUsdRequireMetalShaderLibrary=false
@@ -76,10 +77,33 @@ jobs:
         if: runner.os == 'Linux'
         shell: pwsh
         run: ./eng/test-documentation.ps1
+      - name: Validate checkout provenance reporting
+        shell: pwsh
+        run: ./eng/test-workflow-checkout-report.ps1
       - name: Validate native artifact workflow
         if: runner.os == 'Linux'
         shell: pwsh
         run: ./eng/test-native-artifact-workflow.ps1
+      - name: Validate pinned native downloads
+        shell: pwsh
+        run: ./eng/test-native-download.ps1
+      - name: Validate Viewer input readiness
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./eng/test-viewer-input-readiness.ps1
+      - name: Validate managed workflow scratch paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./eng/test-managed-workflow-paths.ps1
+      - name: Validate Windows Vulkan primitive probe
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./eng/test-primitive-id-transport-report.ps1
+          ./eng/test-windows-lavapipe-primitive-probe.ps1
+      - name: Validate parity test-host paths
+        shell: pwsh
+        run: ./eng/test-parity-test-host-path.ps1
       - name: Validate Linux native prerequisites
         if: runner.os == 'Linux'
         shell: pwsh
@@ -96,6 +120,52 @@ jobs:
         if: runner.os == 'Linux'
         shell: pwsh
         run: ./eng/test-render-capability-gates.ps1
+      - name: Test synthetic material command ABI
+        if: runner.os != 'macOS'
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          $started = [DateTime]::UtcNow
+          ./eng/run-managed-tests.ps1 `
+            -Project $project `
+            -Framework net10.0 `
+            -Configuration Release `
+            -MinimumExpectedTests 1 `
+            -TestArguments @(
+              '--treenode-filter',
+              '/*/*/SyntheticMaterialCommandTests/SyntheticMaterialCommandsPreserveTextureEntriesAcrossPageAbi')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $target = @(dotnet msbuild $project -nologo '-p:Configuration=Release' `
+            '-p:TargetFramework=net10.0' '-getProperty:TargetPath')
+          if ($LASTEXITCODE -ne 0 -or $target.Count -ne 1 -or
+              -not [IO.Path]::IsPathFullyQualified($target[0])) {
+            throw 'Could not resolve the conformance test assembly path.'
+          }
+          $platform = if ($IsWindows) { 'windows' } else { 'linux' }
+          $reportPath = Join-Path ([IO.Path]::GetDirectoryName($target[0])) `
+            "TestResults/OpenUsd.Rendering.ConformanceTests-$platform-net10.0.tunit-report.json"
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf) -or
+              (Get-Item -LiteralPath $reportPath).LastWriteTimeUtc -lt $started) {
+            throw 'A fresh synthetic material ABI test report is required.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $passed = @(
+            foreach ($group in $report.groups) {
+              if ($group.className -ceq 'SyntheticMaterialCommandTests') {
+                $group.tests | Where-Object {
+                  $_.methodName -ceq 'SyntheticMaterialCommandsPreserveTextureEntriesAcrossPageAbi' -and
+                    $_.status -ceq 'passed'
+                }
+              }
+            }
+          )
+          if ($report.summary.total -ne 1 -or $report.summary.passed -ne 1 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $passed.Count -ne 1) {
+            throw 'The synthetic material ABI test must execute and pass without skips.'
+          }
       - name: Verify Vulkan test runtime
         if: runner.os != 'macOS'
         shell: pwsh
@@ -123,11 +193,49 @@ jobs:
             throw 'No non-conformance managed test projects were found.'
           }
           if ($IsWindows) {
-            ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release
+            $conformanceStarted = [DateTime]::UtcNow
+            $previousPrimitiveBackend = [Environment]::GetEnvironmentVariable(
+              'OPENUSD_PRIMITIVE_PROBE_BACKEND', 'Process')
+            try {
+              $env:OPENUSD_PRIMITIVE_PROBE_BACKEND = 'D3D12'
+              ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release
+            }
+            finally {
+              [Environment]::SetEnvironmentVariable(
+                'OPENUSD_PRIMITIVE_PROBE_BACKEND', $previousPrimitiveBackend, 'Process')
+            }
+            $conformanceFinished = [DateTime]::UtcNow
+            $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
+            if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf) -or
+                (Get-Item -LiteralPath $reportPath).LastWriteTimeUtc -lt $conformanceStarted) {
+              throw 'A fresh Windows conformance report is required.'
+            }
+            $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+            . ./eng/primitive-id-transport-report.ps1
+            Assert-PrimitiveIdTransportReport -Report $report -Backend D3D12 `
+              -StartedUtc $conformanceStarted -FinishedUtc $conformanceFinished
+            New-Item -ItemType Directory -Path artifacts/windows-lavapipe-primitive -Force | Out-Null
+            Copy-Item -LiteralPath $reportPath `
+              -Destination artifacts/windows-lavapipe-primitive/windows-d3d12-conformance.tunit-report.json
+            $env:OPENUSD_VIEWER_CI_DIAGNOSTICS = '1'
           }
           ./eng/run-managed-tests.ps1 `
             -Project $projects `
             -Configuration Release
+      - name: Require Windows Vulkan primitive transport
+        if: always() && !cancelled() && runner.os == 'Windows' && steps.solution-build.outcome == 'success'
+        shell: pwsh
+        run: >-
+          ./eng/run-windows-lavapipe-primitive-probe.ps1
+          -EvidenceRoot artifacts/windows-lavapipe-primitive
+      - name: Upload Windows Vulkan primitive transport evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-lavapipe-primitive-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/windows-lavapipe-primitive/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload original failed managed test reports
         if: always() && steps.original-managed-tests.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -138,6 +246,10 @@ jobs:
             tests/**/TestResults/*-report.html
           if-no-files-found: warn
           retention-days: 14
+      - name: Execute sampled flat ordinal transport conformance
+        if: runner.os != 'macOS'
+        shell: pwsh
+        run: ./eng/run-compact-ordinal-conformance.ps1 -Configuration Release
       - name: Execute original Vulkan platform-partition evidence
         if: runner.os != 'macOS'
         shell: pwsh
@@ -175,7 +287,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.401
+          dotnet-version: 10.0.403
       - name: Install NativeAOT prerequisites
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
@@ -230,7 +342,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.401
+          dotnet-version: 10.0.403
       - name: Install native runtime prerequisites
         run: >-
           sudo apt-get update &&

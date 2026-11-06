@@ -5,6 +5,8 @@ using System.Text.Json;
 using OpenUsd.Rendering.Silk;
 using OpenUsd.Rendering.Silk.D3D12;
 using OpenUsd.Rendering.Silk.Metal;
+using OpenUsd.Rendering.Silk.Vulkan;
+using Silk.NET.Vulkan;
 
 namespace OpenUsd.Rendering.ConformanceTests;
 
@@ -23,6 +25,185 @@ namespace OpenUsd.Rendering.ConformanceTests;
 /// </remarks>
 public sealed class BackendShaderRegisterConformanceTests
 {
+    [Test]
+    public async Task CandidatePtexStorageBindingUsesDedicatedBackendMappingsWithoutClaimingReflection()
+    {
+        SilkBindingSlot slot = SilkPtexCandidateBinding.Slot;
+        slot.Validate();
+        await Assert.That(slot.Binding).IsEqualTo(49u);
+        await Assert.That(slot.Kind).IsEqualTo(SilkBindingKind.StorageBuffer);
+        await Assert.That(slot.Visibility)
+            .IsEqualTo(SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment);
+        await Assert.That(D3D12ShaderRegisters.Map(slot)).IsEqualTo(31u);
+        await Assert.That(MetalShaderResourceIndices.Map(slot.Kind, slot.Binding)).IsEqualTo(2u);
+        foreach (uint reserved in new uint[] { 46, 47, 48 })
+        {
+            var other = new SilkBindingSlot(0, reserved, SilkBindingKind.StorageBuffer, 0,
+                SilkShaderStageVisibility.Vertex);
+            await Assert.That(D3D12ShaderRegisters.Map(other)).IsEqualTo(reserved);
+            await Assert.That(MetalShaderResourceIndices.Map(other.Kind, other.Binding)).IsEqualTo(reserved);
+        }
+        var instance = new SilkBindingSlot(0, 6, SilkBindingKind.StorageBuffer, 0,
+            SilkShaderStageVisibility.Vertex);
+        await Assert.That(D3D12ShaderRegisters.Map(instance)).IsEqualTo(6u);
+        await Assert.That(MetalShaderResourceIndices.Map(instance.Kind, instance.Binding)).IsEqualTo(6u);
+    }
+
+    [Test]
+    public async Task CandidatePtexLookupLayoutPreservesCurrentSlotsAndHasNoCurrentGraphicsRegisterAlias()
+    {
+        SilkBindingLayoutDescriptor ordinary = SilkBindingLayoutDescriptor.SceneParameters;
+        SilkBindingSlot[] original = [.. ordinary.MaterialSlots!];
+        SilkBindingLayoutDescriptor candidate = SilkPtexCandidateBinding.WithLookupSlot(ordinary);
+        await Assert.That(candidate.MaterialSlots.Count).IsEqualTo(original.Length + 1);
+        await Assert.That(candidate.MaterialSlots.Take(original.Length).SequenceEqual(original)).IsTrue();
+        await Assert.That(ordinary.MaterialSlots!.SequenceEqual(original)).IsTrue();
+        await Assert.That(() => SilkPtexCandidateBinding.WithLookupSlot(candidate)).Throws<InvalidDataException>();
+        foreach (var alias in new[]
+        {
+            new SilkBindingSlot(0, 2, SilkBindingKind.StorageBuffer, 0, SilkShaderStageVisibility.Vertex),
+            new SilkBindingSlot(0, 2, SilkBindingKind.UniformBuffer, 16, SilkShaderStageVisibility.Vertex),
+            new SilkBindingSlot(0, 31, SilkBindingKind.StorageBuffer, 0, SilkShaderStageVisibility.Fragment),
+        })
+        {
+            SilkBindingLayoutDescriptor conflicting = ordinary with { MaterialSlots = [alias] };
+            await Assert.That(() => SilkPtexCandidateBinding.WithLookupSlot(conflicting))
+                .Throws<InvalidDataException>();
+        }
+        foreach (var binding in MeshBindings.Concat(FrameBindings).Concat(VolumeBindings))
+        {
+            if (binding.Kind == SilkBindingKind.Sampler)
+            {
+                continue;
+            }
+            var existing = new SilkBindingSlot(0, binding.Binding, binding.Kind, 0,
+                SilkShaderStageVisibility.Fragment);
+            await Assert.That(D3D12ShaderRegisters.Map(existing)).IsNotEqualTo(31u);
+        }
+        foreach (uint binding in new uint[] { 6, 7, 8, 46, 47, 48 })
+        {
+            var existing = new SilkBindingSlot(0, binding, SilkBindingKind.StorageBuffer, 0,
+                SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment);
+            await Assert.That(D3D12ShaderRegisters.Map(existing)).IsNotEqualTo(31u);
+            await Assert.That(MetalShaderResourceIndices.Map(existing.Kind, existing.Binding)).IsNotEqualTo(2u);
+        }
+        uint candidateMetalBuffer = MetalShaderResourceIndices.Map(
+            SilkPtexCandidateBinding.Slot.Kind, SilkPtexCandidateBinding.Slot.Binding);
+        await Assert.That(candidateMetalBuffer).IsNotEqualTo(0u);
+        await Assert.That(candidateMetalBuffer).IsNotEqualTo(1u);
+        await Assert.That(candidateMetalBuffer).IsNotEqualTo(30u);
+    }
+
+    [Test]
+    public async Task ConsecutiveTriangleRenderPassesWaitForAttachmentWritesAndLoads()
+    {
+        SubpassDependency dependency = VulkanSilkGraphicsDevice.GetTriangleRenderPassDependency();
+        await Assert.That(dependency.SrcSubpass).IsEqualTo(Vk.SubpassExternal);
+        await Assert.That(dependency.DstSubpass).IsEqualTo(0u);
+        await Assert.That(dependency.SrcStageMask).IsEqualTo(
+            PipelineStageFlags.TransferBit |
+            PipelineStageFlags.ColorAttachmentOutputBit |
+            PipelineStageFlags.EarlyFragmentTestsBit |
+            PipelineStageFlags.LateFragmentTestsBit);
+        await Assert.That(dependency.DstStageMask).IsEqualTo(
+            PipelineStageFlags.ColorAttachmentOutputBit |
+            PipelineStageFlags.EarlyFragmentTestsBit |
+            PipelineStageFlags.LateFragmentTestsBit);
+        await Assert.That(dependency.SrcAccessMask).IsEqualTo(
+            AccessFlags.TransferWriteBit |
+            AccessFlags.TransferReadBit |
+            AccessFlags.ColorAttachmentWriteBit |
+            AccessFlags.DepthStencilAttachmentWriteBit);
+        await Assert.That(dependency.DstAccessMask).IsEqualTo(
+            AccessFlags.ColorAttachmentReadBit |
+            AccessFlags.ColorAttachmentWriteBit |
+            AccessFlags.DepthStencilAttachmentReadBit |
+            AccessFlags.DepthStencilAttachmentWriteBit);
+    }
+
+    [Test]
+    public async Task ConsecutiveTransferDestinationWritesRetainTheirMemoryDependency()
+    {
+        VulkanSilkGraphicsDevice.GetTransitionMasks(
+            ImageLayout.TransferDstOptimal, ImageLayout.TransferDstOptimal,
+            out AccessFlags sourceAccess, out AccessFlags destinationAccess,
+            out PipelineStageFlags sourceStage, out PipelineStageFlags destinationStage);
+        await Assert.That(sourceAccess).IsEqualTo(AccessFlags.TransferWriteBit);
+        await Assert.That(destinationAccess).IsEqualTo(AccessFlags.TransferWriteBit);
+        await Assert.That(sourceStage).IsEqualTo(PipelineStageFlags.TransferBit);
+        await Assert.That(destinationStage).IsEqualTo(PipelineStageFlags.TransferBit);
+    }
+
+    [Test]
+    public async Task DepthSnapshotTransitionsCoverLateWritesAndPublishTransferWritesToSampling()
+    {
+        VulkanSilkGraphicsDevice.GetTransitionMasks(
+            ImageLayout.DepthStencilAttachmentOptimal, ImageLayout.TransferSrcOptimal,
+            out AccessFlags sourceAccess, out AccessFlags destinationAccess,
+            out PipelineStageFlags sourceStage, out PipelineStageFlags destinationStage);
+        await Assert.That(sourceAccess).IsEqualTo(
+            AccessFlags.DepthStencilAttachmentReadBit | AccessFlags.DepthStencilAttachmentWriteBit);
+        await Assert.That(sourceStage).IsEqualTo(
+            PipelineStageFlags.EarlyFragmentTestsBit | PipelineStageFlags.LateFragmentTestsBit);
+        await Assert.That(destinationAccess).IsEqualTo(AccessFlags.TransferReadBit);
+        await Assert.That(destinationStage).IsEqualTo(PipelineStageFlags.TransferBit);
+
+        VulkanSilkGraphicsDevice.GetTransitionMasks(
+            ImageLayout.TransferDstOptimal, ImageLayout.ShaderReadOnlyOptimal,
+            out sourceAccess, out destinationAccess, out sourceStage, out destinationStage);
+        await Assert.That(sourceAccess).IsEqualTo(AccessFlags.TransferWriteBit);
+        await Assert.That(sourceStage).IsEqualTo(PipelineStageFlags.TransferBit);
+        await Assert.That(destinationAccess).IsEqualTo(AccessFlags.ShaderReadBit);
+        await Assert.That(destinationStage).IsEqualTo(PipelineStageFlags.FragmentShaderBit);
+    }
+
+    [Test]
+    public async Task ReadOnlyDepthTransitionsIncludeBothFragmentTestStages()
+    {
+        VulkanSilkGraphicsDevice.GetTransitionMasks(
+            ImageLayout.DepthStencilReadOnlyOptimal, ImageLayout.DepthStencilAttachmentOptimal,
+            out AccessFlags sourceAccess, out AccessFlags destinationAccess,
+            out PipelineStageFlags sourceStage, out PipelineStageFlags destinationStage);
+        await Assert.That(sourceAccess).IsEqualTo(
+            AccessFlags.DepthStencilAttachmentReadBit | AccessFlags.ShaderReadBit);
+        await Assert.That(sourceStage).IsEqualTo(
+            PipelineStageFlags.EarlyFragmentTestsBit | PipelineStageFlags.LateFragmentTestsBit |
+            PipelineStageFlags.FragmentShaderBit);
+        await Assert.That(destinationAccess).IsEqualTo(
+            AccessFlags.DepthStencilAttachmentReadBit | AccessFlags.DepthStencilAttachmentWriteBit);
+        await Assert.That(destinationStage).IsEqualTo(
+            PipelineStageFlags.EarlyFragmentTestsBit | PipelineStageFlags.LateFragmentTestsBit);
+    }
+
+    [Test]
+    [Arguments(ImageLayout.TransferSrcOptimal, AccessFlags.TransferReadBit, PipelineStageFlags.TransferBit)]
+    [Arguments(ImageLayout.DepthStencilAttachmentOptimal,
+        AccessFlags.DepthStencilAttachmentReadBit | AccessFlags.DepthStencilAttachmentWriteBit,
+        PipelineStageFlags.EarlyFragmentTestsBit | PipelineStageFlags.LateFragmentTestsBit)]
+    [Arguments(ImageLayout.ColorAttachmentOptimal,
+        AccessFlags.ColorAttachmentReadBit | AccessFlags.ColorAttachmentWriteBit,
+        PipelineStageFlags.ColorAttachmentOutputBit)]
+    public async Task CopiedImagesRetainTransitionsForReadbackCopyAndAttachmentConsumers(
+        ImageLayout destination, AccessFlags expectedAccess, PipelineStageFlags expectedStage)
+    {
+        VulkanSilkGraphicsDevice.GetTransitionMasks(
+            ImageLayout.TransferDstOptimal, destination,
+            out AccessFlags sourceAccess, out AccessFlags destinationAccess,
+            out PipelineStageFlags sourceStage, out PipelineStageFlags destinationStage);
+        await Assert.That(sourceAccess).IsEqualTo(AccessFlags.TransferWriteBit);
+        await Assert.That(sourceStage).IsEqualTo(PipelineStageFlags.TransferBit);
+        await Assert.That(destinationAccess).IsEqualTo(expectedAccess);
+        await Assert.That(destinationStage).IsEqualTo(expectedStage);
+
+        VulkanSilkGraphicsDevice.GetTransitionMasks(
+            destination, ImageLayout.TransferSrcOptimal,
+            out sourceAccess, out destinationAccess, out sourceStage, out destinationStage);
+        await Assert.That(sourceAccess).IsEqualTo(expectedAccess);
+        await Assert.That(sourceStage).IsEqualTo(expectedStage);
+        await Assert.That(destinationAccess).IsEqualTo(AccessFlags.TransferReadBit);
+        await Assert.That(destinationStage).IsEqualTo(PipelineStageFlags.TransferBit);
+    }
+
     private static readonly (string Resource, SilkBindingKind Kind, uint Binding)[] MeshBindings =
     [
         ("baseColorSampler", SilkBindingKind.Sampler, 1),
@@ -47,6 +228,10 @@ public sealed class BackendShaderRegisterConformanceTests
         ("clearcoatTexture", SilkBindingKind.SampledTexture, 23),
         ("clearcoatRoughnessTexture", SilkBindingKind.SampledTexture, 25),
         ("iorTexture", SilkBindingKind.SampledTexture, 27),
+        ("normalValuesTexture", SilkBindingKind.SampledTexture, 37),
+        ("detailNormalValuesTexture", SilkBindingKind.SampledTexture, 38),
+        ("diffuseValuesTexture", SilkBindingKind.SampledTexture, 39),
+        ("emissiveValuesTexture", SilkBindingKind.SampledTexture, 40),
     ];
 
     // The shadow atlas and the two prefiltered environment maps are declared by
@@ -61,6 +246,10 @@ public sealed class BackendShaderRegisterConformanceTests
     [
         ("shadowSampler", SilkBindingKind.Sampler, 30),
         ("shadowAtlas", SilkBindingKind.SampledTexture, 31),
+        ("shadowTransmission0", SilkBindingKind.SampledTexture, 41),
+        ("shadowTransmission1", SilkBindingKind.SampledTexture, 42),
+        ("shadowTransmission2", SilkBindingKind.SampledTexture, 43),
+        ("shadowTransmission3", SilkBindingKind.SampledTexture, 44),
         ("environmentSampler", SilkBindingKind.Sampler, 32),
         ("environmentIrradiance", SilkBindingKind.SampledTexture, 33),
         ("environmentSpecular", SilkBindingKind.SampledTexture, 34),
@@ -73,7 +262,56 @@ public sealed class BackendShaderRegisterConformanceTests
     [
         ("volumeDensitySampler", SilkBindingKind.Sampler, 13),
         ("volumeDensityTexture", SilkBindingKind.SampledTexture, 9),
+        ("volumeOpaqueDepthTexture", SilkBindingKind.SampledTexture, 45),
     ];
+
+    [Test]
+    public async Task VolumeOpaqueDepthUsesReservedBindingAndExplicitBackendRegisters()
+    {
+        SilkBindingLayoutDescriptor layout = SilkBindingLayoutDescriptor.SampledVolumeParameters;
+        layout.Validate();
+        SilkBindingSlot slot = layout.MaterialSlots.Single(
+            slot => slot.Binding == SilkBindingLayoutDescriptor.VolumeOpaqueDepthTextureBinding);
+        await Assert.That(slot.Binding).IsEqualTo(45u);
+        await Assert.That(slot.Set).IsEqualTo(0u);
+        await Assert.That(slot.Kind).IsEqualTo(SilkBindingKind.SampledTexture);
+        await Assert.That(slot.Visibility).IsEqualTo(SilkShaderStageVisibility.Fragment);
+        await Assert.That(D3D12ShaderRegisters.Map(slot)).IsEqualTo(28u);
+        await Assert.That(MetalShaderResourceIndices.Map(slot.Kind, slot.Binding)).IsEqualTo(28u);
+        await Assert.That(layout.MaterialSlots.Where(slot => slot.Kind == SilkBindingKind.SampledTexture)
+            .Select(D3D12ShaderRegisters.Map).Distinct().Count())
+            .IsEqualTo(layout.MaterialSlots.Count(slot => slot.Kind == SilkBindingKind.SampledTexture));
+        await Assert.That(layout.MaterialSlots.Where(slot => slot.Kind == SilkBindingKind.SampledTexture)
+            .Select(slot => MetalShaderResourceIndices.Map(slot.Kind, slot.Binding)).Distinct().Count())
+            .IsEqualTo(layout.MaterialSlots.Count(slot => slot.Kind == SilkBindingKind.SampledTexture));
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task VolumeCameraBackgroundBindingMatchesCheckedReflection(bool densityAtlas)
+    {
+        SilkBindingLayoutDescriptor layout =
+            SilkBindingLayoutDescriptor.VolumeCameraParameters(densityAtlas);
+        layout.Validate();
+        SilkBindingSlot slot = layout.MaterialSlots.Single(
+            slot => slot.Binding == SilkBindingLayoutDescriptor.VolumeBackgroundColorTextureBinding);
+        string program = densityAtlas ? "atlas" : "uniform";
+        var resources = ReadCheckedResources($"volume.camera.fragment.{program}.reflection.json");
+        (string registerClass, uint register, uint binding) = resources["backgroundColorTexture"];
+
+        await Assert.That(slot.Kind).IsEqualTo(SilkBindingKind.SampledTexture);
+        await Assert.That(binding).IsEqualTo(slot.Binding);
+        await Assert.That(registerClass).IsEqualTo("t");
+        await Assert.That(D3D12ShaderRegisters.Map(slot)).IsEqualTo(register);
+        await Assert.That(MetalShaderResourceIndices.Map(slot.Kind, slot.Binding)).IsEqualTo(register);
+        await Assert.That(layout.MaterialSlots.Where(item => item.Kind == SilkBindingKind.SampledTexture)
+            .Select(D3D12ShaderRegisters.Map).Distinct().Count())
+            .IsEqualTo(layout.MaterialSlots.Count(item => item.Kind == SilkBindingKind.SampledTexture));
+        await Assert.That(layout.MaterialSlots.Where(item => item.Kind == SilkBindingKind.SampledTexture)
+            .Select(item => MetalShaderResourceIndices.Map(item.Kind, item.Binding)).Distinct().Count())
+            .IsEqualTo(layout.MaterialSlots.Count(item => item.Kind == SilkBindingKind.SampledTexture));
+    }
 
     [Test]
     public async Task D3D12ShaderRegistersMatchTheCheckedReflection()
@@ -121,9 +359,9 @@ public sealed class BackendShaderRegisterConformanceTests
         string volumeReflection = Path.Combine(checkedRoot, "mesh.volume.fragment.reflection.json");
 
         // Five fragment permutations and three vertex permutations expand from the
-        // manifest, plus the sampled-volume program. A glob that silently matched
-        // fewer files would make the loop below vacuous.
-        await Assert.That(meshReflections.Length).IsEqualTo(9);
+        // manifest, plus the sampled-volume vertex and fragment programs. A glob that
+        // silently matched fewer files would make the loop below vacuous.
+        await Assert.That(meshReflections.Length).IsEqualTo(10);
         await Assert.That(meshReflections).Contains(volumeReflection);
 
         var declaringPrograms = new List<string>();
@@ -149,7 +387,7 @@ public sealed class BackendShaderRegisterConformanceTests
             // Every mesh fragment, volume or not, still reads the shared surface and
             // frame blocks, so this also proves the enumeration found real reflections
             // rather than empty documents.
-            if (Path.GetFileName(reflection).StartsWith("mesh.vertex", StringComparison.Ordinal))
+            if (Path.GetFileName(reflection).Contains(".vertex.", StringComparison.Ordinal))
             {
                 await Assert.That(resources.ContainsKey("frameParameters")).IsTrue();
             }
@@ -211,6 +449,28 @@ public sealed class BackendShaderRegisterConformanceTests
                 SilkBindingKind.Sampler, roughnessSampler))
             .IsNotEqualTo(MetalShaderResourceIndices.Map(
                 SilkBindingKind.Sampler, metallicSampler));
+    }
+
+    [Test]
+    public async Task NormalValueTablesAreAdditiveAndDisjointFromAuthoredMaps()
+    {
+        var permutation = new SilkShaderPermutationId(SilkShaderFeatures.Uv |
+            SilkShaderFeatures.BaseColorMap | SilkShaderFeatures.NormalMap | SilkShaderFeatures.DetailNormalMap |
+            SilkShaderFeatures.RoughnessMetallicMap | SilkShaderFeatures.MetallicMap);
+        SilkBindingLayoutDescriptor layout = permutation.CreateMeshBindingLayout();
+        layout.Validate();
+        await Assert.That(layout.MaterialSlots.TakeLast(4).Select(slot => slot.Binding))
+            .IsEquivalentTo([37u, 38u, 39u, 40u]);
+        foreach (uint binding in new[] { 4u, 15u, 37u, 38u, 39u, 40u })
+        {
+            SilkBindingSlot slot = layout.MaterialSlots.Single(slot => slot.Binding == binding);
+            await Assert.That(slot.Kind).IsEqualTo(SilkBindingKind.SampledTexture);
+            await Assert.That(slot.Set).IsEqualTo(0u);
+            await Assert.That(slot.Visibility).IsEqualTo(SilkShaderStageVisibility.Fragment);
+        }
+        await Assert.That(layout.MaterialSlots.Where(slot => slot.Kind == SilkBindingKind.SampledTexture)
+            .Select(D3D12ShaderRegisters.Map).Distinct().Count())
+            .IsEqualTo(layout.MaterialSlots.Count(slot => slot.Kind == SilkBindingKind.SampledTexture));
     }
 
     private static Dictionary<

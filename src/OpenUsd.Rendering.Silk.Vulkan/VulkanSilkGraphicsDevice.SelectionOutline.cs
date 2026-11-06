@@ -18,8 +18,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     private long _selectionSubmissions;
     private long _selectionDeviceLosses;
     private long _selectionLiveDependentObjects;
-    private VulkanSilkSelectionMaskGraphicsPipeline? _currentSelectionMaskPipeline;
-    private VulkanSilkSelectionOutlineGraphicsPipeline? _currentSelectionOutlinePipeline;
+    private long _selectionBindingLayoutCreations;
+    private long _selectionBindingLayoutDestructions;
 
     /// <inheritdoc/>
     public ulong SelectionOutlineDeviceGeneration =>
@@ -66,7 +66,6 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     _device,
                     descriptor,
                     SelectionOutlineDeviceGeneration);
-            _currentSelectionMaskPipeline = pipeline;
             Interlocked.Increment(ref _selectionMaskPipelineCreations);
             Interlocked.Increment(ref _selectionLiveDependentObjects);
             return pipeline;
@@ -101,7 +100,6 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                     _device,
                     descriptor,
                     SelectionOutlineDeviceGeneration);
-            _currentSelectionOutlinePipeline = pipeline;
             Interlocked.Increment(ref _selectionOutlinePipelineCreations);
             Interlocked.Increment(ref _selectionLiveDependentObjects);
             return pipeline;
@@ -132,23 +130,6 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 "Selection-outline binding resources must belong to this Vulkan device.",
                 nameof(descriptor));
         }
-        VulkanSilkSelectionMaskGraphicsPipeline maskPipeline =
-            _currentSelectionMaskPipeline ??
-            throw new InvalidOperationException(
-                "Create the Vulkan selection-mask pipeline before its binding.");
-        VulkanSilkSelectionOutlineGraphicsPipeline outlinePipeline =
-            _currentSelectionOutlinePipeline ??
-            throw new InvalidOperationException(
-                "Create the Vulkan selection-outline pipeline before its binding.");
-        maskPipeline.ThrowIfDisposed();
-        outlinePipeline.ThrowIfDisposed();
-        if (maskPipeline.DeviceGeneration != SelectionOutlineDeviceGeneration ||
-            outlinePipeline.DeviceGeneration != SelectionOutlineDeviceGeneration)
-        {
-            throw new InvalidOperationException(
-                "The Vulkan selection pipelines belong to a stale device generation.");
-        }
-
         RegisterDependentObject();
         VulkanSilkSelectionOutlineBinding binding;
         try
@@ -162,7 +143,6 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
                 depth,
                 sampler,
                 parameters,
-                outlinePipeline.DescriptorSetLayout,
                 SelectionOutlineDeviceGeneration);
         }
         catch
@@ -172,17 +152,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         }
 
         Interlocked.Increment(ref _selectionLiveDependentObjects);
-        try
-        {
-            _ = maskPipeline.GetFramebuffer(mask, depth);
-            Interlocked.Increment(ref _selectionBindingCreations);
-            return binding;
-        }
-        catch
-        {
-            binding.Dispose();
-            throw;
-        }
+        Interlocked.Increment(ref _selectionBindingCreations);
+        return binding;
     }
 
     internal VulkanSilkSelectionOutlineDiagnostics SelectionOutlineDiagnostics => new(
@@ -194,7 +165,13 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
         Interlocked.Read(ref _selectionDescriptorSetCreations),
         Interlocked.Read(ref _selectionSubmissions),
         Interlocked.Read(ref _selectionDeviceLosses),
-        Interlocked.Read(ref _selectionLiveDependentObjects));
+        Interlocked.Read(ref _selectionLiveDependentObjects),
+        Interlocked.Read(ref _selectionBindingLayoutCreations),
+        Interlocked.Read(ref _selectionBindingLayoutDestructions));
+
+    internal void CountSelectionBindingLayoutCreated() => Interlocked.Increment(ref _selectionBindingLayoutCreations);
+    internal void CountSelectionBindingLayoutDestroyed() =>
+        Interlocked.Increment(ref _selectionBindingLayoutDestructions);
 
     internal void AdvanceSelectionOutlineDeviceGenerationForTesting() =>
         AdvanceSelectionOutlineDeviceGeneration(deviceLost: false);
@@ -246,8 +223,11 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     internal void NotifySelectionOutlineDeviceLost()
     {
         NotifyDeviceLost();
-        AdvanceSelectionOutlineDeviceGeneration(deviceLost: true);
+        InvalidateSelectionOutlineAfterLoss();
     }
+
+    private void InvalidateSelectionOutlineAfterLoss() =>
+        AdvanceSelectionOutlineDeviceGeneration(deviceLost: true);
 
     internal void CountSelectionFramebufferCreation() =>
         Interlocked.Increment(ref _selectionFramebufferCreations);
@@ -258,16 +238,8 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     internal void CountSelectionSubmission() =>
         Interlocked.Increment(ref _selectionSubmissions);
 
-    internal void ReleaseSelectionDependent(object resource)
+    internal void ReleaseSelectionDependent()
     {
-        if (ReferenceEquals(_currentSelectionMaskPipeline, resource))
-        {
-            _currentSelectionMaskPipeline = null;
-        }
-        if (ReferenceEquals(_currentSelectionOutlinePipeline, resource))
-        {
-            _currentSelectionOutlinePipeline = null;
-        }
         Interlocked.Decrement(ref _selectionLiveDependentObjects);
         ReleaseDependentObject();
     }
@@ -299,7 +271,7 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             commands,
             PipelineBindPoint.Graphics,
             pipeline.Pipeline);
-        SetSelectionViewportAndScissor(commands, viewport, scissor);
+        SetSelectionViewportAndScissor(commands, viewport, scissor, flipVertically: false);
         global::Silk.NET.Vulkan.Buffer nativeVertexBuffer = vertexBuffer.Buffer;
         ulong vertexOffset = 0;
         _api.CmdBindVertexBuffers(
@@ -350,7 +322,9 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
             commands,
             PipelineBindPoint.Graphics,
             pipeline.Pipeline);
-        SetSelectionViewportAndScissor(commands, viewport, scissor);
+        // The fullscreen shader's texture coordinates use the opposite Y direction
+        // from Vulkan's positive-height viewport. The mask pass must not be flipped.
+        SetSelectionViewportAndScissor(commands, viewport, scissor, flipVertically: true);
         DescriptorSet descriptorSet = binding.DescriptorSet;
         _api.CmdBindDescriptorSets(
             commands,
@@ -368,13 +342,14 @@ public sealed unsafe partial class VulkanSilkGraphicsDevice
     private void SetSelectionViewportAndScissor(
         CommandBuffer commands,
         SilkViewport viewport,
-        SilkScissor scissor)
+        SilkScissor scissor,
+        bool flipVertically)
     {
         var nativeViewport = new global::Silk.NET.Vulkan.Viewport(
             viewport.X,
-            viewport.Y,
+            flipVertically ? viewport.Y + viewport.Height : viewport.Y,
             viewport.Width,
-            viewport.Height,
+            flipVertically ? -viewport.Height : viewport.Height,
             viewport.MinDepth,
             viewport.MaxDepth);
         _api.CmdSetViewport(commands, 0, 1, &nativeViewport);
@@ -408,7 +383,9 @@ internal readonly record struct VulkanSilkSelectionOutlineDiagnostics(
     long DescriptorSetCreations,
     long Submissions,
     long DeviceLosses,
-    long LiveDependentObjects);
+    long LiveDependentObjects,
+    long BindingLayoutCreations,
+    long BindingLayoutDestructions);
 
 internal sealed unsafe class VulkanSilkSelectionMaskGraphicsPipeline :
     SilkGraphicsResourceBase,
@@ -599,7 +576,7 @@ internal sealed unsafe class VulkanSilkSelectionMaskGraphicsPipeline :
     protected override void ReleaseNative()
     {
         DestroyNative();
-        Owner.ReleaseSelectionDependent(this);
+        Owner.ReleaseSelectionDependent();
     }
 
     private void Initialize()
@@ -1266,7 +1243,7 @@ internal sealed unsafe class VulkanSilkSelectionOutlineGraphicsPipeline :
     protected override void ReleaseNative()
     {
         DestroyNative();
-        Owner.ReleaseSelectionDependent(this);
+        Owner.ReleaseSelectionDependent();
     }
 
     private void Initialize()
@@ -1277,6 +1254,25 @@ internal sealed unsafe class VulkanSilkSelectionOutlineGraphicsPipeline :
         _fragmentShader = CreateShaderModule(
             Descriptor.FragmentShader,
             normalizeVertexId: false);
+        _descriptorSetLayout = CreateCompatibleSetLayout(_api, _device);
+        DescriptorSetLayout setLayout = _descriptorSetLayout;
+        var layoutInfo = new PipelineLayoutCreateInfo
+        {
+            SType = StructureType.PipelineLayoutCreateInfo,
+            SetLayoutCount = 1,
+            PSetLayouts = &setLayout
+        };
+        PipelineLayout pipelineLayout = default;
+        VulkanSilkGraphicsDevice.ThrowIfFailed(
+            _api.CreatePipelineLayout(_device, &layoutInfo, null, &pipelineLayout),
+            "vkCreatePipelineLayout(selection outline)");
+        _layout = pipelineLayout;
+        CreateRenderPass();
+        CreatePipeline();
+    }
+
+    internal static DescriptorSetLayout CreateCompatibleSetLayout(Vk api, Device device)
+    {
         DescriptorSetLayoutBinding* bindings =
             stackalloc DescriptorSetLayoutBinding[4];
         bindings[0] = CreateBinding(
@@ -1303,27 +1299,13 @@ internal sealed unsafe class VulkanSilkSelectionOutlineGraphicsPipeline :
         };
         DescriptorSetLayout descriptorSetLayout = default;
         VulkanSilkGraphicsDevice.ThrowIfFailed(
-            _api.CreateDescriptorSetLayout(
-                _device,
+            api.CreateDescriptorSetLayout(
+                device,
                 &setLayoutInfo,
                 null,
                 &descriptorSetLayout),
             "vkCreateDescriptorSetLayout(selection outline)");
-        _descriptorSetLayout = descriptorSetLayout;
-        DescriptorSetLayout setLayout = _descriptorSetLayout;
-        var layoutInfo = new PipelineLayoutCreateInfo
-        {
-            SType = StructureType.PipelineLayoutCreateInfo,
-            SetLayoutCount = 1,
-            PSetLayouts = &setLayout
-        };
-        PipelineLayout pipelineLayout = default;
-        VulkanSilkGraphicsDevice.ThrowIfFailed(
-            _api.CreatePipelineLayout(_device, &layoutInfo, null, &pipelineLayout),
-            "vkCreatePipelineLayout(selection outline)");
-        _layout = pipelineLayout;
-        CreateRenderPass();
-        CreatePipeline();
+        return descriptorSetLayout;
     }
 
     private static DescriptorSetLayoutBinding CreateBinding(
@@ -1596,6 +1578,7 @@ internal sealed unsafe class VulkanSilkSelectionOutlineBinding :
     private IDisposable[]? _resourceLeases;
     private DescriptorPool _descriptorPool;
     private DescriptorSet _descriptorSet;
+    private DescriptorSetLayout _bindingSetLayout;
 
     private VulkanSilkSelectionOutlineBinding(
         VulkanSilkGraphicsDevice owner,
@@ -1644,7 +1627,6 @@ internal sealed unsafe class VulkanSilkSelectionOutlineBinding :
         VulkanSilkGraphicsTexture depth,
         VulkanSilkGraphicsSampler sampler,
         VulkanSilkGraphicsBuffer parameters,
-        DescriptorSetLayout layout,
         ulong deviceGeneration)
     {
         var result = new VulkanSilkSelectionOutlineBinding(
@@ -1659,7 +1641,7 @@ internal sealed unsafe class VulkanSilkSelectionOutlineBinding :
             deviceGeneration);
         try
         {
-            result.Initialize(layout);
+            result.Initialize();
             return result;
         }
         catch
@@ -1676,10 +1658,10 @@ internal sealed unsafe class VulkanSilkSelectionOutlineBinding :
     protected override void ReleaseNative()
     {
         DestroyNative();
-        Owner.ReleaseSelectionDependent(this);
+        Owner.ReleaseSelectionDependent();
     }
 
-    private void Initialize(DescriptorSetLayout layout)
+    private void Initialize()
     {
         Mask.ThrowIfDisposed();
         Depth.ThrowIfDisposed();
@@ -1712,6 +1694,9 @@ internal sealed unsafe class VulkanSilkSelectionOutlineBinding :
                 &descriptorPool),
             "vkCreateDescriptorPool(selection outline)");
         _descriptorPool = descriptorPool;
+        _bindingSetLayout = VulkanSilkSelectionOutlineGraphicsPipeline.CreateCompatibleSetLayout(_api, _device);
+        Owner.CountSelectionBindingLayoutCreated();
+        DescriptorSetLayout layout = _bindingSetLayout;
         var allocationInfo = new DescriptorSetAllocateInfo
         {
             SType = StructureType.DescriptorSetAllocateInfo,
@@ -1795,6 +1780,12 @@ internal sealed unsafe class VulkanSilkSelectionOutlineBinding :
             _descriptorPool = default;
             _descriptorSet = default;
         }
+        if (_bindingSetLayout.Handle != 0)
+        {
+            _api.DestroyDescriptorSetLayout(_device, _bindingSetLayout, null);
+            _bindingSetLayout = default;
+            Owner.CountSelectionBindingLayoutDestroyed();
+        }
         IDisposable[]? leases = Interlocked.Exchange(ref _resourceLeases, null);
         if (leases is not null)
         {
@@ -1864,6 +1855,8 @@ internal sealed partial class VulkanSilkGraphicsCommandList
             throw new InvalidOperationException(
                 "The Vulkan selection-mask pipeline belongs to a stale device generation.");
         }
+        _pipeline = null;
+        _pickPipeline = null;
         _selectionMaskPipeline = vulkanPipeline;
         _commands.Add(VulkanGraphicsCommand.SetSelectionMaskPipeline(
             vulkanPipeline));

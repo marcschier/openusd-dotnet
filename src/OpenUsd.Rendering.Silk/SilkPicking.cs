@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Runtime.ExceptionServices;
 
 namespace OpenUsd.Rendering.Silk;
 
@@ -95,16 +96,15 @@ public enum SilkPickPrimitiveTopology
     TriangleList,
 
     /// <summary>
-    /// Independent indexed lines, used by edge picking. One line is drawn per
-    /// authored mesh edge, so the rasterized primitive index is the authored
-    /// edge index and a triangulation diagonal is never drawn at all.
+    /// Independent indexed lines, used by edge picking. Each emitted copy of
+    /// an authored edge resolves to that edge's identity. Triangulation
+    /// diagonals are not drawn.
     /// </summary>
     LineList,
 
     /// <summary>
-    /// Independent indexed points, used by point picking. One point is drawn per
-    /// authored point, so the rasterized primitive index is the authored point
-    /// index even when the emitted vertices duplicate that point per corner.
+    /// Independent indexed points, used by point picking. Each emitted copy of
+    /// an authored point resolves to that point's identity.
     /// </summary>
     PointList
 }
@@ -428,6 +428,11 @@ public interface ISilkPickingGraphicsDevice
     ISilkPickReadbackBuffer CreatePickReadbackBuffer();
 }
 
+internal interface ISilkDiscardedPickReadback
+{
+    void ReleaseDiscardedFrameResources();
+}
+
 /// <summary>Optional pick commands exposed by a pick-capable graphics command list.</summary>
 public interface ISilkPickGraphicsCommandList
 {
@@ -528,6 +533,7 @@ public sealed class SilkPickReadbackRing : IDisposable
     private int _nextAcquire;
     private int _nextCompletion;
     private uint _nextReservation = 1;
+    private bool _disposeRequested;
     private bool _disposed;
 
     /// <summary>Creates all persistent readback buffers up front.</summary>
@@ -582,7 +588,7 @@ public sealed class SilkPickReadbackRing : IDisposable
     /// <summary>Attempts to reserve the next free slot without waiting.</summary>
     public bool TryAcquire(out SilkPickReadbackReservation reservation)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_disposeRequested, this);
         for (int offset = 0; offset < _entries.Length; offset++)
         {
             int index = (_nextAcquire + offset) % _entries.Length;
@@ -618,7 +624,7 @@ public sealed class SilkPickReadbackRing : IDisposable
         ISilkGraphicsSubmission submission,
         SilkPickReadbackContext context)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_disposeRequested, this);
         ArgumentNullException.ThrowIfNull(submission);
         Entry entry = ValidateReservation(reservation);
         entry.Submission = submission;
@@ -630,15 +636,48 @@ public sealed class SilkPickReadbackRing : IDisposable
     /// <summary>Returns an unsubmitted reservation to the ring.</summary>
     public void Cancel(SilkPickReadbackReservation reservation)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_disposeRequested, this);
         Entry entry = ValidateReservation(reservation);
         Reset(entry);
+    }
+
+    internal void CancelPrepared(SilkPickReadbackReservation reservation)
+    {
+        ObjectDisposedException.ThrowIf(_disposeRequested, this);
+        Entry entry = ValidateReservation(reservation);
+        if (entry.Buffer is ISilkDiscardedPickReadback discarded)
+        {
+            discarded.ReleaseDiscardedFrameResources();
+        }
+        Reset(entry);
+    }
+
+    internal void DiscardSubmitted(SilkPickReadbackReservation reservation)
+    {
+        ObjectDisposedException.ThrowIf(_disposeRequested, this);
+        if (!ReferenceEquals(reservation.Owner, this) ||
+            (uint)reservation.SlotIndex >= (uint)_entries.Length)
+        {
+            throw new ArgumentException("The submitted reservation belongs to another ring.", nameof(reservation));
+        }
+        Entry entry = _entries[reservation.SlotIndex];
+        if (entry.State != EntryState.Submitted || entry.Reservation != reservation.Reservation)
+        {
+            throw new InvalidOperationException("The submitted pick reservation is no longer active.");
+        }
+        entry.Submission?.Dispose();
+        if (entry.Buffer is ISilkDiscardedPickReadback discarded)
+        {
+            discarded.ReleaseDiscardedFrameResources();
+        }
+        Reset(entry);
+        InFlightCount--;
     }
 
     /// <summary>Reads and releases the next completed slot without waiting.</summary>
     public bool TryReadCompleted(out SilkPickReadbackResult result)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_disposeRequested, this);
         for (int offset = 0; offset < _entries.Length; offset++)
         {
             int index = (_nextCompletion + offset) % _entries.Length;
@@ -651,21 +690,36 @@ public sealed class SilkPickReadbackRing : IDisposable
             }
 
             Span<byte> bytes = stackalloc byte[SilkPickTokenEncoding.ByteSize];
+            SilkPickReadbackResult completed;
+            ISilkGraphicsSubmission submission = entry.Submission;
             try
             {
                 entry.Buffer.ReadRgba8Pixel(bytes);
-                result = new SilkPickReadbackResult(
+                completed = new SilkPickReadbackResult(
                     index,
                     entry.Context,
                     SilkPickTokenEncoding.Decode(bytes));
             }
-            finally
+            catch (Exception readFailure)
             {
-                entry.Submission.Dispose();
-                Reset(entry);
-                InFlightCount--;
-                _nextCompletion = (index + 1) % _entries.Length;
+                try
+                {
+                    submission.Dispose();
+                }
+                catch (Exception disposeFailure)
+                {
+                    throw new AggregateException(
+                        "Pick readback and submission disposal failed.",
+                        readFailure,
+                        disposeFailure);
+                }
+                ResetCompleted(entry, index);
+                throw;
             }
+
+            submission.Dispose();
+            ResetCompleted(entry, index);
+            result = completed;
             return true;
         }
 
@@ -678,7 +732,7 @@ public sealed class SilkPickReadbackRing : IDisposable
         out int slotIndex,
         out SilkPickReadbackContext context)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(_disposeRequested, this);
         for (int offset = 0; offset < _entries.Length; offset++)
         {
             int index = (_nextCompletion + offset) % _entries.Length;
@@ -710,11 +764,50 @@ public sealed class SilkPickReadbackRing : IDisposable
             return;
         }
 
+        _disposeRequested = true;
+        List<Exception>? failures = null;
         foreach (Entry entry in _entries)
         {
-            entry.Submission?.Dispose();
-            entry.Buffer.Dispose();
-            Reset(entry);
+            if (entry.Submission is { } submission)
+            {
+                try
+                {
+                    submission.Dispose();
+                    entry.Submission = null;
+                }
+                catch (Exception failure)
+                {
+                    (failures ??= []).Add(failure);
+                }
+            }
+            if (!entry.BufferDisposed)
+            {
+                try
+                {
+                    entry.Buffer.Dispose();
+                    entry.BufferDisposed = true;
+                }
+                catch (Exception failure)
+                {
+                    (failures ??= []).Add(failure);
+                }
+            }
+            if (entry.Submission is null && entry.BufferDisposed)
+            {
+                if (entry.State == EntryState.Submitted)
+                {
+                    InFlightCount--;
+                }
+                Reset(entry);
+            }
+        }
+        if (failures is [Exception single])
+        {
+            ExceptionDispatchInfo.Capture(single).Throw();
+        }
+        if (failures is not null)
+        {
+            throw new AggregateException("Pick readback ring disposal failed.", failures);
         }
         InFlightCount = 0;
         _disposed = true;
@@ -749,9 +842,18 @@ public sealed class SilkPickReadbackRing : IDisposable
         entry.State = EntryState.Free;
     }
 
+    private void ResetCompleted(Entry entry, int index)
+    {
+        Reset(entry);
+        InFlightCount--;
+        _nextCompletion = (index + 1) % _entries.Length;
+    }
+
     private sealed class Entry(ISilkPickReadbackBuffer buffer)
     {
         internal ISilkPickReadbackBuffer Buffer { get; } = buffer;
+
+        internal bool BufferDisposed { get; set; }
 
         internal EntryState State { get; set; }
 

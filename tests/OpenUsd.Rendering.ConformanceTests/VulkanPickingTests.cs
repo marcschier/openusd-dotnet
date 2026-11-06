@@ -10,6 +10,490 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class VulkanPickingTests
 {
     [Test]
+    public async Task SwiftShaderCreatesPickSubmissionOwnerBeforeQueueSubmit()
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkPickReadbackBuffer readback = device.CreatePickReadbackBuffer();
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        bool observed = false;
+        bool alreadySubmitted = true;
+        device.SubmissionOwnerCreationProbeForTesting = submitted =>
+        {
+            observed = true;
+            alreadySubmitted = submitted;
+        };
+        using ISilkGraphicsSubmission submission = SubmitManualPickPending(
+            device, pipeline, readback, color, depth, vertices, indices, uniforms,
+            1, 3, new SilkTexturePixelCoordinate(8, 8));
+        submission.Wait();
+
+        await Assert.That(observed).IsTrue();
+        await Assert.That(alreadySubmitted).IsFalse();
+    }
+
+    [Test]
+    public async Task SwiftShaderPickSubmissionOwnerFailureAllowsSlotRetry()
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkPickReadbackBuffer readback = device.CreatePickReadbackBuffer();
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        long baseline = device.PickDiagnostics.Submissions;
+        var failure = new InvalidOperationException("Injected pick owner allocation failure.");
+        device.SubmissionOwnerCreationProbeForTesting = _ => throw failure;
+        try
+        {
+            InvalidOperationException observed = Assert.Throws<InvalidOperationException>(() =>
+                SubmitManualPickPending(
+                    device, pipeline, readback, color, depth, vertices, indices, uniforms,
+                    1, 3, new SilkTexturePixelCoordinate(8, 8)));
+            await Assert.That(observed).IsSameReferenceAs(failure);
+            await Assert.That(device.PickDiagnostics.Submissions).IsEqualTo(baseline);
+        }
+        finally
+        {
+            device.SubmissionOwnerCreationProbeForTesting = null;
+        }
+
+        using ISilkGraphicsSubmission submission = SubmitManualPickPending(
+            device, pipeline, readback, color, depth, vertices, indices, uniforms,
+            1, 3, new SilkTexturePixelCoordinate(8, 8));
+        submission.Wait();
+        var pixel = new byte[SilkPickTokenEncoding.ByteSize];
+        readback.ReadRgba8Pixel(pixel);
+        await Assert.That(pixel).IsEquivalentTo(new byte[] { 1, 0, 0, 0 });
+    }
+
+    [Test]
+    public async Task SwiftShaderIdleDeviceLossInvalidatesPickAndSelectionAndRetiresPending()
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        var buffers = new SilkGpuBufferBudget(164);
+        buffers.ConfigureDevice(device);
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkPickReadbackBuffer readback = device.CreatePickReadbackBuffer();
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        using ISilkGraphicsSubmission submission = SubmitManualPickPending(
+            device, pipeline, readback, color, depth, vertices, indices, uniforms,
+            1, 3, new SilkTexturePixelCoordinate(8, 8));
+        device.WaitIdle();
+        device.FailNextPickFenceForTesting(deviceLost: false);
+        await Assert.That(submission.Dispose).Throws<InvalidOperationException>();
+        vertices.Dispose();
+        indices.Dispose();
+        uniforms.Dispose();
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(164ul);
+
+        ulong pickGeneration = device.PickDeviceGeneration;
+        ulong selectionGeneration = device.SelectionOutlineDeviceGeneration;
+        ulong deviceGeneration = device.DeviceLossGeneration;
+        device.InjectNextIdleDeviceLossForTesting();
+        InvalidOperationException? loss = await Assert.That(device.WaitIdle).Throws<InvalidOperationException>();
+        await Assert.That(loss!.Message).Contains("ErrorDeviceLost");
+        await Assert.That(device.DeviceLossGeneration).IsEqualTo(deviceGeneration + 1);
+        await Assert.That(device.PickDeviceGeneration).IsEqualTo(pickGeneration + 1);
+        await Assert.That(device.SelectionOutlineDeviceGeneration).IsEqualTo(selectionGeneration + 1);
+        await Assert.That(device.IsPickDeviceLost).IsTrue();
+        await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        var pixel = new byte[SilkPickTokenEncoding.ByteSize];
+        await Assert.That(() => readback.ReadRgba8Pixel(pixel)).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task SwiftShaderFailedPickDisposalRemainsOwnedUntilDeviceDrain(bool disposeDevice)
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        var buffers = new SilkGpuBufferBudget(164);
+        buffers.ConfigureDevice(device);
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkPickReadbackBuffer readback = device.CreatePickReadbackBuffer();
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        ISilkGraphicsSubmission submission = SubmitManualPickPending(
+            device, pipeline, readback, color, depth, vertices, indices, uniforms,
+            1, 3, new SilkTexturePixelCoordinate(8, 8));
+        try
+        {
+            device.WaitIdle();
+            device.FailNextPickFenceForTesting(deviceLost: false);
+            await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+            device.FailNextPickFenceForTesting(deviceLost: false);
+            await Assert.That(submission.Dispose).Throws<InvalidOperationException>();
+            vertices.Dispose();
+            indices.Dispose();
+            uniforms.Dispose();
+            await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(164ul);
+
+            if (disposeDevice)
+            {
+                readback.Dispose();
+                pipeline.Dispose();
+                color.Dispose();
+                depth.Dispose();
+                device.Dispose();
+            }
+            else
+            {
+                device.WaitIdle();
+            }
+            await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+        finally
+        {
+            submission.Dispose();
+        }
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task SwiftShaderFailedPickWaitOrPollRemainsOwnedUntilDeviceDrain(
+        bool poll, bool disposeDevice)
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        var buffers = new SilkGpuBufferBudget(164);
+        buffers.ConfigureDevice(device);
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkPickReadbackBuffer readback = device.CreatePickReadbackBuffer();
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        ISilkGraphicsSubmission submission = SubmitManualPickPending(
+            device, pipeline, readback, color, depth, vertices, indices, uniforms,
+            1, 3, new SilkTexturePixelCoordinate(8, 8));
+        try
+        {
+            device.WaitIdle();
+            device.FailNextPickFenceForTesting(deviceLost: false);
+            if (poll)
+            {
+                await Assert.That(() => { _ = submission.IsCompleted; }).Throws<InvalidOperationException>();
+            }
+            else
+            {
+                await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+            }
+            vertices.Dispose();
+            indices.Dispose();
+            uniforms.Dispose();
+            await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(164ul);
+
+            if (disposeDevice)
+            {
+                readback.Dispose();
+                pipeline.Dispose();
+                color.Dispose();
+                depth.Dispose();
+                device.Dispose();
+            }
+            else
+            {
+                device.WaitIdle();
+                await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+                submission.Wait();
+                await Assert.That(submission.IsCompleted).IsTrue();
+                var pixel = new byte[SilkPickTokenEncoding.ByteSize];
+                readback.ReadRgba8Pixel(pixel);
+                await Assert.That(pixel).IsEquivalentTo(new byte[] { 1, 0, 0, 0 });
+
+                using ISilkGraphicsBuffer retryVertices = CreateTriangleVertices(device, 0.25f);
+                using ISilkGraphicsBuffer retryIndices = CreateTriangleIndices(device);
+                using ISilkGraphicsBuffer retryUniforms = CreateIdentityUniform(device);
+                using ISilkGraphicsSubmission retry = SubmitManualPickPending(
+                    device, pipeline, readback, color, depth, retryVertices, retryIndices, retryUniforms,
+                    2, 3, new SilkTexturePixelCoordinate(8, 8));
+                submission.Dispose();
+                await Assert.That(submission.Wait).Throws<ObjectDisposedException>();
+                retry.Wait();
+                readback.ReadRgba8Pixel(pixel);
+                await Assert.That(pixel).IsEquivalentTo(new byte[] { 2, 0, 0, 0 });
+            }
+            await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+        }
+        finally
+        {
+            submission.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task SwiftShaderRetiringFailedPickWaitPreservesConsumedReadbackState()
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkPickReadbackBuffer readback = device.CreatePickReadbackBuffer();
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        using ISilkGraphicsSubmission submission = SubmitManualPickPending(
+            device, pipeline, readback, color, depth, vertices, indices, uniforms,
+            1, 3, new SilkTexturePixelCoordinate(8, 8));
+        device.WaitIdle();
+        device.FailNextPickFenceForTesting(deviceLost: false);
+        await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+        submission.Wait();
+        var pixel = new byte[SilkPickTokenEncoding.ByteSize];
+        readback.ReadRgba8Pixel(pixel);
+        await Assert.That(pixel).IsEquivalentTo(new byte[] { 1, 0, 0, 0 });
+        await Assert.That(() => readback.ReadRgba8Pixel(pixel)).Throws<InvalidOperationException>();
+
+        device.WaitIdle();
+        await Assert.That(() => readback.ReadRgba8Pixel(pixel)).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task SwiftShaderObservedPickCompletionSurvivesLaterDeviceLoss(bool poll)
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkPickReadbackBuffer readback = device.CreatePickReadbackBuffer();
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        using ISilkGraphicsSubmission submission = SubmitManualPickPending(
+            device, pipeline, readback, color, depth, vertices, indices, uniforms,
+            1, 3, new SilkTexturePixelCoordinate(8, 8));
+        device.WaitIdle();
+        device.FailNextPickFenceForTesting(deviceLost: false);
+        await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+        if (poll)
+        {
+            await Assert.That(submission.IsCompleted).IsTrue();
+        }
+        else
+        {
+            submission.Wait();
+        }
+        var pixel = new byte[SilkPickTokenEncoding.ByteSize];
+        readback.ReadRgba8Pixel(pixel);
+        await Assert.That(pixel).IsEquivalentTo(new byte[] { 1, 0, 0, 0 });
+
+        device.InjectNextIdleDeviceLossForTesting();
+        await Assert.That(device.WaitIdle).Throws<InvalidOperationException>();
+        submission.Wait();
+        await Assert.That(submission.IsCompleted).IsTrue();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task SwiftShaderPickDeviceLossKeepsSubmissionAndReadbackInvalid(bool lossAtWait)
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkPickReadbackBuffer readback = device.CreatePickReadbackBuffer();
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        using ISilkGraphicsSubmission submission = SubmitManualPickPending(
+            device, pipeline, readback, color, depth, vertices, indices, uniforms,
+            1, 3, new SilkTexturePixelCoordinate(8, 8));
+        device.WaitIdle();
+        device.FailNextPickFenceForTesting(deviceLost: lossAtWait);
+        await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+        var pixel = new byte[SilkPickTokenEncoding.ByteSize];
+        if (lossAtWait)
+        {
+            await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+            await Assert.That(() => { _ = submission.IsCompleted; }).Throws<InvalidOperationException>();
+            await Assert.That(() => readback.ReadRgba8Pixel(pixel)).Throws<InvalidOperationException>();
+            device.WaitIdle();
+        }
+        else
+        {
+            device.InjectNextIdleDeviceLossForTesting();
+            await Assert.That(device.WaitIdle).Throws<InvalidOperationException>();
+        }
+        await Assert.That(submission.Wait).Throws<InvalidOperationException>();
+        await Assert.That(() => { _ = submission.IsCompleted; }).Throws<InvalidOperationException>();
+        await Assert.That(() => readback.ReadRgba8Pixel(pixel)).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task SwiftShaderFailedPickReadbackDisposalRemainsOwnedUntilDeviceDrain()
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        var staging = new SilkGpuStagingBudget(1048576);
+        staging.ConfigureDevice(device);
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkPickReadbackBuffer readback = device.CreatePickReadbackBuffer();
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        using ISilkGraphicsSubmission submission = SubmitManualPickPending(
+            device, pipeline, readback, color, depth, vertices, indices, uniforms,
+            1, 3, new SilkTexturePixelCoordinate(8, 8));
+
+        device.WaitIdle();
+        await Assert.That(staging.Usage.ReservedBytes).IsGreaterThan(0ul);
+        device.FailNextPickFenceForTesting(deviceLost: false);
+        await Assert.That(readback.Dispose).Throws<InvalidOperationException>();
+        await Assert.That(staging.Usage.ReservedBytes).IsGreaterThan(0ul);
+
+        device.WaitIdle();
+        await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
+        var pixel = new byte[SilkPickTokenEncoding.ByteSize];
+        await Assert.That(() => readback.ReadRgba8Pixel(pixel)).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task SwiftShaderRingDisposesOtherSlotsAfterOneSubmissionFails()
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            return;
+        }
+
+        using VulkanSilkGraphicsDevice device = VulkanSilkGraphicsDevice.Create();
+        var buffers = new SilkGpuBufferBudget(164);
+        buffers.ConfigureDevice(device);
+        using ISilkPickGraphicsPipeline pipeline = device.CreatePickGraphicsPipeline(
+            SilkPickPipelineDescriptor.CreateChecked(SilkShaderBinaryFormat.SpirV));
+        using ISilkGraphicsTexture color = CreatePickColor(device, 16, 16);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(16, 16));
+        using ISilkGraphicsBuffer vertices = CreateTriangleVertices(device, 0.25f);
+        using ISilkGraphicsBuffer indices = CreateTriangleIndices(device);
+        using ISilkGraphicsBuffer uniforms = CreateIdentityUniform(device);
+        var ring = new SilkPickReadbackRing(device);
+        var context = new SilkPickReadbackContext(
+            CreateRequest(8, 8, 16, 16, 1, 1),
+            1, 1, 1, device.PickDeviceGeneration, new ViewportDimensions(16, 16));
+        try
+        {
+            for (int index = 0; index < ring.Capacity; index++)
+            {
+                await Assert.That(ring.TryAcquire(out SilkPickReadbackReservation reservation)).IsTrue();
+                ISilkGraphicsSubmission submission = SubmitManualPickPending(
+                    device, pipeline, reservation.Buffer, color, depth, vertices, indices, uniforms,
+                    checked((uint)index + 1), 3, new SilkTexturePixelCoordinate(8, 8));
+                ring.Commit(reservation, submission, context);
+            }
+            device.WaitIdle();
+            vertices.Dispose();
+            indices.Dispose();
+            uniforms.Dispose();
+            device.FailNextPickFenceForTesting(deviceLost: false);
+            await Assert.That(ring.Dispose).Throws<InvalidOperationException>();
+
+            device.WaitIdle();
+            await Assert.That(buffers.Usage.ReservedBytes).IsEqualTo(0ul);
+            await Assert.That(device.PickDiagnostics.LiveCommandPools).IsEqualTo(0L);
+            ring.Dispose();
+        }
+        finally
+        {
+            device.WaitIdle();
+            ring.Dispose();
+        }
+    }
+
+    [Test]
     public async Task SwiftShaderCopiesExactRgbaTokenAndTokenZeroMiss()
     {
         if (!IsSupportedPlatform())
@@ -553,7 +1037,7 @@ public sealed class VulkanPickingTests
             await Assert.That(cleaned.FenceWaitCalls)
                 .IsEqualTo(
                     submitted.FenceWaitCalls +
-                    (deviceLost ? 0 : 2));
+                    (deviceLost ? 0 : 3));
         }
         finally
         {

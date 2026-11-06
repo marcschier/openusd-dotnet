@@ -1,0 +1,18 @@
+#usda 1.0
+(
+    subLayers = [@native-point-shadow-reference.usda@]
+)
+
+over "World"
+{
+    over "Point"
+    {
+        float inputs:intensity = 8000
+        matrix4d xformOp:transform = (
+            (0, 0, -1, 0),
+            (0, 1, 0, 0),
+            (1, 0, 0, 0),
+            (0, 0, 50, 1)
+        )
+    }
+}

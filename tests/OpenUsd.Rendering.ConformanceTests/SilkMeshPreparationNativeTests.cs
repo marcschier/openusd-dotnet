@@ -9,6 +9,310 @@ namespace OpenUsd.Rendering.ConformanceTests;
 [NotInParallel]
 public sealed class SilkMeshPreparationNativeTests
 {
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task AuthoredReaderFallbackAndTimeEditsMatchExplicitCoordinates(SilkGraphicsBackend backend)
+    {
+        const string material = """
+            def Material "Material" {
+                token outputs:surface.connect = </Material/Surface.outputs:surface>
+                def Shader "Surface" {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor = (0,0,0)
+                    color3f inputs:emissiveColor.connect = </Material/Texture.outputs:rgb>
+                    token outputs:surface
+                }
+                def Shader "Texture" {
+                    uniform token info:id = "UsdUVTexture"
+                    asset inputs:file = @colors.png@
+                    token inputs:sourceColorSpace = "raw"
+                    token inputs:wrapS = "clamp"
+                    token inputs:wrapT = "clamp"
+                    float2 inputs:st.connect = </Material/Transform.outputs:result>
+                    float3 outputs:rgb
+                }
+                def Shader "Transform" {
+                    uniform token info:id = "UsdTransform2d"
+                    float2 inputs:scale = (0.5,1)
+                    float2 inputs:translation = (0.25,0)
+                    float2 inputs:in.connect = </Material/Reader.outputs:result>
+                    float2 outputs:result
+                }
+                def Shader "Reader" {
+                    uniform token info:id = "UsdPrimvarReader_float2"
+                    token inputs:varname = "uvSet1"
+                    float2 inputs:fallback.timeSamples = {0:(0,0.5), 1:(1,0.5)}
+                    float2 outputs:result
+                }
+            }
+            """;
+        string mesh = Mesh.Replace("def Mesh \"Mesh\" {",
+            "def Mesh \"Mesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\nrel material:binding = </Material>",
+            StringComparison.Ordinal);
+        string explicitMesh = mesh.Replace("uniform token subdivisionScheme",
+            "texCoord2f[] primvars:uvSet1 (interpolation = \"constant\")\n" +
+            "texCoord2f[] primvars:uvSet1.timeSamples = {0:[(0,0.5)], 1:[(1,0.5)]}\nuniform token subdivisionScheme",
+            StringComparison.Ordinal);
+        using Fixture actualFixture = Create(material + "\n" + mesh);
+        using Fixture expectedFixture = Create(material + "\n" + explicitMesh);
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        new SilkGpuBufferBudget(4_194_304).ConfigureDevice(device);
+        new SilkTexturePreparationBudgets(new(4_194_304), new(4_194_304), new(4_194_304)).ConfigureDevice(device);
+        var policy = new SilkTextureResidencyOptions(1024, 1024, true);
+        var limits = new SilkPreparationLimits(1_000_000, 65536, new(131072, 65536, 65536, 31));
+        foreach (Fixture fixture in new[] { actualFixture, expectedFixture })
+        {
+            using FileStream file = File.Create(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(
+                fixture.Path)!, "colors.png"));
+            _ = PngRgba8Writer.Write(file, 2, 1, [255, 0, 0, 255, 0, 0, 255, 255], 1024);
+        }
+        string source = await File.ReadAllTextAsync(actualFixture.Path);
+        using OpenUsdSilkSession actualSession = OpenUsdSilkRuntime.Create(actualFixture.Plugins,
+            actualFixture.Path, limits);
+        using OpenUsdSilkSession expectedSession = OpenUsdSilkRuntime.Create(expectedFixture.Plugins,
+            expectedFixture.Path, limits);
+        using var actual = new SilkMeshRenderer(device, policy);
+        using var expected = new SilkMeshRenderer(device, policy);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(32, 32));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(32, 32));
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0.5f, 0.5f, 3), new Vector3(0.5f, 0.5f, 0), Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+        byte[]? first = null;
+        for (int time = 0; time < 2; time++)
+        {
+            using OpenUsdSilkPage actualPage = actualSession.Sync(32, 32, time, camera);
+            _ = actual.ApplyAndRender(actualPage, color, depth);
+            SilkVertexAttributeData uv = actual.Scene.Meshes.Values.Single().FindTexCoord("uvSet1")!;
+            await Assert.That(uv.Interpolation).IsEqualTo(SilkAttributeInterpolation.Constant);
+            await Assert.That(uv.Data.ToArray()).IsEquivalentTo([(float)time, 0.5f]);
+            await Assert.That(actual.GpuResources.Diagnostics.Entries.Select(static entry => entry.Code))
+                .DoesNotContain(SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable);
+            byte[] pixels = new byte[32 * 32 * 8];
+            color.ReadbackForTesting(pixels);
+            using OpenUsdSilkPage expectedPage = expectedSession.Sync(32, 32, time, camera);
+            _ = expected.ApplyAndRender(expectedPage, color, depth);
+            byte[] reference = new byte[pixels.Length];
+            color.ReadbackForTesting(reference);
+            await Assert.That(pixels.SequenceEqual(reference)).IsTrue();
+            if (first is null)
+            {
+                first = pixels;
+            }
+            else
+            {
+                await Assert.That(pixels.SequenceEqual(first)).IsFalse();
+            }
+        }
+        await Assert.That(await File.ReadAllTextAsync(actualFixture.Path)).IsEqualTo(source);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, "none")]
+    [Arguments(SilkGraphicsBackend.D3D12, "uvEmission")]
+    [Arguments(SilkGraphicsBackend.D3D12, "uvOpacity")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "none")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "uvEmission")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "uvOpacity")]
+    public async Task DistinctReaderFallbacksMatchAuthoredCoordinatesAcrossUpdates(
+        SilkGraphicsBackend backend,
+        string authoredPrimvar)
+    {
+        const string emissionSamples = "{0:(0,0.5), 1:(1,0.5), 2:(1,0.5), 3:(0,0.5)}";
+        const string opacitySamples = "{0:(1,0.5), 1:(1,0.5), 2:(0,0.5), 3:(1,0.5)}";
+        const string emissionCoordinates = """
+            texCoord2f[] primvars:uvEmission (interpolation = "constant")
+            texCoord2f[] primvars:uvEmission.timeSamples = {
+                0:[(0,0.5)], 1:[(1,0.5)], 2:[(1,0.5)], 3:[(0,0.5)]
+            }
+            """;
+        const string opacityCoordinates = """
+            texCoord2f[] primvars:uvOpacity (interpolation = "constant")
+            texCoord2f[] primvars:uvOpacity.timeSamples = {
+                0:[(1,0.5)], 1:[(1,0.5)], 2:[(0,0.5)], 3:[(1,0.5)]
+            }
+            """;
+        const string authoredEmissionCoordinates = """
+            texCoord2f[] primvars:uvEmission (interpolation = "constant")
+            texCoord2f[] primvars:uvEmission.timeSamples = {
+                0:[(1,0.5)], 1:[(0,0.5)], 2:[(0,0.5)], 3:[(1,0.5)]
+            }
+            """;
+        const string authoredOpacityCoordinates = """
+            texCoord2f[] primvars:uvOpacity (interpolation = "constant")
+            texCoord2f[] primvars:uvOpacity.timeSamples = {
+                0:[(0,0.5)], 1:[(0,0.5)], 2:[(1,0.5)], 3:[(0,0.5)]
+            }
+            """;
+        const string material = """
+            def Material "Material" {
+                token outputs:surface.connect = </Material/Surface.outputs:surface>
+                def Shader "Surface" {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor = (0,0,0)
+                    color3f inputs:emissiveColor.connect = </Material/Emission.outputs:rgb>
+                    float inputs:opacity.connect = </Material/Opacity.outputs:r>
+                    token outputs:surface
+                }
+                def Shader "Emission" {
+                    uniform token info:id = "UsdUVTexture"
+                    asset inputs:file = @emission.png@
+                    token inputs:sourceColorSpace = "raw"
+                    token inputs:wrapS = "clamp"
+                    token inputs:wrapT = "clamp"
+                    float2 inputs:st.connect = </Material/Transform.outputs:result>
+                    float3 outputs:rgb
+                }
+                def Shader "Opacity" {
+                    uniform token info:id = "UsdUVTexture"
+                    asset inputs:file = @opacity.png@
+                    token inputs:sourceColorSpace = "raw"
+                    token inputs:wrapS = "clamp"
+                    token inputs:wrapT = "clamp"
+                    float2 inputs:st.connect = </Material/OpacityReader.outputs:result>
+                    float outputs:r
+                }
+                def Shader "Transform" {
+                    uniform token info:id = "UsdTransform2d"
+                    float2 inputs:scale = (0.5,1)
+                    float2 inputs:translation = (0.25,0)
+                    float2 inputs:in.connect = </Material/EmissionReader.outputs:result>
+                    float2 outputs:result
+                }
+                def Shader "EmissionReader" {
+                    uniform token info:id = "UsdPrimvarReader_float2"
+                    token inputs:varname = "uvEmission"
+                    float2 inputs:fallback.timeSamples = {0:(0,0.5), 1:(1,0.5), 2:(1,0.5), 3:(0,0.5)}
+                    float2 outputs:result
+                }
+                def Shader "OpacityReader" {
+                    uniform token info:id = "UsdPrimvarReader_float2"
+                    token inputs:varname = "uvOpacity"
+                    float2 inputs:fallback.timeSamples = {0:(1,0.5), 1:(1,0.5), 2:(0,0.5), 3:(1,0.5)}
+                    float2 outputs:result
+                }
+            }
+            """;
+        string mesh = Mesh.Replace("def Mesh \"Mesh\" {",
+            "def Mesh \"Mesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\nrel material:binding = </Material>",
+            StringComparison.Ordinal);
+        static string addCoordinates(string sourceMesh, string declarations) =>
+            sourceMesh.Replace("uniform token subdivisionScheme",
+                declarations + "\nuniform token subdivisionScheme", StringComparison.Ordinal);
+
+        string actualMesh = authoredPrimvar switch
+        {
+            "none" => mesh,
+            "uvEmission" => addCoordinates(mesh, authoredEmissionCoordinates),
+            "uvOpacity" => addCoordinates(mesh, authoredOpacityCoordinates),
+            _ => throw new ArgumentOutOfRangeException(nameof(authoredPrimvar))
+        };
+        string expectedEmission = authoredPrimvar == "uvEmission" ? authoredEmissionCoordinates : emissionCoordinates;
+        string expectedOpacity = authoredPrimvar == "uvOpacity" ? authoredOpacityCoordinates : opacityCoordinates;
+        string explicitMesh = addCoordinates(mesh, expectedEmission + "\n" + expectedOpacity);
+        string referenceMaterial = material.Replace(opacitySamples, emissionSamples, StringComparison.Ordinal);
+        await Assert.That(referenceMaterial).IsNotEqualTo(material);
+        using Fixture actualFixture = Create(material + "\n" + actualMesh);
+        using Fixture expectedFixture = Create(referenceMaterial + "\n" + explicitMesh);
+        foreach (Fixture fixture in new[] { actualFixture, expectedFixture })
+        {
+            string directory = System.IO.Path.GetDirectoryName(fixture.Path)!;
+            using FileStream emission = File.Create(System.IO.Path.Combine(directory, "emission.png"));
+            using FileStream opacity = File.Create(System.IO.Path.Combine(directory, "opacity.png"));
+            _ = PngRgba8Writer.Write(emission, 2, 1, [255, 0, 0, 255, 0, 0, 255, 255], 1024);
+            _ = PngRgba8Writer.Write(opacity, 2, 1, [64, 64, 64, 255, 255, 255, 255, 255], 1024);
+        }
+
+        string source = await File.ReadAllTextAsync(actualFixture.Path);
+        await Assert.That(source.Contains("primvars:uvEmission", StringComparison.Ordinal))
+            .IsEqualTo(authoredPrimvar == "uvEmission");
+        await Assert.That(source.Contains("primvars:uvOpacity", StringComparison.Ordinal))
+            .IsEqualTo(authoredPrimvar == "uvOpacity");
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        new SilkGpuBufferBudget(4_194_304).ConfigureDevice(device);
+        new SilkTexturePreparationBudgets(new(4_194_304), new(4_194_304), new(4_194_304)).ConfigureDevice(device);
+        var policy = new SilkTextureResidencyOptions(1024, 1024, true);
+        var limits = new SilkPreparationLimits(1_000_000, 65536, new(131072, 65536, 65536, 31));
+        using OpenUsdSilkSession actualSession = OpenUsdSilkRuntime.Create(actualFixture.Plugins,
+            actualFixture.Path, limits);
+        using OpenUsdSilkSession expectedSession = OpenUsdSilkRuntime.Create(expectedFixture.Plugins,
+            expectedFixture.Path, limits);
+        using var actual = new SilkMeshRenderer(device, policy);
+        using var expected = new SilkMeshRenderer(device, policy);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.HdrColorTarget(32, 32));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.SampledDepthTarget(32, 32));
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0.5f, 0.5f, 3), new Vector3(0.5f, 0.5f, 0), Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+        (float Emission, float Opacity)[] coordinates = authoredPrimvar switch
+        {
+            "none" => [(0, 1), (1, 1), (1, 0), (0, 1)],
+            "uvEmission" => [(1, 1), (0, 1), (0, 0), (1, 1)],
+            "uvOpacity" => [(0, 0), (1, 0), (1, 1), (0, 0)],
+            _ => throw new ArgumentOutOfRangeException(nameof(authoredPrimvar))
+        };
+        byte[]? initial = null;
+        byte[]? previous = null;
+        for (int time = 0; time < coordinates.Length; time++)
+        {
+            using OpenUsdSilkPage actualPage = actualSession.Sync(32, 32, time, camera);
+            _ = actual.ApplyAndRender(actualPage, color, depth);
+            SilkMaterialData projected = actual.Scene.Materials["/Material"];
+            await Assert.That(projected.GetTexture(SilkMaterialParameter.EmissiveColor)?.UvPrimvar)
+                .IsEqualTo("uvEmission");
+            await Assert.That(projected.GetTexture(SilkMaterialParameter.Opacity)?.UvPrimvar)
+                .IsEqualTo("uvOpacity");
+            SilkVertexAttributeData? emission = actual.Scene.Meshes.Values.Single().FindTexCoord("uvEmission");
+            SilkVertexAttributeData? opacity = actual.Scene.Meshes.Values.Single().FindTexCoord("uvOpacity");
+            await Assert.That(emission).IsNotNull();
+            await Assert.That(opacity).IsNotNull();
+            await Assert.That(emission!.Interpolation).IsEqualTo(SilkAttributeInterpolation.Constant);
+            await Assert.That(opacity!.Interpolation).IsEqualTo(SilkAttributeInterpolation.Constant);
+            await Assert.That(emission.Data.ToArray().SequenceEqual([coordinates[time].Emission, 0.5f])).IsTrue();
+            await Assert.That(opacity.Data.ToArray().SequenceEqual([coordinates[time].Opacity, 0.5f])).IsTrue();
+            await Assert.That(actual.GpuResources.Diagnostics.Entries.Select(static entry => entry.Code))
+                .DoesNotContain(SilkRenderDiagnosticCodes.TextureCoordinatesUnavailable);
+
+            byte[] pixels = new byte[32 * 32 * 8];
+            color.ReadbackForTesting(pixels);
+            using OpenUsdSilkPage expectedPage = expectedSession.Sync(32, 32, time, camera);
+            _ = expected.ApplyAndRender(expectedPage, color, depth);
+            SilkMaterialData reference = expected.Scene.Materials["/Material"];
+            await Assert.That(reference.GetTexture(SilkMaterialParameter.EmissiveColor)?.UvPrimvar)
+                .IsEqualTo("uvEmission");
+            await Assert.That(reference.GetTexture(SilkMaterialParameter.Opacity)?.UvPrimvar)
+                .IsEqualTo("uvOpacity");
+            SilkVertexAttributeData? referenceEmission =
+                expected.Scene.Meshes.Values.Single().FindTexCoord("uvEmission");
+            SilkVertexAttributeData? referenceOpacity =
+                expected.Scene.Meshes.Values.Single().FindTexCoord("uvOpacity");
+            await Assert.That(referenceEmission).IsNotNull();
+            await Assert.That(referenceOpacity).IsNotNull();
+            await Assert.That(referenceEmission!.Data.ToArray()
+                .SequenceEqual([coordinates[time].Emission, 0.5f])).IsTrue();
+            await Assert.That(referenceOpacity!.Data.ToArray()
+                .SequenceEqual([coordinates[time].Opacity, 0.5f])).IsTrue();
+            byte[] referencePixels = new byte[pixels.Length];
+            color.ReadbackForTesting(referencePixels);
+            await Assert.That(pixels.SequenceEqual(referencePixels)).IsTrue();
+            if (time == 0)
+            {
+                initial = pixels;
+            }
+            else if (time == coordinates.Length - 1)
+            {
+                await Assert.That(pixels.SequenceEqual(initial!)).IsTrue();
+            }
+            else
+            {
+                await Assert.That(pixels.SequenceEqual(previous!)).IsFalse();
+            }
+            previous = pixels;
+        }
+        await Assert.That(await File.ReadAllTextAsync(actualFixture.Path)).IsEqualTo(source);
+    }
+
     private const string Mesh = """
         def Mesh "Mesh" {
             uniform token subdivisionScheme = "none"
@@ -19,6 +323,71 @@ public sealed class SilkMeshPreparationNativeTests
             texCoord2f[] primvars:st = [(0,0),(1,0),(1,1),(0,1)] (interpolation = "faceVarying")
         }
         """;
+
+    private const string LinearCurve = """
+        def BasisCurves "Curve" {
+            uniform token type = "linear"
+            uniform token wrap = "nonperiodic"
+            int[] curveVertexCounts = [4]
+            point3f[] points = [(0,0,0),(1,0,0),(1,1,0),(0,1,0)]
+            float[] widths = [0.1,0.2,0.3,0.4] (interpolation = "vertex")
+        }
+        """;
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public Task FileBackedCapturesMatchPixelsAndDepthAndReleaseTheirLiveFileCredit(SilkGraphicsBackend backend) =>
+        VerifyStoredCapture(backend, hardware: false);
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public Task FileBackedHardwareCapturesMatchPixelsDepthAndCredit(SilkGraphicsBackend backend)
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_STORED_UPDATE_HARDWARE_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_STORED_UPDATE_HARDWARE_REQUIRED=1 with a hardware Vulkan ICD and native runtime.");
+        }
+        return VerifyStoredCapture(backend, hardware: true);
+    }
+
+    private static async Task VerifyStoredCapture(SilkGraphicsBackend backend, bool hardware)
+    {
+        using Fixture fixture = Create(Mesh);
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0.5f, 0.5f, 3), new Vector3(0.5f, 0.5f, 0), Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+        int bytes;
+        using (OpenUsdSilkSession sizing = fixture.Open())
+        using (OpenUsdSilkPage page = sizing.Sync(32, 32, Options(1_000_000), camera: camera))
+        {
+            bytes = page.ByteLength;
+        }
+        var limits = new SilkPreparationLimits(1_000_000, bytes,
+            new((ulong)bytes, (ulong)bytes, bytes, 31));
+        using OpenUsdSilkSession stored = OpenUsdSilkRuntime.Create(fixture.Plugins, fixture.Path, limits);
+        using OpenUsdSilkSession reference = fixture.Open();
+        using ISilkGraphicsDevice device = hardware
+            && backend == SilkGraphicsBackend.D3D12 && OperatingSystem.IsWindows()
+            ? OpenUsd.Rendering.Silk.D3D12.D3D12SilkGraphicsDevice.Create(useWarp: false)
+            : SilkDepthCaptureConformance.CreateDevice(backend);
+        await Assert.That(device.Capabilities.IsSoftware).IsEqualTo(!hardware);
+        Console.WriteLine(
+            $"STORED_CAPTURE_DEVICE={device.Capabilities.DeviceName}; software={device.Capabilities.IsSoftware}");
+        using var expectedCapturer = new SilkFrameCapturer(device);
+        using var actualCapturer = new SilkFrameCapturer(device);
+        SilkFrameCaptureResult expected = expectedCapturer.CaptureWithDepth(
+            reference, 32, 32, RenderSettings.Default, Options(1_000_000), camera: camera);
+        for (int frame = 0; frame < 3; frame++)
+        {
+            SilkFrameCaptureResult actual = actualCapturer.CaptureWithDepth(
+                stored, 32, 32, RenderSettings.Default, Options(1_000_000), camera: camera);
+            await Assert.That(actual.Rgba.Span.SequenceEqual(expected.Rgba.Span)).IsTrue();
+            await Assert.That(actual.Depth!.Values.Span.SequenceEqual(expected.Depth!.Values.Span)).IsTrue();
+            await Assert.That(actual.Depth.Values.ToArray().Any(static depth => depth < 1)).IsTrue();
+        }
+    }
 
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12, "texture")]
@@ -118,14 +487,20 @@ public sealed class SilkMeshPreparationNativeTests
     }
 
     [Test]
-    [Arguments(SilkGraphicsBackend.D3D12, "texture")]
-    [Arguments(SilkGraphicsBackend.Vulkan, "texture")]
-    [Arguments(SilkGraphicsBackend.D3D12, "cpu")]
-    [Arguments(SilkGraphicsBackend.Vulkan, "cpu")]
-    [Arguments(SilkGraphicsBackend.D3D12, "staging")]
-    [Arguments(SilkGraphicsBackend.Vulkan, "staging")]
+    [Arguments(SilkGraphicsBackend.D3D12, "texture", false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "texture", false)]
+    [Arguments(SilkGraphicsBackend.D3D12, "cpu", false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "cpu", false)]
+    [Arguments(SilkGraphicsBackend.D3D12, "staging", false)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "staging", false)]
+    [Arguments(SilkGraphicsBackend.D3D12, "texture", true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "texture", true)]
+    [Arguments(SilkGraphicsBackend.D3D12, "cpu", true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "cpu", true)]
+    [Arguments(SilkGraphicsBackend.D3D12, "staging", true)]
+    [Arguments(SilkGraphicsBackend.Vulkan, "staging", true)]
     public async Task MaterialPreparationRefusalPreservesPixelsAndReplaysNativeRetirements(
-        SilkGraphicsBackend backend, string kind)
+        SilkGraphicsBackend backend, string kind, bool promoted)
     {
         const string material = """
             def Material "Material" {
@@ -153,7 +528,10 @@ public sealed class SilkMeshPreparationNativeTests
         string mesh = Mesh.Replace("def Mesh \"Mesh\" {",
             "def Mesh \"Mesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\n" +
             "rel material:binding = </Material>", StringComparison.Ordinal);
-        using Fixture fixture = Create(material + "\n" + mesh + "\n" +
+        string definition = promoted ? material.Replace("token inputs:sourceColorSpace = \"raw\"",
+            "token inputs:sourceColorSpace = \"raw\"\nfloat4 inputs:scale = (3, 3, 3, 1)\n" +
+            "float4 inputs:bias = (-1, -1, -1, 0)", StringComparison.Ordinal) : material;
+        using Fixture fixture = Create(definition + "\n" + mesh + "\n" +
             mesh.Replace("\"Mesh\"", "\"Removed\"", StringComparison.Ordinal));
         await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
         using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
@@ -209,10 +587,16 @@ public sealed class SilkMeshPreparationNativeTests
         };
         using (IDisposable pressure = reserve())
         {
+            ulong oldTextures = textures.Usage.ReservedBytes;
+            ulong oldCpu = cpu.Usage.ReservedBytes;
+            ulong oldStaging = staging.Usage.ReservedBytes;
             Exception? failure = await Assert.That(() => renderer.ApplyPage(update)).ThrowsException();
             await Assert.That(isExpected(failure)).IsTrue();
             await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
             await Assert.That((ulong)renderer.Scene.Meshes.Count).IsEqualTo(meshCount);
+            await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(oldTextures);
+            await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(oldCpu);
+            await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(oldStaging);
         }
         byte[] refused = SilkFrameCapture.CaptureRetained(
             renderer, device, 32, 32, RenderSettings.Default).Rgba.ToArray();
@@ -234,6 +618,139 @@ public sealed class SilkMeshPreparationNativeTests
         await Assert.That(textures.Usage.ReservedBytes).IsEqualTo(0ul);
         await Assert.That(cpu.Usage.ReservedBytes).IsEqualTo(0ul);
         await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12, "color")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "color")]
+    [Arguments(SilkGraphicsBackend.D3D12, "hdr")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "hdr")]
+    [Arguments(SilkGraphicsBackend.D3D12, "cpu-ocio")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "cpu-ocio")]
+    [Arguments(SilkGraphicsBackend.D3D12, "gpu-ocio")]
+    [Arguments(SilkGraphicsBackend.Vulkan, "gpu-ocio")]
+    public async Task CaptureReadbackRefusalKeepsTheNativePageUnpublished(SilkGraphicsBackend backend, string mode)
+    {
+        using Fixture fixture = Create(Mesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(
+            fixture.Plugins, source, new SilkPreparationLimits(1_000_000, 1_000_000));
+        using var device = new SilkGpuPublicationDevice(SilkDepthCaptureConformance.CreateDevice(backend));
+        var staging = new SilkGpuStagingBudget(4_194_304);
+        staging.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0.5f, 0.5f, 3), new Vector3(0.5f, 0.5f, 0), Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+        RenderSettings settings = mode == "gpu-ocio" ? RenderSettings.Default with
+        {
+            DisplayTransform = new RenderDisplayTransform(
+                SilkHdrColorCaptureFixture.OcioConfigPath, "linear", "TestDisplay", "TestView")
+        } : RenderSettings.Default;
+        SilkDepthCaptureRequest? request = mode == "color" ? null : SilkDepthCaptureRequest.ForHdrColor(
+            32, 32, new SilkHdrColorCaptureOptions(includeDeviceDepth: true), CancellationToken.None);
+        using SilkOpenColorIoProcessor? processor = mode == "cpu-ocio"
+            ? SilkHdrColorCaptureFixture.CreateProcessor("TestView") : null;
+        SilkFrameCaptureResult capture(SilkOpenColorIoProcessor? current = null) => mode == "cpu-ocio"
+            ? SilkFrameCapture.CaptureCoreOcio(
+                session, device, renderer, 32, 32, settings, current ?? processor!, 0, camera, request)
+            : SilkFrameCapture.CaptureCore(session, device, renderer, 32, 32, settings, 0, camera, request);
+        if (mode != "color")
+        {
+            renderer.UpdateSelection(new SelectionState(["/Mesh"]));
+        }
+        SilkFrameCaptureResult before = capture();
+        ulong revision = renderer.Scene.Revision;
+        SilkMeshGpuResource original = renderer.GpuResources.MeshValues.Single();
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points",
+            [new(0.5f, 0, 0), new(1.5f, 0, 0), new(1.5f, 1, 0), new(0.5f, 1, 0)]));
+        await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
+        using (staging.Reserve(staging.MaximumBytes))
+        {
+            await Assert.That(() => capture()).Throws<SilkGpuStagingBudgetExceededException>();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
+            await Assert.That(renderer.GpuResources.MeshValues.Single()).IsSameReferenceAs(original);
+            processor?.Dispose();
+            await Assert.That(() => session.Sync(32, 32, camera: camera))
+                .Throws<SilkGpuStagingBudgetExceededException>();
+            await Assert.That(renderer.Scene.Revision).IsEqualTo(revision);
+            await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(staging.MaximumBytes);
+        }
+        using SilkOpenColorIoProcessor? retryProcessor = mode == "cpu-ocio"
+            ? SilkHdrColorCaptureFixture.CreateProcessor("TestView") : null;
+        SilkFrameCaptureResult after = capture(retryProcessor);
+        await Assert.That(after.Rgba.Span.SequenceEqual(before.Rgba.Span)).IsFalse();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(revision + 2);
+        await Assert.That(staging.Usage.ReservedBytes).IsEqualTo(0ul);
+        using OpenUsdSilkSession reference = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using var referenceRenderer = new SilkMeshRenderer(device);
+        referenceRenderer.UpdateSelection(renderer.Selection);
+        SilkFrameCaptureResult expected = mode == "cpu-ocio"
+            ? SilkFrameCapture.CaptureCoreOcio(
+                reference, device, referenceRenderer, 32, 32, settings, retryProcessor!, 0, camera, request)
+            : SilkFrameCapture.CaptureCore(
+                reference, device, referenceRenderer, 32, 32, settings, 0, camera, request);
+        await Assert.That(after.Rgba.Span.SequenceEqual(expected.Rgba.Span)).IsTrue();
+        if (mode != "color")
+        {
+            await Assert.That(after.HdrColor!.Rgba16Float.Length).IsEqualTo(32 * 32 * 8);
+            await Assert.That(after.Depth!.Values.Length).IsEqualTo(32 * 32);
+            await Assert.That(after.HdrColor.Rgba16Float.Span.SequenceEqual(expected.HdrColor!.Rgba16Float.Span))
+                .IsTrue();
+            await Assert.That(after.Depth.Values.Span.SequenceEqual(expected.Depth!.Values.Span)).IsTrue();
+            await Assert.That(renderer.SelectionOutlineDiagnostics.Status)
+                .IsEqualTo(SilkSelectionOutlineStatus.Rendered);
+        }
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task NativeSyncWaitsForRejectedFinalFramePublication(SilkGraphicsBackend backend)
+    {
+        using Fixture fixture = Create(Mesh);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(
+            fixture.Plugins, source, new SilkPreparationLimits(1_000_000, 1_000_000));
+        using var device = new SilkGpuPublicationDevice(SilkDepthCaptureConformance.CreateDevice(backend));
+        var budget = new SilkGpuBufferBudget(1_000_000);
+        budget.ConfigureDevice(device);
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(32, 32));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(32, 32));
+        var camera = new CameraState(
+            Matrix4x4.CreateLookAt(new Vector3(0.5f, 0.5f, 3), new Vector3(0.5f, 0.5f, 0), Vector3.UnitY),
+            Matrix4x4.CreateOrthographic(2, 2, 0.1f, 10));
+        using OpenUsdSilkPage initial = session.Sync(32, 32, camera: camera);
+        _ = renderer.ApplyAndRender(initial, color, depth);
+        byte[] before = new byte[32 * 32 * 4];
+        color.ReadbackForTesting(before);
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Mesh").SetVec3fArray("points",
+            [new(0.5f, 0, 0), new(1.5f, 0, 0), new(1.5f, 1, 0), new(0.5f, 1, 0)]));
+        using OpenUsdSilkPage update = session.Sync(32, 32, camera: camera);
+        device.RefuseSubmissionAfter = 1;
+        await Assert.That(() => renderer.ApplyAndRender(update, color, depth))
+            .Throws<SilkGpuStagingBudgetExceededException>();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(initial.Revision);
+        update.Dispose();
+        await Assert.That(() => session.Sync(32, 32, camera: camera)).Throws<SilkGpuStagingBudgetExceededException>();
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(initial.Revision);
+        byte[] retained = new byte[before.Length];
+        color.ReadbackForTesting(retained);
+        await Assert.That(retained.SequenceEqual(before)).IsTrue();
+        device.RefuseSubmissionAfter = null;
+        using OpenUsdSilkPage next = session.Sync(32, 32, camera: camera);
+        await Assert.That(next.Revision).IsEqualTo(update.Revision + 1);
+        await Assert.That(MeshValues(next)).IsEqualTo(string.Empty);
+        await Assert.That(renderer.Scene.Revision).IsEqualTo(update.Revision);
+        _ = renderer.ApplyAndRender(next, color, depth);
+        color.ReadbackForTesting(retained);
+        await Assert.That(retained.SequenceEqual(before)).IsFalse();
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + Mesh);
+        renderer.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
     }
 
     [Test]
@@ -671,20 +1188,173 @@ public sealed class SilkMeshPreparationNativeTests
     }
 
     [Test]
-    [Arguments("Points")]
-    [Arguments("BasisCurves")]
+    [Arguments("segmented", 2)]
+    [Arguments("nonperiodic", 3)]
+    [Arguments("periodic", 4)]
+    [Arguments("pinned", 3)]
+    public async Task LinearCurveReservationMatchesLegacyAtTheExactBoundary(string wrap, int segments)
+    {
+        string curve = LinearCurve.Replace("\"nonperiodic\"", $"\"{wrap}\"", StringComparison.Ordinal);
+        using Fixture fixture = Create(curve);
+        using OpenUsdSilkSession session = fixture.Open();
+        using OpenUsdSilkPage legacy = session.Sync(16, 16);
+        string expected = CurveValues(legacy);
+        await Assert.That(expected.Length).IsGreaterThan(0);
+        ulong cost = 4 * 12ul + 4 * 4ul + (ulong)segments * (2 * 36ul + 4ul);
+        using OpenUsdSilkPage bounded = session.Sync(16, 16, Options(cost));
+        await Assert.That(bounded.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        await Assert.That(bounded.MeshPreparationUsage.PeakReservedBytes).IsEqualTo(cost);
+        await Assert.That(CurveValues(bounded)).IsEqualTo(expected);
+        await Assert.That(() => session.Sync(16, 16, Options(cost - 1))).Throws<OpenUsdSilkException>();
+        await Assert.That(CurveValues(bounded)).IsEqualTo(expected);
+        using OpenUsdSilkPage retry = session.Sync(16, 16, Options(cost));
+        await Assert.That(retry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        await Assert.That(CurveValues(retry)).IsEqualTo(expected);
+        using OpenUsdSilkPage quiet = session.Sync(16, 16, Options(cost));
+        await Assert.That(CurveValues(quiet)).IsEqualTo(string.Empty);
+        await Assert.That(quiet.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+    }
+
+    [Test]
+    public async Task LinearCurveGrowthRefusalPreservesAndReleasesReservationsForRetry()
+    {
+        using Fixture fixture = Create(LinearCurve);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using OpenUsdSilkPage initial = session.Sync(16, 16, Options(4096));
+        string expected = CurveValues(initial);
+        ulong cost = initial.MeshPreparationUsage!.ReservedBytes;
+        UsdVec3f[] originalPoints = [new(0, 0, 0), new(1, 0, 0), new(1, 1, 0), new(0, 1, 0)];
+        float[] originalWidths = [0.1f, 0.2f, 0.3f, 0.4f];
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetFloatArray(
+            "widths", Enumerable.Repeat(0.5f, 1024).ToArray()));
+        await Assert.That(() => session.Sync(16, 16, Options(4096))).Throws<OpenUsdSilkException>();
+        await Assert.That(CurveValues(initial)).IsEqualTo(expected);
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetFloatArray("widths", originalWidths));
+        using OpenUsdSilkPage afterWidthRetry = session.Sync(16, 16, Options(4096));
+        await Assert.That(CurveValues(afterWidthRetry)).IsEqualTo(expected);
+        await Assert.That(afterWidthRetry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetVec3fArray(
+            "points", Enumerable.Repeat(new UsdVec3f(2, 3, 4), 1024).ToArray()));
+        await Assert.That(() => session.Sync(16, 16, Options(4096))).Throws<OpenUsdSilkException>();
+        await Assert.That(CurveValues(afterWidthRetry)).IsEqualTo(expected);
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetVec3fArray("points", originalPoints));
+        using OpenUsdSilkPage afterPointRetry = session.Sync(16, 16, Options(4096));
+        await Assert.That(CurveValues(afterPointRetry)).IsEqualTo(expected);
+        await Assert.That(afterPointRetry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+
+        await scheduler.InvokeAsync(stage => stage.RemovePrim("/Curve"));
+        using OpenUsdSilkPage removed = session.Sync(16, 16, Options(4096));
+        await Assert.That(removed.MeshPreparationUsage!.ReservedBytes).IsEqualTo(0ul);
+        await scheduler.InvokeAsync(stage =>
+        {
+            UsdPrim curve = stage.DefinePrim("/Curve", "BasisCurves");
+            curve.SetToken("type", "linear");
+            curve.SetToken("wrap", "nonperiodic");
+            curve.SetInt32Array("curveVertexCounts", [4]);
+            curve.SetVec3fArray("points", originalPoints);
+            curve.SetFloatArray("widths", originalWidths);
+        });
+        using OpenUsdSilkPage restored = session.Sync(16, 16, Options(4096));
+        await Assert.That(restored.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        await Assert.That(CurveValues(restored)).IsEqualTo(expected);
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + LinearCurve);
+    }
+
+    [Test]
+    public async Task LinearCurveBlockedPointsRefuseAndRecoverWithoutReplacingRetainedGeometry()
+    {
+        using Fixture fixture = Create(LinearCurve);
+        await using UsdStageScheduler scheduler = UsdStageScheduler.Open(fixture.Path);
+        using UsdStageRenderSource source = await scheduler.AcquireRenderSourceAsync();
+        using OpenUsdSilkSession session = OpenUsdSilkRuntime.Create(fixture.Plugins, source);
+        using OpenUsdSilkPage initial = session.Sync(16, 16, Options(4096));
+        string expected = CurveValues(initial);
+        ulong cost = initial.MeshPreparationUsage!.ReservedBytes;
+        await Assert.That(expected.Length).IsGreaterThan(0);
+        await Assert.That(cost).IsGreaterThan(0ul);
+        using var scene = new SilkSceneState();
+        scene.Apply(initial);
+        UsdVec3f[] original = [new(0, 0, 0), new(1, 0, 0), new(1, 1, 0), new(0, 1, 0)];
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").GetAttribute("points").BlockValue());
+        await Assert.That(() => session.Sync(16, 16, Options(4096)))
+            .Throws<OpenUsdSilkException>()
+            .WithMessageContaining("requires resolved float3 or double3 points");
+        await Assert.That(CurveValues(initial)).IsEqualTo(expected);
+        await Assert.That(scene.Meshes.Values.Single().Points.Length).IsGreaterThan(0);
+
+        await scheduler.InvokeAsync(stage => stage.GetPrim("/Curve").SetVec3fArray("points", original));
+        using OpenUsdSilkPage retry = session.Sync(16, 16, Options(4096));
+        await Assert.That(retry.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        await Assert.That(CurveValues(retry)).IsEqualTo(expected);
+        scene.Apply(retry);
+        await Assert.That(scene.Meshes.Values.Single().Points.Length).IsGreaterThan(0);
+        await Assert.That(await File.ReadAllTextAsync(fixture.Path)).IsEqualTo("#usda 1.0\n" + LinearCurve);
+    }
+
+    [Test]
+    public async Task LinearCurveReservationsAggregateAndInstancesShareThePrototype()
+    {
+        using Fixture single = Create(LinearCurve);
+        using OpenUsdSilkSession one = single.Open();
+        using OpenUsdSilkPage onePage = one.Sync(16, 16, Options(4096));
+        ulong cost = onePage.MeshPreparationUsage!.ReservedBytes;
+        using Fixture pair = Create(
+            LinearCurve + "\n" + LinearCurve.Replace("\"Curve\"", "\"Other\"", StringComparison.Ordinal));
+        using OpenUsdSilkSession two = pair.Open();
+        await Assert.That(() => two.Sync(16, 16, Options(cost * 2 - 1))).Throws<OpenUsdSilkException>();
+        using OpenUsdSilkPage twoPage = two.Sync(16, 16, Options(cost * 2));
+        await Assert.That(twoPage.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost * 2);
+
+        using Fixture instances = Create("""
+            def PointInstancer "Instances" {
+                rel prototypes = </Instances/Curve>
+                int[] protoIndices = [0,0,0]
+                point3f[] positions = [(0,0,0),(2,0,0),(4,0,0)]
+            """ + "\n" + LinearCurve + "\n}");
+        using OpenUsdSilkSession instanced = instances.Open();
+        using OpenUsdSilkPage instancePage = instanced.Sync(16, 16, Options(cost));
+        await Assert.That(instancePage.MeshPreparationUsage!.ReservedBytes).IsEqualTo(cost);
+        int payloads = 0;
+        int references = 0;
+        using (SilkCommandEnumerator commands = instancePage.GetEnumerator())
+        {
+            while (commands.MoveNext())
+            {
+                if (commands.Current.Type == SilkCommandType.MeshUpsert)
+                {
+                    if (commands.Current.AsMeshUpsert().PointCount == 0)
+                    {
+                        references++;
+                    }
+                    else
+                    {
+                        payloads++;
+                    }
+                }
+            }
+        }
+        await Assert.That(payloads).IsEqualTo(1);
+        await Assert.That(references).IsEqualTo(2);
+    }
+
+    [Test]
+    [Arguments("CubicBasisCurves")]
     [Arguments("Volume")]
     [Arguments("SkelRoot")]
     public async Task UnaccountedGeometryProfilesAreRefusedInsteadOfOmitted(string type)
     {
         string geometry = type switch
         {
-            "Points" => "def Points \"Other\" {\npoint3f[] points = [(0,0,0)]\n}",
-            "BasisCurves" => """
+            "CubicBasisCurves" => """
                 def BasisCurves "Other" {
-                    point3f[] points = [(0,0,0),(1,0,0)]
-                    int[] curveVertexCounts = [2]
-                    uniform token type = "linear"
+                    point3f[] points = [(0,0,0),(1,0,0),(1,1,0),(0,1,0)]
+                    int[] curveVertexCounts = [4]
+                    uniform token type = "cubic"
                 }
                 """,
             _ => $"def {type} \"Other\" {{}}"
@@ -712,6 +1382,54 @@ public sealed class SilkMeshPreparationNativeTests
 
     private static SilkSceneIngestionOptions PageOptions(int maximumPageBytes) =>
         new(RenderPurpose.Default | RenderPurpose.Render | RenderPurpose.Proxy, "full", 1_000_000, maximumPageBytes);
+
+    private static string CurveValues(OpenUsdSilkPage page)
+    {
+        var values = new List<string>();
+        using SilkCommandEnumerator commands = page.GetEnumerator();
+        while (commands.MoveNext())
+        {
+            if (commands.Current.Type != SilkCommandType.MeshUpsert)
+            {
+                continue;
+            }
+            SilkMeshUpsertCommand mesh = commands.Current.AsMeshUpsert();
+            values.Add(mesh.Path);
+            values.Add(mesh.TopologyKind.ToString());
+            for (int point = 0; point < mesh.PointCount; point++)
+            {
+                for (int component = 0; component < 3; component++)
+                {
+                    values.Add(BitConverter.SingleToInt32Bits(mesh.GetPointComponent(point, component)).ToString(
+                        System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+            for (int index = 0; index < mesh.IndexCount; index++)
+            {
+                values.Add(mesh.GetIndex(index).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            for (int segment = 0; segment < mesh.TriangleCount; segment++)
+            {
+                values.Add(mesh.GetTriangleSubprim(segment).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
+            }
+            for (int index = 0; index < mesh.AttributeCount; index++)
+            {
+                SilkMeshAttributeEntry attribute = mesh.GetAttribute(index);
+                values.Add(attribute.Name);
+                values.Add(attribute.Interpolation.ToString());
+                for (int element = 0; element < attribute.ElementCount; element++)
+                {
+                    for (int component = 0; component < attribute.ComponentCount; component++)
+                    {
+                        values.Add(BitConverter.SingleToInt32Bits(attribute.GetComponent(element, component))
+                            .ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                }
+            }
+        }
+        return string.Join(",", values);
+    }
 
     private static string MeshValues(OpenUsdSilkPage page)
     {

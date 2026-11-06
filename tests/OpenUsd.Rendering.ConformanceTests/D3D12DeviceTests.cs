@@ -10,6 +10,91 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class D3D12DeviceTests
 {
     [Test]
+    public async Task RepeatedMeshDrawsDoNotCreateDescriptorHeapsPerDraw()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test requires D3D12.");
+            return;
+        }
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        using var renderer = new SilkMeshRenderer(device);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(16, 16));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(16, 16));
+        const int draws = 16;
+        var commands = new List<byte[]> { SilkMeshRendererConformance.CreateFrameCommand(16, 16,
+            SilkMeshRendererConformance.Identity()) };
+        float[] points = [-0.3f, -0.3f, 0.1f, 0, 0.3f, 0.5f, 0.3f, -0.3f, 0.1f];
+        uint[] indices = [0, 1, 2];
+        for (int index = 0; index < draws; index++)
+        {
+            commands.Add(SilkMeshRendererConformance.CreateMeshCommand(
+                (ulong)index + 1, $"/Mesh{index}", points, indices));
+        }
+        SilkMeshRendererConformance.Apply(renderer, 1, commands.ToArray());
+        for (int frame = 0; frame < 2; frame++)
+        {
+            long before = device.SubmissionDescriptorHeapCreations;
+            SilkMeshRenderResult result = renderer.Render(color, depth);
+            await Assert.That(result.DrawCount).IsEqualTo(draws);
+            await Assert.That(device.SubmissionDescriptorHeapCreations - before).IsLessThanOrEqualTo(2);
+        }
+    }
+
+    [Test]
+    public async Task SubmissionDescriptorPagesReuseExactTablesAndRollOverWithoutOverwritingThem()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test requires D3D12.");
+            return;
+        }
+        using D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
+        using ISilkGraphicsTexture texture = device.CreateTexture2D(
+            new SilkTextureDescriptor(1, 1, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled));
+        var retained = new List<nint>();
+        bool same;
+        bool rolled;
+        bool empty;
+        bool unusedDistinct;
+        try
+        {
+            unsafe
+            {
+                var arena = new D3D12SilkGraphicsDevice.SubmissionDescriptorArena(
+                    device, global::Silk.NET.Direct3D12.DescriptorHeapType.CbvSrvUav, retained);
+                global::Silk.NET.Direct3D12.CpuDescriptorHandle source =
+                    ((D3D12SilkGraphicsTexture)texture).ShaderResourceView;
+                var full = new global::Silk.NET.Direct3D12.CpuDescriptorHandle[4096];
+                Array.Fill(full, source);
+                D3D12SilkGraphicsDevice.SubmissionDescriptorTable first = arena.Resolve(full);
+                same = arena.Resolve(full) == first;
+                D3D12SilkGraphicsDevice.SubmissionDescriptorTable next = arena.Resolve([source]);
+                rolled = next.Heap != first.Heap && arena.Resolve(full) == first && arena.Resolve([source]) == next;
+                empty = arena.Resolve([]).Heap == 0;
+                D3D12SilkGraphicsDevice.SubmissionDescriptorTable unused = arena.Resolve([default]);
+                unusedDistinct = unused != next && arena.Resolve([default]) == unused;
+            }
+            await Assert.That(same).IsTrue();
+            await Assert.That(rolled).IsTrue();
+            await Assert.That(empty).IsTrue();
+            await Assert.That(unusedDistinct).IsTrue();
+            await Assert.That(retained.Count).IsEqualTo(2);
+        }
+        finally
+        {
+            unsafe
+            {
+                foreach (nint handle in retained)
+                {
+                    var heap = (global::Silk.NET.Direct3D12.ID3D12DescriptorHeap*)handle;
+                    D3D12SilkGraphicsDevice.Release(ref heap);
+                }
+            }
+        }
+    }
+
+    [Test]
     public async Task UniversalMaterialUsesBoundedRootDescriptorTables()
     {
         var permutation = new SilkShaderPermutationId(
@@ -30,21 +115,37 @@ public sealed class D3D12DeviceTests
         await Assert.That(plan.RootParameterCount).IsEqualTo(6u);
         await Assert.That(plan.RootSignatureDwordCost).IsEqualTo(10u);
         await Assert.That(plan.RootSignatureDwordCost).IsLessThanOrEqualTo(64u);
-        // Sixteen, not eleven: the eleven material slots, the material's single
+        // The eleven material slots, the independent detail normal, the material's single
         // two-image composite image, the one shadow atlas every mesh permutation
-        // samples, the two prefiltered environment maps, and the split-sum BRDF
-        // table. Every extra is a universal slot rather than one per material
+        // samples, four peeled shadow-transmission textures, the two prefiltered
+        // environment maps, and the split-sum BRDF table, plus two private normal
+        // value tables without additional samplers.
+        // Every extra is a universal slot rather than one per material
         // input precisely so this stays bounded -- a per-input composite, a
         // per-map shadow texture or a per-dome environment would multiply both
         // counts.
-        await Assert.That(plan.SampledTextureCount).IsEqualTo(16u);
-        await Assert.That(plan.SamplerCount).IsEqualTo(15u);
+        await Assert.That(plan.SampledTextureCount).IsEqualTo(25u);
+        await Assert.That(plan.GetDescriptorOffset(
+            0, SilkBindingLayoutDescriptor.EmissiveValuesTextureBinding, SilkBindingKind.SampledTexture))
+            .IsEqualTo(24u);
+        await Assert.That(plan.GetDescriptorOffset(
+            0, SilkBindingLayoutDescriptor.DiffuseValuesTextureBinding, SilkBindingKind.SampledTexture))
+            .IsEqualTo(23u);
+        await Assert.That(plan.SamplerCount).IsEqualTo(16u);
+        await Assert.That(plan.GetDescriptorOffset(
+            0, SilkBindingLayoutDescriptor.NormalValuesTextureBinding, SilkBindingKind.SampledTexture))
+            .IsEqualTo(21u);
+        await Assert.That(plan.GetDescriptorOffset(
+            0, SilkBindingLayoutDescriptor.DetailNormalValuesTextureBinding, SilkBindingKind.SampledTexture))
+            .IsEqualTo(22u);
+        await Assert.That(plan.GetDescriptorOffset(
+            0, SilkBindingLayoutDescriptor.DetailNormalTextureBinding, SilkBindingKind.SampledTexture))
+            .IsEqualTo(20u);
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.CompositeTextureBinding,
             SilkBindingKind.SampledTexture)).IsEqualTo(11u);
-        // Appending the composite last keeps every pre-existing descriptor offset,
-        // including the normal map's, exactly where it was.
+        // The detail and value tables follow the expanded shared texture block.
         await Assert.That(plan.GetDescriptorOffset(
             0,
             SilkBindingLayoutDescriptor.MetallicTextureBinding,
@@ -942,6 +1043,20 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
+    public async Task WarpDoesNotFoldDomeShadowLinkIntoReceiverLinking()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("This test is only applicable on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        using D3D12SilkGraphicsDevice device =
+            D3D12SilkGraphicsDevice.Create(useWarp: true);
+        await SilkDomeLinkConformance.DomeShadowCollectionDoesNotChangeReceiverLinking(device);
+    }
+
+    [Test]
     public async Task WarpSplitsTheSpecularSkyByDomeLink()
     {
         if (!OperatingSystem.IsWindows())
@@ -984,7 +1099,7 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
-    public async Task WarpReleasesEverySubmissionResourceWhenTheWaitFails()
+    public async Task WarpReleasesEverySubmissionResourceAfterProvenDeviceRemoval()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -992,14 +1107,6 @@ public sealed class D3D12DeviceTests
             throw new InvalidOperationException("Skip.Test returned unexpectedly.");
         }
 
-        // The window between handing a submission to the queue and its wait
-        // completing is where the submission still owns its fence, its command
-        // list, its allocator, the upload staging it holds leases on, the
-        // descriptor heaps it retained, and the device's own dependent
-        // registration. A removed device is the ordinary way that wait fails, and
-        // a failure that dropped any of those on the floor would make the device
-        // permanently undisposable and the memory unreclaimable -- on top of the
-        // failure the caller already has to handle.
         D3D12SilkGraphicsDevice device = D3D12SilkGraphicsDevice.Create(useWarp: true);
         ISilkGraphicsTexture color = device.CreateTexture2D(
             new SilkTextureDescriptor(
@@ -1010,13 +1117,13 @@ public sealed class D3D12DeviceTests
 
         var injected = new InvalidOperationException("The injected fence wait failed.");
         InvalidOperationException? observed = null;
+        InvalidOperationException? disposalFailure = null;
         using (ISilkGraphicsCommandList commands = device.CreateCommandList())
         {
             commands.ClearColor(color, new SilkColor(0.25f, 0.5f, 0.75f, 1f));
             ISilkGraphicsSubmission submission = device.Submit(commands);
-
-            // Armed after the work is queued and before its wait completes,
-            // which is exactly the window the submission owns everything in.
+            device.WaitIdle();
+            device.SetTeardownHookForTesting(new FakeTeardownHook(unchecked((int)0x887A0005)));
             device.FailFenceWaitsForTesting(() => injected);
             try
             {
@@ -1027,11 +1134,10 @@ public sealed class D3D12DeviceTests
                 observed = exception;
             }
 
-            // Disposal runs while the original failure is still unwinding, and
-            // its own wait fails for the same reason the first one did, so it
-            // must neither throw nor replace the failure the caller has.
+            disposalFailure = await Assert.That(submission.Dispose).Throws<InvalidOperationException>();
             submission.Dispose();
             device.FailFenceWaitsForTesting(null);
+            device.SetTeardownHookForTesting(null);
         }
 
         device.WaitIdle();
@@ -1039,6 +1145,7 @@ public sealed class D3D12DeviceTests
         await Assert.That(observed)
             .IsSameReferenceAs(injected)
             .Because("The original wait failure must reach the caller unchanged.");
+        await Assert.That(disposalFailure).IsSameReferenceAs(injected);
 
         // The device refuses to dispose while any submission, buffer or texture
         // is still registered against it, so disposing cleanly below is the proof
@@ -1148,7 +1255,7 @@ public sealed class D3D12DeviceTests
     }
 
     [Test]
-    public async Task WarpSkipsAndNamesAnOpacityMaskedCaster()
+    public async Task WarpOmitsABelowCutoffCasterWithoutDiagnostic()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -1158,7 +1265,7 @@ public sealed class D3D12DeviceTests
 
         using D3D12SilkGraphicsDevice device =
             D3D12SilkGraphicsDevice.Create(useWarp: true);
-        await SilkShadowConformance.AnOpacityMaskedCasterIsSkippedAndNamed(device);
+        await SilkShadowConformance.AnOpacityCutoffCasterIsOmittedWithoutDiagnostic(device);
     }
 
     [Test]

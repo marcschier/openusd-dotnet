@@ -46,7 +46,7 @@ public sealed partial class RuntimePackageTests
     private const int RequiredStormAbiVersion = 9;
     private static readonly int RequiredSilkSessionAbiVersion =
         checked((int)ReadLockNumber("silkSession"));
-    private const int RequiredSilkPageAbiVersion = 24;
+    private const int RequiredSilkPageAbiVersion = 35;
     private const int RequiredStormChildAbiVersion = 9;
     private const int RequiredStormChildNavigationInputVersion = 2;
 
@@ -54,8 +54,8 @@ public sealed partial class RuntimePackageTests
     // OpenUsd.Physics.Tests.PhysicsAbiLockContractTests, which runs on an ordinary push. This
     // suite needs a built native install, so a constant only checked here would drift for a
     // whole wave before anything noticed.
-    private const int RequiredPhysicsAbiVersion = 7;
-    private const int RequiredPhysicsExtractAbiVersion = 1;
+    private const int RequiredPhysicsAbiVersion = 8;
+    private const int RequiredPhysicsExtractAbiVersion = 2;
 
     private static readonly string[] ExpectedPhysicsRidPackages =
     [
@@ -722,6 +722,7 @@ public sealed partial class RuntimePackageTests
                     "runtimes/win-x64/native/zstd.dll",
                     "runtimes/win-x64/native/MaterialXCore.dll",
                     "runtimes/win-x64/native/OpenColorIO_2_6.dll",
+                    "runtimes/win-x64/native/Ptex.dll",
                     "runtimes/win-x64/native/openusd_dotnet.dll",
                     "runtimes/win-x64/native/usd_ms.dll",
                     "runtimes/win-x64/native/vulkan-1.dll",
@@ -1003,6 +1004,7 @@ public sealed partial class RuntimePackageTests
                 [
                     "THIRD-PARTY-NOTICES.md",
                     "THIRD-PARTY-PHYSX.md",
+                    "THIRD-PARTY-V-HACD.txt",
                     "build/OpenUsd.Runtime.Physics.win-x64.native-abi.json",
                     "buildTransitive/OpenUsd.Runtime.Physics.win-x64.targets",
                     "runtimes/win-x64/native/openusd_physx.dll",
@@ -1011,6 +1013,10 @@ public sealed partial class RuntimePackageTests
                 physicsPackage.Path,
                 "runtimes/win-x64/native/openusd_physx.dll",
                 Path.Combine(physicsShimRoot, "bin", "openusd_physx.dll"));
+            await AssertPackageEntryMatchesFileAsync(
+                physicsPackage.Path,
+                "THIRD-PARTY-V-HACD.txt",
+                Path.Combine(physicsShimRoot, "share", "licenses", "openusd_physx", "V-HACD-LICENSE.txt"));
             await AssertSingleNativePackageEntryAsync(
                 physicsPackage.Path,
                 "win-x64",
@@ -1074,6 +1080,7 @@ public sealed partial class RuntimePackageTests
                 [
                     "THIRD-PARTY-NOTICES.md",
                     "THIRD-PARTY-PHYSX.md",
+                    "THIRD-PARTY-V-HACD.txt",
                     "build/OpenUsd.Runtime.Physics.linux-x64.native-abi.json",
                     "buildTransitive/OpenUsd.Runtime.Physics.linux-x64.targets",
                     "runtimes/linux-x64/native/libopenusd_physx.so",
@@ -1298,6 +1305,66 @@ public sealed partial class RuntimePackageTests
     }
 
     [Test]
+    public async Task MissingDecompositionLicenseFailsPhysicsPackClearly()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            (string installRoot, string shimRoot, string vulkanRuntimeLibrary) =
+                CreateSyntheticWindowsInstall(workRoot);
+            (string physicsShimRoot, string physXInstallRoot) =
+                CreateSyntheticPhysicsInstall(workRoot, "win-x64");
+            File.Delete(Path.Combine(physicsShimRoot, "share", "licenses", "openusd_physx", "V-HACD-LICENSE.txt"));
+            CommandResult result = await RunDotnetAsync(repositoryRoot,
+            [
+                "pack",
+                Path.Combine(repositoryRoot, "src", "OpenUsd.Runtime.Physics.win-x64",
+                    "OpenUsd.Runtime.Physics.win-x64.csproj"),
+                "-c", "Release", "--nologo",
+                $"-p:OpenUsdInstallRoot={installRoot}",
+                $"-p:OpenUsdShimInstallRoot={shimRoot}",
+                $"-p:OpenUsdPhysicsShimInstallRoot={physicsShimRoot}",
+                $"-p:OpenUsdPhysXInstallRoot={physXInstallRoot}",
+                $"-p:OpenUsdVulkanRuntimeLibrary={vulkanRuntimeLibrary}",
+                $"-p:PackageOutputPath={Path.Combine(workRoot, "packages")}",
+            ]);
+            await Assert.That(result.ExitCode).IsNotEqualTo(0);
+            await Assert.That(result.Output).Contains("The V-HACD redistribution license is missing");
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SimulationRecordingPackageKeepsPhysicsOptionalAndCarriesAllTargetFrameworks()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            PackedPackage package = await PackManagedPackageAsync(
+                repositoryRoot, "OpenUsd.Rendering.Physics", packageRoot);
+            await AssertPackageDependenciesAsync(
+                package.Path, package.Version, ["OpenUsd.Rendering", "OpenUsd.Physics"]);
+            await AssertPackageDoesNotContainAsync(package.Path, "runtimes/");
+            using ZipArchive archive = ZipFile.OpenRead(package.Path);
+            foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
+            {
+                await Assert.That(archive.GetEntry($"lib/{framework}/OpenUsd.Rendering.Physics.dll")).IsNotNull();
+            }
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
     public async Task PhysicsManagedPackageCarriesEmbeddedSchemaResources()
     {
         string repositoryRoot = FindRepositoryRoot();
@@ -1348,6 +1415,136 @@ public sealed partial class RuntimePackageTests
 
                 await Assert.That(resources).Contains("OpenUsd.Physics.Schema.plugInfo.json");
                 await Assert.That(resources).Contains("OpenUsd.Physics.Schema.generatedSchema.usda");
+            }
+        }
+        finally
+        {
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SilkPackageCarriesCheckedShadowAndMeshShadersForEveryFramework()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string workRoot = CreateWorkRoot(repositoryRoot);
+        try
+        {
+            string packageRoot = Path.Combine(workRoot, "packages");
+            Directory.CreateDirectory(packageRoot);
+            string[] restoreArguments =
+                Environment.GetEnvironmentVariable("OPENUSD_TEST_SILK_SHADER_PACK_NO_RESTORE") == "1"
+                    ? ["--no-restore"]
+                    : [];
+            CommandResult result = await RunDotnetAsync(
+                repositoryRoot,
+                [
+                    "pack",
+                    Path.Combine(repositoryRoot, "src", "OpenUsd.Rendering.Silk", "OpenUsd.Rendering.Silk.csproj"),
+                    "-c", "Release", "--nologo", "-m:1",
+                    "-p:UseSharedCompilation=false",
+                    $"-p:PackageOutputPath={packageRoot}",
+                    .. restoreArguments,
+                ]);
+            await Assert.That(result.ExitCode).IsEqualTo(0).Because(result.Output);
+            using ZipArchive package = ZipFile.OpenRead(FindPackage(packageRoot, "OpenUsd.Rendering.Silk"));
+            string[] artifacts =
+            [
+                "shadow.mask.vertex.dxil",
+                "shadow.mask.vertex.spv",
+                "shadow.mask.vertex.reflection.json",
+                "shadow.mask.fragment.dxil",
+                "shadow.mask.fragment.spv",
+                "shadow.mask.fragment.reflection.json",
+                "shadow.transmission.fragment.dxil",
+                "shadow.transmission.first.fragment.dxil",
+                "shadow.transmission.first.fragment.spv",
+                "shadow.transmission.first.fragment.reflection.json",
+                "shadow.transmission.fragment.spv",
+                "shadow.transmission.fragment.reflection.json",
+                "shadow.transmission.probe.fragment.dxil",
+                "shadow.transmission.probe.fragment.spv",
+                "shadow.transmission.probe.fragment.reflection.json",
+                "shadow.transmission.constant.first.fragment.dxil",
+                "shadow.transmission.constant.first.fragment.spv",
+                "shadow.transmission.constant.first.fragment.reflection.json",
+                "shadow.transmission.constant.fragment.dxil",
+                "shadow.transmission.constant.fragment.spv",
+                "shadow.transmission.constant.fragment.reflection.json",
+                "shadow.transmission.constant.probe.fragment.dxil",
+                "shadow.transmission.constant.probe.fragment.spv",
+                "shadow.transmission.constant.probe.fragment.reflection.json",
+                "mesh.fragment.dxil",
+                "mesh.fragment.spv",
+                "mesh.fragment.reflection.json",
+                "mesh.fragment.uv.dxil",
+                "mesh.fragment.uv.spv",
+                "mesh.fragment.uv+material.dxil",
+                "mesh.fragment.uv+material.spv",
+                "mesh.fragment.uv+normal.dxil",
+                "mesh.fragment.uv+normal.spv",
+                "mesh.fragment.uv+material+normal.dxil",
+                "mesh.fragment.uv+material+normal.spv",
+                "mesh.volume.fragment.dxil",
+                "mesh.volume.fragment.spv",
+                "mesh.volume.fragment.reflection.json",
+                "volume.camera.vertex.dxil",
+                "volume.camera.vertex.spv",
+                "volume.camera.vertex.reflection.json",
+                "volume.camera.fragment.uniform.dxil",
+                "volume.camera.fragment.uniform.spv",
+                "volume.camera.fragment.uniform.reflection.json",
+                "volume.camera.fragment.atlas.dxil",
+                "volume.camera.fragment.atlas.spv",
+                "volume.camera.fragment.atlas.reflection.json",
+                "manifest.json",
+            ];
+            foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
+            {
+                ZipArchiveEntry entry = package.GetEntry($"lib/{framework}/OpenUsd.Rendering.Silk.dll") ??
+                    throw new InvalidDataException($"The package is missing the {framework} Silk assembly.");
+                using Stream source = entry.Open();
+                using var buffer = new MemoryStream();
+                await source.CopyToAsync(buffer);
+                buffer.Position = 0;
+                using var assembly = new PEReader(buffer);
+                MetadataReader metadata = assembly.GetMetadataReader();
+                foreach ((string Type, string Field, uint Expected) contract in new[]
+                {
+                    ("SilkShadowCommand", "MaximumMaps", 24u),
+                    ("SilkShadowDescriptorOptions", "CubeFace", 4u),
+                })
+                {
+                    TypeDefinition type = metadata.GetTypeDefinition(metadata.TypeDefinitions.Single(handle =>
+                    {
+                        TypeDefinition definition = metadata.GetTypeDefinition(handle);
+                        return metadata.GetString(definition.Namespace) == "OpenUsd.Rendering.Silk" &&
+                            metadata.GetString(definition.Name) == contract.Type;
+                    }));
+                    FieldDefinition field = metadata.GetFieldDefinition(type.GetFields().Single(handle =>
+                        metadata.GetString(metadata.GetFieldDefinition(handle).Name) == contract.Field));
+                    Constant constant = metadata.GetConstant(field.GetDefaultValue());
+                    BlobReader constantReader = metadata.GetBlobReader(constant.Value);
+                    await Assert.That(constantReader.ReadUInt32()).IsEqualTo(contract.Expected)
+                        .Because($"{framework} must publish the coordinated cube-shadow contract.");
+                }
+                PEMemoryBlock embedded = assembly.GetSectionData(
+                    assembly.PEHeaders.CorHeader!.ResourcesDirectory.RelativeVirtualAddress);
+                foreach (string artifact in artifacts)
+                {
+                    string name = $"OpenUsd.Rendering.Silk.Shaders.{artifact}";
+                    ManifestResource resource = metadata.GetManifestResource(metadata.ManifestResources.Single(
+                        handle => metadata.GetString(metadata.GetManifestResource(handle).Name) == name));
+                    await Assert.That(resource.Implementation.IsNil).IsTrue().Because(name);
+                    int offset = checked((int)resource.Offset);
+                    BlobReader reader = embedded.GetReader(offset, embedded.Length - offset);
+                    byte[] content = reader.ReadBytes(reader.ReadInt32());
+                    byte[] expected = await File.ReadAllBytesAsync(
+                        Path.Combine(repositoryRoot, "eng", "shaders", "checked", artifact));
+                    await Assert.That(SHA256.HashData(content).AsSpan().SequenceEqual(SHA256.HashData(expected)))
+                        .IsTrue()
+                        .Because($"{framework} must embed the checked {artifact} artifact.");
+                }
             }
         }
         finally
@@ -1501,6 +1698,70 @@ public sealed partial class RuntimePackageTests
         {
             Environment.SetEnvironmentVariable("ArtifactsPath", oldArtifacts);
             Environment.SetEnvironmentVariable("UseArtifactsOutput", oldUseArtifacts);
+            Directory.Delete(workRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("NuGetPackageRoot")]
+    [Arguments("NUGETPACKAGEROOT")]
+    public async Task PackageConsumersIgnoreInheritedNuGetPackageRootWhenSelectingAnIsolatedCache(
+        string overrideName)
+    {
+        string workRoot = CreateWorkRoot(FindRepositoryRoot());
+        Dictionary<string, string?> oldPackageRoots = Environment.GetEnvironmentVariables()
+            .Cast<System.Collections.DictionaryEntry>()
+            .Where(static entry => string.Equals((string)entry.Key, "NuGetPackageRoot",
+                StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(static entry => (string)entry.Key, static entry => (string?)entry.Value,
+                StringComparer.Ordinal);
+        try
+        {
+            foreach (string name in oldPackageRoots.Keys)
+            {
+                Environment.SetEnvironmentVariable(name, null);
+            }
+            string consumerRoot = Path.Combine(workRoot, "isolated-consumer");
+            string parentPackageRoot = Path.Combine(workRoot, "parent packages");
+            string consumerPackages = Path.Combine(workRoot, "consumer packages");
+            WriteTestFile(Path.Combine(consumerRoot, "Consumer.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+                </Project>
+                """);
+            Environment.SetEnvironmentVariable(overrideName, parentPackageRoot);
+            string[] arguments =
+            [
+                "msbuild", "Consumer.csproj", "-nologo",
+                "-p:ImportDirectoryBuildProps=false", "-p:ImportDirectoryBuildTargets=false",
+                "-getProperty:NUGET_PACKAGES,NuGetPackageRoot"
+            ];
+
+            CommandResult isolated = await RunDotnetAsync(consumerRoot, arguments, consumerPackages);
+            await Assert.That(isolated.ExitCode).IsEqualTo(0).Because(isolated.Output);
+            using (JsonDocument properties = JsonDocument.Parse(isolated.Output))
+            {
+                JsonElement values = properties.RootElement.GetProperty("Properties");
+                await Assert.That(values.GetProperty("NUGET_PACKAGES").GetString()).IsEqualTo(consumerPackages);
+                await Assert.That(values.GetProperty("NuGetPackageRoot").GetString()).IsEqualTo(string.Empty);
+            }
+
+            CommandResult inherited = await RunDotnetAsync(consumerRoot, arguments);
+            await Assert.That(inherited.ExitCode).IsEqualTo(0).Because(inherited.Output);
+            using (JsonDocument properties = JsonDocument.Parse(inherited.Output))
+            {
+                await Assert.That(properties.RootElement.GetProperty("Properties")
+                    .GetProperty("NuGetPackageRoot").GetString()).IsEqualTo(parentPackageRoot);
+            }
+            await Assert.That(Environment.GetEnvironmentVariable(overrideName)).IsEqualTo(parentPackageRoot);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(overrideName, null);
+            foreach ((string name, string? value) in oldPackageRoots)
+            {
+                Environment.SetEnvironmentVariable(name, value);
+            }
             Directory.Delete(workRoot, recursive: true);
         }
     }
@@ -3298,12 +3559,7 @@ public sealed partial class RuntimePackageTests
             return;
         }
 
-        string workRoot = Path.Combine(repositoryRoot, "artifacts", "pp");
-        if (Directory.Exists(workRoot))
-        {
-            Directory.Delete(workRoot, recursive: true);
-        }
-        Directory.CreateDirectory(workRoot);
+        string workRoot = CreateWorkRoot(repositoryRoot);
         try
         {
             string packageRoot = Path.Combine(workRoot, "packages");
@@ -3313,6 +3569,8 @@ public sealed partial class RuntimePackageTests
                 "OpenUsd.Interop",
                 "OpenUsd",
                 "OpenUsd.Physics",
+                "OpenUsd.Rendering",
+                "OpenUsd.Rendering.Physics",
                 "OpenUsd.Runtime.Core",
                 "OpenUsd.Runtime.Physics",
             })
@@ -3385,6 +3643,9 @@ public sealed partial class RuntimePackageTests
             Console.WriteLine(result.Output.Trim());
             await Assert.That(result.ExitCode).IsEqualTo(0).Because(result.Output);
             await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_TRANSPORT_OK");
+            await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_EXACT_FRAME=true");
+            await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_RECORDING=true");
+            await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_BODY_COUNT=3");
             await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_SOLVER_PRESENT=true");
             await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_SCHEMA_EXTRACTED=true");
             await Assert.That(result.Output).Contains("PACKAGE_PHYSICS_RIGID_BODIES=true");
@@ -3707,6 +3968,16 @@ public sealed partial class RuntimePackageTests
                     repositoryRoot);
             }
 
+            string hashingVersion = XDocument.Load(Path.Combine(repositoryRoot, "Directory.Packages.props"))
+                .Descendants("PackageVersion")
+                .Single(element => element.Attribute("Include")?.Value == "System.IO.Hashing")
+                .Attribute("Version")?.Value ??
+                throw new InvalidOperationException("The hashing dependency has no central version.");
+            await AssertPackageDependenciesAsync(
+                FindPackage(packageRoot, "OpenUsd.Rendering.Silk"),
+                hashingVersion,
+                ["System.IO.Hashing"]);
+
             PackedPackage coreRuntimePackage = await PackAsync(
                 repositoryRoot,
                 $"OpenUsd.Runtime.Core.{platform.Rid}",
@@ -3776,6 +4047,15 @@ public sealed partial class RuntimePackageTests
                     $"Unsupported execution RID '{platform.Rid}'."),
             };
             await AssertPackageEntriesAsync(coreRuntimePackage.Path, ocioDependencies);
+            string ptexDependency = platform.Rid switch
+            {
+                "win-x64" => "runtimes/win-x64/native/Ptex.dll",
+                "linux-x64" => "runtimes/linux-x64/native/libPtex.so",
+                "osx-arm64" => "runtimes/osx-arm64/native/libPtex.dylib",
+                _ => throw new InvalidOperationException(
+                    $"Unsupported execution RID '{platform.Rid}'."),
+            };
+            await AssertPackageEntriesAsync(coreRuntimePackage.Path, [ptexDependency]);
 
             string packageVersion = managedPackages[0].Version;
             foreach (PackedPackage package in managedPackages)
@@ -3840,13 +4120,42 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.ExitCode).IsEqualTo(0);
             await Assert.That(result.Output).Contains("PACKAGE_IMAGING_EXECUTION_OK");
             await Assert.That(result.Output).Contains("MESH_PREPARATION_ADMISSION=true");
+            await Assert.That(result.Output).Contains("CURVE_PREPARATION_ADMISSION=true");
+            await Assert.That(result.Output).Contains("POINT_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("COMMAND_PAGE_ADMISSION=true");
             await Assert.That(result.Output).Contains("SESSION_PREPARATION_ADMISSION=true");
             await Assert.That(result.Output).Contains("PAGE_COPY_ACKNOWLEDGEMENT=true");
+            await Assert.That(result.Output).Contains("VOLUME_LEASE_EXPORTS=true");
+            await Assert.That(result.Output).Contains("PTEX_FACE_DECODE_EXPORT=true");
+            await Assert.That(result.Output).Contains("PTEX_FACE_DESCRIBE_EXPORT=true");
+            await Assert.That(result.Output).Contains("PTEX_MEMORY_SOURCE=true");
+            await Assert.That(result.Output).Contains("PTEX_SOURCE_CONTRACT=true");
+            await Assert.That(result.Output.Contains(
+                "Ptex sampling is not available", StringComparison.Ordinal)).IsFalse();
+            await Assert.That(result.Output).Contains("VOLUME_BUDGET_ADMISSION=true");
+            await Assert.That(result.Output).Contains("COMMAND_STORAGE_ADMISSION=true");
+            await Assert.That(result.Output).Contains("MATERIAL_STREAMING=true");
+            await Assert.That(result.Output).Contains("SCALAR_R8_MIPS=true");
+            await Assert.That(result.Output).Contains("SOURCE_IDENTITY_BATCH=true");
+            if (platform.Rid == "win-x64")
+            {
+                await Assert.That(result.Output).Contains("GPU_UPLOAD_OPT_IN=true");
+                if (Environment.GetEnvironmentVariable("OPENUSD_TEST_D3D12_GPU_UPLOADS_REQUIRED") == "1")
+                {
+                    await Assert.That(result.Output).Contains("GPU_UPLOAD_HARDWARE=true");
+                }
+            }
+            await Assert.That(result.Output).Contains("PRIMVAR_READER_FALLBACK=true");
+            await Assert.That(result.Output).Contains("SPECULAR_CURVE_CONTRACT=true");
+            await Assert.That(result.Output).Contains("DETAIL_NORMAL_CONTRACT=true");
+            await Assert.That(result.Output).Contains("TEXTURE_EXTENT_CONTRACT=true");
+            await Assert.That(result.Output).Contains("PHYSICS_CAPTURE_STAGING=true");
             await Assert.That(result.Output).Contains("GPU_BUFFER_ADMISSION=true");
             await Assert.That(result.Output).Contains("GPU_TEXTURE_ADMISSION=true");
             await Assert.That(result.Output).Contains("GPU_STAGING_ADMISSION=true");
             await Assert.That(result.Output).Contains("CPU_TEXTURE_ADMISSION=true");
+            await Assert.That(result.Output).Contains("RENDER_TARGET_COPY=true");
+            await Assert.That(result.Output).Contains("SHARED_TEXTURE_PREPARATION_POLICY=true");
             await Assert.That(result.Output).Contains("NATIVE_AOT=true");
             await Assert.That(result.Output).Contains("FIRST_PAGE_FRAMES=1");
             await Assert.That(result.Output).Contains("FIRST_PAGE_UPSERTS=");
@@ -3861,6 +4170,8 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("WAIT_IDLE=true");
             await Assert.That(result.Output).Contains("PLUGIN_LAYOUT=true");
             await Assert.That(result.Output).Contains("OCIO_DISPLAY_TRANSFORM=true");
+            await Assert.That(result.Output).Contains("OCIO_UNICODE_CONFIG=true");
+            await Assert.That(result.Output).Contains("OCIO_UNICODE_ARCHIVE=true");
             await Assert.That(result.Output).Contains("PNG_ROW_ORDER=true");
             await Assert.That(result.Output).Contains("RENDER_DISK_JOB=true");
             await Assert.That(result.Output).Contains("DEPTH_CAPTURE=true");
@@ -3871,6 +4182,11 @@ public sealed partial class RuntimePackageTests
             await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_FILTER_PIXELS=true");
             await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_LEGACY_RESET=true");
             await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_SOURCE_UNCHANGED=true");
+            await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_VARIABLE_ORDERS=true");
+            if (platform.Rid == "win-x64")
+            {
+                await Assert.That(result.Output).Contains("AUTHORED_PRODUCT_EXR=true");
+            }
             await Assert.That(result.Output).Contains("CWD_IS_PUBLISH=true");
             if (platform.Rid is "win-x64" or "osx-arm64")
             {
@@ -4213,6 +4529,7 @@ public sealed partial class RuntimePackageTests
                   <package pattern="Microsoft.*" />
                   <package pattern="runtime.*" />
                   <package pattern="Silk.NET.*" />
+                  <package pattern="System.IO.Hashing" />
                   <package pattern="Stride.*" />
                 </packageSource>
               </packageSourceMapping>
@@ -5238,6 +5555,8 @@ public sealed partial class RuntimePackageTests
         await Assert.That(root.GetProperty("kind").GetString()).IsEqualTo("Physics");
         await Assert.That(root.GetProperty("physicsWorldAbiVersion").GetInt32())
             .IsEqualTo(RequiredPhysicsAbiVersion);
+        await Assert.That(root.GetProperty("physicsMeshPreparationAbiVersion").GetInt32())
+            .IsEqualTo(1);
         await Assert.That(root.GetProperty("physicsExtractAbiVersion").GetInt32())
             .IsEqualTo(RequiredPhysicsExtractAbiVersion);
         // Recorded rather than inferred from an absence: no OpenUsd package carries a GPU module.
@@ -5780,12 +6099,13 @@ public sealed partial class RuntimePackageTests
               </PropertyGroup>
               <ItemGroup>
                 <PackageReference Include="OpenUsd.Physics" Version="{packageVersion}" />
+                <PackageReference Include="OpenUsd.Rendering.Physics" Version="{packageVersion}" />
               </ItemGroup>
             </Project>
             """);
         await File.WriteAllTextAsync(
             Path.Combine(consumerRoot, "Program.cs"),
-            """
+            $$"""
             using System;
             using System.IO;
             using System.Threading.Tasks;
@@ -5793,6 +6113,8 @@ public sealed partial class RuntimePackageTests
             using OpenUsd.Physics;
             using OpenUsd.Physics.Extraction;
             using OpenUsd.Physics.Schema;
+            using OpenUsd.Rendering;
+            using OpenUsd.Rendering.Physics;
 
             namespace PackagePhysicsExecutionConsumer;
 
@@ -5816,26 +6138,89 @@ public sealed partial class RuntimePackageTests
                     // authored timeline metadata only and simulates no authored body, which would
                     // let this gate pass while proving the package can do nothing.
                     UsdPhysicsExtractionPage page =
-                        await UsdPhysicsStageExtractor.ExtractAsync(scheduler);
+                        await UsdPhysicsStageExtractor.PrepareAsync(scheduler);
                     await transport.AttachExtractionAsync(page);
                     await transport.BuildAsync();
+                    foreach (UsdPhysicsDiagnostic diagnostic in transport.Diagnostics.Entries)
+                    {
+                        if (diagnostic.Severity == UsdPhysicsDiagnosticSeverity.Error ||
+                            diagnostic.Code == "OPENUSD_PHYSICS_COMPOSITION_SKIPPED")
+                        {
+                            throw new InvalidOperationException(diagnostic.Message);
+                        }
+                    }
 
                     UsdPhysicsCapabilities capabilities = transport.Capabilities;
                     bool rigidBodies = capabilities.Supports(UsdPhysicsCapability.RigidBodies);
                     bool cuda = capabilities.Supports(UsdPhysicsCapability.Cuda);
 
-                    await transport.StepAsync(8);
-
-                    int bodies = 0;
-                    ulong stepIndex = 0;
-                    if (transport.TryAcquireLatestFrame(out UsdPhysicsFrameLease lease))
+                    int bodies;
+                    ulong stepIndex;
+                    using (UsdPhysicsFrameLease lease = await transport.StepAndAcquireFrameAsync(3))
                     {
-                        using (lease)
+                        bodies = lease.Frame.BodyCount;
+                        stepIndex = lease.Frame.StepIndex;
+                        ulong revision = lease.Frame.Revision;
+                        double firstY = bodies > 0 ? lease.Frame.Bodies[0].Position.Y : 0;
+                        await transport.StepAsync(5);
+                        await transport.ResetAsync();
+                        if (stepIndex != 3 || lease.Frame.StepIndex != 3 || lease.Frame.Revision != revision ||
+                            lease.Frame.BodyCount != bodies || bodies == 0 ||
+                            lease.Frame.Bodies[0].Position.Y != firstY || transport.Status.StepIndex != 0)
                         {
-                            bodies = lease.Frame.BodyCount;
-                            stepIndex = lease.Frame.StepIndex;
+                            {{"throw new InvalidOperationException(\"The exact physics fr" +
+                                "ame changed after stepping/reset.\");"}}
                         }
                     }
+                    Console.WriteLine("PACKAGE_PHYSICS_EXACT_FRAME=true");
+
+                    PhysicsRenderBindingTable bindings;
+                    int capacity;
+                    if (!transport.TryAcquireLatestFrame(out UsdPhysicsFrameLease initial))
+                    {
+                        throw new InvalidOperationException("The reset transport published no frame.");
+                    }
+                    using (initial)
+                    {
+                        capacity = initial.Frame.BodyCapacity;
+                        bindings = new PhysicsRenderBindingTable(capacity);
+                        for (int index = 0; index < initial.Frame.BodyCount; index++)
+                        {
+                            UsdPhysicsBodyPose body = initial.Frame.Bodies[index];
+                            var identity = new PhysicsRenderObjectId(body.Id.Value);
+                            if (!bindings.TryBindSubtree(identity, "/Body" + index, body.Position,
+                                new PhysicsRenderOrientation(body.Orientation.X, body.Orientation.Y,
+                                    body.Orientation.Z, body.Orientation.W)) ||
+                                !bindings.TryResolve(identity, out PhysicsRenderBinding binding) ||
+                                !binding.IncludesDescendants || binding.ReferencePosition != body.Position)
+                            {
+                                {{"throw new InvalidOperationException(\"The recording bi" +
+                                    "nding table lost its subtree reference pose.\");"}}
+                            }
+                        }
+                    }
+                    var frames = new StageRenderState[2];
+                    for (int index = 0; index < frames.Length; index++)
+                    {
+                        frames[index] = StageRenderState.Create(new StageIdentity(stagePath))
+                            .WithViewport(new ViewportDimensions(1, 1))
+                            .WithTime(new StageTime(transport.Timeline.ToTimeCode(
+                                (index + 1) * transport.FixedStep.Seconds)));
+                    }
+                    var recordingSource = new RecordingSource();
+                    string recordingDirectory = Path.Combine(AppContext.BaseDirectory, "recording");
+                    RenderDiskJobResult recording = PhysicsRenderRecording.Execute(
+                        new RenderDiskJobRequest(recordingDirectory, frames), transport, bindings,
+                        new PhysicsRenderCapacities(capacity), recordingSource,
+                        new PhysicsRenderRecordingContext("package-native-physics", 1));
+                    if (recording.Frames.Count != 2 || recording.Frames[0].Simulation?.StepIndex != 1 ||
+                        recording.Frames[1].Simulation?.StepIndex != 2 || recordingSource.Clears != 1 ||
+                        !File.Exists(Path.Combine(recordingDirectory, "manifest.json")))
+                    {
+                        {{"throw new InvalidOperationException(\"The packaged recording d" +
+                            "id not preserve exact publication.\");"}}
+                    }
+                    Console.WriteLine("PACKAGE_PHYSICS_RECORDING=true");
 
                     bool solverPresent = File.Exists(Path.Combine(
                         AppContext.BaseDirectory,
@@ -5859,8 +6244,29 @@ public sealed partial class RuntimePackageTests
                     // actually published. Absent modules must report an absent capability rather
                     // than a capability that fails on first use.
                     bool cudaHonest = !cuda || cudaModulePresent;
-                    return solverPresent && schemaExtracted && rigidBodies && bodies >= 2 &&
+                    return solverPresent && schemaExtracted && rigidBodies && bodies == 3 &&
                         stepIndex > 0 && cudaHonest ? 0 : 1;
+                }
+
+                private sealed class RecordingSource : IPhysicsRenderRecordingSource
+                {
+                    internal int Clears { get; private set; }
+
+                    public void Validate(RenderDiskJobRequest request, PhysicsRenderRecordingContext context,
+                        System.Threading.CancellationToken cancellationToken) =>
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                    public PhysicsRenderCaptureResult Capture(StageRenderState state,
+                        PhysicsRenderRecordingFrame frame, System.Threading.CancellationToken cancellationToken)
+                    {
+                        // Diagnostic pixels exercise package/recording contracts, not GPU fidelity.
+                        byte value = checked((byte)frame.Identity.StepIndex);
+                        return new PhysicsRenderCaptureResult(new RenderJobImage(
+                            1, 1, new byte[] { value, 0, 0, 255 }, Rgba8RowOrder.TopDown),
+                            frame.Identity.PublicationRevision, frame.Transforms.Count, frame.Deformations.Count);
+                    }
+
+                    public void ClearOverrides() => Clears++;
                 }
 
                 private static string Lower(bool value) => value ? "true" : "false";
@@ -5906,13 +6312,14 @@ public sealed partial class RuntimePackageTests
     /// <remarks>
     /// The stage is authored beside the published application rather than inside the consumer's
     /// source, because a stage with nothing simulable on it lets the smoke pass while proving
-    /// nothing. It carries a scene, a static collider, and two rigid bodies, so a run that produces
+    /// nothing. It carries a scene, a static collider, and three rigid bodies, one with prepared
+    /// multi-hull collision geometry, so a run that drops the prepared body or produces
     /// no bodies is a failure rather than an empty success.
     /// </remarks>
     private static async Task WritePhysicsConsumerStageAsync(string publishRoot) =>
         await File.WriteAllTextAsync(
             Path.Combine(publishRoot, "physics-package.usda"),
-            """
+            $$"""
             #usda 1.0
             (
                 metersPerUnit = 1
@@ -5971,6 +6378,31 @@ public sealed partial class RuntimePackageTests
                 )
                 {
                     double radius = 0.5
+                }
+            }
+
+            def Xform "DecomposedBody" (
+                prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+            )
+            {
+                double3 xformOp:translate = (-3, 8, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                float physics:mass = 1
+                def Mesh "Shape" (
+                    prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI"]
+                )
+                {
+                    uniform token physics:approximation = "convexDecomposition"
+                    point3f[] points = [
+                        (-1.25,-0.5,-0.5), (-0.25,-0.5,-0.5), (-1.25,0.5,-0.5), (-0.25,0.5,-0.5),
+                        (-1.25,-0.5,0.5), (-0.25,-0.5,0.5), (-1.25,0.5,0.5), (-0.25,0.5,0.5),
+                        (0.25,-0.5,-0.5), (1.25,-0.5,-0.5), (0.25,0.5,-0.5), (1.25,0.5,-0.5),
+                        (0.25,-0.5,0.5), (1.25,-0.5,0.5), (0.25,0.5,0.5), (1.25,0.5,0.5)]
+                    int[] faceVertexCounts = [3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]
+                    int[] faceVertexIndices = [
+                        0,2,1,1,2,3,4,5,6,5,7,6,0,1,4,1,5,4,2,6,3,3,6,7,0,4,2,2,4,6,1,3,5,3,7,5,
+                        {{"8,10,9,9,10,11,12,13,14,13,15,14,8,9,12,9,13,12,10,14,11,11,14" +
+                            ",15,8,12,10,10,12,14,9,11,13,11,15,13]"}}
                 }
             }
             """);
@@ -6438,6 +6870,7 @@ public sealed partial class RuntimePackageTests
                   <package pattern="runtime.*" />
                   <package pattern="SharpMetal" />
                   <package pattern="Silk.NET.*" />
+                  <package pattern="System.IO.Hashing" />
                   <package pattern="Stride.*" />
                 </packageSource>
               </packageSourceMapping>
@@ -7118,6 +7551,7 @@ public sealed partial class RuntimePackageTests
                   <package pattern="runtime.*" />
                   <package pattern="SharpMetal" />
                   <package pattern="Silk.NET.*" />
+                  <package pattern="System.IO.Hashing" />
                   <package pattern="Stride.*" />
                 </packageSource>
               </packageSourceMapping>
@@ -7137,6 +7571,7 @@ public sealed partial class RuntimePackageTests
                 <IlcTreatWarningsAsErrors>true</IlcTreatWarningsAsErrors>
                 <InvariantGlobalization>true</InvariantGlobalization>
                 <Nullable>enable</Nullable>
+                <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
                 <StripSymbols>true</StripSymbols>
                 <OptimizationPreference>Size</OptimizationPreference>
               </PropertyGroup>
@@ -7150,6 +7585,8 @@ public sealed partial class RuntimePackageTests
                 <None Update="minimal.usda" CopyToOutputDirectory="PreserveNewest"
                       CopyToPublishDirectory="PreserveNewest" />
                 <None Update="ocio-test-config.ocio" CopyToOutputDirectory="PreserveNewest"
+                      CopyToPublishDirectory="PreserveNewest" />
+                <None Update="quad-colors.ptx" CopyToOutputDirectory="PreserveNewest"
                       CopyToPublishDirectory="PreserveNewest" />
               </ItemGroup>
             </Project>
@@ -7173,6 +7610,9 @@ public sealed partial class RuntimePackageTests
         File.Copy(
             Path.Combine(FindRepositoryRoot(), "test-assets", "ocio-test-config.ocio"),
             Path.Combine(consumerRoot, "ocio-test-config.ocio"));
+        File.Copy(
+            Path.Combine(FindRepositoryRoot(), "test-assets", "native-profile", "ptex", "quad-colors.ptx"),
+            Path.Combine(consumerRoot, "quad-colors.ptx"));
         await File.WriteAllTextAsync(
             Path.Combine(consumerRoot, "Program.cs"),
             CreateImagingConsumerProgram(
@@ -7181,6 +7621,11 @@ public sealed partial class RuntimePackageTests
         await File.WriteAllTextAsync(
             Path.Combine(consumerRoot, "AuthoredProduct.cs"),
             CreateRenderProductConsumerProgram());
+        await File.WriteAllTextAsync(
+            Path.Combine(consumerRoot, "ExrScanlineOracle.cs"),
+            "using System;\nusing System.Collections.Generic;\nusing System.IO;\n" +
+                await File.ReadAllTextAsync(Path.Combine(
+                    FindRepositoryRoot(), "tests", "OpenUsd.Exr.NativeProbe", "ExrScanlineOracle.cs")));
 
         string globalPackagesRoot = Path.Combine(workRoot, "imaging-global-packages");
         var publishArguments = new List<string>
@@ -7220,9 +7665,10 @@ public sealed partial class RuntimePackageTests
     private static string CreateImagingConsumerProgram(
         ExecutionPlatform platform,
         int stormChildAbiVersion) =>
-        """
+        $$"""
         using System;
         using System.IO;
+        using System.IO.Compression;
         using System.Runtime.InteropServices;
         using OpenUsd.Rendering;
         using OpenUsd.Rendering.Silk;
@@ -7265,6 +7711,80 @@ public sealed partial class RuntimePackageTests
                     if (!pluginLayout || !File.Exists(stagePath))
                     {
                         return 2;
+                    }
+
+                    string curvePath = Path.Combine(AppContext.BaseDirectory, "linear-curve.usda");
+                    File.WriteAllText(curvePath,
+                        "#usda 1.0\n" +
+                        "def BasisCurves \"Curve\" {\n" +
+                        "uniform token type = \"linear\"\n" +
+                        "uniform token wrap = \"nonperiodic\"\n" +
+                        "int[] curveVertexCounts = [4]\n" +
+                        "point3f[] points = [(0,0,0),(1,0,0),(1,1,0),(0,1,0)]\n" +
+                        "float[] widths = [0.1,0.2,0.3,0.4] (interpolation = \"vertex\")\n" +
+                        "}\n");
+                    using (var curveSession = OpenUsdSilkRuntime.Create(pluginPath, curvePath))
+                    {
+                        bool curveRefused = false;
+                        try
+                        {
+                            using OpenUsdSilkPage rejected = curveSession.Sync(16, 16,
+                                new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 291));
+                        }
+                        catch (OpenUsdSilkException)
+                        {
+                            curveRefused = true;
+                        }
+                        using OpenUsdSilkPage curve = curveSession.Sync(16, 16,
+                            new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 292));
+                        if (!curveRefused || curve.MeshPreparationUsage?.ReservedBytes != 292)
+                        {
+                            throw new InvalidOperationException(
+                                "The native package ignored or leaked linear curve reservations.");
+                        }
+                        Console.WriteLine("CURVE_PREPARATION_ADMISSION=true");
+                    }
+
+                    string pointPath = Path.Combine(AppContext.BaseDirectory, "points.usda");
+                    File.WriteAllText(pointPath,
+                        "#usda 1.0\n" +
+                        "def Points \"Points\" {\n" +
+                        "point3f[] points = [(-0.5,-0.5,0),(0.5,-0.5,0),(0,0.5,0)]\n" +
+                        "}\n");
+                    using (var pointSession = OpenUsdSilkRuntime.Create(pluginPath, pointPath))
+                    {
+                        bool pointRefused = false;
+                        try
+                        {
+                            using OpenUsdSilkPage rejected = pointSession.Sync(16, 16,
+                                new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 143));
+                        }
+                        catch (OpenUsdSilkException error) when (
+                            error.Message.Contains("hdSilk mesh preparation refused", StringComparison.Ordinal))
+                        {
+                            pointRefused = true;
+                        }
+                        using OpenUsdSilkPage points = pointSession.Sync(16, 16,
+                            new SilkSceneIngestionOptions(RenderPurpose.Default, "full", 144));
+                        bool pointGeometry = false;
+                        using (SilkCommandEnumerator commands = points.GetEnumerator())
+                        {
+                            while (commands.MoveNext())
+                            {
+                                if (commands.Current.Type == SilkCommandType.MeshUpsert)
+                                {
+                                    SilkMeshUpsertCommand mesh = commands.Current.AsMeshUpsert();
+                                    pointGeometry |= mesh.TopologyKind == SilkTopologyKind.PointList &&
+                                        mesh.PointCount == 3 && mesh.AuthoredPointCount == 3;
+                                }
+                            }
+                        }
+                        if (!pointRefused || points.MeshPreparationUsage?.ReservedBytes != 144 || !pointGeometry)
+                        {
+                            throw new InvalidOperationException(
+                                "The native package ignored, leaked or omitted point preparation.");
+                        }
+                        Console.WriteLine("POINT_PREPARATION_ADMISSION=true");
                     }
 
                     using (var preparationSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
@@ -7357,11 +7877,370 @@ public sealed partial class RuntimePackageTests
                             throw new InvalidOperationException("The copied package page was not acknowledged once.");
                         }
                         Console.WriteLine("PAGE_COPY_ACKNOWLEDGEMENT=true");
+                        nint volumeLibrary = NativeLibrary.Load(hdSilkLibrary);
+                        try
+                        {
+                            foreach (string export in new[]
+                            {
+                                "openusd_silk_page_retain_volume_assets",
+                                "openusd_silk_volume_assets_copy",
+                                "openusd_silk_volume_assets_release",
+                                "openusd_silk_volume_budget_create",
+                                "openusd_silk_session_set_volume_budget",
+                                "openusd_silk_volume_budget_get_usage",
+                                "openusd_silk_volume_budget_release"
+                            })
+                            {
+                                if (!NativeLibrary.TryGetExport(volumeLibrary, export, out _))
+                                {
+                                    throw new InvalidOperationException("The native package omitted " + export);
+                                }
+                            }
+                            if (!NativeLibrary.TryGetExport(
+                                volumeLibrary, "openusd_silk_ptex_decode_faces", out _))
+                            {
+                                throw new InvalidOperationException(
+                                    "The native package omitted openusd_silk_ptex_decode_faces");
+                            }
+                            if (!NativeLibrary.TryGetExport(
+                                volumeLibrary, "openusd_silk_ptex_describe_faces", out _))
+                            {
+                                throw new InvalidOperationException(
+                                    "The native package omitted openusd_silk_ptex_describe_faces");
+                            }
+                            foreach (string export in new[]
+                            {
+                                "openusd_silk_ptex_describe_faces_from_memory",
+                                "openusd_silk_ptex_decode_faces_from_memory"
+                            })
+                            {
+                                if (!NativeLibrary.TryGetExport(volumeLibrary, export, out _))
+                                {
+                                    throw new InvalidOperationException("The native package omitted " + export);
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            NativeLibrary.Free(volumeLibrary);
+                        }
+                        Console.WriteLine("VOLUME_LEASE_EXPORTS=true");
+                        Console.WriteLine("PTEX_FACE_DECODE_EXPORT=true");
+                        Console.WriteLine("PTEX_FACE_DESCRIBE_EXPORT=true");
+                        VerifyPtexMemorySource();
+                        Console.WriteLine("PTEX_MEMORY_SOURCE=true");
+                        using (var volumeBudget = new SilkVolumeFieldBudget(ulong.MaxValue))
+                        using (var volumeSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
+                        {
+                            volumeSession.ConfigureVolumeFieldBudget(volumeBudget);
+                            using OpenUsdSilkPage volumePage = volumeSession.Sync(16, 16);
+                            SilkVolumeFieldUsage volumeUsage = volumeBudget.Usage;
+                            if (volumeUsage.MaximumBytes != ulong.MaxValue || volumeUsage.ReservedBytes != 0 ||
+                                volumeUsage.PeakReservedBytes != 0 || volumeUsage.ReservationCount != 0)
+                            {
+                                throw new InvalidOperationException("The package changed decoded-field admission.");
+                            }
+                        }
+                        Console.WriteLine("VOLUME_BUDGET_ADMISSION=true");
+                        using var storedSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath,
+                            new SilkPreparationLimits(1_000_000, admitted.ByteLength,
+                                new SilkCommandStorageLimits((ulong)admitted.ByteLength,
+                                    (ulong)admitted.ByteLength, admitted.ByteLength, 31)));
+                        using var storedScene = new SilkSceneState();
+                        using (OpenUsdSilkPage storedPage = storedSession.Sync(16, 16))
+                        {
+                            if (storedPage.SerializedByteLength != (ulong)admitted.ByteLength)
+                            {
+                                throw new InvalidOperationException("The package changed the stored update extent.");
+                            }
+                            storedScene.Apply(storedPage);
+                            if (storedScene.Meshes.Count == 0)
+                            {
+                                throw new InvalidOperationException("The package did not decode stored geometry.");
+                            }
+                        }
+                        using OpenUsdSilkPage storedQuiet = storedSession.Sync(16, 16);
+                        storedScene.Apply(storedQuiet);
+                        if (storedQuiet.CommandCount != 1 || storedScene.Meshes.Count == 0)
+                        {
+                            {{"throw new InvalidOperationException(\"The package lost sto" +
+                                "red geometry or leaked live-file credit.\");"}}
+                        }
+                        Console.WriteLine("COMMAND_STORAGE_ADMISSION=true");
                     }
 
                     string ocioConfigPath = Path.Combine(
                         AppContext.BaseDirectory,
                         "ocio-test-config.ocio");
+                    string fallbackScene = Path.Combine(AppContext.BaseDirectory, "reader-fallback.usda");
+                    File.WriteAllText(fallbackScene,
+                        "#usda 1.0\n" +
+                        "def Material \"M\" {\n" +
+                        "token outputs:surface.connect = </M/S.outputs:surface>\n" +
+                        "def Shader \"S\" { uniform token info:id = \"UsdPreviewSurface\"\n" +
+                        "color3f inputs:diffuseColor.connect = </M/T.outputs:rgb>\n token outputs:surface\n }\n" +
+                        "def Shader \"T\" { uniform token info:id = \"UsdUVTexture\"\n" +
+                        "asset inputs:file = @unused.png@\n float2 inputs:st.connect = </M/R.outputs:result>\n" +
+                        "float3 outputs:rgb\n }\n" +
+                        "def Shader \"R\" { uniform token info:id = \"UsdPrimvarReader_float2\"\n" +
+                        "token inputs:varname = \"customUv\"\n float2 inputs:fallback = (0.25,0.75)\n" +
+                        "float2 outputs:result\n }\n}\n" +
+                        "def Mesh \"Mesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\n" +
+                        "uniform token subdivisionScheme = \"none\"\n" +
+                        "point3f[] points = [(0,0,0),(1,0,0),(0,1,0)]\n" +
+                        "int[] faceVertexCounts = [3]\n int[] faceVertexIndices = [0,1,2]\n" +
+                        "rel material:binding = </M>\n}\n");
+                    using (OpenUsdSilkSession fallbackSession = OpenUsdSilkRuntime.Create(pluginPath, fallbackScene,
+                        {{"new SilkPreparationLimits(1_000_000, 65536, new SilkCommandSto" +
+                            "rageLimits(65536, 65536, 65536, 31))))"}}
+                    using (OpenUsdSilkPage fallbackPage = fallbackSession.Sync(16, 16))
+                    {
+                        using var fallbackState = new SilkSceneState();
+                        fallbackState.Apply(fallbackPage);
+                        bool found = false;
+                        foreach (SilkMeshData mesh in fallbackState.Meshes.Values)
+                        {
+                            SilkVertexAttributeData? coordinates = mesh.FindTexCoord("customUv");
+                            found |= coordinates is not null &&
+                                coordinates.Interpolation == SilkAttributeInterpolation.Constant &&
+                                coordinates.Data.Span.SequenceEqual(new float[] { 0.25f, 0.75f });
+                        }
+                        if (!found)
+                        {
+                            throw new InvalidOperationException("The packaged native reader fallback was lost.");
+                        }
+                    }
+                    Console.WriteLine("PRIMVAR_READER_FALLBACK=true");
+                    string ptexScene = Path.Combine(AppContext.BaseDirectory, "ptex-source.usda");
+                    string ptexFirst = Path.Combine(AppContext.BaseDirectory, "ptex-source-first.ptx");
+                    string ptexSecond = Path.Combine(AppContext.BaseDirectory, "ptex-source-second.ptx");
+                    File.WriteAllBytes(ptexFirst, []);
+                    File.WriteAllBytes(ptexSecond, []);
+                    File.WriteAllText(ptexScene,
+                        "#usda 1.0\n" +
+                        "def Material \"Ptex\" {\n" +
+                        "token outputs:surface.connect = </Ptex/S.outputs:surface>\n" +
+                        "def Shader \"S\" { uniform token info:id = \"UsdPreviewSurface\"\n" +
+                        "color3f inputs:emissiveColor.connect = </Ptex/T.outputs:rgb>\n" +
+                        "token outputs:surface\n }\n" +
+                        "def Shader \"T\" { uniform token info:id = \"HwPtexTexture_1\"\n" +
+                        "asset inputs:file.timeSamples = { 0: @ptex-source-first.ptx@, " +
+                        "1: @ptex-source-second.ptx@ }\n float3 outputs:rgb\n }\n}\n" +
+                        "def Material \"Image\" {\n" +
+                        "token outputs:surface.connect = </Image/S.outputs:surface>\n" +
+                        "def Shader \"S\" { uniform token info:id = \"UsdPreviewSurface\"\n" +
+                        "color3f inputs:emissiveColor.connect = </Image/T.outputs:rgb>\n" +
+                        "token outputs:surface\n }\n" +
+                        "def Shader \"T\" { uniform token info:id = \"UsdUVTexture\"\n" +
+                        "asset inputs:file = @ptex-source-first.ptx@\n float3 outputs:rgb\n }\n}\n" +
+                        "def Mesh \"PtexMesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\n" +
+                        "uniform token subdivisionScheme = \"none\"\n" +
+                        "point3f[] points = [(0,0,0),(1,0,0),(0,1,0)]\n" +
+                        "int[] faceVertexCounts = [3]\n int[] faceVertexIndices = [0,1,2]\n" +
+                        "rel material:binding = </Ptex>\n}\n" +
+                        "def Mesh \"ImageMesh\" (prepend apiSchemas = [\"MaterialBindingAPI\"]) {\n" +
+                        "uniform token subdivisionScheme = \"none\"\n" +
+                        "point3f[] points = [(2,0,0),(3,0,0),(2,1,0)]\n" +
+                        "int[] faceVertexCounts = [3]\n int[] faceVertexIndices = [0,1,2]\n" +
+                        "rel material:binding = </Image>\n}\n");
+                    using (OpenUsdSilkSession ptexSession = OpenUsdSilkRuntime.Create(pluginPath, ptexScene))
+                    using (var ptexState = new SilkSceneState())
+                    {
+                        foreach ((double time, string expected) in new[]
+                            { (0d, ptexFirst), (1d, ptexSecond), (0d, ptexFirst) })
+                        {
+                            using OpenUsdSilkPage ptexPage = ptexSession.Sync(16, 16, time);
+                            ptexState.Apply(ptexPage);
+                            SilkMaterialTexture? ptex = ptexState.Materials["/Ptex"]
+                                .GetTexture(SilkMaterialParameter.EmissiveColor);
+                            SilkMaterialTexture? image = ptexState.Materials["/Image"]
+                                .GetTexture(SilkMaterialParameter.EmissiveColor);
+                            StringComparison pathComparison = OperatingSystem.IsWindows()
+                                ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                            if (ptex is null || ptex.SourceKind != SilkTextureSourceKind.Ptex ||
+                                ptex.Channel != SilkTextureChannel.Rgb || ptex.UvPrimvar.Length != 0 ||
+                                !string.Equals(Path.GetFullPath(ptex.Asset), expected, pathComparison) ||
+                                image is null || image.SourceKind != SilkTextureSourceKind.Standard ||
+                                !string.Equals(Path.GetFullPath(image.Asset), ptexFirst, pathComparison))
+                            {
+                                throw new InvalidOperationException("The packaged Ptex source contract changed.");
+                            }
+                        }
+                    }
+                    bool oldPtexPageRejected = false;
+                    try
+                    {
+                        using SilkCommandEnumerator rejected = SilkCommandParser.Enumerate(
+                            ReadOnlySpan<byte>.Empty, 0, 32);
+                    }
+                    catch (InvalidDataException)
+                    {
+                        oldPtexPageRejected = true;
+                    }
+                    if (!oldPtexPageRejected)
+                    {
+                        throw new InvalidOperationException("The package accepted the previous page ABI.");
+                    }
+                    Console.WriteLine("PTEX_SOURCE_CONTRACT=true");
+                    byte[] specularCommand = new byte[106];
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand,
+                        (uint)SilkCommandType.MaterialUpsert);
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(4), 106);
+                    ulong specularHash = 14695981039346656037ul;
+                    foreach (byte part in "/S"u8)
+                    {
+                        specularHash = unchecked((specularHash ^ part) * 1099511628211ul);
+                    }
+                    {{"System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(spe" +
+                        "cularCommand.AsSpan(8), specularHash);"}}
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(16), 2);
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(20),
+                        (uint)SilkSurfaceKind.MdlDistilled);
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(24), 1);
+                    specularCommand[32] = (byte)'/';
+                    specularCommand[33] = (byte)'S';
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(34),
+                        (uint)SilkMaterialParameter.OmniPbrSpecularLevel);
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(specularCommand.AsSpan(38), 1);
+                    System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(42), 0.25f);
+                    System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(54), 1);
+                    System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(66), 1);
+                    System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(82), 1);
+                    System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(specularCommand.AsSpan(94), 1);
+                    using (SilkCommandEnumerator commands = SilkCommandParser.Enumerate(
+                        specularCommand, 1, SilkCommandParser.PageAbiVersion))
+                    {
+                        if (!commands.MoveNext())
+                        {
+                            throw new InvalidOperationException("The specular command is missing.");
+                        }
+                        SilkMaterialScalarEntry scalar = commands.Current.AsMaterialUpsert().GetScalar(0);
+                        if (scalar.Parameter != SilkMaterialParameter.OmniPbrSpecularLevel ||
+                            scalar.ComponentCount != 1 || scalar.GetComponent(0) != 0.25f || commands.MoveNext())
+                        {
+                            throw new InvalidOperationException("The packaged dielectric specular scalar changed.");
+                        }
+                    }
+                    Console.WriteLine("SPECULAR_CURVE_CONTRACT=true");
+                    using (var detailBytes = new MemoryStream())
+                    {
+                        using (var writer = new BinaryWriter(detailBytes, System.Text.Encoding.UTF8, true))
+                        {
+                            ulong hash = 14695981039346656037ul;
+                            foreach (byte part in "/D"u8)
+                            {
+                                hash = unchecked((hash ^ part) * 1099511628211ul);
+                            }
+                            writer.Write((uint)SilkCommandType.MaterialUpsert);
+                            writer.Write(0u);
+                            writer.Write(hash);
+                            writer.Write(2u);
+                            writer.Write((uint)SilkSurfaceKind.MdlDistilled);
+                            writer.Write(2u);
+                            writer.Write(1u);
+                            writer.Write("/D"u8);
+                            writer.Write((uint)SilkMaterialParameter.DetailUvRow0);
+                            writer.Write(3u);
+                            writer.Write(2f);
+                            writer.Write(0f);
+                            writer.Write(0.25f);
+                            writer.Write((uint)SilkMaterialParameter.DetailUvRow1);
+                            writer.Write(3u);
+                            writer.Write(0f);
+                            writer.Write(3f);
+                            writer.Write(-0.5f);
+                            writer.Write((uint)SilkMaterialParameter.DetailNormal);
+                            writer.Write((uint)SilkTextureWrap.Repeat);
+                            writer.Write((uint)SilkTextureWrap.Repeat);
+                            writer.Write((uint)SilkColorSpace.Raw);
+                            writer.Write(10u);
+                            writer.Write(2u);
+                            writer.Write(3u);
+                            foreach (float value in new float[] { 1, 1, 1, 1, 0, 0, 0, 0, 0.5f, 0.5f, 1, 1 })
+                            {
+                                writer.Write(value);
+                            }
+                            writer.Write((uint)SilkTextureChannel.Rgb);
+                            writer.Write((uint)SilkCompositeOperator.None);
+                            writer.Write(0f);
+                            writer.Write((uint)SilkTextureSourceKind.Standard);
+                            writer.Write("detail.png"u8);
+                            writer.Write("st"u8);
+                            writer.Write(0u);
+                            writer.Write(0u);
+                            foreach (float value in new float[] { 1, 0, 0, 1, 0, 0 })
+                            {
+                                writer.Write(value);
+                            }
+                            writer.Write(0u);
+                            foreach (float value in new float[] { 1, 0, 0, 1, 0, 0 })
+                            {
+                                writer.Write(value);
+                            }
+                        }
+                        byte[] command = detailBytes.ToArray();
+                        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(
+                            command.AsSpan(4), checked((uint)command.Length));
+                        using SilkCommandEnumerator commands = SilkCommandParser.Enumerate(
+                            command, 1, SilkCommandParser.PageAbiVersion);
+                        if (!commands.MoveNext())
+                        {
+                            throw new InvalidOperationException("The detail-normal command is missing.");
+                        }
+                        SilkMaterialData material = SilkMaterialData.CopyFrom(commands.Current.AsMaterialUpsert());
+                        SilkMaterialTexture? texture = material.GetTexture(SilkMaterialParameter.DetailNormal);
+                        var permutation = new SilkShaderPermutationId(
+                            SilkShaderFeatures.Uv | SilkShaderFeatures.DetailNormalMap);
+                        var detailShaderFormat = OperatingSystem.IsWindows()
+                            ? SilkShaderBinaryFormat.Dxil
+                            {{": OperatingSystem.IsMacOS() ? SilkShaderBinaryFormat.Metal" +
+                                "Library : SilkShaderBinaryFormat.SpirV;"}}
+                        SilkMaterialShaderKey detailShaderKey = SilkMaterialShaderKey.Create(
+                            "packaged-detail-normal"u8, detailShaderFormat, "packaged-bindings-v1");
+                        var detailShaderGenerator = new SilkProjectedMaterialShaderGenerator();
+                        detailShaderGenerator.Register(detailShaderKey, permutation.Features);
+                        SilkMaterialShaderProgram detailShader = detailShaderGenerator
+                            .CompileAsync(detailShaderKey, default).GetAwaiter().GetResult();
+                        int normalValueTables = 0;
+                        bool diffuseValueTable = false;
+                        bool emissiveValueTable = false;
+                        foreach (SilkBindingSlot slot in detailShader.BindingLayout.MaterialSlots)
+                        {
+                            if (slot.Binding is 37 or 38)
+                            {
+                                if (slot.Set != 0 || slot.Kind != SilkBindingKind.SampledTexture ||
+                                    slot.Visibility != SilkShaderStageVisibility.Fragment)
+                                {
+                                    {{"throw new InvalidOperationException(\"The packaged" +
+                                        " normal value-table slot changed.\");"}}
+                                }
+                                normalValueTables++;
+                            }
+                            if (slot.Binding == 39)
+                            {
+                                diffuseValueTable = slot.Set == 0 && slot.Kind == SilkBindingKind.SampledTexture &&
+                                    slot.Visibility == SilkShaderStageVisibility.Fragment;
+                            }
+                            if (slot.Binding == 40)
+                            {
+                                emissiveValueTable = slot.Set == 0 && slot.Kind == SilkBindingKind.SampledTexture &&
+                                    slot.Visibility == SilkShaderStageVisibility.Fragment;
+                            }
+                        }
+                        if (texture is null || texture.Asset != "detail.png" || texture.ComponentCount != 3 ||
+                            normalValueTables != 2 || !diffuseValueTable || !emissiveValueTable ||
+                            material.GetCompositeTexture() is not null ||
+                            {{"!material.GetScalar(SilkMaterialParameter.DetailUvRow0).Se" +
+                                "quenceEqual(new float[] { 2, 0, 0.25f }) ||"}}
+                            {{"!material.GetScalar(SilkMaterialParameter.DetailUvRow1).Se" +
+                                "quenceEqual(new float[] { 0, 3, -0.5f }) ||"}}
+                            permutation.MeshFragmentArtifactName != "mesh.fragment.uv+material+normal" ||
+                            commands.MoveNext())
+                        {
+                            throw new InvalidOperationException("The packaged detail-normal contract changed.");
+                        }
+                    }
+                    Console.WriteLine("DETAIL_NORMAL_CONTRACT=true");
                     using var ocioProcessor = new SilkOpenColorIoDisplayTransform(
                         ocioConfigPath,
                         "linear",
@@ -7379,6 +8258,52 @@ public sealed partial class RuntimePackageTests
                     {
                         return 12;
                     }
+
+                    string unicodeDirectory = Path.Combine(
+                        AppContext.BaseDirectory, $"ocio-\u8272-{Guid.NewGuid():N}");
+                    Directory.CreateDirectory(unicodeDirectory);
+                    try
+                    {
+                        string unicodeConfigPath = Path.Combine(unicodeDirectory, "config.ocio");
+                        File.Copy(ocioConfigPath, unicodeConfigPath);
+                        var identityProvider = new SilkOpenColorIoConfigIdentityProvider(TimeSpan.Zero);
+                        SilkDisplayTransformConfigIdentity identity = identityProvider.GetIdentity(unicodeConfigPath);
+                        using var unicodeProcessor = new SilkOpenColorIoDisplayTransform(
+                            unicodeConfigPath, "linear", "TestDisplay", "TestView").CreateProcessor();
+                        byte[] unicodePixel = new byte[4];
+                        unicodeProcessor.Apply(linearPixel, unicodePixel, 1, 1, 0);
+                        if (!identity.IsExhaustive || string.IsNullOrEmpty(identity.Value) ||
+                            !unicodePixel.AsSpan().SequenceEqual(displayPixel))
+                        {
+                            throw new InvalidOperationException("The packaged Unicode OCIO config changed output.");
+                        }
+
+                        string unicodeArchivePath = Path.Combine(unicodeDirectory, "config.ocioz");
+                        using (ZipArchive archive = ZipFile.Open(unicodeArchivePath, ZipArchiveMode.Create))
+                        {
+                            ZipArchiveEntry entry = archive.CreateEntry("config.ocio");
+                            using Stream destination = entry.Open();
+                            using Stream source = File.OpenRead(ocioConfigPath);
+                            source.CopyTo(destination);
+                        }
+                        SilkDisplayTransformConfigIdentity archiveIdentity =
+                            identityProvider.GetIdentity(unicodeArchivePath);
+                        using var archiveProcessor = new SilkOpenColorIoDisplayTransform(
+                            unicodeArchivePath, "linear", "TestDisplay", "TestView").CreateProcessor();
+                        byte[] archivePixel = new byte[4];
+                        archiveProcessor.Apply(linearPixel, archivePixel, 1, 1, 0);
+                        if (!archiveIdentity.IsExhaustive || string.IsNullOrEmpty(archiveIdentity.Value) ||
+                            !archivePixel.AsSpan().SequenceEqual(displayPixel))
+                        {
+                            throw new InvalidOperationException("The packaged Unicode OCIO archive changed output.");
+                        }
+                    }
+                    finally
+                    {
+                        Directory.Delete(unicodeDirectory, recursive: true);
+                    }
+                    Console.WriteLine("OCIO_UNICODE_CONFIG=true");
+                    Console.WriteLine("OCIO_UNICODE_ARCHIVE=true");
 
                     using (var png = new MemoryStream())
                     {
@@ -7458,11 +8383,27 @@ public sealed partial class RuntimePackageTests
                         }
                     }
 
+                    __GPU_UPLOAD_CONTRACT__
                     using ISilkGraphicsDevice device = __DEVICE_FACTORY__;
-                    var cpuTextureBudget = new SilkCpuTextureBudget(8_388_608);
-                    cpuTextureBudget.ConfigureDevice(device);
-                    var textureBudget = new SilkGpuTextureBudget(4_194_304);
-                    textureBudget.ConfigureDevice(device);
+                    if (device.Capabilities.MaxTextureDimension2D < 1024)
+                    {
+                        throw new InvalidOperationException("The packaged backend lost its texture extent capability.");
+                    }
+                    Console.WriteLine("TEXTURE_EXTENT_CONTRACT=true");
+                    SilkTexturePreparationBudgets texturePolicy = SilkTexturePreparationBudgets.FromConfiguration(
+                        "8388608", "4194304", "4194304") ??
+                        throw new InvalidOperationException("The packaged policy configuration was lost.");
+                    SilkCpuTextureBudget cpuTextureBudget = texturePolicy.CpuTextureBudget!;
+                    SilkGpuTextureBudget textureBudget = texturePolicy.GpuTextureBudget!;
+                    SilkGpuStagingBudget stagingBudget = texturePolicy.GpuStagingBudget!;
+                    texturePolicy.ConfigureDevice(device);
+                    if (!ReferenceEquals(((ISilkCpuTextureAdmissionDevice)device).CpuTextureBudget, cpuTextureBudget) ||
+                        !ReferenceEquals(((ISilkTextureAdmissionDevice)device).GpuTextureBudget, textureBudget) ||
+                        !ReferenceEquals(((ISilkStagingAdmissionDevice)device).GpuStagingBudget, stagingBudget))
+                    {
+                        throw new InvalidOperationException("The packaged device did not share the configured pools.");
+                    }
+                    Console.WriteLine("SHARED_TEXTURE_PREPARATION_POLICY=true");
                     using (ISilkGraphicsTexture pressure = device.CreateTexture2D(1024, 1024))
                     {
                         bool refused = false;
@@ -7485,8 +8426,7 @@ public sealed partial class RuntimePackageTests
                         throw new InvalidOperationException("The packaged device leaked texture reservations.");
                     }
                     Console.WriteLine("GPU_TEXTURE_ADMISSION=true");
-                    var stagingBudget = new SilkGpuStagingBudget(4_194_304);
-                    stagingBudget.ConfigureDevice(device);
+                    texturePolicy.ConfigureDevice(device);
                     using (ISilkGraphicsTexture uploadTarget = device.CreateTexture2D(new SilkTextureDescriptor(
                         1024, 1024, SilkTextureFormat.Rgba8Unorm,
                         SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination)))
@@ -7533,6 +8473,40 @@ public sealed partial class RuntimePackageTests
                             "The packaged device leaked CPU command-copy reservations.");
                     }
                     Console.WriteLine("CPU_TEXTURE_ADMISSION=true");
+                    using (ISilkGraphicsTexture copySource = device.CreateTexture2D(4, 3))
+                    using (ISilkGraphicsTexture copyDestination = device.CreateTexture2D(4, 3))
+                    using (ISilkGraphicsTexture depthSource = device.CreateTexture2D(
+                        SilkTextureDescriptor.SampledDepthTarget(4, 3)))
+                    using (ISilkGraphicsTexture depthDestination = device.CreateTexture2D(
+                        SilkTextureDescriptor.DepthTarget(4, 3)))
+                    using (ISilkGraphicsCommandList copyCommands = device.CreateCommandList())
+                    {
+                        copyCommands.ClearColor(copySource, new SilkColor(1, 0, 0, 1));
+                        copyCommands.ClearDepth(depthSource, 0.375f);
+                        var copies = (ISilkTextureCopyGraphicsCommandList)copyCommands;
+                        copies.CopyRenderTarget(copySource, copyDestination);
+                        copies.CopyRenderTarget(depthSource, depthDestination);
+                        using ISilkGraphicsSubmission copied = device.Submit(copyCommands);
+                        copied.Wait();
+                        byte[] colorCopy = new byte[48];
+                        float[] depthCopy = new float[12];
+                        copyDestination.ReadbackForTesting(colorCopy);
+                        depthDestination.ReadbackForTesting(depthCopy);
+                        for (int pixel = 0; pixel < 12; pixel++)
+                        {
+                            if (colorCopy[pixel * 4] != 255 || colorCopy[(pixel * 4) + 1] != 0 ||
+                                colorCopy[(pixel * 4) + 2] != 0 || colorCopy[(pixel * 4) + 3] != 255 ||
+                                depthCopy[pixel] != 0.375f)
+                            {
+                                throw new InvalidOperationException("The packaged render-target copy changed pixels.");
+                            }
+                        }
+                    }
+                    if (textureBudget.Usage.ReservedBytes != 0 || stagingBudget.Usage.ReservedBytes != 0)
+                    {
+                        throw new InvalidOperationException("The packaged render-target copy leaked ownership.");
+                    }
+                    Console.WriteLine("RENDER_TARGET_COPY=true");
                     var bufferBudget = new SilkGpuBufferBudget(1_048_576);
                     bufferBudget.ConfigureDevice(device);
                     using (ISilkGraphicsBuffer pressure = device.CreateBuffer(
@@ -7558,9 +8532,66 @@ public sealed partial class RuntimePackageTests
                         throw new InvalidOperationException("The packaged device leaked buffer reservations.");
                     }
                     Console.WriteLine("GPU_BUFFER_ADMISSION=true");
+                    var streaming = new SilkTextureResidencyOptions(1_048_576, 1_048_576, true);
+                    using (var streamedRenderer = new SilkMeshRenderer(device, streaming))
+                    using (OpenUsdSilkSession streamedSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
+                    using (OpenUsdSilkPage streamedPage = streamedSession.Sync(16, 16, camera: CameraState.Default))
+                    using (ISilkGraphicsTexture streamedColor =
+                        device.CreateTexture2D(SilkTextureDescriptor.ColorTarget(16, 16)))
+                    using (ISilkGraphicsTexture streamedDepth =
+                        device.CreateTexture2D(SilkTextureDescriptor.DepthTarget(16, 16)))
+                    {
+                        SilkMeshRenderResult streamed = streamedRenderer.ApplyAndRender(
+                            streamedPage, streamedColor, streamedDepth);
+                        bool streamingActive = false;
+                        foreach (RenderDiagnostic diagnostic in streamedRenderer.GpuResources.Diagnostics.Entries)
+                        {
+                            streamingActive |= diagnostic.Code == "HDSILK_MATERIAL_TEXTURE_STREAMING";
+                        }
+                        if (!streaming.StreamMaterialTextures || streamed.DrawCount == 0 ||
+                            streamedRenderer.GpuResources.Statistics.TextureCacheEntryCount != 0 || !streamingActive)
+                        {
+                            throw new InvalidOperationException("The packaged material streaming path did not render.");
+                        }
+                    }
+                    if (bufferBudget.Usage.ReservedBytes != 0 || textureBudget.Usage.ReservedBytes != 0 ||
+                        stagingBudget.Usage.ReservedBytes != 0 || cpuTextureBudget.Usage.ReservedBytes != 0)
+                    {
+                        throw new InvalidOperationException("The packaged streamed renderer leaked ownership.");
+                    }
+                    Console.WriteLine("MATERIAL_STREAMING=true");
+                    using (ISilkGraphicsTexture scalar = device.CreateTexture2D(new SilkTextureDescriptor(
+                        4, 4, SilkTextureFormat.R8Unorm,
+                        SilkTextureUsage.Sampled | SilkTextureUsage.CopySource | SilkTextureUsage.CopyDestination, 3)))
+                    {
+                        byte[] scalarPixels = new byte[21];
+                        for (int index = 0; index < scalarPixels.Length; index++)
+                        {
+                            scalarPixels[index] = (byte)(index * 11);
+                        }
+                        using (ISilkGraphicsCommandList scalarCommands = device.CreateCommandList())
+                        {
+                            scalarCommands.UploadTexture(scalar, scalarPixels);
+                            using ISilkGraphicsSubmission scalarUpload = device.Submit(scalarCommands);
+                            scalarUpload.Wait();
+                        }
+                        byte[] scalarReadback = new byte[16];
+                        scalar.ReadbackForTesting(scalarReadback);
+                        {{"if (scalar.MipLevelCount != 3 || !scalarReadback.AsSpan().Sequ" +
+                            "enceEqual(scalarPixels.AsSpan(0, 16)))"}}
+                        {
+                            throw new InvalidOperationException("The packaged R8 mip texture changed scalar bytes.");
+                        }
+                    }
+                    if (textureBudget.Usage.ReservedBytes != 0 || stagingBudget.Usage.ReservedBytes != 0 ||
+                        cpuTextureBudget.Usage.ReservedBytes != 0)
+                    {
+                        throw new InvalidOperationException("The packaged scalar mip upload leaked ownership.");
+                    }
+                    Console.WriteLine("SCALAR_R8_MIPS=true");
                     PackageAuthoredProductExecution.Run(device, pluginPath);
                     using var sceneResources = new SilkSceneGpuResources(device);
-                    var scene = new SilkSceneState();
+                    using var scene = new SilkSceneState();
                     using OpenUsdSilkSession session =
                         OpenUsdSilkRuntime.Create(pluginPath, stagePath);
 
@@ -7585,6 +8616,16 @@ public sealed partial class RuntimePackageTests
                         return 3;
                     }
 
+                    var sourceIdentities = session.ResolveSourceIdentities(
+                        first.Revision, [("/World/Cube", 0)]);
+                    if (sourceIdentities.Count != 1 || sourceIdentities[0].PrimPath != "/World/Cube" ||
+                        sourceIdentities[0].InstancerContext.Count != 0)
+                    {
+                        {{"throw new InvalidOperationException(\"The packaged source iden" +
+                            "tity batch changed the authored prim.\");"}}
+                    }
+                    Console.WriteLine("SOURCE_IDENTITY_BATCH=true");
+
                     using OpenUsdSilkPage second = session.Sync(
                         1280,
                         720,
@@ -7604,10 +8645,24 @@ public sealed partial class RuntimePackageTests
                     }
 
                     using (OpenUsdSilkSession depthSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
-                    using (var depthCapturer = new SilkFrameCapturer(device))
+                    using (var depthCapturer = new SilkFrameCapturer(device, streaming))
                     {
+                        var stagedPhysics = new SilkPhysicsTransformOverrides(0);
+                        stagedPhysics.Stage(new PhysicsRenderBindingTable(0),
+                            new PhysicsRenderOverrideView(ReadOnlyMemory<PhysicsRenderTransformOverride>.Empty, 17));
+                        depthCapturer.PhysicsOverrides = stagedPhysics;
+                        depthCapturer.PhysicsDeformations = null;
                         SilkFrameCaptureResult depthFrame = depthCapturer.CaptureWithDepth(
                             depthSession, 16, 16, RenderSettings.Default);
+                        if (!ReferenceEquals(depthCapturer.PhysicsOverrides, stagedPhysics) ||
+                            depthCapturer.PhysicsDeformations is not null || stagedPhysics.SourceRevision != 17)
+                        {
+                            {{"throw new InvalidOperationException(\"The packaged capture" +
+                                "r did not resolve the staged physics publication.\");"}}
+                        }
+                        stagedPhysics.Clear();
+                        depthCapturer.PhysicsOverrides = null;
+                        Console.WriteLine("PHYSICS_CAPTURE_STAGING=true");
                         SilkDepthCaptureResult depth = depthFrame.Depth ??
                             throw new InvalidOperationException("The depth plane is absent.");
                         bool surface = false;
@@ -7777,6 +8832,92 @@ public sealed partial class RuntimePackageTests
                 EntryPoint = "openusd_storm_child_get_abi_version",
                 CallingConvention = CallingConvention.Cdecl)]
             private static extern uint GetStormChildAbiVersion();
+
+            private static unsafe void VerifyPtexMemorySource()
+            {
+                byte[] source = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "quad-colors.ptx"));
+                uint faceId = 0;
+                byte* face = stackalloc byte[64];
+                byte* pixels = stackalloc byte[48];
+                fixed (byte* bytes = source)
+                {
+                    NativePtexInfo info = NativePtexInfo.Create();
+                    if (DescribePtexMemory(bytes, (ulong)source.Length, &faceId, 1, 8, 48,
+                        face, 1, &info, null) != 0 ||
+                        info.RequestedFaceCount != 1 || info.RequiredByteCount != 48 ||
+                        ((uint*)face)[0] != 64 || ((uint*)face)[2] != 4 || ((uint*)face)[3] != 4)
+                    {
+                        throw new InvalidOperationException("The packaged Ptex memory description changed.");
+                    }
+
+                    info = NativePtexInfo.Create();
+                    if (DecodePtexMemory(bytes, (ulong)source.Length, &faceId, 1, 8, 48,
+                        null, 0, null, 0, &info, null) != 3 ||
+                        info.RequestedFaceCount != 1 || info.RequiredByteCount != 48)
+                    {
+                        throw new InvalidOperationException("The packaged Ptex memory sizing changed.");
+                    }
+
+                    info = NativePtexInfo.Create();
+                    if (DecodePtexMemory(bytes, (ulong)source.Length, &faceId, 1, 8, 48,
+                        face, 1, pixels, 48, &info, null) != 0)
+                    {
+                        throw new InvalidOperationException("The packaged Ptex memory decode failed.");
+                    }
+                    for (int index = 0; index < 48; index++)
+                    {
+                        if (pixels[index] != 255)
+                        {
+                            throw new InvalidOperationException("The packaged Ptex memory pixels changed.");
+                        }
+                    }
+                }
+            }
+
+            [DllImport(
+                "openusd_hdsilk",
+                EntryPoint = "openusd_silk_ptex_describe_faces_from_memory",
+                CallingConvention = CallingConvention.Cdecl)]
+            private static unsafe extern int DescribePtexMemory(
+                byte* source, ulong sourceSize, uint* faceIds, uint faceCount,
+                uint maximumDimension, ulong maximumBytes, byte* faces, uint faceCapacity,
+                NativePtexInfo* info, NativeErrorBuffer* error);
+
+            [DllImport(
+                "openusd_hdsilk",
+                EntryPoint = "openusd_silk_ptex_decode_faces_from_memory",
+                CallingConvention = CallingConvention.Cdecl)]
+            private static unsafe extern int DecodePtexMemory(
+                byte* source, ulong sourceSize, uint* faceIds, uint faceCount,
+                uint maximumDimension, ulong maximumBytes, byte* faces, uint faceCapacity,
+                byte* pixels, ulong pixelCapacity, NativePtexInfo* info, NativeErrorBuffer* error);
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct NativePtexInfo
+            {
+                public uint StructSize;
+                public uint Version;
+                public uint MeshType;
+                public uint DataType;
+                public uint ChannelCount;
+                public int AlphaChannel;
+                public uint FileFaceCount;
+                public uint RequestedFaceCount;
+                public ulong RequiredByteCount;
+
+                public static NativePtexInfo Create() => new()
+                {
+                    StructSize = 40,
+                    Version = 1,
+                    MeshType = 0,
+                    DataType = 0,
+                    ChannelCount = 0,
+                    AlphaChannel = 0,
+                    FileFaceCount = 0,
+                    RequestedFaceCount = 0,
+                    RequiredByteCount = 0
+                };
+            }
 
             private sealed class PackageFrameSource : IRenderJobFrameSource
             {
@@ -8031,6 +9172,7 @@ public sealed partial class RuntimePackageTests
         .Replace("__OPERATING_SYSTEM_GUARD__", platform.OperatingSystemGuard, StringComparison.Ordinal)
         .Replace("__HDSILK_LIBRARY__", platform.HdSilkLibrary, StringComparison.Ordinal)
         .Replace("__DEVICE_FACTORY__", platform.DeviceFactory, StringComparison.Ordinal)
+        .Replace("__GPU_UPLOAD_CONTRACT__", GpuUploadConsumerContract(platform), StringComparison.Ordinal)
         .Replace("__BACKEND_ENUM__", platform.BackendEnum, StringComparison.Ordinal)
         .Replace(
             "__SOFTWARE_REQUIREMENT__",
@@ -8049,6 +9191,80 @@ public sealed partial class RuntimePackageTests
             "__SILK_PAGE_ABI__",
             RequiredSilkPageAbiVersion.ToString(CultureInfo.InvariantCulture),
             StringComparison.Ordinal);
+
+    private static string GpuUploadConsumerContract(ExecutionPlatform platform) =>
+        platform.Rid == "win-x64" ? """
+        {
+            bool deniedGpuUpload = false;
+            try
+            {
+                using var unsupportedGpuUpload = D3D12SilkGraphicsDevice.Create(
+                    useWarp: true, useGpuUploadHeaps: true);
+            }
+            catch (NotSupportedException)
+            {
+                deniedGpuUpload = true;
+            }
+            if (!deniedGpuUpload)
+            {
+                throw new InvalidOperationException("A software adapter accepted the hardware-only upload policy.");
+            }
+            Console.WriteLine("GPU_UPLOAD_OPT_IN=true");
+            if (Environment.GetEnvironmentVariable("OPENUSD_TEST_D3D12_GPU_UPLOADS_REQUIRED") == "1")
+            {
+                using var localDevice = D3D12SilkGraphicsDevice.Create(
+                    useWarp: false, useGpuUploadHeaps: true);
+                if (!localDevice.UsesGpuUploadHeaps)
+                {
+                    throw new InvalidOperationException("The required GPU-upload policy was not enabled.");
+                }
+                var localBudget = new SilkGpuBufferBudget(1_048_576);
+                localBudget.ConfigureDevice(localDevice);
+                using (ISilkGraphicsBuffer localBuffer = localDevice.CreateBuffer(
+                    4096, SilkBufferUsage.Storage | SilkBufferUsage.Upload))
+                {
+                    byte[] original = new byte[4096];
+                    for (int index = 0; index < original.Length; index++)
+                    {
+                        original[index] = (byte)(index % 251);
+                    }
+                    localBuffer.Write(original);
+                    byte[] copied = new byte[original.Length];
+                    localBuffer.ReadbackForTesting(copied);
+                    if (!original.AsSpan().SequenceEqual(copied))
+                    {
+                        throw new InvalidOperationException("GPU-upload buffer bytes changed.");
+                    }
+                }
+                using (OpenUsdSilkSession localSession = OpenUsdSilkRuntime.Create(pluginPath, stagePath))
+                using (var localCapturer = new SilkFrameCapturer(localDevice))
+                {
+                    SilkFrameCaptureResult localFrame = localCapturer.CaptureWithDepth(
+                        localSession, 16, 16, RenderSettings.Default);
+                    SilkDepthCaptureResult localDepth = localFrame.Depth ??
+                        throw new InvalidOperationException("GPU-upload capture returned no depth.");
+                    bool covered = false;
+                    foreach (float value in localDepth.Values.Span)
+                    {
+                        if (!float.IsFinite(value) || value < 0 || value > 1)
+                        {
+                            throw new InvalidOperationException("GPU-upload capture returned invalid depth.");
+                        }
+                        covered |= value < 1;
+                    }
+                    if (!covered || localDepth.Values.Length != 256)
+                    {
+                        throw new InvalidOperationException("GPU-upload geometry did not render.");
+                    }
+                }
+                if (localBudget.Usage.ReservedBytes != 0)
+                {
+                    throw new InvalidOperationException("GPU-upload resources leaked their buffer reservations.");
+                }
+                Console.WriteLine("GPU_UPLOAD_HARDWARE=true");
+            }
+        }
+        """ : string.Empty;
 
     private static void AssertPackageOnlyGraph(
         string assetsPath,
@@ -8125,6 +9341,8 @@ public sealed partial class RuntimePackageTests
         "OpenUsd.Interop",
         "OpenUsd",
         "OpenUsd.Physics",
+        "OpenUsd.Rendering",
+        "OpenUsd.Rendering.Physics",
         $"OpenUsd.Runtime.Core.{platform.Rid}",
         "OpenUsd.Runtime.Physics",
         "OpenUsd.Runtime.Physics.win-x64",
@@ -8671,6 +9889,7 @@ public sealed partial class RuntimePackageTests
         WriteTestFile(Path.Combine(installRoot, "bin", "deflate.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "zstd.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "OpenColorIO_2_6.dll"));
+        WriteTestFile(Path.Combine(installRoot, "lib", "Ptex.dll"));
         WriteTestFile(Path.Combine(installRoot, "bin", "z.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd_ms.dll"));
         WriteTestFile(Path.Combine(installRoot, "lib", "usd", "plugInfo.json"), "{}");
@@ -8882,6 +10101,9 @@ public sealed partial class RuntimePackageTests
         WriteTestFile(
             Path.Combine(physXInstallRoot, "THIRD-PARTY-PHYSX.md"),
             "Synthetic PhysX notices.");
+        WriteTestFile(
+            Path.Combine(physicsShimRoot, "share", "licenses", "openusd_physx", "V-HACD-LICENSE.txt"),
+            "Synthetic V-HACD BSD-3-Clause license.");
         return (physicsShimRoot, physXInstallRoot);
     }
 
@@ -8894,6 +10116,10 @@ public sealed partial class RuntimePackageTests
         string shimRoot = Path.Combine(workRoot, "native", "install", "shim", rid);
         string extension = rid == "linux-x64" ? ".so" : ".dylib";
 
+        foreach (string library in new[] { "OpenEXR", "OpenEXRCore", "Iex", "IlmThread" })
+        {
+            WriteTestFile(Path.Combine(installRoot, "lib", $"lib{library}-3_5{extension}"));
+        }
         WriteTestFile(Path.Combine(installRoot, "lib", $"libImath-3_2{extension}"));
         WriteTestFile(Path.Combine(installRoot, "lib", $"libOpenColorIO{extension}"));
         WriteTestFile(Path.Combine(installRoot, "lib", $"libusd_ms{extension}"));
@@ -9037,12 +10263,19 @@ public sealed partial class RuntimePackageTests
             "install",
             "shim",
             platform.Rid + "-cesium");
-        string physicsShimRoot = Path.Combine(
+        string physicsShimRoot = Environment.GetEnvironmentVariable(
+            "OPENUSD_PACKAGE_EXECUTION_PHYSICS_SHIM_ROOT") ?? Path.Combine(
             repositoryRoot,
             "native",
             "install",
             "shim",
             platform.Rid + "-physx");
+        if (!Path.IsPathFullyQualified(physicsShimRoot))
+        {
+            inputs = default;
+            reason = "the package execution physics shim root must be absolute";
+            return false;
+        }
         string physXInstallRoot = Path.Combine(
             repositoryRoot,
             "native",
@@ -9354,6 +10587,12 @@ public sealed partial class RuntimePackageTests
         }
         if (nugetPackagesRoot is not null)
         {
+            foreach (string name in process.StartInfo.Environment.Keys
+                .Where(static key => string.Equals(key, "NuGetPackageRoot", StringComparison.OrdinalIgnoreCase))
+                .ToArray())
+            {
+                process.StartInfo.Environment.Remove(name);
+            }
             process.StartInfo.Environment["NUGET_PACKAGES"] = nugetPackagesRoot;
             // A clean package consumer owns its build state as well as its restore cache.
             process.StartInfo.Environment["UseArtifactsOutput"] = "false";

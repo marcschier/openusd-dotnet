@@ -17,6 +17,7 @@
 // serialized into it, so naming the constants here keeps the two from drifting.
 #include "openusd_hdsilk.h"
 #include "meshPreparation.h"
+#include "arraySharing.h"
 
 #include <array>
 #include <cstddef>
@@ -28,6 +29,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+class HdSilkPageWriter;
+class HdSilkCommandSink;
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -194,6 +198,12 @@ struct HdSilkInstancerContextEntry
 /// authored scene and still bounds the block to a few kilobytes.
 #define OPENUSD_SILK_MAX_INSTANCER_CONTEXT_ENTRIES 64u
 
+struct HdSilkPtexMeshTriangle
+{
+    uint32_t faceIndex = 0;
+    float cornerCoordinates[6] = {};
+};
+
 struct HdSilkMeshRecord
 {
     std::shared_ptr<HdSilkMeshPreparationLease> preparationLease;
@@ -201,6 +211,7 @@ struct HdSilkMeshRecord
     int32_t primId = -1;
     int32_t instanceId = 0;
     int32_t instanceIndex = 0;
+    int32_t sourcePickIndex = 0;
     uint32_t topologyKind = 1;
     uint64_t topologyRevision = 0;
     uint32_t doubleSided = 1;
@@ -216,6 +227,12 @@ struct HdSilkMeshRecord
     VtArray<uint32_t> indices;     // 3 indices per triangle or 2 per line.
     // Authored USD face per triangle, or curve segment per line.
     VtArray<uint32_t> triangleSubprims;
+    std::vector<HdSilkPtexMeshTriangle> ptexMappings;
+    uint32_t ptexMappingStatus = OPENUSD_SILK_PTEX_MAPPING_STATUS_NOT_REQUESTED;
+    VtArray<uint32_t> normalIdentities;
+    VtArray<uint32_t> normalCorners;
+    std::vector<float> normalExtraPoints;
+    bool triangleLocalNormalFallback = false;
     // ABI v22 subprim identity. `pointOrigins` is the authored point index of
     // every emitted vertex, and `cornerEdges` is the authored mesh edge index
     // of every emitted primitive corner, both using OPENUSD_SILK_SUBPRIM_NONE
@@ -278,6 +295,10 @@ struct HdSilkMeshRecord
     /// thousand copies of an allocation no instance publishes a byte of.
     void ClearSubprimIdentity()
     {
+        VtArray<uint32_t>().swap(normalIdentities);
+        VtArray<uint32_t>().swap(normalCorners);
+        std::vector<float>().swap(normalExtraPoints);
+        triangleLocalNormalFallback = false;
         VtArray<uint32_t>().swap(pointOrigins);
         VtArray<uint32_t>().swap(cornerEdges);
         authoredPointCount = 0;
@@ -339,6 +360,7 @@ struct HdSilkMaterialScalar
 struct HdSilkMaterialTexture
 {
     uint32_t parameter = 0;
+    uint32_t sourceKind = 0;
     uint32_t wrapS = 2;
     uint32_t wrapT = 2;
     uint32_t sourceColorSpace = 0;
@@ -357,13 +379,15 @@ struct HdSilkMaterialTexture
     // meaningful only for OPENUSD_SILK_COMPOSITE_MIX.
     uint32_t compositeOp = 0;
     float compositeFactor = 0.0f;
-    // The folded MaterialX place2d transform this texture reads its coordinates
-    // through, as the row-major affine (m00, m01, m10, m11, tx, ty). Resolved per
-    // texture so the material-wide reconciliation can tell agreement from
-    // divergence; only the reconciled material transform reaches the wire.
+    // The texture's folded UV transform as the row-major affine
+    // (m00, m01, m10, m11, tx, ty). Surface reconciliation selects the primary
+    // or alternate transform; displacement uses the primary.
     float uvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     std::string asset;
     std::string uvPrimvar;
+    // A primvar-reader default, applied only when the named mesh coordinate is absent.
+    bool hasUvFallback = false;
+    float uvFallback[2] = {0.0f, 0.0f};
 };
 
 /// A single material Sprim's resolved shading data. An unsupported surface is
@@ -373,10 +397,16 @@ struct HdSilkMaterialRecord
 {
     std::string path;
     uint32_t surfaceKind = 0;
-    // The single constant UV transform every texture of this material samples
-    // through, as the row-major affine (m00, m01, m10, m11, tx, ty). Identity
-    // unless a MaterialX place2d node with constant inputs was folded into it.
+    // The primary constant UV transform, the one the material's first surface
+    // texture samples through, as the row-major affine (m00, m01, m10, m11, tx,
+    // ty). Identity unless a supported texture-coordinate transform is folded
+    // into it.
     float uvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    // The second folded transform, read by the surface parameters whose bit
+    // (1u << parameter) is set in alternateUvParameterMask. Identity and zero
+    // when every surface texture agrees with uvTransform.
+    float alternateUvTransform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    uint32_t alternateUvParameterMask = 0;
     std::vector<HdSilkMaterialScalar> scalars;
     std::vector<HdSilkMaterialTexture> textures;
     std::vector<uint32_t> generatedFragmentSpirv;
@@ -403,6 +433,19 @@ struct HdSilkLightRecord
     float diffuse = 1.0f;
     float specular = 1.0f;
     float radius = 0.5f;
+    // UsdLux ShapingAPI cone in degrees about the light's -Z emission axis;
+    // focus is the cosine exponent. A zero-radius sphere may use it as a spot.
+    // 180 degrees means unshaped.
+    float shapingConeAngle = 180.0f;
+    float shapingFocus = 0.0f;
+    // UsdLux enableColorTemperature/colorTemperature in Kelvin. Storm tints every
+    // light it approximates, directional and area alike, by the luminance-
+    // normalized blackbody colour, and its dome light too; hdSilk applies the
+    // same tint when it selects the direct lights, resolves a dome's ambient
+    // term or builds a dome's environment snapshot, so the retained colour
+    // stays the authored one.
+    bool colorTemperatureEnabled = false;
+    float colorTemperature = 6500.0f;
     bool visible = true;
     bool ambientOnly = false;
     // The resolved dome texture:file, empty for every light that is not a
@@ -818,6 +861,10 @@ public:
     {
         return _meshPreparationBudget;
     }
+    /// Exact copy-on-write sharing within one sync; cleared after its workers finish, including failed renders.
+    void ShareMeshAttributes(HdSilkMeshAttributes* attributes);
+    void ShareMeshIndices(VtArray<uint32_t>* indices);
+    void ClearMeshArraySharing();
     /// Replaces every published instance of "path" with "records". Instance
     /// indices that existed before but are absent from "records" are queued
     /// for removal so a shrinking instancer cannot leave stale geometry
@@ -834,6 +881,8 @@ public:
     std::string GetMaterialBindingPurpose() const;
     bool HasMaterial(const std::string& path) const;
     bool HasMeshPath(const std::string& path) const;
+    bool TryGetMeshSourceIdentity(
+        const HdSilkMeshKey& key, int32_t* primId, int32_t* sourcePickIndex) const;
     void SetMeshMaterialPath(const std::string& path, const std::string& materialPath);
     void NoteMaterialBindingPurposeChanged();
     uint64_t GetMaterialBindingGeneration() const;
@@ -894,11 +943,22 @@ public:
         uint64_t* outRevision, uint32_t* outCommandCount, size_t maximumPageBytes = SIZE_MAX,
         bool awaitAcknowledgement = false);
 
+    /// Writes one logical update to a private store with independent total and
+    /// per-command ceilings. Flush succeeds before publication or output mutation.
+    /// The caller supplies an empty store, discards it on failure, and retains it for replay.
+    size_t BuildPageTo(
+        HdSilkCommandSink& sink, size_t maximumUpdateBytes, size_t maximumCommandBytes,
+        uint64_t* outRevision, uint32_t* outCommandCount, bool awaitAcknowledgement = true);
+
     /// Resolves the one deferred publication. Rejecting leaves every change pending.
     /// No scene mutation is permitted until acknowledgement or rejection.
     bool CompletePage(uint64_t revision, bool acknowledge);
 
 private:
+    void _DirtyMaterialCoordinateMeshes(const std::string& materialPath);
+    void _BuildPage(
+        HdSilkPageWriter& buffer, uint64_t* outRevision, uint32_t* outCommandCount, bool awaitAcknowledgement);
+
     struct _Entry
     {
         HdSilkMeshRecord record;
@@ -954,6 +1014,9 @@ private:
         const HdSilkLinkTable& links) const;
 
     mutable std::mutex _mutex;
+    std::mutex _meshArraySharingMutex;
+    HdSilkArraySharing<HdSilkMeshAttributes> _sharedMeshAttributes;
+    HdSilkArraySharing<VtArray<uint32_t>> _sharedMeshIndices;
     std::shared_ptr<HdSilkMeshPreparationBudget> _meshPreparationBudget =
         std::make_shared<HdSilkMeshPreparationBudget>();
     uint64_t _materialBindingGeneration = 0;

@@ -13,6 +13,25 @@ public sealed class SilkFrameUniformLayoutTests
     private const uint CandidateHasAuthoredDirectLights = 0x1;
 
     [Test]
+    public async Task ClearDepthUsesReservedFrameWordWithoutChangingLayout()
+    {
+        var frame = new SilkFrameState();
+        byte[] constants = new byte[SilkFrameUniformWriter.ByteSize];
+
+        SilkFrameUniformWriter.Write(
+            frame,
+            constants,
+            flipClipSpaceY: false,
+            RenderOutputTransform.Identity,
+            exposure: 0,
+            clearDepth: 0.375f);
+
+        await Assert.That(constants.Length).IsEqualTo(19264);
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(constants.AsSpan(76)))
+            .IsEqualTo(0.375f);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task EveryFrameBlockWritesAtItsDeclaredOffset(bool flipClipSpaceY)
@@ -47,7 +66,7 @@ public sealed class SilkFrameUniformLayoutTests
         fallback.AddAmbient(1, new Vector3(0.25f, 0.5f, 1f));
         fallback.AddAmbient(3, new Vector3(0.5f, 1f, 2f));
         fallback.AddUnattributed(new Vector3(0.5f, 0.25f, 0.125f));
-        byte[] actual = Enumerable.Repeat((byte)0xA5, 15296).ToArray();
+        byte[] actual = Enumerable.Repeat((byte)0xA5, 19264).ToArray();
 
         SilkFrameUniformWriter.Write(
             frame, actual, flipClipSpaceY, RenderOutputTransform.Reinhard, 1.5f,
@@ -57,7 +76,7 @@ public sealed class SilkFrameUniformLayoutTests
         // Every byte is independently accounted for. In particular the first
         // two controls are uints, not floats, and the matrices below are literal
         // inverses/transposes of the simple cameras in FrameBytes.
-        var expected = new byte[15296];
+        var expected = new byte[19264];
         PutFloats(expected, 0,
             0.5f, 0, 0, 0,
             0, flipClipSpaceY ? -0.25f : 0.25f, 0, 0,
@@ -81,8 +100,8 @@ public sealed class SilkFrameUniformLayoutTests
             0, 0, 0.125f, -2,
             0, 0, 0, 1);
         PutExpectedShadows(expected, bound: true);
-        PutFloats(expected, 15008, 1, 5, 64, 1);
-        PutFloats(expected, 15024, 8, 3, 0, 32);
+        PutFloats(expected, 16928, 1, 5, 64, 1);
+        PutFloats(expected, 16944, 8, 3, 0, 32);
         for (int dome = 0; dome < 8; dome++)
         {
             float t = dome + 1;
@@ -93,8 +112,8 @@ public sealed class SilkFrameUniformLayoutTests
                 5 or 7 => Vector3.Zero,
                 _ => new Vector3(t / 16, t / 8, t / 4),
             };
-            PutFloats(expected, 15040 + (dome * 16), color.X, color.Y, color.Z, 1);
-            PutFloats(expected, 15168 + (dome * 16),
+            PutFloats(expected, 16960 + (dome * 16), color.X, color.Y, color.Z, 1);
+            PutFloats(expected, 17088 + (dome * 16),
                 dome == 5 ? 2 : dome == 7 ? 1 : -1, 0, 0, 0);
         }
 
@@ -105,6 +124,134 @@ public sealed class SilkFrameUniformLayoutTests
         await Assert.That(layout.Edge).IsEqualTo(4096u);
         await Assert.That(shadows.GetSlotForLight(96)).IsEqualTo(2);
         await Assert.That(shadows.GetSlotForLight(127)).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task FrameWriterPreservesScaledShearedAndReflectedEmitterBasis()
+    {
+        // The linear rows are the images of the authored unit X/Y/Z axes.
+        // Unequal lengths, non-orthogonality, and the negative determinant are
+        // intentional; all remain visible in the frame vectors.
+        double[] transform =
+        [
+             0,  2,  0, 0,
+            -3,  4,  0, 0,
+             0,  0, -5, 0,
+             7, -11, 13, 1,
+        ];
+        byte[] wire = CreateEmitterFrame(transform);
+        var frame = new SilkFrameState();
+        frame.Update(new SilkFrameCommand(wire));
+        byte[] actual = new byte[SilkFrameUniformWriter.ByteSize];
+
+        SilkFrameUniformWriter.Write(
+            frame, actual, false, RenderOutputTransform.Identity, 0);
+
+        await Assert.That(ReadVector(actual, 224)).IsEqualTo(new Vector4(7, -11, 13, 3));
+        await Assert.That(ReadVector(actual, 2272)).IsEqualTo(new Vector4(0, 0, -5, 0.0625f));
+        await Assert.That(ReadVector(actual, 8416)).IsEqualTo(new Vector4(0, 2, 0, 4));
+        await Assert.That(ReadVector(actual, 10464)).IsEqualTo(new Vector4(-3, 4, 0, 6));
+    }
+
+    [Test]
+    public async Task FiniteAreaTransformAtRelativeDeterminantThresholdIsAdmitted()
+    {
+        double[] transform =
+        [
+            1, 0, 0, 0,
+            0.9999999999995, 1e-6, 0, 0,
+            0, 0, 1, 0,
+            5, -2, 9, 1,
+        ];
+        var scene = new SilkSceneState();
+
+        _ = scene.Apply(CreateEmitterFrame(transform), 1, 7);
+        byte[] actual = WriteFrame(scene.Frame);
+
+        await Assert.That(scene.Revision).IsEqualTo(7UL);
+        await Assert.That(scene.Frame.LightCount).IsEqualTo(1u);
+        await Assert.That(ReadVector(actual, 8416)).IsEqualTo(new Vector4(1, 0, 0, 4));
+        await Assert.That(ReadVector(actual, 10464))
+            .IsEqualTo(new Vector4(1, 1e-6f, 0, 6));
+    }
+
+    [Test]
+    public async Task FiniteAreaTransformWithBasisLengthAboveFloorIsAdmitted()
+    {
+        double[] transform =
+        [
+            2e-15, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            5, -2, 9, 1,
+        ];
+        var scene = new SilkSceneState();
+
+        _ = scene.Apply(CreateEmitterFrame(transform), 1, 8);
+        byte[] actual = WriteFrame(scene.Frame);
+
+        await Assert.That(scene.Revision).IsEqualTo(8UL);
+        await Assert.That(ReadVector(actual, 8416)).IsEqualTo(new Vector4(2e-15f, 0, 0, 4));
+        await Assert.That(ReadVector(actual, 10464)).IsEqualTo(new Vector4(0, 1, 0, 6));
+    }
+
+    [Test]
+    public async Task FiniteAreaTransformPreflightRejectsInvalidMatricesAndRetainsFrame()
+    {
+        var scene = new SilkSceneState();
+        _ = scene.Apply(CreateEmitterFrame(
+            [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 5, -2, 9, 1]), 1, 10);
+        byte[] retained = WriteFrame(scene.Frame);
+        ulong retainedFrameRevision = scene.Frame.Revision;
+        const string expectedMessage =
+            "A finite-area light transform must be affine and have an invertible linear basis.";
+
+        double[][] invalidTransforms =
+        [
+            // A projective term is not an affine emitter surface transform.
+            [1, 0, 0, 0.25, 0, 1, 0, 0, 0, 0, 1, 0, 5, -2, 9, 1],
+            // A projective term beyond the affine tolerance is also refused.
+            [1, 0, 0, 1.1e-12, 0, 1, 0, 0, 0, 0, 1, 0, 5, -2, 9, 1],
+            // Each basis vector must be nonzero.
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, -2, 9, 1],
+            // A nonzero basis vector must still clear the squared-length floor.
+            [1e-15, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, -2, 9, 1],
+            [1e-16, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, -2, 9, 1],
+            // Nonzero rows are still refused when their normalized determinant
+            // is below the admission threshold.
+            [1, 0, 0, 0, 1, 1e-8, 0, 0, 0, 0, 1, 0, 5, -2, 9, 1],
+        ];
+
+        foreach (double[] transform in invalidTransforms)
+        {
+            InvalidDataException? exception = await Assert.That(
+                    () => scene.Apply(CreateEmitterFrame(transform), 1, 11))
+                .Throws<InvalidDataException>();
+            await Assert.That(exception).IsNotNull();
+            await Assert.That(exception!.Message).IsEqualTo(expectedMessage);
+            await Assert.That(scene.Revision).IsEqualTo(10UL);
+            await Assert.That(scene.Frame.Revision).IsEqualTo(retainedFrameRevision);
+            await Assert.That(WriteFrame(scene.Frame).SequenceEqual(retained)).IsTrue();
+            await Assert.That(ReadVector(retained, 224)).IsEqualTo(new Vector4(5, -2, 9, 3));
+        }
+    }
+
+    [Test]
+    public async Task FiniteAreaTransformAtAffineToleranceIsAdmitted()
+    {
+        double[] transform =
+        [
+            1, 0, 0, 1e-12,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            5, -2, 9, 1,
+        ];
+        var scene = new SilkSceneState();
+
+        _ = scene.Apply(CreateEmitterFrame(transform), 1, 9);
+
+        await Assert.That(scene.Revision).IsEqualTo(9UL);
+        await Assert.That(scene.Frame.LightCount).IsEqualTo(1u);
     }
 
     [Test]
@@ -119,7 +266,7 @@ public sealed class SilkFrameUniformLayoutTests
     {
         var frame = new SilkFrameState();
         frame.Update(new SilkFrameCommand(FrameBytes(128, 8)));
-        byte[] actual = Enumerable.Repeat((byte)0xCD, 15296).ToArray();
+        byte[] actual = Enumerable.Repeat((byte)0xCD, 19264).ToArray();
         SilkFrameUniformWriter.Write(
             frame, actual, false, RenderOutputTransform.Identity, 0);
         ulong before = frame.Revision;
@@ -130,7 +277,7 @@ public sealed class SilkFrameUniformLayoutTests
         SilkFrameUniformWriter.Write(
             frame, actual, false, RenderOutputTransform.Identity, 0);
 
-        var expectedLights = new byte[15296];
+        var expectedLights = new byte[19264];
         for (int light = 0; light < 128; light++)
         {
             PutExpectedLight(expectedLights, light, light < lightCount);
@@ -139,15 +286,15 @@ public sealed class SilkFrameUniformLayoutTests
             actual[224..12512], expectedLights[224..12512],
             "all six arrays, including every retired slot and its basis defaults");
         await Assert.That(ReadVector(actual, 208).W).IsEqualTo((float)lightCount);
-        await Assert.That(ReadVector(actual, 15024)).IsEqualTo(new Vector4(domeCount, 0, 0, 0));
+        await Assert.That(ReadVector(actual, 16944)).IsEqualTo(new Vector4(domeCount, 0, 0, 0));
         for (int dome = 0; dome < 8; dome++)
         {
             float t = dome + 1;
             Vector4 expected = dome < domeCount
                 ? new Vector4(t / 16, t / 8, t / 4, 1)
                 : Vector4.Zero;
-            await Assert.That(ReadVector(actual, 15040 + (dome * 16))).IsEqualTo(expected);
-            await Assert.That(ReadVector(actual, 15168 + (dome * 16)))
+            await Assert.That(ReadVector(actual, 16960 + (dome * 16))).IsEqualTo(expected);
+            await Assert.That(ReadVector(actual, 17088 + (dome * 16)))
                 .IsEqualTo(new Vector4(-1, 0, 0, 0));
             await Assert.That(frame.Domes[dome].IsPresent).IsEqualTo(dome < domeCount);
         }
@@ -167,13 +314,13 @@ public sealed class SilkFrameUniformLayoutTests
         SilkShadowDescriptor[] descriptors = ShadowDescriptors();
         SilkShadowAtlasLayout layout = SilkShadowAtlasLayout.Create(descriptors)!;
         SilkShadowFrameBinding binding = SilkShadowFrameBinding.Create(descriptors, layout);
-        byte[] actual = Enumerable.Repeat((byte)0xA7, 15296).ToArray();
+        byte[] actual = Enumerable.Repeat((byte)0xA7, 19264).ToArray();
         SilkFrameUniformWriter.Write(
             frame, actual, false, RenderOutputTransform.Identity, 0, shadows: binding);
 
-        var expected = new byte[15296];
+        var expected = new byte[19264];
         PutExpectedShadows(expected, bound: true);
-        await AssertBytes(actual[12576..15008], expected[12576..15008], "all bound shadow blocks");
+        await AssertBytes(actual[12576..16928], expected[12576..16928], "all bound shadow blocks");
         await Assert.That(binding.Count).IsEqualTo(4);
         await Assert.That(binding.GetSlotForLight(0)).IsEqualTo(0);
         await Assert.That(binding.GetSlotForLight(31)).IsEqualTo(1);
@@ -191,7 +338,7 @@ public sealed class SilkFrameUniformLayoutTests
             shadows: SilkShadowFrameBinding.None);
         PutExpectedShadows(expected, bound: false);
         await AssertBytes(
-            actual[12576..15008], expected[12576..15008],
+            actual[12576..16928], expected[12576..16928],
             "retirement clears four matrices/tiles/controls and all 128 slot vectors");
         await Assert.That(SilkShadowFrameBinding.None.Count).IsEqualTo(0);
         for (int light = 0; light < 128; light++)
@@ -202,20 +349,20 @@ public sealed class SilkFrameUniformLayoutTests
 
     [Test]
     [Arguments(0)]
-    [Arguments(15295)]
-    [Arguments(15296)]
-    [Arguments(15297)]
+    [Arguments(17343)]
+    [Arguments(19264)]
+    [Arguments(17345)]
     public async Task FrameWriterRejectsNonExactDestinationLength(int length)
     {
         var frame = new SilkFrameState();
         byte[] destination = Enumerable.Repeat((byte)0xB6, length).ToArray();
-        if (length == 15296)
+        if (length == 19264)
         {
             SilkFrameUniformWriter.Write(
                 frame, destination, false, RenderOutputTransform.Identity, 0);
-            await Assert.That(ReadVector(destination, 12960 + (127 * 16)))
+            await Assert.That(ReadVector(destination, 14880 + (127 * 16)))
                 .IsEqualTo(new Vector4(-1, 0, 0, 0));
-            await Assert.That(ReadVector(destination, 15168 + (7 * 16)))
+            await Assert.That(ReadVector(destination, 17088 + (7 * 16)))
                 .IsEqualTo(new Vector4(-1, 0, 0, 0));
         }
         else
@@ -227,7 +374,7 @@ public sealed class SilkFrameUniformLayoutTests
                 .IsTrue().Because("length validation must precede the first write");
         }
         int frameSize = SilkFrameUniformWriter.ByteSize;
-        await Assert.That(frameSize).IsEqualTo(15296);
+        await Assert.That(frameSize).IsEqualTo(19264);
         await Assert.That(frame.Revision).IsEqualTo(0UL);
     }
 
@@ -242,11 +389,11 @@ public sealed class SilkFrameUniformLayoutTests
         BinaryPrimitives.WriteUInt32LittleEndian(wire.AsSpan(4), (uint)lightingLength);
         wire.AsSpan(23080, 16).Clear();
         _ = scene.Apply(wire, 1, 10);
-        var bytes = new byte[15296];
+        var bytes = new byte[19264];
         SilkFrameUniformWriter.Write(
             scene.Frame, bytes, false, RenderOutputTransform.Identity, 0);
         await Assert.That(ReadVector(bytes, 208)).IsEqualTo(Vector4.Zero);
-        await Assert.That(ReadVector(bytes, 15008)).IsEqualTo(Vector4.Zero);
+        await Assert.That(ReadVector(bytes, 16928)).IsEqualTo(Vector4.Zero);
         ulong unlitRevision = scene.Frame.Revision;
 
         // Only the flags word changes. Count, ambient, camera and the entire
@@ -258,8 +405,8 @@ public sealed class SilkFrameUniformLayoutTests
             scene.Frame, bytes, false, RenderOutputTransform.Identity, 0);
         await Assert.That(scene.Frame.Revision).IsEqualTo(unlitRevision + 1);
         await Assert.That(ReadVector(bytes, 208)).IsEqualTo(Vector4.Zero);
-        await Assert.That(ReadVector(bytes, 15008)).IsEqualTo(new Vector4(0, 0, 0, 1));
-        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(15020)))
+        await Assert.That(ReadVector(bytes, 16928)).IsEqualTo(new Vector4(0, 0, 0, 1));
+        await Assert.That(BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(16940)))
             .IsEqualTo(1f);
 
         _ = scene.Apply(wire, 1, 12);
@@ -274,7 +421,7 @@ public sealed class SilkFrameUniformLayoutTests
             scene.Frame, bytes, false, RenderOutputTransform.Identity, 0);
         await Assert.That(ReadVector(bytes, 208)).IsEqualTo(new Vector4(0, 0, 0, 1));
         await Assert.That(ReadVector(bytes, 4320)).IsEqualTo(new Vector4(0.125f, 0.25f, 0.5f, 0.125f));
-        await Assert.That(ReadVector(bytes, 15008).W).IsEqualTo(1f);
+        await Assert.That(ReadVector(bytes, 16928).W).IsEqualTo(1f);
 
         byte[] legacy = meaningful[..legacyLength];
         BinaryPrimitives.WriteUInt32LittleEndian(legacy.AsSpan(4), (uint)legacyLength);
@@ -282,10 +429,27 @@ public sealed class SilkFrameUniformLayoutTests
         SilkFrameUniformWriter.Write(
             scene.Frame, bytes, false, RenderOutputTransform.Identity, 0);
         await Assert.That(ReadVector(bytes, 208)).IsEqualTo(Vector4.Zero);
-        await Assert.That(ReadVector(bytes, 15008)).IsEqualTo(Vector4.Zero);
+        await Assert.That(ReadVector(bytes, 16928)).IsEqualTo(Vector4.Zero);
         await Assert.That(ReadVector(bytes, 4320)).IsEqualTo(Vector4.Zero);
         await Assert.That(scene.Frame.Revision).IsEqualTo(unlitRevision + 3);
         await Assert.That(scene.Frame.Width).IsEqualTo(320);
+    }
+
+    private static byte[] CreateEmitterFrame(double[] transform)
+    {
+        var wire = FrameBytes(1, 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(wire.AsSpan(552), 3u);
+        PutFloats(wire, 560, 4, 6);
+        PutDoubles(wire, 584, transform);
+        return wire;
+    }
+
+    private static byte[] WriteFrame(SilkFrameState frame)
+    {
+        var bytes = new byte[SilkFrameUniformWriter.ByteSize];
+        SilkFrameUniformWriter.Write(
+            frame, bytes, false, RenderOutputTransform.Identity, 0);
+        return bytes;
     }
 
     private static byte[] FrameBytes(int lightCount, int domeCount, uint flags = 0)
@@ -364,16 +528,16 @@ public sealed class SilkFrameUniformLayoutTests
         float t = light + 1;
         float multiplier = (light % 3) switch { 0 => 0.5f, 1 => 1f, _ => 2f };
         PutFloats(bytes, 224 + offset, t, -2 * t, 3 * t, (light % 5) + 1);
-        PutFloats(bytes, 2272 + offset, -1, 0, 0, t / 16);
+        PutFloats(bytes, 2272 + offset, -4, 0, 0, t / 16);
         PutFloats(bytes, 4320 + offset, t / 8, t / 4, t / 2, t * multiplier / 4);
         PutFloats(bytes, 6368 + offset, 0.25f + (light / 1024f), 0.75f - (light / 512f), light % 2, 0);
-        PutFloats(bytes, 8416 + offset, 0, 1, 0, t + 0.25f);
-        PutFloats(bytes, 10464 + offset, 0, 0, -1, t + 0.5f);
+        PutFloats(bytes, 8416 + offset, 0, 2, 0, t + 0.25f);
+        PutFloats(bytes, 10464 + offset, 0, 0, -3, t + 0.5f);
     }
 
     private static void PutExpectedShadows(byte[] bytes, bool bound)
     {
-        bytes.AsSpan(12576, 384).Clear();
+        bytes.AsSpan(12576, 2304).Clear();
         if (bound)
         {
             float[] scales = [0.0625f, 0.125f, 0.25f, 0.5f];
@@ -385,15 +549,15 @@ public sealed class SilkFrameUniformLayoutTests
                     0, 4, 0, 8 * t,
                     0, 0, 4, (12 * t) + 0.5f,
                     0, 0, 0, 1);
-                PutFloats(bytes, 12832 + (slot * 16),
+                PutFloats(bytes, 14112 + (slot * 16),
                     (slot % 2) / 2f, (slot / 2) / 2f, scales[slot], scales[slot]);
-                PutFloats(bytes, 12896 + (slot * 16), t / 1024, t / 128, slot, 1f / 4096);
+                PutFloats(bytes, 14496 + (slot * 16), t / 1024, t / 128, slot, 1f / 4096);
             }
         }
         for (int light = 0; light < 128; light++)
         {
             float slot = bound ? light switch { 0 => 0, 31 => 1, 96 => 2, 127 => 3, _ => -1 } : -1;
-            PutFloats(bytes, 12960 + (light * 16), slot, 0, 0, 0);
+            PutFloats(bytes, 14880 + (light * 16), slot, slot < 0 ? 0 : 1, 0, 0);
         }
     }
 
@@ -424,7 +588,7 @@ public sealed class SilkFrameUniformLayoutTests
         // Matrix4x4.Invert may produce either sign of IEEE zero on different
         // SIMD paths. Compare that numeric zero at computed camera coordinates;
         // every reserved word, array value and other byte remains exact.
-        if (actual.Length == 15296 && expected.Length == 15296)
+        if (actual.Length == 19264 && expected.Length == 19264)
         {
             actual = (byte[])actual.Clone();
             foreach (int matrix in new[] { 0, 12512 })

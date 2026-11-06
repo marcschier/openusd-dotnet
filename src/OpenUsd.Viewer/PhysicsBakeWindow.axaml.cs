@@ -35,8 +35,8 @@ internal sealed partial class PhysicsBakeWindow : Window
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
         BakeDestinationInput.Text = suggestedDestination;
-        BakeStartInput.Text = Format(startTimeCode);
-        BakeEndInput.Text = Format(endTimeCode);
+        BakeStartInput.Text = ViewerTimelineMath.Format(startTimeCode);
+        BakeEndInput.Text = ViewerTimelineMath.Format(endTimeCode);
         BakeStrideInput.Text = "1";
         BakeCancelButton.Click += (_, _) => Close(null);
         BakeConfirmButton.Click += (_, _) => Confirm();
@@ -45,6 +45,7 @@ internal sealed partial class PhysicsBakeWindow : Window
         BakeStartInput.TextChanged += (_, _) => Revalidate();
         BakeEndInput.TextChanged += (_, _) => Revalidate();
         BakeStrideInput.TextChanged += (_, _) => Revalidate();
+        Opened += (_, _) => BakeDestinationInput.Focus();
         Revalidate();
     }
 
@@ -70,9 +71,6 @@ internal sealed partial class PhysicsBakeWindow : Window
             BakeSaveCheckBox.IsChecked == true);
         return true;
     }
-
-    private static string Format(double value) =>
-        value.ToString("0.###", CultureInfo.InvariantCulture);
 
     private static bool TryParse(string? text, out double value) =>
         double.TryParse(

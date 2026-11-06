@@ -109,6 +109,8 @@ struct DirectSlot
     float diffuse = 0.0f;
     float specular = 0.0f;
     float radius = 0.0f;
+    float shapingConeAngle = 0.0f;
+    float shapingFocus = 0.0f;
 };
 
 struct DomeSlot
@@ -181,9 +183,9 @@ inline Frame ReadFrame(const uint8_t* data, size_t size, uint32_t commandCount)
         foundFrame = true;
         frame.type = type;
         frame.byteSize = ReadU32Le(command, 4);
-        if (command.size != 23368 || frame.byteSize != 23368u)
+        if (command.size != 25416 || frame.byteSize != 25416u)
         {
-            throw std::runtime_error("direct-light decoder: expected full 23368-byte FRAME");
+            throw std::runtime_error("direct-light decoder: expected full 25416-byte FRAME");
         }
         frame.width = ReadI32Le(command, 8);
         frame.height = ReadI32Le(command, 12);
@@ -242,6 +244,16 @@ inline Frame ReadFrame(const uint8_t* data, size_t size, uint32_t commandCount)
                 {
                     throw std::runtime_error("direct-light decoder: nonzero dome reserved word");
                 }
+            }
+        }
+        for (size_t index = 0; index < 128; ++index)
+        {
+            const size_t offset = 23368 + 16 * index;
+            frame.directLights[index].shapingConeAngle = ReadF32Le(command, offset);
+            frame.directLights[index].shapingFocus = ReadF32Le(command, offset + 4);
+            if (ReadU32Le(command, offset + 8) != 0u || ReadU32Le(command, offset + 12) != 0u)
+            {
+                throw std::runtime_error("direct-light decoder: nonzero shaping reserved word");
             }
         }
     });

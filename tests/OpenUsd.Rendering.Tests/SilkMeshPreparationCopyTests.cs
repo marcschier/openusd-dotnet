@@ -49,6 +49,8 @@ public sealed class SilkMeshPreparationCopyTests
     {
         FakeCopy.Reset();
         var failure = new InvalidOperationException("acknowledgement");
+        var assets = new TrackedVolumeAssets();
+        FakeCopy.VolumeAssets = assets;
         FakeCopy.AcknowledgementError = failure;
         Exception? observed = null;
         int pagesBefore = SilkManagedDiagnostics.LivePages;
@@ -65,6 +67,23 @@ public sealed class SilkMeshPreparationCopyTests
         await Assert.That(FakeCopy.Acknowledgements).IsEqualTo(1);
         await Assert.That(FakeCopy.AcknowledgedPage).IsEqualTo((nint)9);
         await Assert.That(FakeCopy.Releases).IsEqualTo(1);
+        await Assert.That(assets.Disposed).IsTrue();
+    }
+
+    [Test]
+    public async Task VolumeLeaseFailureDoesNotAcknowledgeTheNativePage()
+    {
+        FakeCopy.Reset();
+        var failure = new InvalidOperationException("volume lease");
+        FakeCopy.VolumeAssetsError = failure;
+        int pagesBefore = SilkManagedDiagnostics.LivePages;
+        InvalidOperationException? observed = await Assert.That(() => Copy(16))
+            .Throws<InvalidOperationException>();
+        await Assert.That(observed).IsSameReferenceAs(failure);
+        await Assert.That(SilkManagedDiagnostics.LivePages).IsEqualTo(pagesBefore);
+        await Assert.That(FakeCopy.Acknowledgements).IsEqualTo(0);
+        await Assert.That(FakeCopy.Releases).IsEqualTo(1);
+        await Assert.That(string.Join(",", FakeCopy.Order)).IsEqualTo("copy,retain,release");
     }
 
     [Test]
@@ -79,7 +98,7 @@ public sealed class SilkMeshPreparationCopyTests
         await Assert.That(page.Revision).IsEqualTo(5ul);
         await Assert.That(FakeCopy.AcknowledgedPage).IsEqualTo((nint)9);
         await Assert.That(FakeCopy.PagesAtAcknowledgement).IsEqualTo(pagesBefore + 1);
-        await Assert.That(string.Join(",", FakeCopy.Order)).IsEqualTo("copy,acknowledge,release");
+        await Assert.That(string.Join(",", FakeCopy.Order)).IsEqualTo("copy,retain,acknowledge,release");
         await Assert.That(FakeCopy.Releases).IsEqualTo(1);
     }
 
@@ -173,8 +192,8 @@ public sealed class SilkMeshPreparationCopyTests
     [Test]
     public async Task PreparationDiagnosticsStayStableAcrossFrameUsageChanges()
     {
-        using var first = new OpenUsdSilkPage(24, 1, [1, 2], 0, new(16, 8, 12), 64);
-        using var next = new OpenUsdSilkPage(24, 2, [1, 2, 3, 4], 0, new(16, 16, 16), 64);
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, [1, 2], 0, new(16, 8, 12), 64);
+        using var next = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [1, 2, 3, 4], 0, new(16, 16, 16), 64);
         await Assert.That(first.WithPreparationDiagnostics(RenderDiagnosticsState.Empty)
             .Equals(next.WithPreparationDiagnostics(RenderDiagnosticsState.Empty))).IsTrue();
         await Assert.That(first.MeshPreparationUsage!.ReservedBytes).IsEqualTo(8ul);
@@ -186,7 +205,7 @@ public sealed class SilkMeshPreparationCopyTests
     [Test]
     public async Task AdmissionDiagnosticsDoNotOverflowTheBoundedJobDiagnosticCount()
     {
-        using var page = new OpenUsdSilkPage(24, 1, [], 0, new(100, 40, 60), 200);
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, [], 0, new(100, 40, 60), 200);
         RenderDiagnostic[] existing = Enumerable.Range(0, 128).Select(index =>
             new RenderDiagnostic(RenderDiagnosticSeverity.Warning, "material-" + index, "diagnostic")).ToArray();
         RenderDiagnosticsState result = page.WithPreparationDiagnostics(new(existing));
@@ -212,7 +231,7 @@ public sealed class SilkMeshPreparationCopyTests
     {
         var view = new OpenUsdSilkRuntime.NativePageView
         {
-            AbiVersion = 24,
+            AbiVersion = SilkCommandParser.PageAbiVersion,
             Revision = 5,
             Data = nativeByteLength == 0 ? 0 : 1,
             DataSize = checked((nuint)nativeByteLength)
@@ -231,6 +250,16 @@ public sealed class SilkMeshPreparationCopyTests
     [SuppressMessage("Usage", "CA2201", Justification = "Fault injection avoids exhausting shared-host memory.")]
     private static OutOfMemoryException AllocationFailure(string message) => new(message);
 
+    private sealed class TrackedVolumeAssets : SilkVolumeAssets
+    {
+        internal bool Disposed { get; private set; }
+
+        protected override void CopyCore(string materialPath, Span<byte> destination) =>
+            throw new NotSupportedException();
+
+        protected override void DisposeCore() => Disposed = true;
+    }
+
     private readonly struct FakeCopy : OpenUsdSilkRuntime.IPreparedPageCopy
     {
         public static OpenUsdSilkRuntime.NativeMeshPreparationUsage ReadUsage(nint page) => UsageError is { } error
@@ -239,6 +268,8 @@ public sealed class SilkMeshPreparationCopyTests
 
         internal static Exception? UsageError { get; set; }
         internal static Exception? CopyError { get; set; }
+        internal static Exception? VolumeAssetsError { get; set; }
+        internal static SilkVolumeAssets? VolumeAssets { get; set; }
         internal static Exception? AcknowledgementError { get; set; }
         internal static byte[] CopyResult { get; set; } = [];
         internal static nint AcknowledgedPage { get; private set; }
@@ -253,6 +284,8 @@ public sealed class SilkMeshPreparationCopyTests
         {
             CopyError = null;
             UsageError = null;
+            VolumeAssetsError = null;
+            VolumeAssets = null;
             AcknowledgementError = null;
             CopyResult = [];
             AcknowledgedPage = 0;
@@ -273,6 +306,12 @@ public sealed class SilkMeshPreparationCopyTests
                 throw error;
             }
             return CopyResult;
+        }
+
+        public static SilkVolumeAssets? RetainVolumeAssets(nint page)
+        {
+            Order.Add("retain");
+            return VolumeAssetsError is { } error ? throw error : VolumeAssets;
         }
 
         public static void Acknowledge(nint page)

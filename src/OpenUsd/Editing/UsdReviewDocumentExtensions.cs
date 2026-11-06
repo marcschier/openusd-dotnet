@@ -20,6 +20,24 @@ public static class UsdReviewDocumentExtensions
             OpenUsdNativeRuntime.CaptureReviewSourceBinding(stage.Native), stage.RootLayerIdentifier);
     }
 
+    internal static void AcknowledgeReviewSourcePublication(this UsdStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        OpenUsdNativeRuntime.AcknowledgeReviewSourcePublication(stage.Native);
+    }
+
+    /// <summary>Adopts compatible authored session opinions into a source-anchored review layer.</summary>
+    /// <remarks>
+    /// The source must be an exact filesystem-backed text-USD image. Conflicting or nonportable opinions
+    /// are refused without changing the stage; successful adoption never writes the source file.
+    /// </remarks>
+    public static UsdReviewSourceBinding AdoptIntoReview(this UsdStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        return UsdReviewDocumentCodec.DecodeSourceBinding(
+            OpenUsdNativeRuntime.AdoptReviewStage(stage.Native), stage.RootLayerIdentifier);
+    }
+
     /// <summary>Captures portable review bytes and a private same-process save receipt without publication.</summary>
     /// <remarks>
     /// Only the owned user-review layer is admitted. Native verification retains exact typed opinions

@@ -7,6 +7,22 @@ public sealed class PreviewGraphicsDeviceFactoryTests
     [Test]
     [Arguments(true)]
     [Arguments(false)]
+    public async Task LegacyInjectedFactoriesCannotSilentlyIgnoreGpuUploadRequirements(bool useWarp)
+    {
+        int calls = 0;
+        var factory = new PreviewGraphicsDeviceFactory(
+            _ => { calls++; return null!; },
+            () => { calls++; return null!; },
+            () => { calls++; return null!; });
+        await Assert.That(() => factory.Create(
+            new PreviewGraphicsDeviceOptions(useWarp) { D3D12GpuUploadHeaps = true }))
+            .Throws<NotSupportedException>();
+        await Assert.That(calls).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
     public async Task RoutesToPlatformBackendWithoutCreatingNativeTestDevice(bool useWarp)
     {
         string? selected = null;

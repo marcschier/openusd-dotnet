@@ -155,6 +155,57 @@ internal static class SilkDomeLinkConformance
         await AssertLit(partiallyLinked, RightX, red: false, blue: true, "blue-only quad");
     }
 
+    internal static async Task DomeShadowCollectionDoesNotChangeReceiverLinking(
+        ISilkGraphicsDevice device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        using ISilkGraphicsTexture color = CreateColorTarget(device);
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        using var renderer = new SilkMeshRenderer(device, GetShaderFormat(device), Sky);
+
+        SilkMeshRendererConformance.Apply(
+            renderer,
+            revision: 1,
+            Frame(domeCount: 2, textured: 2),
+            Quad(1, BlueLitQuad, -0.4, string.Empty),
+            Quad(2, RedLitQuad, 0.4, string.Empty),
+            DomeUpsert(RedDome, RedTexture, domeIndex: 0),
+            DomeUpsert(BlueDome, BlueTexture, domeIndex: 1),
+            LightLink(
+                domeCount: 2,
+                (BlueLitQuad, 0b10u),
+                (RedLitQuad, 0b01u)));
+        _ = renderer.Render(color, depth);
+        byte[] linked = ReadPixels(color);
+
+        await AssertLit(linked, LeftX, red: false, blue: true, "blue-linked quad");
+        await AssertLit(linked, RightX, red: true, blue: false, "red-linked quad");
+
+        SilkMeshRendererConformance.Apply(
+            renderer,
+            revision: 2,
+            DomeUpsert(
+                RedDome,
+                RedTexture,
+                domeIndex: 0,
+                unsupported: SilkEnvironmentUnsupportedFeatures.ShadowCollection));
+        _ = renderer.Render(color, depth);
+        byte[] shadowUnsupported = ReadPixels(color);
+
+        await Assert.That(shadowUnsupported.AsSpan().SequenceEqual(linked))
+            .IsTrue()
+            .Because("A dome shadow collection must not be folded into its receiver mask.");
+        await Assert.That(renderer.Scene.LightLinks.Resolve(BlueLitQuad, 0).DomeMask)
+            .IsEqualTo(0b10u);
+        await Assert.That(renderer.Scene.LightLinks.Resolve(RedLitQuad, 0).DomeMask)
+            .IsEqualTo(0b01u);
+        await Assert.That(renderer.GpuResources.EnvironmentBinding.GroupCount).IsEqualTo(3u);
+        RenderDiagnostic diagnostic = renderer.GpuResources.Diagnostics.Entries.Single(
+            entry => entry.Code == SilkRenderDiagnosticCodes.EnvironmentFeatureUnsupported);
+        await Assert.That(diagnostic.Message).Contains("ShadowCollection");
+    }
+
     /// <summary>
     /// The same two collections must split the specular response as well as the
     /// diffuse one.
@@ -409,7 +460,8 @@ internal static class SilkDomeLinkConformance
         byte[] expected = ReadPixels(cleanColor);
         await AssertLit(expected, LeftX, red: true, blue: false, "rebuilt reference");
 
-        foreach (FailurePoint failure in new[] { FailurePoint.Submit, FailurePoint.Wait })
+        foreach (FailurePoint failure in new[]
+            { FailurePoint.Submit, FailurePoint.Wait, FailurePoint.WaitAndDispose })
         {
             using var failing = new FailingSubmissionDevice(device);
             using ISilkGraphicsTexture color = CreateColorTarget(failing);
@@ -439,8 +491,15 @@ internal static class SilkDomeLinkConformance
             {
                 _ = renderer.Render(color, depth);
             }
-            catch (SilkSubmissionFailure)
+            catch (SilkSubmissionFailure) when (failure != FailurePoint.WaitAndDispose)
             {
+                threw = true;
+            }
+            catch (AggregateException exception) when (failure == FailurePoint.WaitAndDispose)
+            {
+                await Assert.That(exception.InnerExceptions.Count).IsEqualTo(2);
+                await Assert.That(exception.InnerExceptions[0].Message).IsEqualTo("The injected wait failed.");
+                await Assert.That(exception.InnerExceptions[1].Message).IsEqualTo("The injected disposal failed.");
                 threw = true;
             }
 
@@ -488,6 +547,7 @@ internal static class SilkDomeLinkConformance
         None,
         Submit,
         Wait,
+        WaitAndDispose,
     }
 
     /// <summary>The injected device failure, distinguishable from a real one.</summary>
@@ -568,13 +628,14 @@ internal static class SilkDomeLinkConformance
                 throw new SilkSubmissionFailure("The injected submission failed.");
             }
             ISilkGraphicsSubmission submission = inner.Submit(commandList);
-            if (_armed != FailurePoint.Wait)
+            FailurePoint armed = _armed;
+            if (armed != FailurePoint.Wait && armed != FailurePoint.WaitAndDispose)
             {
                 return submission;
             }
 
             _armed = FailurePoint.None;
-            return new FailingWaitSubmission(submission);
+            return new FailingWaitSubmission(submission, armed == FailurePoint.WaitAndDispose);
         }
 
         public void WaitIdle() => inner.WaitIdle();
@@ -586,7 +647,7 @@ internal static class SilkDomeLinkConformance
     }
 
     /// <summary>A real submission whose wait is reported as failed exactly once.</summary>
-    private sealed class FailingWaitSubmission(ISilkGraphicsSubmission inner)
+    private sealed class FailingWaitSubmission(ISilkGraphicsSubmission inner, bool failDispose)
         : ISilkGraphicsSubmission
     {
         public bool IsCompleted => inner.IsCompleted;
@@ -599,7 +660,14 @@ internal static class SilkDomeLinkConformance
             throw new SilkSubmissionFailure("The injected wait failed.");
         }
 
-        public void Dispose() => inner.Dispose();
+        public void Dispose()
+        {
+            inner.Dispose();
+            if (failDispose)
+            {
+                throw new SilkSubmissionFailure("The injected disposal failed.");
+            }
+        }
     }
 
     /// <summary>Maps each instance's world X onto the texel column at its centre.</summary>
@@ -621,7 +689,7 @@ internal static class SilkDomeLinkConformance
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         byte[] instancerPathBytes = Encoding.UTF8.GetBytes("/Instancer");
-        int size = 268 + pathBytes.Length + instancerPathBytes.Length +
+        int size = 276 + pathBytes.Length + instancerPathBytes.Length +
             8 + instancerPathBytes.Length;
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
@@ -658,9 +726,9 @@ internal static class SilkDomeLinkConformance
             bytes.AsSpan(260),
             (uint)instancerPathBytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(264), 1);
-        pathBytes.CopyTo(bytes, 268);
-        instancerPathBytes.CopyTo(bytes, 268 + pathBytes.Length);
-        int contextOffset = 268 + pathBytes.Length + instancerPathBytes.Length;
+        pathBytes.CopyTo(bytes, 276);
+        instancerPathBytes.CopyTo(bytes, 276 + pathBytes.Length);
+        int contextOffset = 276 + pathBytes.Length + instancerPathBytes.Length;
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(contextOffset),
             (uint)instancerPathBytes.Length);
@@ -924,6 +992,13 @@ internal static class SilkDomeLinkConformance
             .. BitConverter.GetBytes(1f),
             .. BitConverter.GetBytes(0f),
             .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
         ];
 
         var bytes = new byte[8 + payload.Count];
@@ -938,7 +1013,8 @@ internal static class SilkDomeLinkConformance
         string texture,
         uint domeIndex,
         float diffuse = 1f,
-        float specular = 0f)
+        float specular = 0f,
+        SilkEnvironmentUnsupportedFeatures unsupported = SilkEnvironmentUnsupportedFeatures.None)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(path);
         byte[] textureBytes = Encoding.UTF8.GetBytes(texture);
@@ -950,7 +1026,7 @@ internal static class SilkDomeLinkConformance
             .. BitConverter.GetBytes((uint)textureBytes.Length),
             .. BitConverter.GetBytes((uint)SilkDomeTextureFormat.Latlong),
             .. BitConverter.GetBytes((uint)SilkColorSpace.Raw),
-            .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes((uint)unsupported),
             .. BitConverter.GetBytes(domeIndex),
             .. BitConverter.GetBytes(1f),
             .. BitConverter.GetBytes(1f),

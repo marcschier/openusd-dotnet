@@ -54,4 +54,26 @@ public sealed class ViewerStageHudFormatterTests
         await Assert.That(hud).Contains("[(-2, -3, -4) .. (5, 6, 7)]");
         await Assert.That(hud).Contains("bbox query 1.5 ms");
     }
+
+    [Test]
+    public async Task StageHudReportsUnavailableBoundsWithTheOpenUsdError()
+    {
+        ViewerStageStatisticsSnapshot statistics = ViewerStageStatisticsSnapshot.Empty with
+        {
+            PrimCount = 2,
+            BoundsQueryDuration = TimeSpan.FromMilliseconds(2),
+            BoundsFailure = "Plugin compute extent function produced an extent with 0 elements",
+        };
+        ViewerStageTimingSnapshot timing = ViewerStageTimingSnapshot.Create(1, 24, 24, 24);
+
+        string hud = ViewerStageHudFormatter.FormatStatistics(
+            statistics,
+            timing,
+            ViewerDiagnosticsSnapshot.Empty);
+
+        await Assert.That(hud).Contains(
+            "AABB: unavailable (Plugin compute extent function produced an extent with 0 elements)");
+        await Assert.That(hud).DoesNotContain("OBB:");
+        await Assert.That(hud).Contains("bbox query 2 ms");
+    }
 }

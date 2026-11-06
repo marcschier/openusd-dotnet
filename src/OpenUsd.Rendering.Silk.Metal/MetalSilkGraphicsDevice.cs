@@ -70,7 +70,8 @@ public sealed partial class MetalSilkGraphicsDevice
             // Metal guarantees samplers accept a maxAnisotropy of up to 16 on every device --
             // there is no separate feature query in the current SharpMetal surface, so this
             // uses the API-documented ceiling rather than an unverifiable runtime probe.
-            MaxSamplerAnisotropy = 16f
+            MaxSamplerAnisotropy = 16f,
+            MaxTextureDimension2D = 16384
         };
     }
 

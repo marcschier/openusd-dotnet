@@ -32,15 +32,19 @@ internal interface IOpenUsdMcpService
 
     ValueTask<McpCaptureResultDto> RenderPreviewAsync(
         RenderPreviewRequest request,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, Action<int, int>? viewCaptured = null);
 
     ValueTask<McpRenderSequenceResultDto> RenderSequenceAsync(
         RenderSequenceRequest request,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, Action<int, int>? frameEncoded = null);
+
+    ValueTask<McpRenderSequenceResultDto> RenderPhysicsSequenceAsync(
+        RenderPhysicsSequenceRequest request, CancellationToken cancellationToken,
+        Action<int, int>? frameEncoded = null);
 
     ValueTask<McpRenderSequenceResultDto> RenderProductAsync(
         RenderProductCaptureRequest request,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, Action<int, int>? frameEncoded = null);
 
     ValueTask<McpSequenceFrameResultDto> ReadSequenceFrameAsync(
         ReadSequenceFrameRequest request,
@@ -48,6 +52,8 @@ internal interface IOpenUsdMcpService
 
     ValueTask<McpSequenceSheetResultDto> ReadSequenceSheetAsync(
         ReadSequenceSheetRequest request, CancellationToken cancellationToken);
+
+    ValueTask<McpSequenceJobsResultDto> ListSequenceJobsAsync(CancellationToken cancellationToken);
 
     ValueTask<McpAnalysisResultDto> AnalyzeSceneAsync(AnalyzeSceneRequest request, CancellationToken cancellationToken);
 
@@ -87,6 +93,7 @@ internal sealed partial class OpenUsdMcpService(
         CancellationToken cancellationToken)
     {
         ValidateOpenRequest(request);
+        WorkspaceStageSettings? stageSettings = request.StageSettings?.ToSettings();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -100,7 +107,7 @@ internal sealed partial class OpenUsdMcpService(
             }
 
             WorkspaceSessionInfo info = await workspace
-                .StartAsync(request.SourcePath, cancellationToken)
+                .StartAsync(request.SourcePath, stageSettings, cancellationToken)
                 .ConfigureAwait(false);
             _sourcePath = request.SourcePath.Replace('\\', '/');
             ResetDerivedState();
@@ -305,7 +312,7 @@ internal sealed partial class OpenUsdMcpService(
 
     public async ValueTask<McpCaptureResultDto> RenderPreviewAsync(
         RenderPreviewRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Action<int, int>? viewCaptured = null)
     {
         ValidateRenderRequest(request);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -320,16 +327,31 @@ internal sealed partial class OpenUsdMcpService(
                 "-",
                 Guid.NewGuid().ToString("N"));
             CaptureKind kind = ParseCaptureKind(request.Kind);
+            int cameraWidth = request.Width;
+            int cameraHeight = request.Height;
+            if (kind == CaptureKind.ContactSheet)
+            {
+                (int columns, int rows) = PreviewCaptureProcessor.GetContactSheetGrid(
+                    request.Width, request.Height, request.Views.Count);
+                cameraWidth /= columns;
+                cameraHeight /= rows;
+            }
             IReadOnlyList<CameraState> cameras = await workspace
                 .CreatePreviewCamerasAsync(
                     revision,
                     request.CameraPath,
                     kind == CaptureKind.Turntable && request.CameraPath is null,
-                    request.Width,
-                    request.Height,
+                    cameraWidth,
+                    cameraHeight,
                     request.Views.Select(static view => view.TimeCode).ToArray(),
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (cameras.Count != request.Views.Count)
+            {
+                throw new OpenUsdMcpFailureException(
+                    OpenUsdMcpErrorCodes.RenderFailure,
+                    "Camera preparation did not produce exactly one camera per requested preview view.");
+            }
             var captureRequest = new PreviewCaptureRequest(
                 requestId,
                 kind,
@@ -341,7 +363,10 @@ internal sealed partial class OpenUsdMcpService(
                                 view.Name,
                                 cameras[index],
                                 view.TimeCode))
-                        .ToArray()));
+                        .ToArray()))
+            {
+                ViewCaptured = viewCaptured
+            };
             PreviewCaptureResult result;
             try
             {
@@ -354,7 +379,8 @@ internal sealed partial class OpenUsdMcpService(
                 exception is not OperationCanceledException and
                 not CaptureQueueFullException and
                 not CaptureAdmissionTimeoutException and
-                not ArtifactResourceStoreCapacityException)
+                not ArtifactResourceStoreCapacityException and
+                not RenderOutputQuotaExceededException)
             {
                 throw new OpenUsdMcpFailureException(
                     OpenUsdMcpErrorCodes.RenderFailure,
@@ -399,16 +425,19 @@ internal sealed partial class OpenUsdMcpService(
                 .ConfigureAwait(false);
             AnalysisInput input = CreateAnalysisInput(revision, request.Observations);
             var analysisService = new AnalysisProposalService(AnalysisDefaults.CreateAnalyzers());
-            _analysisProposals = analysisService.Analyze(input);
+            IReadOnlyList<AnalysisProposal> proposals = analysisService.Analyze(input);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(request.ProposalOffset, proposals.Count);
+            McpProposalDto[] page = proposals.Skip(request.ProposalOffset)
+                .Take(OpenUsdMcpLimits.MaximumProposalCount).Select(ToProposal).ToArray();
+            _analysisProposals = proposals;
             _lastAnalysisInput = input;
             return new McpAnalysisResultDto(
                 revision.SessionId,
                 revision.Generation,
                 revision.StageRevision,
-                Array.AsReadOnly(_analysisProposals
-                    .Take(OpenUsdMcpLimits.MaximumProposalCount)
-                    .Select(ToProposal)
-                    .ToArray()));
+                Array.AsReadOnly(page),
+                request.ProposalOffset,
+                proposals.Count);
         }
         finally
         {
@@ -613,7 +642,7 @@ internal sealed partial class OpenUsdMcpService(
                 observations.TriangleCount,
                 observations.ResourceCount,
                 observations.ResidentBytes),
-            new CompositionSnapshot(),
+            CompositionSnapshot.Unavailable,
             observations.RendererId);
 
     internal static void EnsureAppliedProposalCapacity(
@@ -799,6 +828,10 @@ internal sealed partial class OpenUsdMcpService(
         {
             throw new ArgumentException("Still previews require exactly one view.", nameof(request));
         }
+        if (request.Kind == "contact_sheet")
+        {
+            _ = PreviewCaptureProcessor.GetContactSheetGrid(request.Width, request.Height, request.Views.Count);
+        }
 
         foreach (CaptureViewDto view in request.Views)
         {
@@ -829,6 +862,7 @@ internal sealed partial class OpenUsdMcpService(
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Observations);
+        ArgumentOutOfRangeException.ThrowIfNegative(request.ProposalOffset);
         AnalysisObservationsDto value = request.Observations;
         if (value.ViewportWidth is < 1 or > 4096 ||
             value.ViewportHeight is < 1 or > 4096)
@@ -956,8 +990,15 @@ internal sealed partial class OpenUsdMcpService(
             diagnostic.Code,
             diagnostic.Message);
 
-    private static McpProposalDto ToProposal(AnalysisProposal proposal) =>
-        new(
+    private static McpProposalDto ToProposal(AnalysisProposal proposal)
+    {
+        if (proposal.Payload.Arguments.Count > OpenUsdMcpLimits.MaximumProposalDetailCount ||
+            proposal.Evidence.Count > OpenUsdMcpLimits.MaximumProposalDetailCount ||
+            proposal.ExpectedMetrics.Count > OpenUsdMcpLimits.MaximumProposalDetailCount)
+        {
+            throw new InvalidOperationException("Analyzer proposal details exceed the protocol output bound.");
+        }
+        return new(
             proposal.Id,
             proposal.Category.ToString().ToLowerInvariant(),
             proposal.Code,
@@ -970,7 +1011,17 @@ internal sealed partial class OpenUsdMcpService(
                 _ => throw new InvalidOperationException("Unsupported proposal applicability."),
             },
             proposal.Risk.ToString().ToLowerInvariant(),
-            proposal.Explanation);
+            proposal.Explanation,
+            proposal.Payload.Operation,
+            Array.AsReadOnly(proposal.Payload.Arguments.Select(static argument =>
+                new McpProposalValueDto(argument.Key, argument.Value)).ToArray()),
+            Array.AsReadOnly(proposal.Evidence.Select(static evidence =>
+                new McpProposalValueDto(evidence.Name, evidence.Value)).ToArray()),
+            Array.AsReadOnly(proposal.ExpectedMetrics.Select(static metric =>
+                new McpProposalMetricDto(metric.Name, metric.Current, metric.Expected, metric.Unit)).ToArray()),
+            proposal.Advisory,
+            proposal.RendererId);
+    }
 
     private static McpFinalizationResultDto ToFinalization(FinalizationResult result)
     {
@@ -991,7 +1042,6 @@ internal sealed partial class OpenUsdMcpService(
             result.FinalStagePath is not null,
             Array.AsReadOnly(resources.Select(ToArtifact).ToArray()),
             Array.AsReadOnly(result.Failures
-                .Take(OpenUsdMcpLimits.MaximumArtifactCount)
                 .Select(failure => BoundString(
                     string.Concat(failure.Role, ": ", failure.Message),
                     OpenUsdMcpLimits.MaximumTextLength))

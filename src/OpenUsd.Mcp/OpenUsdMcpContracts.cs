@@ -9,11 +9,13 @@ namespace OpenUsd.Mcp;
 internal static class OpenUsdMcpLimits
 {
     internal const int MaximumArtifactCount = 16;
+    internal const int MaximumFinalizationFailureCount = MaximumViewCount + 7;
     internal const int MaximumEditCount = 128;
     internal const int MaximumIdentifierLength = 128;
     internal const int MaximumIssueCount = 128;
     internal const int MaximumPathLength = 1024;
     internal const int MaximumProposalCount = 128;
+    internal const int MaximumProposalDetailCount = 16;
     internal const int MaximumTextLength = 4096;
     internal const int MaximumViewCount = 16;
 }
@@ -44,6 +46,48 @@ internal sealed class OpenSceneRequest
         "Absolute paths, traversal outside the root, control characters, and paths longer " +
         "than 1024 characters are rejected.")]
     public required string SourcePath { get; init; }
+
+    [JsonPropertyName("stageSettings")]
+    [Description(
+        "Optional explicit units, Y/Z up axis and timeline authored only in the new workspace root. " +
+        "Supply all seven fields when present. No source metadata is copied implicitly and no coordinates " +
+        "are converted. Omit to retain the existing source-sublayer behavior.")]
+    public WorkspaceStageSettingsDto? StageSettings { get; init; }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+internal sealed class WorkspaceStageSettingsDto
+{
+    [JsonPropertyName("metersPerUnit"), Required]
+    [Description("Positive finite metres per existing coordinate unit.")]
+    public required double MetersPerUnit { get; init; }
+
+    [JsonPropertyName("kilogramsPerUnit"), Required]
+    [Description("Positive finite kilograms per existing mass unit.")]
+    public required double KilogramsPerUnit { get; init; }
+
+    [JsonPropertyName("upAxis"), Required, AllowedValues("Y", "Z")]
+    [Description("USD stage up axis, Y or Z.")]
+    public required string UpAxis { get; init; }
+
+    [JsonPropertyName("startTimeCode"), Required]
+    [Description("Finite inclusive start time code.")]
+    public required double StartTimeCode { get; init; }
+
+    [JsonPropertyName("endTimeCode"), Required]
+    [Description("Finite inclusive end, at or after the start, with a finite duration.")]
+    public required double EndTimeCode { get; init; }
+
+    [JsonPropertyName("timeCodesPerSecond"), Required]
+    [Description("Positive finite time codes per second; determines the fixed physics step.")]
+    public required double TimeCodesPerSecond { get; init; }
+
+    [JsonPropertyName("framesPerSecond"), Required]
+    [Description("Positive finite advisory playback rate.")]
+    public required double FramesPerSecond { get; init; }
+
+    internal WorkspaceStageSettings ToSettings() => new(
+        MetersPerUnit, KilogramsPerUnit, UpAxis, StartTimeCode, EndTimeCode, TimeCodesPerSecond, FramesPerSecond);
 }
 
 internal sealed class SceneRevisionRequest
@@ -139,6 +183,14 @@ internal sealed class RenderPreviewRequest : SceneRevisionRequestBase
 
 internal sealed class AnalyzeSceneRequest : SceneRevisionRequestBase
 {
+    [JsonPropertyName("proposalOffset")]
+    [Range(0, int.MaxValue)]
+    [DefaultValue(0)]
+    [Description(
+        "Zero-based offset into the deterministic proposal list; defaults to 0. " +
+        "Use the returned nextProposalOffset with identical observations and revision to read another page.")]
+    public int ProposalOffset { get; init; }
+
     [JsonPropertyName("observations")]
     [Required]
     [Description(
@@ -647,7 +699,7 @@ internal sealed record McpCaptureResultDto(
     [property: JsonPropertyName("diagnostics")]
     [property: MaxLength(128)]
     [property: Description(
-        "Current bounded hdSilk material and texture degradation diagnostics; at most 128.")]
+        "Distinct hdSilk degradation diagnostics across all captured views in first-occurrence order; at most 128.")]
     IReadOnlyList<McpRenderDiagnosticDto> Diagnostics,
     [property: JsonIgnore] IReadOnlyList<ArtifactResourceDescriptor> ArtifactResources)
     : IOpenUsdMcpOutput, IOpenUsdMcpArtifactOutput
@@ -656,6 +708,28 @@ internal sealed record McpCaptureResultDto(
     public string Summary =>
         $"Created {Artifacts.Count} {Kind} preview artifact(s) with {Diagnostics.Count} diagnostic(s).";
 }
+
+internal sealed record McpProposalValueDto(
+    [property: JsonPropertyName("name")]
+    [property: Description("Stable argument or evidence name from the analyzer.")]
+    string Name,
+    [property: JsonPropertyName("value")]
+    [property: Description("Exact analyzer value; numeric strings use invariant culture.")]
+    string Value);
+
+internal sealed record McpProposalMetricDto(
+    [property: JsonPropertyName("name")]
+    [property: Description("Stable metric name from the analyzer.")]
+    string Name,
+    [property: JsonPropertyName("current")]
+    [property: Description("Finite current value derived from the submitted observations.")]
+    double Current,
+    [property: JsonPropertyName("expected")]
+    [property: Description("Finite proposed target or threshold, not a measured improvement.")]
+    double Expected,
+    [property: JsonPropertyName("unit")]
+    [property: Description("Analyzer metric unit, for example ratio, ms, samples, or bytes.")]
+    string Unit);
 
 internal sealed record McpProposalDto(
     [property: JsonPropertyName("id")]
@@ -682,7 +756,31 @@ internal sealed record McpProposalDto(
     string Risk,
     [property: JsonPropertyName("explanation")]
     [property: Description("Bounded explanation of the evidence and recommended action.")]
-    string Explanation);
+    string Explanation,
+    [property: JsonPropertyName("operation")]
+    [property: Description(
+        "Analyzer recommendation operation. This is guidance, not permission to execute a diagnostic proposal.")]
+    string Operation,
+    [property: JsonPropertyName("arguments")]
+    [property: MaxLength(OpenUsdMcpLimits.MaximumProposalDetailCount)]
+    [property: Description("Exact recommendation arguments sorted by name; at most 16.")]
+    IReadOnlyList<McpProposalValueDto> Arguments,
+    [property: JsonPropertyName("evidence")]
+    [property: MaxLength(OpenUsdMcpLimits.MaximumProposalDetailCount)]
+    [property: Description(
+        "Analyzer evidence sorted by name and value; at most 16. " +
+        "Submitted observations are not independently verified.")]
+    IReadOnlyList<McpProposalValueDto> Evidence,
+    [property: JsonPropertyName("expectedMetrics")]
+    [property: MaxLength(OpenUsdMcpLimits.MaximumProposalDetailCount)]
+    [property: Description("Proposed metric targets sorted by name and unit; at most 16. Not achieved measurements.")]
+    IReadOnlyList<McpProposalMetricDto> ExpectedMetrics,
+    [property: JsonPropertyName("advisory")]
+    [property: Description("Whether the recommendation is specific to the named renderer rather than universal.")]
+    bool Advisory,
+    [property: JsonPropertyName("rendererId")]
+    [property: Description("Observed renderer identity for advisory proposals; null for other proposals.")]
+    string? RendererId);
 
 internal sealed record McpAnalysisResultDto(
     [property: JsonPropertyName("sessionId")]
@@ -696,12 +794,25 @@ internal sealed record McpAnalysisResultDto(
     ulong StageRevision,
     [property: JsonPropertyName("proposals")]
     [property: MaxLength(OpenUsdMcpLimits.MaximumProposalCount)]
-    [property: Description("Deterministically ordered proposal list, containing at most 128 items.")]
-    IReadOnlyList<McpProposalDto> Proposals)
+    [property: Description("One deterministically ordered proposal page, containing at most 128 items.")]
+    IReadOnlyList<McpProposalDto> Proposals,
+    [property: JsonPropertyName("proposalOffset")]
+    [property: Description("Zero-based starting offset of this page within the complete proposal list.")]
+    int ProposalOffset,
+    [property: JsonPropertyName("totalProposalCount")]
+    [property: Description("Complete count before paging; may exceed the 128-item page limit.")]
+    int TotalProposalCount)
     : IOpenUsdMcpOutput
 {
     [JsonIgnore]
-    public string Summary => $"Analysis produced {Proposals.Count} deterministic proposal(s).";
+    public string Summary =>
+        $"Analysis returned {Proposals.Count} of {TotalProposalCount} deterministic proposal(s) " +
+        $"at offset {ProposalOffset}.";
+
+    [JsonPropertyName("nextProposalOffset")]
+    [Description("Offset for the next page with identical observations and revision; null when no findings remain.")]
+    public int? NextProposalOffset =>
+        ProposalOffset + Proposals.Count < TotalProposalCount ? ProposalOffset + Proposals.Count : null;
 }
 
 internal sealed record McpApplyProposalsResultDto(
@@ -750,8 +861,10 @@ internal sealed record McpFinalizationResultDto(
     [property: Description("Published read-only report-resource descriptors; at most three.")]
     IReadOnlyList<McpArtifactDto> Artifacts,
     [property: JsonPropertyName("failures")]
-    [property: MaxLength(OpenUsdMcpLimits.MaximumArtifactCount)]
-    [property: Description("Bounded role-prefixed failure messages; at most 16. Empty on complete success.")]
+    [property: MaxLength(OpenUsdMcpLimits.MaximumFinalizationFailureCount)]
+    [property: Description(
+        "Every role-prefixed finalization failure; at most 23: 16 turntable frames, " +
+        "hero, sheet, stage, overlay and three report publications. Empty on complete success.")]
     IReadOnlyList<string> Failures,
     [property: JsonIgnore] IReadOnlyList<ArtifactResourceDescriptor> ArtifactResources)
     : IOpenUsdMcpOutput, IOpenUsdMcpArtifactOutput

@@ -79,6 +79,7 @@ internal static class ViewerCommandIds
 {
     internal const string FileOpenStage = "file.openStage";
     internal const string FileOpenReview = "file.openReview";
+    internal const string FileAdoptReview = "file.adoptReview";
     internal const string FileOpenSample = "file.openSample";
     internal const string FileRecentStages = "file.recentStages";
     internal const string FileReloadStage = "file.reloadStage";
@@ -86,6 +87,7 @@ internal static class ViewerCommandIds
     internal const string FileRenderImageSequence = "file.renderImageSequence";
     internal const string FileRenderAuthoredProduct = "file.renderAuthoredProduct";
     internal const string FileCompareCaptures = "file.compareCaptures";
+    internal const string FileCompletedJobs = "file.completedJobs";
     internal const string FileExit = "file.exit";
     internal const string FileSaveReview = "file.saveReview";
     internal const string FileSaveAs = "file.saveAs";
@@ -174,6 +176,7 @@ internal static class ViewerCommandIds
     internal const string PhysicsSpeedQuadruple = "physics.speed.quadruple";
     internal const string PhysicsPreviewApply = "physics.previewApply";
     internal const string PhysicsBake = "physics.bake";
+    internal const string PhysicsRecordSequence = "physics.recordSequence";
     internal const string PhysicsGizmoNone = "physics.gizmo.none";
     internal const string PhysicsGizmoMove = "physics.gizmo.move";
     internal const string PhysicsGizmoRotate = "physics.gizmo.rotate";
@@ -205,6 +208,7 @@ internal static class ViewerCommandIds
     internal const string ToolsPickTargetFace = "tools.pickTarget.face";
     internal const string ToolsPickTargetEdge = "tools.pickTarget.edge";
     internal const string ToolsPickTargetPoint = "tools.pickTarget.point";
+    internal const string ToolsMeasureDistance = "tools.measureDistance";
     internal const string ToolsSelectionVisibleOnly = "tools.selection.visibleOnly";
     internal const string ToolsSelectionXRay = "tools.selection.xray";
     internal const string ToolsDeveloperCopyDiagnostics = "tools.developer.copyDiagnostics";
@@ -278,6 +282,9 @@ internal static class ViewerCommandCatalog
             "_Open Stage...", "Open stage", Gesture: "Ctrl+O"),
         new(ViewerCommandIds.FileOpenReview, ViewerCommandGroup.File,
             "Open _Review Document...", "Open a source-linked review document"),
+        new(ViewerCommandIds.FileAdoptReview, ViewerCommandGroup.File,
+            "Adopt Session into _Review...",
+            "Move compatible session opinions into a source-linked review and reset history"),
         new(ViewerCommandIds.FileOpenSample, ViewerCommandGroup.File,
             "Open Review _Sample", "Open the bundled review sample"),
         new(ViewerCommandIds.FileRecentStages, ViewerCommandGroup.File,
@@ -308,6 +315,8 @@ internal static class ViewerCommandCatalog
             "Render Authored _Product...", "Render authored RenderProduct"),
         new(ViewerCommandIds.FileCompareCaptures, ViewerCommandGroup.File,
             "Compare _Captures...", "Compare two saved captures"),
+        new(ViewerCommandIds.FileCompletedJobs, ViewerCommandGroup.File,
+            "Completed Render _Jobs...", "Browse or import completed render jobs"),
         new(ViewerCommandIds.FileExit, ViewerCommandGroup.File,
             "E_xit", "Exit OpenUsd Viewer"),
 
@@ -491,6 +500,8 @@ internal static class ViewerCommandCatalog
             ViewerCommandCheckKind.Check),
         new(ViewerCommandIds.PhysicsBake, ViewerCommandGroup.Physics,
             "Bake...", "Bake physics simulation", Gesture: "B"),
+        new(ViewerCommandIds.PhysicsRecordSequence, ViewerCommandGroup.Physics,
+            "Record Sequence...", "Record physics sequence"),
         new(ViewerCommandIds.PhysicsGizmoNone, ViewerCommandGroup.Physics,
             "No Gizmo", "Physics manipulation gizmo: No Gizmo",
             ViewerCommandCheckKind.Radio, "physics.gizmo", "Q"),
@@ -571,6 +582,9 @@ internal static class ViewerCommandCatalog
         new(ViewerCommandIds.ToolsPickTargetPoint, ViewerCommandGroup.Tools,
             "Point", "Pick target: Authored point",
             ViewerCommandCheckKind.Radio, "tools.pickTarget"),
+        new(ViewerCommandIds.ToolsMeasureDistance, ViewerCommandGroup.Tools,
+            "_Measure Distance", "Measure distance between two picked points",
+            ViewerCommandCheckKind.Check, Gesture: "Ctrl+M"),
         new(ViewerCommandIds.ToolsSelectionVisibleOnly, ViewerCommandGroup.Tools,
             "Visible only", "Selection outline: Visible only",
             ViewerCommandCheckKind.Radio, "tools.selection"),

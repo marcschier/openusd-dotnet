@@ -1,4 +1,31 @@
 #nullable enable
+OpenUsd.Rendering.RenderJobImage.Simulation.get -> OpenUsd.Rendering.RenderSimulationFrameIdentity?
+OpenUsd.Rendering.RenderJobImage.Simulation.init -> void
+OpenUsd.Rendering.RenderDiskFrameResult.Simulation.get -> OpenUsd.Rendering.RenderSimulationFrameIdentity?
+OpenUsd.Rendering.RenderJobImage.Backend.get -> OpenUsd.Rendering.RenderBackendIdentity?
+OpenUsd.Rendering.RenderJobImage.Backend.init -> void
+OpenUsd.Rendering.RenderDiskFrameResult.Backend.get -> OpenUsd.Rendering.RenderBackendIdentity?
+OpenUsd.Rendering.RenderSimulationFrameIdentity
+OpenUsd.Rendering.RenderSimulationFrameIdentity.RenderSimulationFrameIdentity(System.Guid epoch, string! scenarioIdentity, ulong sourceRevision, ulong publicationRevision, ulong stepIndex, double simulationSeconds, double timeCode, double fixedStepSeconds, ulong bindingRevision, int bodyCount, int deformationCount, string? reviewIdentity = null) -> void
+OpenUsd.Rendering.RenderSimulationFrameIdentity.Epoch.get -> System.Guid
+OpenUsd.Rendering.RenderSimulationFrameIdentity.ScenarioIdentity.get -> string!
+OpenUsd.Rendering.RenderSimulationFrameIdentity.SourceRevision.get -> ulong
+OpenUsd.Rendering.RenderSimulationFrameIdentity.PublicationRevision.get -> ulong
+OpenUsd.Rendering.RenderSimulationFrameIdentity.StepIndex.get -> ulong
+OpenUsd.Rendering.RenderSimulationFrameIdentity.SimulationSeconds.get -> double
+OpenUsd.Rendering.RenderSimulationFrameIdentity.TimeCode.get -> double
+OpenUsd.Rendering.RenderSimulationFrameIdentity.FixedStepSeconds.get -> double
+OpenUsd.Rendering.RenderSimulationFrameIdentity.BindingRevision.get -> ulong
+OpenUsd.Rendering.RenderSimulationFrameIdentity.BodyCount.get -> int
+OpenUsd.Rendering.RenderSimulationFrameIdentity.DeformationCount.get -> int
+OpenUsd.Rendering.RenderSimulationFrameIdentity.ReviewIdentity.get -> string?
+OpenUsd.Rendering.RenderSimulationFrameIdentity.Equals(OpenUsd.Rendering.RenderSimulationFrameIdentity? other) -> bool
+OpenUsd.Rendering.RenderSimulationFrameIdentity.<Clone>$() -> OpenUsd.Rendering.RenderSimulationFrameIdentity!
+override OpenUsd.Rendering.RenderSimulationFrameIdentity.ToString() -> string!
+override OpenUsd.Rendering.RenderSimulationFrameIdentity.GetHashCode() -> int
+override OpenUsd.Rendering.RenderSimulationFrameIdentity.Equals(object? obj) -> bool
+static OpenUsd.Rendering.RenderSimulationFrameIdentity.operator !=(OpenUsd.Rendering.RenderSimulationFrameIdentity? left, OpenUsd.Rendering.RenderSimulationFrameIdentity? right) -> bool
+static OpenUsd.Rendering.RenderSimulationFrameIdentity.operator ==(OpenUsd.Rendering.RenderSimulationFrameIdentity? left, OpenUsd.Rendering.RenderSimulationFrameIdentity? right) -> bool
 OpenUsd.Rendering.RenderCameraFrameSettings
 OpenUsd.Rendering.RenderCameraFrameSettings.RenderCameraFrameSettings(double shutterOpen = 0, double shutterClose = 0, double exposure = 0, double exposureIso = 100, double exposureTime = 1, double exposureFStop = 1, double exposureResponsivity = 1) -> void
 static OpenUsd.Rendering.RenderCameraFrameSettings.Default.get -> OpenUsd.Rendering.RenderCameraFrameSettings!
@@ -298,6 +325,12 @@ OpenUsd.Rendering.ManagedRenderFrameResult.Failure.get -> OpenUsd.Rendering.Rend
 OpenUsd.Rendering.ManagedRenderFrameResult.Frame.get -> OpenUsd.Rendering.RenderFrameResult?
 OpenUsd.Rendering.ManagedRenderFrameResult.IsSuccess.get -> bool
 OpenUsd.Rendering.PhysicsRenderBinding
+OpenUsd.Rendering.PhysicsRenderBinding.IncludesDescendants.get -> bool
+OpenUsd.Rendering.PhysicsRenderBinding.IncludesDescendants.init -> void
+OpenUsd.Rendering.PhysicsRenderBinding.ReferencePosition.get -> OpenUsd.UsdVec3d
+OpenUsd.Rendering.PhysicsRenderBinding.ReferencePosition.init -> void
+OpenUsd.Rendering.PhysicsRenderBinding.ReferenceOrientation.get -> OpenUsd.Rendering.PhysicsRenderOrientation
+OpenUsd.Rendering.PhysicsRenderBinding.ReferenceOrientation.init -> void
 OpenUsd.Rendering.PhysicsRenderBinding.Deconstruct(out string! PrimPath, out int InstanceIndex) -> void
 OpenUsd.Rendering.PhysicsRenderBinding.Equals(OpenUsd.Rendering.PhysicsRenderBinding other) -> bool
 OpenUsd.Rendering.PhysicsRenderBinding.InstanceIndex.get -> int
@@ -314,6 +347,7 @@ OpenUsd.Rendering.PhysicsRenderBindingTable.PhysicsRenderBindingTable(int capaci
 OpenUsd.Rendering.PhysicsRenderBindingTable.RefusedBindings.get -> long
 OpenUsd.Rendering.PhysicsRenderBindingTable.Revision.get -> ulong
 OpenUsd.Rendering.PhysicsRenderBindingTable.TryBind(OpenUsd.Rendering.PhysicsRenderObjectId id, string! primPath, int instanceIndex = 0) -> bool
+OpenUsd.Rendering.PhysicsRenderBindingTable.TryBindSubtree(OpenUsd.Rendering.PhysicsRenderObjectId id, string! primPath, OpenUsd.UsdVec3d referencePosition, OpenUsd.Rendering.PhysicsRenderOrientation referenceOrientation) -> bool
 OpenUsd.Rendering.PhysicsRenderBindingTable.TryResolve(OpenUsd.Rendering.PhysicsRenderObjectId id, out OpenUsd.Rendering.PhysicsRenderBinding binding) -> bool
 OpenUsd.Rendering.PhysicsRenderBindingTable.Unbind(OpenUsd.Rendering.PhysicsRenderObjectId id) -> bool
 OpenUsd.Rendering.PhysicsRenderBodyState
@@ -850,6 +884,7 @@ OpenUsd.Rendering.RenderPreparedFrame
 OpenUsd.Rendering.RenderPreparedFrame.Camera.get -> OpenUsd.Rendering.CameraState
 OpenUsd.Rendering.RenderPreparedFrame.DataWindowMinX.get -> int
 OpenUsd.Rendering.RenderPreparedFrame.DataWindowMinY.get -> int
+OpenUsd.Rendering.RenderPreparedFrame.AccumulationSamples.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderPreparedFrame!>!
 OpenUsd.Rendering.RenderPreparedFrame.OutputDimensions.get -> OpenUsd.Rendering.ViewportDimensions
 OpenUsd.Rendering.RenderPreparedFrame.PixelAspectRatio.get -> double
 OpenUsd.Rendering.RenderPreparedFrame.Request.get -> OpenUsd.Rendering.RenderProductRequest!
@@ -1182,3 +1217,93 @@ static OpenUsd.Rendering.StageTime.operator ==(OpenUsd.Rendering.StageTime left,
 static OpenUsd.Rendering.ViewportDimensions.Empty.get -> OpenUsd.Rendering.ViewportDimensions
 static OpenUsd.Rendering.ViewportDimensions.operator !=(OpenUsd.Rendering.ViewportDimensions left, OpenUsd.Rendering.ViewportDimensions right) -> bool
 static OpenUsd.Rendering.ViewportDimensions.operator ==(OpenUsd.Rendering.ViewportDimensions left, OpenUsd.Rendering.ViewportDimensions right) -> bool
+const OpenUsd.Rendering.CompositionHostReadback.ImageHandleType = "HostMemoryReadback" -> string!
+OpenUsd.Rendering.CompositionHostReadback
+OpenUsd.Rendering.ICompositionReadbackFrame
+OpenUsd.Rendering.ICompositionReadbackFrame.CopyPresentedPixels(System.Span<byte> destination) -> void
+OpenUsd.Rendering.RenderProductPlane.PrimId = 2 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductJobPlan.IncludePrimId.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.IncludePrimId.get -> bool
+OpenUsd.Rendering.RenderJobImage.PrimId.get -> OpenUsd.Rendering.RenderJobPrimId?
+OpenUsd.Rendering.RenderJobImage.PrimId.init -> void
+OpenUsd.Rendering.RenderJobPrimId
+OpenUsd.Rendering.RenderJobPrimId.RenderJobPrimId(int width, int height, System.ReadOnlyMemory<int> values, System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderJobPrimIdentity!>! identities) -> void
+OpenUsd.Rendering.RenderJobPrimId.Width.get -> int
+OpenUsd.Rendering.RenderJobPrimId.Height.get -> int
+OpenUsd.Rendering.RenderJobPrimId.Values.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.RenderJobPrimId.Identities.get -> System.Collections.Generic.IReadOnlyList<OpenUsd.Rendering.RenderJobPrimIdentity!>!
+const OpenUsd.Rendering.RenderJobPrimId.MaximumIdentities = 65536 -> int
+OpenUsd.Rendering.RenderJobPrimIdentity
+OpenUsd.Rendering.RenderJobPrimIdentity.RenderJobPrimIdentity(string! path, int instanceIndex) -> void
+OpenUsd.Rendering.RenderJobPrimIdentity.Path.get -> string!
+OpenUsd.Rendering.RenderJobPrimIdentity.InstanceIndex.get -> int
+const OpenUsd.Rendering.RenderJobPrimIdentity.MaximumPathLength = 4096 -> int
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdSha256.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdTableFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdTableBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.PrimIdTableSha256.get -> string?
+OpenUsd.Rendering.RenderProductPlane.InstanceId = 3 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductJobPlan.IncludeInstanceId.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.IncludeInstanceId.get -> bool
+OpenUsd.Rendering.RenderJobImage.InstanceId.get -> OpenUsd.Rendering.RenderJobInstanceId?
+OpenUsd.Rendering.RenderJobImage.InstanceId.init -> void
+OpenUsd.Rendering.RenderJobInstanceId
+OpenUsd.Rendering.RenderJobInstanceId.RenderJobInstanceId(int width, int height, System.ReadOnlyMemory<int> values) -> void
+OpenUsd.Rendering.RenderJobInstanceId.Width.get -> int
+OpenUsd.Rendering.RenderJobInstanceId.Height.get -> int
+OpenUsd.Rendering.RenderJobInstanceId.Values.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.RenderDiskFrameResult.InstanceIdFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.InstanceIdBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.InstanceIdSha256.get -> string?
+OpenUsd.Rendering.RenderProductPlane.Normal = 4 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductJobPlan.IncludeNormal.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.IncludeNormal.get -> bool
+OpenUsd.Rendering.RenderJobImage.Normal.get -> OpenUsd.Rendering.RenderJobNormal?
+OpenUsd.Rendering.RenderJobImage.Normal.init -> void
+OpenUsd.Rendering.RenderJobNormal
+OpenUsd.Rendering.RenderJobNormal.RenderJobNormal(int width, int height, System.ReadOnlyMemory<float> values) -> void
+OpenUsd.Rendering.RenderJobNormal.Width.get -> int
+OpenUsd.Rendering.RenderJobNormal.Height.get -> int
+OpenUsd.Rendering.RenderJobNormal.Values.get -> System.ReadOnlyMemory<float>
+OpenUsd.Rendering.RenderDiskFrameResult.NormalFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.NormalBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.NormalSha256.get -> string?
+OpenUsd.Rendering.RenderProductPlane.ElementId = 5 -> OpenUsd.Rendering.RenderProductPlane
+OpenUsd.Rendering.RenderProductJobPlan.IncludeElementId.get -> bool
+OpenUsd.Rendering.RenderDiskJobRequest.IncludeElementId.get -> bool
+OpenUsd.Rendering.RenderJobImage.ElementId.get -> OpenUsd.Rendering.RenderJobElementId?
+OpenUsd.Rendering.RenderJobImage.ElementId.init -> void
+OpenUsd.Rendering.RenderJobElementId
+OpenUsd.Rendering.RenderJobElementId.RenderJobElementId(int width, int height, System.ReadOnlyMemory<int> values) -> void
+OpenUsd.Rendering.RenderJobElementId.Width.get -> int
+OpenUsd.Rendering.RenderJobElementId.Height.get -> int
+OpenUsd.Rendering.RenderJobElementId.Values.get -> System.ReadOnlyMemory<int>
+OpenUsd.Rendering.RenderDiskFrameResult.ElementIdFileName.get -> string?
+OpenUsd.Rendering.RenderDiskFrameResult.ElementIdBytes.get -> long
+OpenUsd.Rendering.RenderDiskFrameResult.ElementIdSha256.get -> string?
+OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.None = 0 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.StartNotHit = 1 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.EndNotHit = 2 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.StartWithoutWorldPosition = 3 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.EndWithoutWorldPosition = 4 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.NonFinitePosition = 5 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.StateRevisionMismatch = 6 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.SceneRevisionMismatch = 7 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurementRefusal.InvalidMetersPerUnit = 8 -> OpenUsd.Rendering.RenderPickMeasurementRefusal
+OpenUsd.Rendering.RenderPickMeasurement
+OpenUsd.Rendering.RenderPickMeasurement.Start.get -> OpenUsd.Rendering.SelectionItem
+OpenUsd.Rendering.RenderPickMeasurement.End.get -> OpenUsd.Rendering.SelectionItem
+OpenUsd.Rendering.RenderPickMeasurement.StartWorldPosition.get -> System.Numerics.Vector3
+OpenUsd.Rendering.RenderPickMeasurement.EndWorldPosition.get -> System.Numerics.Vector3
+OpenUsd.Rendering.RenderPickMeasurement.Delta.get -> OpenUsd.UsdVec3d
+OpenUsd.Rendering.RenderPickMeasurement.DistanceInSceneUnits.get -> double
+OpenUsd.Rendering.RenderPickMeasurement.DistanceInMeters.get -> double
+OpenUsd.Rendering.RenderPickMeasurement.Units.get -> OpenUsd.UsdStageLinearUnits
+OpenUsd.Rendering.RenderPickMeasurement.MetersPerUnit.get -> double
+OpenUsd.Rendering.RenderPickMeasurement.IsMetersPerUnitAuthored.get -> bool
+OpenUsd.Rendering.RenderPickMeasurement.StateRevision.get -> ulong
+OpenUsd.Rendering.RenderPickMeasurement.SceneRevision.get -> ulong?
+static OpenUsd.Rendering.RenderPickMeasurement.TryCreate(in OpenUsd.Rendering.RenderPickResult start, in OpenUsd.Rendering.RenderPickResult end, OpenUsd.UsdStageLinearUnits units, out OpenUsd.Rendering.RenderPickMeasurement? measurement, out OpenUsd.Rendering.RenderPickMeasurementRefusal refusal) -> bool

@@ -1,4 +1,5 @@
 #nullable enable
+OpenUsd.Physics.UsdPhysicsTransport.StepAndAcquireFrameAsync(int steps, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<OpenUsd.Physics.UsdPhysicsFrameLease>!
 ~override OpenUsd.Physics.Baking.UsdPhysicsBakeBinding.Equals(object obj) -> bool
 ~override OpenUsd.Physics.Baking.UsdPhysicsBakeBinding.ToString() -> string
 ~override OpenUsd.Physics.Baking.UsdPhysicsBakeLayerInfo.Equals(object obj) -> bool
@@ -1032,6 +1033,12 @@ OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits.Animated = 16 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits.ContradictoryOwnership = 65536 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits.DefaultScene = 262144 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits.UnmappedOpinions = 524288 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits.PreparedPointsMetres = 1048576 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionObject.HullStart.get -> int
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionObject.HullCount.get -> int
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionPage.HullCount.get -> int
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionPage.GetHull(int index) -> (int PointStart, int PointCount)
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits.DisabledByDiagnostic = 2 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits.Dynamic = 4 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits.Enabled = 1 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionObjectTraits
@@ -1066,6 +1073,12 @@ OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.MaxObjects.get -> int
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.MaxObjects.init -> void
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.MaxPoints.get -> int
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.MaxPoints.init -> void
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.GeometryObjectStart.get -> int
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.GeometryObjectStart.init -> void
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.GeometryObjectCount.get -> int
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.GeometryObjectCount.init -> void
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.FingerprintMeshData.get -> bool
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.FingerprintMeshData.init -> void
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.MaxProperties.get -> int
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.MaxProperties.init -> void
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions.MaxRelationships.get -> int
@@ -1120,6 +1133,7 @@ OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits.HasDisabledObjects = 32 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits.HasForeignOpinions = 128 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits.HasInstances = 256 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits
+OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits.PartialGeometry = 512 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits.KilogramsFallback = 1 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits.MetersFallback = 2 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits
 OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits.None = 0 -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionPageTraits
@@ -2793,6 +2807,8 @@ static OpenUsd.Physics.Extraction.UsdPhysicsExtractionTarget.operator ==(OpenUsd
 static OpenUsd.Physics.Extraction.UsdPhysicsStageExtractor.Extract(OpenUsd.UsdStage! stage, OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions! options) -> OpenUsd.Physics.Extraction.UsdPhysicsExtractionPage!
 static OpenUsd.Physics.Extraction.UsdPhysicsStageExtractor.ExtractAsync(OpenUsd.UsdStageScheduler! scheduler, OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Physics.Extraction.UsdPhysicsExtractionPage!>
 static OpenUsd.Physics.Extraction.UsdPhysicsStageExtractor.ExtractAsync(OpenUsd.UsdStageScheduler! scheduler, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Physics.Extraction.UsdPhysicsExtractionPage!>
+static OpenUsd.Physics.Extraction.UsdPhysicsStageExtractor.PrepareAsync(OpenUsd.UsdStageScheduler! scheduler, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Physics.Extraction.UsdPhysicsExtractionPage!>
+static OpenUsd.Physics.Extraction.UsdPhysicsStageExtractor.PrepareAsync(OpenUsd.UsdStageScheduler! scheduler, OpenUsd.Physics.Extraction.UsdPhysicsExtractionOptions! options, System.IProgress<double>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<OpenUsd.Physics.Extraction.UsdPhysicsExtractionPage!>
 static OpenUsd.Physics.Extraction.UsdPhysicsStageExtractor.GetTraversalCount() -> ulong
 static OpenUsd.Physics.Extraction.UsdPhysicsStageExtractor.GetVisitedPrimCount() -> ulong
 static OpenUsd.Physics.Schema.OpenUsdPhysicsArticulationSettingsAPI.Has(OpenUsd.UsdPrim prim) -> bool

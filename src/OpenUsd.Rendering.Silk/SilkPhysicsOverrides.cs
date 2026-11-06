@@ -22,13 +22,26 @@ namespace OpenUsd.Rendering.Silk;
 /// fit the bounded capacity, are counted and diagnosed individually rather than growing storage or
 /// aborting the update.
 /// </para>
+/// <para>
+/// Explicit subtree bindings preserve child transforms relative to an authored body pose.
+/// Their noninstanced targets are cached by scene geometry, rollback generation, binding
+/// revision and active identities. A missing, overlapping or oversized subtree is refused
+/// whole. <see cref="ResolvedOverrideCount"/> counts complete bodies, while <see cref="Count"/>
+/// counts driven meshes.
+/// </para>
 /// </remarks>
-public sealed class SilkPhysicsTransformOverrides
+public sealed partial class SilkPhysicsTransformOverrides
 {
     private readonly Dictionary<ulong, int> _slots;
     private readonly double[] _transforms;
+    private readonly Stack<PreparedState> _checkpoints = new(4);
     private long _unresolvedOverrides;
     private long _droppedOverrides;
+    private PhysicsRenderTransformOverride[] _staged = [];
+    private PhysicsRenderBindingTable? _stagedBindings;
+    private int _stagedCount;
+    private ulong _stagedRevision;
+    private ulong _stagedBindingRevision;
 
     /// <summary>Allocates bounded override storage up front.</summary>
     /// <param name="capacity">The number of meshes an override set can drive.</param>
@@ -49,6 +62,9 @@ public sealed class SilkPhysicsTransformOverrides
     /// <summary>Gets the number of meshes the last refresh produced an override for.</summary>
     public int Count => _slots.Count;
 
+    /// <summary>Gets the number of complete source body overrides resolved by the last refresh.</summary>
+    public int ResolvedOverrideCount { get; private set; }
+
     /// <summary>Gets the monotonic revision advanced by every refresh that changed the table.</summary>
     public ulong Revision { get; private set; }
 
@@ -60,6 +76,47 @@ public sealed class SilkPhysicsTransformOverrides
 
     /// <summary>Gets a value indicating whether the table currently overrides any mesh.</summary>
     public bool HasOverrides => _slots.Count != 0;
+    internal Dictionary<ulong, int>.KeyCollection MeshIds => _slots.Keys;
+
+    /// <summary>Gets the source publication most recently resolved, or zero after Clear.</summary>
+    public ulong SourceRevision { get; private set; }
+
+    /// <summary>Gets whether an owned source batch is retained for post-sync resolution.</summary>
+    public bool HasStaged { get; private set; }
+
+    /// <summary>Copies a complete source batch before scene synchronization, refusing capacity overflow.</summary>
+    /// <remarks>The binding table must remain unchanged until the batch is cleared or replaced.</remarks>
+    public void Stage(PhysicsRenderBindingTable bindings, PhysicsRenderOverrideView overrides)
+    {
+        ArgumentNullException.ThrowIfNull(bindings);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(overrides.Count, Capacity, nameof(overrides));
+        if (_staged.Length < overrides.Count)
+        {
+            _staged = new PhysicsRenderTransformOverride[Capacity];
+        }
+        overrides.Items.CopyTo(_staged);
+        _stagedCount = overrides.Count;
+        _stagedRevision = overrides.Revision;
+        _stagedBindingRevision = bindings.Revision;
+        _stagedBindings = bindings;
+        HasStaged = true;
+    }
+
+    /// <summary>Resolves the staged publication against the current authored scene without reading USD.</summary>
+    public int RefreshStaged(SilkSceneState scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        if (_stagedBindings is not { } bindings)
+        {
+            return Count;
+        }
+        if (bindings.Revision != _stagedBindingRevision)
+        {
+            throw new InvalidOperationException("The staged physics binding table changed before rendering.");
+        }
+        return RefreshCore(scene, bindings,
+            new PhysicsRenderOverrideView(_staged.AsMemory(0, _stagedCount), _stagedRevision));
+    }
 
     /// <summary>Reports whether this backend can draw one simulation domain.</summary>
     /// <param name="domain">The domain the caller wants to draw.</param>
@@ -109,8 +166,35 @@ public sealed class SilkPhysicsTransformOverrides
     {
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentNullException.ThrowIfNull(bindings);
-        _slots.Clear();
+        int count = RefreshCore(scene, bindings, overrides);
+        _stagedBindings = null;
+        _stagedCount = 0;
+        HasStaged = false;
+        return count;
+    }
+
+    private int RefreshCore(
+        SilkSceneState scene, PhysicsRenderBindingTable bindings, PhysicsRenderOverrideView overrides)
+    {
+        using PreparedState checkpoint = PrepareState();
+        int count = RefreshUnchecked(scene, bindings, overrides);
+        scene.ValidateVolumeTransforms(this);
+        checkpoint.Commit();
+        return count;
+    }
+
+    private int RefreshUnchecked(
+        SilkSceneState scene, PhysicsRenderBindingTable bindings, PhysicsRenderOverrideView overrides)
+    {
         ReadOnlySpan<PhysicsRenderTransformOverride> items = overrides.Items;
+        for (int index = 0; index < items.Length; index++)
+        {
+            if (bindings.TryResolve(items[index].Id, out PhysicsRenderBinding binding) && binding.IncludesDescendants)
+            {
+                return RefreshSubtrees(scene, bindings, overrides);
+            }
+        }
+        _slots.Clear();
         for (int index = 0; index < items.Length; index++)
         {
             ref readonly PhysicsRenderTransformOverride value = ref items[index];
@@ -154,6 +238,8 @@ public sealed class SilkPhysicsTransformOverrides
         }
 
         Revision++;
+        SourceRevision = overrides.Revision;
+        ResolvedOverrideCount = _slots.Count;
         return _slots.Count;
     }
 
@@ -173,6 +259,79 @@ public sealed class SilkPhysicsTransformOverrides
     /// <param name="meshId">The retained hdSilk mesh key.</param>
     /// <returns><see langword="true"/> when the mesh is overridden.</returns>
     public bool Contains(ulong meshId) => _slots.ContainsKey(meshId);
+
+    internal PreparedState PrepareState()
+    {
+        PreparedState checkpoint = _checkpoints.Count != 0
+            ? _checkpoints.Pop() : new PreparedState();
+        checkpoint.Capture(this);
+        return checkpoint;
+    }
+
+    internal sealed class PreparedState : IDisposable
+    {
+        private SilkPhysicsTransformOverrides? _owner;
+        private KeyValuePair<ulong, int>[] _slots = [];
+        private double[] _transforms = [];
+        private int _count;
+        private ulong _revision;
+        private ulong _sourceRevision;
+        private int _resolved;
+        private long _unresolved;
+        private long _dropped;
+        private bool _committed;
+
+        internal void Capture(SilkPhysicsTransformOverrides owner)
+        {
+            if (_slots.Length < owner.Count)
+            {
+                _slots = new KeyValuePair<ulong, int>[owner.Count];
+                _transforms = new double[owner.Count * PhysicsRenderTransforms.ElementCount];
+            }
+            _count = owner.Count;
+            int index = 0;
+            foreach (KeyValuePair<ulong, int> slot in owner._slots)
+            {
+                _slots[index++] = slot;
+            }
+            owner._transforms.AsSpan(0, _count * PhysicsRenderTransforms.ElementCount).CopyTo(_transforms);
+            _owner = owner;
+            _committed = false;
+            _revision = owner.Revision;
+            _sourceRevision = owner.SourceRevision;
+            _resolved = owner.ResolvedOverrideCount;
+            _unresolved = owner._unresolvedOverrides;
+            _dropped = owner._droppedOverrides;
+        }
+
+        internal void Commit() => _committed = true;
+
+        public void Dispose()
+        {
+            if (_owner is not { } owner)
+            {
+                return;
+            }
+            _owner = null;
+            if (!_committed)
+            {
+                owner._slots.Clear();
+                for (int index = 0; index < _count; index++)
+                {
+                    KeyValuePair<ulong, int> slot = _slots[index];
+                    owner._slots.Add(slot.Key, slot.Value);
+                }
+                _transforms.AsSpan(0, _count * PhysicsRenderTransforms.ElementCount).CopyTo(owner._transforms);
+                owner.Revision = _revision;
+                owner.SourceRevision = _sourceRevision;
+                owner.ResolvedOverrideCount = _resolved;
+                owner._unresolvedOverrides = _unresolved;
+                owner._droppedOverrides = _dropped;
+                owner.ClearSubtreeCache();
+            }
+            owner._checkpoints.Push(this);
+        }
+    }
 
     /// <summary>Creates the diagnostics the last refresh warrants.</summary>
     /// <param name="destination">The list the diagnostics are added to.</param>
@@ -208,6 +367,12 @@ public sealed class SilkPhysicsTransformOverrides
     /// </remarks>
     public void Clear()
     {
+        ClearSubtreeCache();
+        ResolvedOverrideCount = 0;
+        _stagedBindings = null;
+        _stagedCount = 0;
+        HasStaged = false;
+        SourceRevision = 0;
         if (_slots.Count == 0)
         {
             return;

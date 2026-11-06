@@ -1,0 +1,168 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    startTimeCode = 0
+    endTimeCode = 2
+    upAxis = "Z"
+)
+
+class Xform "PtexAsset"
+{
+    def Mesh "Mesh"
+    {
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        int[] primvars:ptexFaceOffset (interpolation = "uniform")
+        int[] primvars:ptexFaceOffset.timeSamples = { 0: [5, 3], 1: [6, 2] }
+    }
+}
+
+def Xform "World"
+{
+    def Mesh "Ordinary" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/PtexMaterial>
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        int[] primvars:ptexFaceOffset (interpolation = "uniform")
+        int[] primvars:ptexFaceOffset.timeSamples = { 0: [2, 3], 1: [4, 1], 2: [2, 3] }
+    }
+    def Mesh "IndexedDefault" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/UvMaterial>
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        int[] primvars:ptexFaceOffset (interpolation = "uniform")
+        int[] primvars:ptexFaceOffset.timeSamples = { 0: [7, 2], 1: [9, 4], 2: [9, 4] }
+        int[] primvars:ptexFaceOffset:indices.timeSamples = { 0: [1, 0], 1: [0, 1], 2: [1, 0] }
+    }
+    def Mesh "MaterialOnly" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/PtexMaterial>
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        int[] primvars:ptexFaceOffset = [2, 3] (interpolation = "uniform")
+    }
+    def Mesh "Grouped" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/UnsupportedPtexMaterial>
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        int[] primvars:ptexFaceOffset = [2, 70, 3, 80] (
+            elementSize = 2
+            interpolation = "uniform"
+        )
+    }
+    def Mesh "GroupedIndexed"
+    {
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        int[] primvars:ptexFaceOffset = [2, 7, 3, 8] (
+            elementSize = 2
+            interpolation = "uniform"
+        )
+        int[] primvars:ptexFaceOffset:indices = [0, 1]
+    }
+    def Mesh "NoOffset"
+    {
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+    }
+    def Material "PtexMaterial"
+    {
+        token outputs:surface.connect = </World/PtexMaterial/Surface.outputs:surface>
+        def Shader "Surface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:emissiveColor.connect = </World/PtexMaterial/Texture.outputs:rgb>
+            token outputs:surface
+        }
+        def Shader "Texture"
+        {
+            uniform token info:id = "HwPtexTexture_1"
+            asset inputs:file.timeSamples = {
+                0: @native-profile/ptex/tetrahedron.ptx@,
+                1: @native-profile/ptex/quad-colors.ptx@
+            }
+            float3 outputs:rgb
+        }
+    }
+    def Material "UvMaterial"
+    {
+        token outputs:surface.connect = </World/UvMaterial/Surface.outputs:surface>
+        def Shader "Surface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:emissiveColor.connect = </World/UvMaterial/Texture.outputs:rgb>
+            token outputs:surface
+        }
+        def Shader "Texture"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @native-profile/ptex/tetrahedron.ptx@
+            float3 outputs:rgb
+        }
+    }
+    def Material "UnsupportedPtexMaterial"
+    {
+        token outputs:surface.connect = </World/UnsupportedPtexMaterial/Surface.outputs:surface>
+        def Shader "Surface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:emissiveColor.connect = </World/UnsupportedPtexMaterial/Texture.outputs:rgb>
+            token outputs:surface
+        }
+        def Shader "Texture"
+        {
+            uniform token info:id = "HwPtexTexture_1"
+            asset inputs:file = @native-profile/ptex/tetrahedron.ptx@
+            float inputs:frame = 1
+            float3 outputs:rgb
+        }
+    }
+    def Xform "A" (instanceable = true; prepend references = </PtexAsset>)
+    {
+    }
+    def Xform "B" (instanceable = true; prepend references = </PtexAsset>)
+    {
+        double3 xformOp:translate = (2, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def PointInstancer "PointInstances"
+    {
+        rel prototypes = [</World/PointInstances/Prototype>]
+        int[] protoIndices = [0, 0]
+        point3f[] positions = [(0, 0, 0), (2, 0, 0)]
+        def Mesh "Prototype"
+        {
+            uniform token subdivisionScheme = "none"
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            int[] primvars:ptexFaceOffset (interpolation = "uniform")
+            int[] primvars:ptexFaceOffset.timeSamples = { 0: [8, 4], 1: [9, 3] }
+        }
+    }
+}

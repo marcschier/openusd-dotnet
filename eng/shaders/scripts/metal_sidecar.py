@@ -10,6 +10,7 @@ from typing import Any
 from shader_model import (
     build_lock_model,
     metal_library_contract,
+    metal_library_programs,
     required_checked_inputs,
 )
 
@@ -206,6 +207,10 @@ def validate_sidecar(
 
     contract = metal_library_contract(shader_manifest)
     by_program = {entry["programName"]: entry for entry in contract}
+    floating_point_modes = {
+        program["name"]: program.get("floatingPointMode")
+        for program in metal_library_programs(shader_manifest)
+    }
     expected_programs = set(by_program)
     sources = library["sources"]
     air_records = library["air"]
@@ -341,11 +346,17 @@ def validate_sidecar(
             "macosx",
             "metal",
             f"-std={model['metalStandard']}",
-            "-c",
-            f"eng/shaders/checked/{program_name}.metal",
-            "-o",
-            f"{payload_root}/{program_name}.air",
         ]
+        if floating_point_modes.get(program_name) == "precise":
+            expected_arguments.append("-fno-fast-math")
+        expected_arguments.extend(
+            [
+                "-c",
+                f"eng/shaders/checked/{program_name}.metal",
+                "-o",
+                f"{payload_root}/{program_name}.air",
+            ]
+        )
         if command["arguments"] != expected_arguments:
             raise ValueError(f"Compile command does not match {program_name}")
         for argument in command["arguments"]:

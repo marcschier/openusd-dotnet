@@ -4,6 +4,8 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
 using OpenUsd.Rendering;
@@ -28,6 +30,7 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
     private CompositionViewportSession? _session;
     private CompositionDrawingSurface? _surface;
     private CompositionSurfaceVisual? _surfaceVisual;
+    private WriteableBitmap? _readbackBitmap;
     private Compositor? _compositor;
     private Task _detachment = Task.CompletedTask;
     private Task? _disposeTask;
@@ -242,6 +245,7 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
         ICompositionGpuInterop? interop = null;
         CompositionDrawingSurface? surface = null;
         CompositionSurfaceVisual? surfaceVisual = null;
+        bool useHostReadback = false;
         await _dispatcher.InvokeAsync(async () =>
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -249,8 +253,13 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
                 throw new InvalidOperationException("Avalonia did not create an element visual.");
             compositor = elementVisual.Compositor;
             interop = await compositor.TryGetCompositionGpuInterop().ConfigureAwait(true);
-            if (interop is null)
+            if (interop is null || interop.SupportedImageHandleTypes.Count == 0)
             {
+                // Software display stacks (for example Xvfb with Mesa lavapipe) expose no importable
+                // GPU objects; the presenter then renders on its own device and the control draws a
+                // host-readback bitmap instead of a compositor surface.
+                useHostReadback = true;
+                _compositor = compositor;
                 return;
             }
 
@@ -264,6 +273,18 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
             _surfaceVisual = surfaceVisual;
         }).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+        if (useHostReadback)
+        {
+            return await AttachSessionAsync(
+                factory(),
+                new HostReadbackCompositionSurfaceBridge(
+                    PublishReadbackBitmap,
+                    WaitForCompositorFrameAsync,
+                    _runtimeObservation.ObserveImport,
+                    _runtimeObservation.ObservePresent),
+                HostReadbackCompositionSurfaceBridge.Target,
+                cancellationToken).ConfigureAwait(false);
+        }
         if (interop is null || compositor is null || surface is null || surfaceVisual is null)
         {
             await SetStatusAsync(
@@ -272,22 +293,36 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
             return false;
         }
 
-        ICompositionViewportPresenter presenter = factory() ??
-            throw new InvalidOperationException("The presenter factory returned no presenter.");
+        ICompositionViewportPresenter presenter = factory();
         var bridge = new AvaloniaCompositionSurfaceBridge(
             surface,
             interop,
             _dispatcher,
             _runtimeObservation.ObserveImport,
             _runtimeObservation.ObservePresent);
-        var session = new CompositionViewportSession(presenter, bridge, _dispatcher);
-        session.StateChanged += OnSessionStateChanged;
-        _session = session;
         var target = new CompositionPresentationTarget(
             interop.SupportedImageHandleTypes,
             interop.SupportedSemaphoreTypes,
             interop.DeviceLuid,
             interop.DeviceUuid);
+        return await AttachSessionAsync(presenter, bridge, target, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<bool> AttachSessionAsync(
+        ICompositionViewportPresenter? presenter,
+        ICompositionSurfaceBridge bridge,
+        CompositionPresentationTarget target,
+        CancellationToken cancellationToken)
+    {
+        if (presenter is null)
+        {
+            await bridge.DisposeAsync().ConfigureAwait(false);
+            throw new InvalidOperationException("The presenter factory returned no presenter.");
+        }
+        var session = new CompositionViewportSession(presenter, bridge, _dispatcher);
+        session.StateChanged += OnSessionStateChanged;
+        _session = session;
         _runtimeObservation.ObserveTarget(BackendKind, target);
         _pixelSize = await GetPixelSizeAsync().ConfigureAwait(false);
         bool attached = await session.AttachAsync(
@@ -342,6 +377,7 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
             await _dispatcher.InvokeAsync(() =>
             {
                 ElementComposition.SetElementChildVisual(this, null);
+                PublishReadbackBitmap(null);
                 return ValueTask.CompletedTask;
             }).ConfigureAwait(false);
         }
@@ -389,6 +425,41 @@ public sealed class CompositionViewportControl : Control, IAsyncDisposable
         _updateQueued = false;
         _surfaceVisual?.Size = new Vector(Bounds.Width, Bounds.Height);
         _pump.Request();
+    }
+
+    public override void Render(DrawingContext context)
+    {
+        base.Render(context);
+        WriteableBitmap? bitmap = _readbackBitmap;
+        if (bitmap is not null && Bounds.Width > 0 && Bounds.Height > 0)
+        {
+            context.DrawImage(bitmap, new Rect(bitmap.Size), new Rect(Bounds.Size));
+        }
+    }
+
+    internal void PublishReadbackBitmap(WriteableBitmap? bitmap)
+    {
+        if (!_dispatcher.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => PublishReadbackBitmap(bitmap));
+            return;
+        }
+        _readbackBitmap = bitmap;
+        InvalidateVisual();
+    }
+
+    internal Task WaitForCompositorFrameAsync()
+    {
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is null || !IsVisible)
+        {
+            return Task.CompletedTask;
+        }
+        Compositor compositor = ElementComposition.GetElementVisual(this)?.Compositor ??
+            throw new InvalidOperationException("Avalonia did not create an element visual.");
+        // Animation callbacks precede drawing; only the rendered batch acknowledges these pixels.
+        return compositor.RequestCompositionBatchCommitAsync().Rendered
+            .WaitAsync(TimeSpan.FromMilliseconds(250));
     }
 
     private async ValueTask<CompositionPresentOutcome> PumpIterationAsync(

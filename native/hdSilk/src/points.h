@@ -37,10 +37,14 @@ protected:
     HdDirtyBits _PropagateDirtyBits(HdDirtyBits bits) const override;
 
 private:
+    uint64_t _PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) const;
+    void _Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, HdDirtyBits* dirtyBits);
+
     std::vector<HdSilkMeshRecord> _BuildInstanceRecords(
         HdSceneDelegate* sceneDelegate,
         HdSilkMeshRecord record);
 
+    std::shared_ptr<HdSilkMeshPreparationLease> _preparationLease;
     GfMatrix4d _transform;
     VtVec3fArray _points;
     GfVec3f _displayColor{0.7f};

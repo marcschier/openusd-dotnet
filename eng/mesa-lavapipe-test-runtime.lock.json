@@ -1,0 +1,17 @@
+{
+  "$schemaVersion": 1,
+  "package": {
+    "id": "mmozeiko/build-mesa",
+    "version": "26.2.4",
+    "archive": "mesa-lavapipe-x64-26.2.4.7z",
+    "url": "https://github.com/mmozeiko/build-mesa/releases/download/26.2.4/mesa-lavapipe-x64-26.2.4.7z",
+    "archiveSha256": "0F12DA1693E95BFC0929BE39499629B07E367D6B1DD2A8192A16B5D80743294A"
+  },
+  "runtime": {
+    "manifest": "lvp_icd.x86_64.json",
+    "driver": "vulkan_lvp.dll",
+    "driverSha256": "E8D3C312F9D8CA40B53E4E3A40E8E1D3A6743D9CC4B9E4F7E5742AA8C5F1F26B",
+    "apiVersion": "1.4.354",
+    "deviceNameContains": "llvmpipe"
+  }
+}

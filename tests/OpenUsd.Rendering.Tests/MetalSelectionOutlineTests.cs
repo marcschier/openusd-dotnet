@@ -136,13 +136,25 @@ public sealed class MetalSelectionOutlineTests
         await Assert.That(
             parameters.GetProperty("shape").GetProperty("size").GetInt32())
             .IsEqualTo(48);
-        // Twenty-one declared program families, which expansion multiplies into
-        // the entries the combined library actually links. The extra family over
-        // the original twenty is the occluded selection-mask fragment stage the
-        // one-pass x-ray composite reads its second silhouette channel from.
+        // The declared programs include both textured shadow-mask stages; shader
+        // permutation expansion produces the entries used by each backend.
+        JsonElement[] programs = manifest.RootElement.GetProperty("programs")
+            .EnumerateArray().ToArray();
         await Assert.That(
-            manifest.RootElement.GetProperty("programs").GetArrayLength())
-            .IsEqualTo(21);
+            programs.Length)
+            .IsEqualTo(35);
+        foreach ((string name, string stage, string source) in new[]
+        {
+            ("shadow.mask.vertex", "vertex", "eng/shaders/sources/shadow.vertex.slang"),
+            ("shadow.mask.fragment", "fragment", "eng/shaders/sources/shadow.mask.fragment.slang"),
+        })
+        {
+            JsonElement program = programs.Single(
+                item => item.GetProperty("name").GetString() == name);
+            await Assert.That(program.GetProperty("stage").GetString()).IsEqualTo(stage);
+            await Assert.That(program.GetProperty("source").GetString()).IsEqualTo(source);
+            await Assert.That(project).Contains($"checked\\{name}.metal");
+        }
         await Assert.That(project).Contains(
             "checked\\selection.mask.occluded.fragment.metal");
         await Assert.That(project).Contains(

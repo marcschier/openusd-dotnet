@@ -38,6 +38,7 @@ foreach ($rid in @('win-x64', 'linux-x64', 'osx-arm64'))
 }
 foreach ($required in @(
     'runs-on: ${{ matrix.runner }}',
+    './eng/test-native-download.ps1',
     './eng/test-render-native-archive.ps1',
     './eng/native-install-metadata.ps1',
     './eng/run-native-probe.ps1',
@@ -46,6 +47,158 @@ foreach ($required in @(
     'retention-days: 30'))
 {
     Assert-Contains $nativeWorkflow $required 'Native artifact workflow'
+}
+$ciWorkflow = Get-Content (Join-Path $repoRoot '.github/workflows/ci.yml') -Raw
+$mcpStep = [regex]::Match(
+    $nativeWorkflow, '(?ms)^      - name: Run Windows native MCP integration\r?\n.*?(?=^      - name:|\z)').Value
+Assert-Contains $mcpStep "OPENUSD_EXR_EXECUTION_REQUIRED: '1'" 'Native MCP EXR execution gate'
+
+function Assert-RequiredExrWorkflowGates
+{
+    param([string]$Native, [string]$Package)
+
+    $codecStep = [regex]::Match(
+        $Native, '(?ms)^      - name: Run required POSIX EXR codec probes\r?\n.*?(?=^      - name:|\z)').Value
+    foreach ($required in @(
+        "if: runner.os != 'Windows'",
+        "OPENUSD_EXR_EXECUTION_REQUIRED: '1'",
+        "'native/build/shim/`${{ matrix.rid }}'",
+        "'roundtrip'", "'invalid-input'", "'invalid-handles'", "'quota'",
+        "'cancel'", "'faults'", "'posix-descriptors'",
+        '--show-only=json-v1',
+        'Compare-Object $expected $actual',
+        "-R '^openusd_image_exr_' --no-tests=error --output-on-failure",
+        "throw 'Required POSIX EXR codec probes failed.'"))
+    {
+        Assert-Contains $codecStep $required 'Required POSIX EXR codec gate'
+    }
+
+    $aotStep = [regex]::Match(
+        $Package, '(?ms)^      - name: Execute required current-RID Core EXR NativeAOT\r?\n.*?(?=^      - name:|\z)').Value
+    foreach ($required in @(
+        "if: steps.native-ready.outputs.ready == 'true'",
+        "OPENUSD_EXR_EXECUTION_REQUIRED: '1'",
+        'OPENUSD_PACKAGE_EXECUTION_INSTALL_ROOT:',
+        'OPENUSD_PACKAGE_EXECUTION_SHIM_ROOT:',
+        'artifacts/exr-package-execution/${{ matrix.rid }}',
+        '-Project tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj',
+        '-Framework net10.0 -Configuration Release',
+        '/*/*/RuntimePackageTests/CorePackagesExecuteBoundedExrFromCleanNativeAotFeed',
+        '$passed.Count -ne 1',
+        '[int]$passed[0].Groups[1].Value -ne 1',
+        '$skipped.Count -ne 1',
+        '[int]$skipped[0].Groups[1].Value -ne 0',
+        "throw 'Required Core EXR NativeAOT execution failed.'"))
+    {
+        Assert-Contains $aotStep $required 'Required current-RID Core EXR NativeAOT gate'
+    }
+    if ($codecStep.Contains('continue-on-error:') -or $aotStep.Contains('continue-on-error:'))
+    {
+        throw 'Required EXR gates cannot continue after failure.'
+    }
+    $uploadStep = [regex]::Match(
+        $Package, '(?ms)^      - name: Upload package test results\r?\n.*?(?=^      - name:|\z)').Value
+    Assert-Contains $uploadStep 'if: always()' 'EXR package evidence retention'
+    Assert-Contains $uploadStep 'artifacts/exr-package-execution/${{ matrix.rid }}' 'EXR package evidence retention'
+}
+
+Assert-RequiredExrWorkflowGates $nativeWorkflow $packageWorkflow
+foreach ($mutation in @(
+    @{ Name = 'MissingPosixDescriptorProbe'; Native = $nativeWorkflow.Replace("'posix-descriptors'", "'other-mode'"); Package = $packageWorkflow },
+    @{ Name = 'OptionalExrExecution'; Native = $nativeWorkflow; Package = $packageWorkflow.Replace("OPENUSD_EXR_EXECUTION_REQUIRED: '1'", "OPENUSD_EXR_EXECUTION_REQUIRED: '0'") },
+    @{ Name = 'SkippedAotProof'; Native = $nativeWorkflow; Package = $packageWorkflow.Replace('$skipped.Count -ne 1', '$skipped.Count -lt 0') },
+    @{ Name = 'MissingExrEvidence'; Native = $nativeWorkflow; Package = $packageWorkflow.Replace('artifacts/exr-package-execution/${{ matrix.rid }}', 'artifacts/other-evidence') }))
+{
+    $rejected = $false
+    try { Assert-RequiredExrWorkflowGates $mutation.Native $mutation.Package }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw "Required EXR workflow mutation was accepted: $($mutation.Name)" }
+    Write-Output "PASS $($mutation.Name)"
+}
+
+$diskOutputStep = [regex]::Match(
+    $renderWorkflow, '(?ms)^      - name: Execute native disk output contracts\r?\n.*?(?=^      - name:|\z)').Value
+foreach ($required in @(
+    "if: steps.native-ready.outputs.ready == 'true'",
+    "OPENUSD_EXR_EXECUTION_REQUIRED: '1'",
+    '$env:OPENUSD_PARITY_RUNTIME_ROOT = $runtime',
+    'RenderProductJobPlanTests',
+    'RenderDiskJobTests',
+    'RenderDiskJobPublicationTests',
+    'RenderDiskJobHdrTests',
+    'RenderDiskJobExrTests',
+    '$env:OPENUSD_TEST_PLUGIN_PATH = $env:OPENUSD_PLUGIN_PATH',
+    'RenderProductRequestNativeTests',
+    '-ReportAssembly OpenUsd.Rendering.Tests',
+    '-ReportAssembly OpenUsd.Rendering.ConformanceTests',
+    '-RequireNoSkips $true',
+    'Invoke-ManagedWorkflowScenario'))
+{
+    Assert-Contains $diskOutputStep $required 'Native disk output workflow step'
+}
+$mdlJob = [regex]::Match(
+    $nativeWorkflow, '(?ms)^  mdl-adapter:\r?\n.*?(?=^  [\w-]+:\r?$|\z)').Value
+foreach ($required in @(
+    'name: ${{ matrix.rid }} standalone MDL adapter',
+    'rid: win-x64',
+    'rid: linux-x64',
+    'rid: osx-arm64',
+    'cmake -S native/openusd_mdl -B artifacts/mdl-standalone',
+    '--config Release --target mdl_sdk_probe',
+    '-R "^mdl_adapter_probe$" --no-tests=error --output-on-failure'))
+{
+    Assert-Contains $mdlJob $required 'Standalone MDL adapter job'
+}
+if ($mdlJob -match '(?m)^    needs:' -or $mdlJob.Contains('fetch-native') -or
+    $mdlJob.Contains('OPENUSD_MDL_SDK_ROOT'))
+{
+    throw 'The standalone authored adapter gate must not require a native archive or an MDL SDK.'
+}
+$mdlSdkJob = [regex]::Match(
+    $nativeWorkflow, '(?ms)^  mdl-sdk-adapter:\r?\n.*?(?=^  [\w-]+:\r?$|\z)').Value
+foreach ($required in @(
+    'name: ${{ matrix.rid }} standalone MDL SDK ${{ matrix.qualification }}',
+    'rid: win-x64',
+    'rid: linux-x64',
+    'rid: osx-arm64',
+    'qualification: compile-only',
+    'qualification: module tests',
+    './eng/fetch-mdl-sdk.ps1 -Rid ${{ matrix.rid }}',
+    'python ./eng/fetch_simready_mdl.py --data-root $dataRoot',
+    'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }',
+    '-DOPENUSD_MDL_SDK_ROOT=$sdkRoot',
+    '-DOPENUSD_MDL_SDK_RUNTIME_DIR=$sdkRoot/runtime',
+    '-DOPENUSD_MDL_REAL_MODULE_ROOT=$moduleRoot',
+    'cmake --build artifacts/mdl-sdk-standalone --config Release',
+    'ctest --test-dir artifacts/mdl-sdk-standalone -C Release',
+    '--no-tests=error --output-on-failure'))
+{
+    Assert-Contains $mdlSdkJob $required 'Standalone MDL SDK adapter job'
+}
+Assert-Contains $mdlSdkJob @'
+      - name: Test standalone MDL SDK adapter and real modules
+        if: runner.os == 'macOS'
+'@ 'SDK module execution admission'
+if ($mdlSdkJob -match '(?m)^    needs:' -or $mdlSdkJob.Contains('fetch-native') -or
+    $mdlSdkJob.Contains('upload-artifact'))
+{
+    throw 'The SDK adapter gate must not require a native archive or publish acquired dependencies.'
+}
+foreach ($path in @(
+    'eng/fetch_simready_mdl.py',
+    'eng/simready_warehouse.py',
+    'eng/datasets/simready-mdl-core.json',
+    'test-assets/mdl/**'))
+{
+    if ([regex]::Matches($nativeWorkflow, "(?m)^      - '$([regex]::Escape($path))'$").Count -ne 2)
+    {
+        throw "MDL input '$path' must trigger both native push and pull-request qualification."
+    }
+}
+Assert-Contains $ciWorkflow './eng/test-native-download.ps1' 'Managed CI workflow'
+if ([regex]::Matches($nativeWorkflow, "(?m)^      - 'eng/test-native-download\.ps1'$").Count -ne 2)
+{
+    throw 'Native download contract must trigger both native push and pull-request qualification.'
 }
 
 foreach ($workflow in @($packageWorkflow, $renderWorkflow))

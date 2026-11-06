@@ -1600,8 +1600,8 @@ It also generates the separate EXR mirror from `openusd_image_exr.h`.
 CI fails if either generated mirror is stale.
 Data ABI v15 preserves every v14 export and capability and adds explicit `color3f[]`,
 `bool[]`, `token[]`, and `string[]` attribute array accessors through
-`OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). The managed required mask is
-`0x1FFFFFFFF`.
+`OPENUSD_CAPABILITY_ATTRIBUTE_ARRAYS_V2` (`0x20000`). Managed startup now requires Data ABI v26
+and the `0x1FFFFFFFFF` capability mask.
 
 The additive `OPENUSD_CAPABILITY_BOUNDED_STAGE_INSPECTION` capability (`0x40000`)
 adds allocation-free prim-count and total-path-byte preflight before packed path
@@ -1630,10 +1630,19 @@ Data ABI v23 adds `OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT` (`0x80000000`) for
 owned selected-prim property snapshot with detached typed previews and explicit native provenance.
 Data ABI v24 adds `OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT` (`0x100000000`) for bounded
 raw-working RGBA16Float EXR output through one synchronous bulk call. This guarded API has
-a dedicated encoding-status domain and an initial Windows x64 regular-file profile; see
+a dedicated encoding-status domain and Windows x64 plus Linux/macOS little-endian x64/ARM64
+regular-file profiles. POSIX execution still requires the hosted native and package-only proof; see
 [EXR output](image-exr-output.md) for ownership, cancellation and native-heap limitations.
-Current managed startup requires the v24 `0x1FFFFFFFF` mask and rejects
-older runtimes or runtimes missing required exports. The data-query/status-returning
+Data ABI v25 adds `OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS` (`0x200000000`) and the
+`openusd_stage_set_vec4f_array`/`openusd_stage_get_vec4f_array` pair for `float4[]` attributes.
+`UsdPrim.SetVec4fArray` authors `float4[]`; `UsdPrim.GetVec4fArray` also reads `color4f[]`, which
+shares the layout. Render product preparation uses the reader for camera `clippingPlanes`.
+Data ABI v26 adds `OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS` (`0x400000000`) and
+`openusd_stage_get_linear_units` for composed `metersPerUnit`, `upAxis`, and authored flags.
+`OPENUSD_CAPABILITY_REVIEW_STAGE_ADOPTION` (`0x800000000`) adds
+`openusd_stage_review_adopt`; `OPENUSD_CAPABILITY_REVIEW_SOURCE_PUBLICATION` (`0x1000000000`)
+adds `openusd_stage_review_source_acknowledge_publication`. Startup rejects older runtimes,
+missing required capabilities, or missing required exports. The data-query/status-returning
 exports execute their complete body inside the common exception/TfError guard, so C++ exceptions and
 unconsumed OpenUSD diagnostics never cross C. Access-end alone performs its already-validated
 owner-thread `noexcept` commit after the guard.

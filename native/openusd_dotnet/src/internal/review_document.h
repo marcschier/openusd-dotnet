@@ -141,6 +141,8 @@ public:
     File file;
     uint64_t version;
     std::shared_ptr<const std::vector<File>> proof;
+    SdfAbstractDataConstPtr resident;
+    bool residentIsCountedData;
 private:
     void Changed(const SdfNotice::LayersDidChangeSentPerLayer&);
     void Replaced(const SdfNotice::LayerDidReplaceContent&);
@@ -158,10 +160,19 @@ struct Admission
     std::vector<std::shared_ptr<Origin>> origins;
     ArResolverContext resolver;
 };
-Admission Admit(const std::string& root);
+Admission Admit(
+    const std::string& root,
+    bool allowMatchingResidentLayers = false,
+    SdfLayerHandle matchingCountedLayer = {});
 void VerifySource(const openusd_stage* stage);
+void AcknowledgeSourcePublication(openusd_stage* stage);
 void VerifyFiles(const std::vector<File>& files);
 TfRefPtr<CountedData> ParseText(const Bytes& bytes);
+TfRefPtr<CountedData> CaptureSessionOpinions(
+    const SdfLayerRefPtr& session, const std::string& expectedUserLayer);
+bool HasAdoptableOpinions(const TfRefPtr<CountedData>& data);
+TfRefPtr<CountedData> MergeAdoptionOpinions(
+    const TfRefPtr<CountedData>& session, const TfRefPtr<CountedData>& user);
 SdfLayerRefPtr SeedLayer(const std::string& identifier, const TfRefPtr<CountedData>& data,
     bool anonymous = false);
 SdfLayerRefPtr NewReviewLayer(const openusd_stage* stage, TfRefPtr<CountedData> data = {});

@@ -2,6 +2,7 @@
 
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
 
@@ -45,7 +46,12 @@ public sealed partial class SilkHdrColorCapturePackageTests
                     new XElement("add", new XAttribute("key", "hdr"),
                         new XAttribute("value", feed)),
                     new XElement("add", new XAttribute("key", "nuget.org"),
-                        new XAttribute("value", "https://api.nuget.org/v3/index.json")))))
+                        new XAttribute("value", "https://api.nuget.org/v3/index.json"))),
+                new XElement("packageSourceMapping",
+                    new XElement("packageSource", new XAttribute("key", "hdr"),
+                        new XElement("package", new XAttribute("pattern", "OpenUsd*"))),
+                    new XElement("packageSource", new XAttribute("key", "nuget.org"),
+                        new XElement("package", new XAttribute("pattern", "*"))))))
                 .Save(Path.Combine(root, "nuget.config"));
             string host = Environment.ProcessPath is { } executable &&
                 Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
@@ -54,7 +60,7 @@ public sealed partial class SilkHdrColorCapturePackageTests
             string[] sdkPaths = Path.IsPathFullyQualified(host) ? [Path.GetDirectoryName(host)!, "$host$"] : ["$host$"];
             await File.WriteAllTextAsync(Path.Combine(root, "global.json"), JsonSerializer.Serialize(new
             {
-                sdk = new { version = "10.0.401", rollForward = "disable", paths = sdkPaths }
+                sdk = new { version = "10.0.403", rollForward = "disable", paths = sdkPaths }
             }));
             await File.WriteAllTextAsync(Path.Combine(root, "CaptureConsumer.cs"), ConsumerSource);
             var start = new ProcessStartInfo(host)
@@ -94,9 +100,25 @@ public sealed partial class SilkHdrColorCapturePackageTests
             await Assert.That(process.ExitCode).IsEqualTo(0).Because(output);
             using JsonDocument assets = JsonDocument.Parse(await File.ReadAllTextAsync(
                 Path.Combine(root, "obj", "project.assets.json")));
-            JsonElement library = assets.RootElement.GetProperty("libraries")
-                .GetProperty("OpenUsd.Rendering.Silk/" + version);
-            await Assert.That(library.GetProperty("type").GetString()).IsEqualTo("package");
+            JsonElement libraries = assets.RootElement.GetProperty("libraries");
+            foreach (string id in new[] { "OpenUsd", "OpenUsd.Interop", "OpenUsd.Rendering", "OpenUsd.Rendering.Silk" })
+            {
+                JsonElement library = libraries.GetProperty(id + "/" + version);
+                await Assert.That(library.GetProperty("type").GetString()).IsEqualTo("package");
+                string localPackage = id == "OpenUsd.Rendering.Silk"
+                    ? packagePath
+                    : Path.Combine(feed, $"{id}.{version}.nupkg");
+                using FileStream packageFile = File.OpenRead(localPackage);
+                string expectedHash = Convert.ToBase64String(await SHA512.HashDataAsync(packageFile));
+                string packageDirectory = Path.Combine(
+                    root,
+                    "packages",
+                    library.GetProperty("path").GetString()!.Replace('/', Path.DirectorySeparatorChar));
+                string restoredPackage = Directory.GetFiles(packageDirectory, "*.nupkg").Single();
+                using FileStream restoredFile = File.OpenRead(restoredPackage);
+                string restoredHash = Convert.ToBase64String(await SHA512.HashDataAsync(restoredFile));
+                await Assert.That(restoredHash).IsEqualTo(expectedHash);
+            }
             foreach (string framework in new[] { "net8.0", "net9.0", "net10.0" })
             {
                 await Assert.That(File.Exists(Path.Combine(root, "bin", "Release", framework, "HdrConsumer.dll")))
@@ -118,10 +140,26 @@ public sealed partial class SilkHdrColorCapturePackageTests
             public static SilkFrameCaptureResult[] Capture(
                 SilkFrameCapturer capturer, OpenUsdSilkSession session,
                 ISilkRenderTargetRenderer renderer, ISilkGraphicsDevice device,
-                SilkOpenColorIoProcessor processor, CancellationToken cancellationToken)
+                SilkOpenColorIoProcessor processor, SilkSceneIngestionOptions ingestionOptions,
+                CancellationToken cancellationToken)
             {
                 var options = new SilkHdrColorCaptureOptions(
                     includeDeviceDepth: true, maximumPixelCount: 1280, maximumReadbackBytes: 25600);
+                var additionalPlanes = new SilkHdrColorCaptureOptions(
+                    includeDeviceDepth: true, maximumPixelCount: 1280, maximumReadbackBytes: 102400)
+                {
+                    IncludePrimId = true,
+                    IncludeInstanceId = true,
+                    IncludeElementId = true,
+                    IncludeNormal = true,
+                };
+                var depthOptions = new SilkDepthCaptureOptions(1280, 102400)
+                {
+                    IncludePrimId = true,
+                    IncludeInstanceId = true,
+                    IncludeElementId = true,
+                    IncludeNormal = true,
+                };
                 return
                 [
                     capturer.CaptureWithHdrColor(session, 40, 32, RenderSettings.Default),
@@ -132,6 +170,19 @@ public sealed partial class SilkHdrColorCapturePackageTests
                     capturer.CaptureWithHdrColor(
                         session, 40, 32, RenderSettings.Default, processor, hdrColorOptions: options,
                         timeCode: 1, camera: default, cancellationToken: cancellationToken),
+                    capturer.CaptureWithHdrColor(session, 40, 32, RenderSettings.Default, ingestionOptions),
+                    capturer.CaptureWithHdrColor(
+                        session, 40, 32, RenderSettings.Default, ingestionOptions, hdrColorOptions: additionalPlanes,
+                        timeCode: 1, camera: default, cancellationToken: cancellationToken),
+                    capturer.CaptureWithDepth(
+                        session, 40, 32, RenderSettings.Default, depthOptions: depthOptions,
+                        timeCode: 1, camera: default, cancellationToken: cancellationToken),
+                    capturer.CaptureWithDepth(
+                        session, 40, 32, RenderSettings.Default, processor, depthOptions: depthOptions,
+                        timeCode: 1, camera: default, cancellationToken: cancellationToken),
+                    capturer.CaptureWithDepth(
+                        session, 40, 32, RenderSettings.Default, ingestionOptions, depthOptions: depthOptions,
+                        timeCode: 1, camera: default, cancellationToken: cancellationToken),
                     SilkFrameCapture.CaptureRetainedWithHdrColor(renderer, device, 40, 32, RenderSettings.Default),
                     SilkFrameCapture.CaptureRetainedWithHdrColor(
                         renderer, device, 40, 32, RenderSettings.Default, processor),
@@ -140,6 +191,12 @@ public sealed partial class SilkHdrColorCapturePackageTests
                         pageRevision: 1, cancellationToken: cancellationToken),
                     SilkFrameCapture.CaptureRetainedWithHdrColor(
                         renderer, device, 40, 32, RenderSettings.Default, processor, hdrColorOptions: options,
+                        pageRevision: 1, cancellationToken: cancellationToken),
+                    SilkFrameCapture.CaptureRetainedWithDepth(
+                        renderer, device, 40, 32, RenderSettings.Default, depthOptions: depthOptions,
+                        pageRevision: 1, cancellationToken: cancellationToken),
+                    SilkFrameCapture.CaptureRetainedWithDepth(
+                        renderer, device, 40, 32, RenderSettings.Default, processor, depthOptions: depthOptions,
                         pageRevision: 1, cancellationToken: cancellationToken),
                 ];
             }

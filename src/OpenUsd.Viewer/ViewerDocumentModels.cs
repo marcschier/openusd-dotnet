@@ -3,6 +3,9 @@
 using System.Globalization;
 using OpenUsd.Geom;
 using OpenUsd.Interop;
+using OpenUsd.Render;
+using OpenUsd.Skel;
+using OpenUsd.Vol;
 
 namespace OpenUsd.Viewer;
 
@@ -607,6 +610,7 @@ internal sealed record ViewerPrimInspectorSnapshot(
     string? PrototypePath,
     bool IsImageable,
     bool IsCamera,
+    bool IsLight,
     UsdGeomVisibility? Visibility,
     UsdGeomPurpose? Purpose,
     string[] AppliedSchemas,
@@ -616,7 +620,9 @@ internal sealed record ViewerPrimInspectorSnapshot(
     ViewerAttributeSnapshot[] Attributes,
     ViewerRelationshipSnapshot[] Relationships,
     ViewerUnsupportedFeature[] UnsupportedFeatures,
-    UsdPrimPropertySnapshot? PropertySnapshot = null) : IUsdDetachedResult;
+    UsdPrimPropertySnapshot? PropertySnapshot = null,
+    IReadOnlyList<string>? LightSchemaProperties = null,
+    ViewerGeometrySchema GeometrySchema = ViewerGeometrySchema.None) : IUsdDetachedResult;
 
 internal static class ViewerHierarchyExpansionPolicy
 {
@@ -807,6 +813,8 @@ internal sealed record ViewerStageStatisticsSnapshot(
     UsdOrientedBounds3d OrientedWorldBounds,
     TimeSpan BoundsQueryDuration) : IUsdDetachedResult
 {
+    internal string? BoundsFailure { get; init; }
+
     internal static ViewerStageStatisticsSnapshot Empty { get; } = new(
         string.Empty,
         string.Empty,
@@ -835,6 +843,13 @@ internal sealed record ViewerDocumentSnapshot(
 
 internal static partial class ViewerStageSnapshotBuilder
 {
+    private static readonly string[] LightSchemaPropertyCandidates =
+    [
+        "inputs:width", "inputs:height", "inputs:radius", "inputs:length", "inputs:angle",
+        "inputs:shaping:focus", "inputs:shaping:cone:angle", "inputs:shaping:cone:softness",
+        "inputs:texture:file", "inputs:texture:format"
+    ];
+
     /// <summary>
     /// The most authored Ts splines one inspector snapshot reads and evaluates.
     /// </summary>
@@ -913,6 +928,11 @@ internal static partial class ViewerStageSnapshotBuilder
         bool isPrototype = prim.IsPrototype();
         bool isImageable = UsdGeomImageable.TryWrap(prim, out UsdGeomImageable imageable);
         bool isCamera = UsdGeomCamera.TryWrap(prim, out _);
+        bool isLight = ViewerAuthoredEditController.IsSupportedLight(prim);
+        string[] lightSchemaProperties = isLight
+            ? LightSchemaPropertyCandidates
+                .Where(name => ViewerAuthoredEditController.IsSupportedLightProperty(prim, name)).ToArray()
+            : [];
         var unsupported = new List<ViewerUnsupportedFeature>();
         UsdGeomVisibility? visibility = null;
         UsdGeomPurpose? purpose = null;
@@ -941,6 +961,7 @@ internal static partial class ViewerStageSnapshotBuilder
             isInstance ? prim.GetPrototypePath() : null,
             isImageable,
             isCamera,
+            isLight,
             visibility,
             purpose,
             prim.GetAppliedSchemas(),
@@ -950,8 +971,45 @@ internal static partial class ViewerStageSnapshotBuilder
             attributeSnapshots,
             relationshipSnapshots,
             unsupported.ToArray(),
-            properties);
+            properties,
+            Array.AsReadOnly(lightSchemaProperties),
+            GeometrySchemaOf(prim));
     }
+
+    private static ViewerGeometrySchema GeometrySchemaOf(UsdPrim prim) =>
+        UsdGeomMesh.TryWrap(prim, out _) ? ViewerGeometrySchema.Mesh :
+        UsdGeomTetMesh.TryWrap(prim, out _) ? ViewerGeometrySchema.TetMesh :
+        UsdGeomNurbsPatch.TryWrap(prim, out _) ? ViewerGeometrySchema.NurbsPatch :
+        UsdGeomSubset.TryWrap(prim, out _) ? ViewerGeometrySchema.GeomSubset :
+        UsdGeomPointInstancer.TryWrap(prim, out _) ? ViewerGeometrySchema.PointInstancer :
+        UsdGeomPoints.TryWrap(prim, out _) ? ViewerGeometrySchema.Points :
+        UsdGeomBasisCurves.TryWrap(prim, out _) ? ViewerGeometrySchema.BasisCurves :
+        UsdGeomNurbsCurves.TryWrap(prim, out _) ? ViewerGeometrySchema.NurbsCurves :
+        UsdGeomHermiteCurves.TryWrap(prim, out _) ? ViewerGeometrySchema.HermiteCurves :
+        UsdVolVolume.TryWrap(prim, out _) ? ViewerGeometrySchema.Volume :
+        UsdVolOpenVDBAsset.TryWrap(prim, out _) ? ViewerGeometrySchema.OpenVdbAsset :
+        UsdVolField3DAsset.TryWrap(prim, out _) ? ViewerGeometrySchema.Field3DAsset :
+        UsdVolFieldAsset.TryWrap(prim, out _) ? ViewerGeometrySchema.FieldAsset :
+        UsdGeomSphere.TryWrap(prim, out _) ? ViewerGeometrySchema.Sphere :
+        UsdGeomCube.TryWrap(prim, out _) ? ViewerGeometrySchema.Cube :
+        UsdGeomCylinder.TryWrap(prim, out _) ? ViewerGeometrySchema.Cylinder :
+        UsdGeomCone.TryWrap(prim, out _) ? ViewerGeometrySchema.Cone :
+        UsdGeomCapsule.TryWrap(prim, out _) ? ViewerGeometrySchema.Capsule :
+        UsdGeomPlane.TryWrap(prim, out _) ? ViewerGeometrySchema.Plane :
+        UsdSkelSkeleton.TryWrap(prim, out _) ? ViewerGeometrySchema.Skeleton :
+        UsdSkelAnimation.TryWrap(prim, out _) ? ViewerGeometrySchema.SkelAnimation :
+        UsdSkelBlendShape.TryWrap(prim, out _) ? ViewerGeometrySchema.BlendShape :
+        UsdRenderSettings.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderSettings :
+        UsdRenderProduct.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderProduct :
+        UsdRenderVar.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderVar :
+        UsdRenderPass.TryWrap(prim, out _) ? ViewerGeometrySchema.RenderPass :
+        prim.TypeName switch
+        {
+            "ParticleField" or "ParticleField3DGaussianSplat" => ViewerGeometrySchema.ParticleField,
+            "LODDistanceHeuristic" or "LODScreenSizeHeuristic" => ViewerGeometrySchema.LodHeuristic,
+            "SpatialAudio" => ViewerGeometrySchema.SpatialAudio,
+            _ => ViewerGeometrySchema.None
+        };
 
     private static ViewerVariantSetSnapshot[] BuildVariantSets(UsdPrim prim)
     {
@@ -1012,7 +1070,10 @@ internal static partial class ViewerStageSnapshotBuilder
             analysis.MaximumDepth,
             analysis.WorldBounds,
             analysis.OrientedWorldBounds,
-            analysis.BoundsQueryDuration);
+            analysis.BoundsQueryDuration)
+        {
+            BoundsFailure = analysis.BoundsFailure
+        };
     }
 
     private static ViewerLayerStackSnapshot BuildLayerStack(

@@ -82,6 +82,24 @@ public sealed class SilkDeformationGpuPolicyTests
     }
 
     [Test]
+    public async Task AGeometryWithASecondTextureCoordinateSetFallsBack()
+    {
+        // The checked kernel writes only the six- and eight-float layouts, so a
+        // ten-float vertex with a second coordinate set would lose that set.
+        SilkMeshDeformationData rig = Rig();
+        SilkDeformationGpuFallback fallback = SilkDeformationGpuPayload.TryBuild(
+            rig,
+            10,
+            rig.BindPointCount,
+            hasTangents: false,
+            SilkTopologyKind.TriangleList,
+            out SilkDeformationGpuPayload? payload);
+
+        await Assert.That(fallback).IsEqualTo(SilkDeformationGpuFallback.SecondaryTexCoords);
+        await Assert.That(payload).IsNull();
+    }
+
+    [Test]
     [Arguments(SilkTopologyKind.LineList)]
     [Arguments(SilkTopologyKind.PointList)]
     public async Task ANonTriangleTopologyFallsBack(SilkTopologyKind topologyKind)
@@ -116,6 +134,43 @@ public sealed class SilkDeformationGpuPolicyTests
 
         await Assert.That(fallback)
             .IsEqualTo(SilkDeformationGpuFallback.PointCountMismatch);
+    }
+
+    [Test]
+    public async Task ReorderedDerivedCornersFallBackWhenTheirCountMatchesRetainedPoints()
+    {
+        SilkMeshDeformationData rig = Rig();
+        float[] retainedVertices =
+        [
+            0, 0, 0,
+            1, 0, 0,
+            0, 1, 0
+        ];
+        (float[] vertices, uint[] indices) = SilkMeshGeometryBuilder.ExpandTriangleCorners(
+            retainedVertices,
+            [1, 2, 0],
+            strideFloats: 3);
+
+        await Assert.That(vertices.Length / 3).IsEqualTo(rig.BindPointCount);
+        await Assert.That(indices.SequenceEqual(new uint[] { 0, 1, 2 })).IsTrue();
+        await Assert.That(vertices.SequenceEqual(new float[]
+        {
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 0
+        })).IsTrue();
+
+        SilkDeformationGpuFallback fallback = SilkDeformationGpuPayload.TryBuild(
+            rig,
+            vertexStrideFloats: 6,
+            pointCount: rig.BindPointCount,
+            hasTangents: false,
+            SilkTopologyKind.TriangleList,
+            derivedCornerVertices: true,
+            out SilkDeformationGpuPayload? payload);
+
+        await Assert.That(fallback).IsEqualTo(SilkDeformationGpuFallback.DerivedCornerVertices);
+        await Assert.That(payload).IsNull();
     }
 
     [Test]

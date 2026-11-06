@@ -8,12 +8,21 @@ static_assert(sizeof(openusd_image_encode_exr_result_v1) == 40);
 static_assert(offsetof(openusd_image_encode_exr_request_v1, pixel_ceiling) == 72);
 static_assert(offsetof(openusd_image_encode_exr_result_v1, encoded_bytes) == 16);
 
-#if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__)) && \
-    !defined(OPENUSD_IMAGE_EXR_FORCE_UNSUPPORTED)
+#if !defined(OPENUSD_IMAGE_EXR_FORCE_UNSUPPORTED) && \
+    ((defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))) || \
+    ((defined(__linux__) || defined(__APPLE__)) && \
+    (defined(__x86_64__) || defined(__aarch64__)) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 
+#if defined(_WIN32)
 #define NOMINMAX
 #include <Windows.h>
 #include <winternl.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #if defined(OPENUSD_IMAGE_EXR_TEST_SEAM)
 #include "image_exr_test_hooks.h"
 #endif
@@ -28,9 +37,12 @@ static_assert(offsetof(openusd_image_encode_exr_result_v1, encoded_bytes) == 16)
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <thread>
 
+#if defined(_WIN32)
 extern "C" NTSYSAPI NTSTATUS NTAPI NtQueryInformationFile(
     HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS);
+#endif
 
 namespace Exr = OPENEXR_IMF_NAMESPACE;
 static_assert(sizeof(void*) == 8);
@@ -55,14 +67,18 @@ thread_local Fault Test;
 
 struct Operation
 {
+#if defined(_WIN32)
     HANDLE file = nullptr;
+#else
+    int file = -1;
+#endif
     uint64_t limit = 0;
     uint64_t position = 0;
     uint64_t extent = 0;
     uint32_t rows = 0;
     uint32_t status = OPENUSD_IMAGE_ENCODE_OK;
     uint32_t error = 0;
-    DWORD thread = GetCurrentThreadId();
+    std::thread::id thread = std::this_thread::get_id();
     openusd_image_encode_cancel_v1 callback = nullptr;
     void* context = nullptr;
 
@@ -90,7 +106,7 @@ struct Operation
 #endif
             throw Stop{};
         }
-        if (GetCurrentThreadId() != thread) Fail(OPENUSD_IMAGE_ENCODE_NATIVE_ERROR);
+        if (std::this_thread::get_id() != thread) Fail(OPENUSD_IMAGE_ENCODE_NATIVE_ERROR);
         if (callback && callback(context, phase, rows, extent) != 0) Fail(OPENUSD_IMAGE_ENCODE_CANCELLED);
     }
 
@@ -115,11 +131,18 @@ struct Operation
 #if defined(OPENUSD_IMAGE_EXR_TEST_SEAM)
         ++Test.stats.seeks;
         if (target < position) ++Test.stats.backwards_seeks;
-        if (FaultAt(true) != EXR_TEST_NONE) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, ERROR_SEEK);
+        if (FaultAt(true) != EXR_TEST_NONE) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, SeekError);
 #endif
+#if defined(_WIN32)
         LARGE_INTEGER offset{};
         offset.QuadPart = static_cast<LONGLONG>(target);
         if (!SetFilePointerEx(file, offset, nullptr, FILE_BEGIN)) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, GetLastError());
+#else
+        off_t offset;
+        do { offset = lseek(file, static_cast<off_t>(target), SEEK_SET); } while (offset < 0 && errno == EINTR);
+        if (offset < 0) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, static_cast<uint32_t>(errno));
+        if (static_cast<uint64_t>(offset) != target) Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, SeekError);
+#endif
         position = target;
     }
 
@@ -129,7 +152,7 @@ struct Operation
         if (count < 0) Fail(OPENUSD_IMAGE_ENCODE_NATIVE_ERROR);
         if (position > limit || static_cast<uint64_t>(count) > limit - position)
             Fail(OPENUSD_IMAGE_ENCODE_QUOTA_EXCEEDED);
-        DWORD requested = static_cast<DWORD>(count);
+        uint32_t requested = static_cast<uint32_t>(count);
         bool short_write = false;
 #if defined(OPENUSD_IMAGE_EXR_TEST_SEAM)
         ++Test.stats.writes;
@@ -145,19 +168,35 @@ struct Operation
             throw std::bad_alloc{};
         }
         if (fault == EXR_TEST_WRITE_ONCE || fault == EXR_TEST_WRITE_PERSISTENT)
-            Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, ERROR_WRITE_FAULT);
+            Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, WriteError);
         short_write = fault == EXR_TEST_SHORT_WRITE_ONCE;
         if (short_write) requested /= 2;
 #endif
+#if defined(_WIN32)
         DWORD written = 0;
         const BOOL success = WriteFile(file, data, requested, &written, nullptr);
         const DWORD native_error = success ? ERROR_SUCCESS : GetLastError();
+#else
+        ssize_t count_written;
+        do { count_written = write(file, data, requested); } while (count_written < 0 && errno == EINTR);
+        const bool success = count_written >= 0;
+        const uint32_t native_error = success ? 0u : static_cast<uint32_t>(errno);
+        const uint32_t written = success ? static_cast<uint32_t>(count_written) : 0u;
+#endif
         if (written > requested) Fail(OPENUSD_IMAGE_ENCODE_NATIVE_ERROR);
         position += written;
         extent = std::max(extent, position);
         if (!success || written != requested || short_write)
-            Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, native_error ? native_error : ERROR_WRITE_FAULT);
+            Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, native_error ? native_error : WriteError);
     }
+
+#if defined(_WIN32)
+    static constexpr uint32_t SeekError = ERROR_SEEK;
+    static constexpr uint32_t WriteError = ERROR_WRITE_FAULT;
+#else
+    static constexpr uint32_t SeekError = EIO;
+    static constexpr uint32_t WriteError = EIO;
+#endif
 };
 
 class BorrowedStream final : public Exr::OStream
@@ -198,6 +237,7 @@ uint64_t MinimumFileBytes(const openusd_image_encode_exr_request_v1& request) no
 
 void ValidateFile(Operation& operation, uint64_t handle)
 {
+#if defined(_WIN32)
     if (handle == 0 || handle == UINT64_MAX) operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT, ERROR_INVALID_HANDLE);
     operation.file = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(handle));
     SetLastError(ERROR_SUCCESS);
@@ -232,6 +272,61 @@ void ValidateFile(Operation& operation, uint64_t handle)
     if (!SetFilePointerEx(operation.file, zero, &position, FILE_CURRENT))
         operation.Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, GetLastError());
     if (position.QuadPart != 0) operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT);
+#else
+    static_assert(sizeof(off_t) >= 8);
+    if (handle > static_cast<uint64_t>(std::numeric_limits<int>::max()))
+        operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT, EBADF);
+    operation.file = static_cast<int>(handle);
+    struct stat info{};
+    int stat_status;
+    do { stat_status = fstat(operation.file, &info); } while (stat_status != 0 && errno == EINTR);
+    if (stat_status != 0)
+        operation.Fail(errno == EBADF ? OPENUSD_IMAGE_ENCODE_INVALID_INPUT : OPENUSD_IMAGE_ENCODE_IO_ERROR,
+            static_cast<uint32_t>(errno));
+    if (!S_ISREG(info.st_mode)) operation.Fail(OPENUSD_IMAGE_ENCODE_UNSUPPORTED);
+    int flags;
+    do { flags = fcntl(operation.file, F_GETFL); } while (flags < 0 && errno == EINTR);
+    if (flags < 0) operation.Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, static_cast<uint32_t>(errno));
+    int unsupported = O_APPEND | O_NONBLOCK;
+#if defined(O_DIRECT)
+    unsupported |= O_DIRECT;
+#endif
+    if ((flags & O_ACCMODE) == O_RDONLY || (flags & unsupported) != 0)
+        operation.Fail(OPENUSD_IMAGE_ENCODE_UNSUPPORTED);
+    if (info.st_size != 0) operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT);
+    off_t position;
+    do { position = lseek(operation.file, 0, SEEK_CUR); } while (position < 0 && errno == EINTR);
+    if (position < 0) operation.Fail(OPENUSD_IMAGE_ENCODE_IO_ERROR, static_cast<uint32_t>(errno));
+    if (position != 0) operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT);
+#endif
+}
+
+bool WindowCorner(int64_t origin, uint64_t extent) noexcept
+{
+    constexpr int64_t limit = OPENUSD_IMAGE_EXR_MAX_WINDOW_COORDINATE;
+    return origin >= -limit && origin <= limit && extent >= 1 &&
+        extent <= static_cast<uint64_t>(limit) && origin + static_cast<int64_t>(extent) - 1 <= limit;
+}
+
+bool ValidWindows(const openusd_image_encode_exr_request_v1& request) noexcept
+{
+    if (request.window_policy == OPENUSD_IMAGE_EXR_VIEWPORT_ORIGIN_ZERO)
+    {
+        return request.data_origin_x == 0 && request.data_origin_y == 0 &&
+            request.display_origin_x == 0 && request.display_origin_y == 0 &&
+            request.display_width == request.width && request.display_height == request.height &&
+            request.pixel_aspect_numerator == 1 && request.pixel_aspect_denominator == 1;
+    }
+    if (request.window_policy != OPENUSD_IMAGE_EXR_EXPLICIT_WINDOWS) return false;
+    const uint64_t numerator = request.pixel_aspect_numerator;
+    const uint64_t denominator = request.pixel_aspect_denominator;
+    return WindowCorner(request.data_origin_x, request.width) &&
+        WindowCorner(request.data_origin_y, request.height) &&
+        WindowCorner(request.display_origin_x, request.display_width) &&
+        WindowCorner(request.display_origin_y, request.display_height) &&
+        numerator != 0 && denominator != 0 &&
+        numerator <= denominator * OPENUSD_IMAGE_EXR_MAX_PIXEL_ASPECT_SCALE &&
+        denominator <= numerator * OPENUSD_IMAGE_EXR_MAX_PIXEL_ASPECT_SCALE;
 }
 
 void Validate(Operation& operation, const openusd_image_encode_exr_request_v1& request,
@@ -256,12 +351,8 @@ void Validate(Operation& operation, const openusd_image_encode_exr_request_v1& r
         request.pixel_ceiling == 0 || request.pixel_ceiling > OPENUSD_IMAGE_EXR_MAX_PIXELS ||
         request.output_byte_limit > static_cast<uint64_t>(INT64_MAX))
         operation.Fail(OPENUSD_IMAGE_ENCODE_INVALID_INPUT);
-    if (request.color_policy != OPENUSD_IMAGE_EXR_RAW_WORKING_UNSPECIFIED ||
-        request.window_policy != OPENUSD_IMAGE_EXR_VIEWPORT_ORIGIN_ZERO || *AlphaName(request.alpha_policy) == '\0' ||
-        request.data_origin_x != 0 || request.data_origin_y != 0 ||
-        request.display_origin_x != 0 || request.display_origin_y != 0 ||
-        request.display_width != request.width || request.display_height != request.height ||
-        request.pixel_aspect_numerator != 1 || request.pixel_aspect_denominator != 1)
+    if (request.color_policy != OPENUSD_IMAGE_EXR_RAW_WORKING_UNSPECIFIED || *AlphaName(request.alpha_policy) == '\0' ||
+        !ValidWindows(request))
         operation.Fail(OPENUSD_IMAGE_ENCODE_UNSUPPORTED);
     if (count > request.pixel_ceiling || request.output_byte_limit < MinimumFileBytes(request))
         operation.Fail(OPENUSD_IMAGE_ENCODE_QUOTA_EXCEEDED);
@@ -285,9 +376,17 @@ void Encode(Operation& operation, const openusd_image_encode_exr_request_v1& req
 {
     operation.Check(OPENUSD_IMAGE_ENCODE_PHASE_BEFORE_CODEC);
     BorrowedStream stream(operation);
-    Exr::Header header(static_cast<int>(request.width), static_cast<int>(request.height));
+    const IMATH_NAMESPACE::Box2i display(
+        IMATH_NAMESPACE::V2i(request.display_origin_x, request.display_origin_y),
+        IMATH_NAMESPACE::V2i(request.display_origin_x + static_cast<int>(request.display_width) - 1,
+            request.display_origin_y + static_cast<int>(request.display_height) - 1));
+    const IMATH_NAMESPACE::Box2i data(
+        IMATH_NAMESPACE::V2i(request.data_origin_x, request.data_origin_y),
+        IMATH_NAMESPACE::V2i(request.data_origin_x + static_cast<int>(request.width) - 1,
+            request.data_origin_y + static_cast<int>(request.height) - 1));
+    Exr::Header header(display, data,
+        static_cast<float>(static_cast<double>(request.pixel_aspect_numerator) / request.pixel_aspect_denominator));
     header.compression() = Exr::ZIPS_COMPRESSION;
-    header.pixelAspectRatio() = 1.0f;
     header.lineOrder() = Exr::INCREASING_Y;
     header.insert(ColorAttribute, Exr::StringAttribute(ColorValue));
     header.insert(AlphaAttribute, Exr::StringAttribute(AlphaName(request.alpha_policy)));
@@ -305,13 +404,16 @@ void Encode(Operation& operation, const openusd_image_encode_exr_request_v1& req
                 operation.Check(OPENUSD_IMAGE_ENCODE_PHASE_ENCODE_ROW);
                 const uint32_t source_row = request.row_order == OPENUSD_IMAGE_EXR_TOP_DOWN ? row : request.height - 1 - row;
                 const uint8_t* source = pixels + static_cast<uint64_t>(source_row) * request.width * 8;
+                // OpenEXR addresses base + x * xStride with absolute data-window x.
+                const uintptr_t origin = reinterpret_cast<uintptr_t>(source) -
+                    static_cast<uintptr_t>(static_cast<intptr_t>(request.data_origin_x) * 8);
                 Exr::FrameBuffer frame;
                 for (size_t channel = 0; channel < 4; ++channel)
                 {
                     // One borrowed row with yStride=0: no image flip or pointer
                     // before the input allocation is needed for bottom-up storage.
                     frame.insert(names[channel], Exr::Slice(Exr::HALF,
-                        reinterpret_cast<char*>(const_cast<uint8_t*>(source + channel * 2)), 8, 0));
+                        reinterpret_cast<char*>(origin + channel * 2), 8, 0));
                 }
                 output.setFrameBuffer(frame);
                 output.writePixels(1);

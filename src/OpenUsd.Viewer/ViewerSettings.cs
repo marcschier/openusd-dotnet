@@ -245,7 +245,7 @@ internal sealed class ViewerSettingsStore : IDisposable
                     await stream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
                     await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 }
-                File.Move(temporaryPath, StorePath, overwrite: true);
+                await MoveIntoPlaceAsync(temporaryPath, StorePath, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -258,6 +258,32 @@ internal sealed class ViewerSettingsStore : IDisposable
         finally
         {
             _gate.Release();
+        }
+    }
+
+    // Search indexers and antivirus scanners briefly open the published file without delete
+    // sharing, which makes a replacing move fail on Windows. A short bounded retry rides that out;
+    // a lock that outlasts it is reported with the original exception.
+    private static readonly int[] MoveRetryDelaysMilliseconds = [10, 20, 40, 80, 160, 320];
+
+    private static async Task MoveIntoPlaceAsync(
+        string temporaryPath,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                File.Move(temporaryPath, destinationPath, overwrite: true);
+                return;
+            }
+            catch (Exception exception) when (
+                attempt < MoveRetryDelaysMilliseconds.Length &&
+                exception is IOException or UnauthorizedAccessException)
+            {
+                await Task.Delay(MoveRetryDelaysMilliseconds[attempt], cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 

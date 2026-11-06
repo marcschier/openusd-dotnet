@@ -1,5 +1,84 @@
 # Copyright (c) marcschier. Licensed under the MIT License.
 
+function Resolve-ManagedWorkflowPhysicalDirectory
+{
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not $IsWindows)
+    {
+        throw 'Physical workflow scratch paths require Windows.'
+    }
+    if (-not [IO.Path]::IsPathFullyQualified($Path))
+    {
+        throw 'The workflow scratch directory must be absolute.'
+    }
+    $current = $Path
+    while ($true)
+    {
+        $item = Get-Item -LiteralPath $current -ErrorAction Stop
+        if ($item -isnot [IO.DirectoryInfo])
+        {
+            throw "The workflow scratch path must be a directory: $current"
+        }
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)
+        {
+            throw "The workflow scratch path contains a reparse point: $current"
+        }
+        if ($null -eq $item.Parent)
+        {
+            break
+        }
+        $current = $item.Parent.FullName
+    }
+    if (-not ('OpenUsd.Workflows.WindowsDirectoryPath' -as [type]))
+    {
+        # A handle resolves stored casing without listing protected temp-directory parents.
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+namespace OpenUsd.Workflows
+{
+    public static class WindowsDirectoryPath
+    {
+        public static string Resolve(string path)
+        {
+            using (SafeFileHandle handle = CreateFileW(path, 0, 7, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero))
+            {
+                if (handle.IsInvalid)
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                var buffer = new StringBuilder(32768);
+                uint length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, 0);
+                if (length == 0)
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                if (length >= buffer.Capacity)
+                    throw new System.IO.PathTooLongException("The physical workflow path exceeds the Windows limit.");
+                string result = buffer.ToString();
+                if (result.StartsWith(@"\\?\UNC\", StringComparison.Ordinal))
+                    return @"\\" + result.Substring(8);
+                if (result.StartsWith(@"\\?\", StringComparison.Ordinal))
+                    return result.Substring(4);
+                throw new System.IO.IOException("The physical workflow directory has no DOS or UNC path.");
+            }
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+        private static extern SafeFileHandle CreateFileW(
+            string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+        private static extern uint GetFinalPathNameByHandleW(
+            SafeFileHandle handle, StringBuilder path, uint capacity, uint flags);
+    }
+}
+'@
+    }
+    return [OpenUsd.Workflows.WindowsDirectoryPath]::Resolve($Path)
+}
+
 function Invoke-ManagedWorkflowScenario
 {
     param(

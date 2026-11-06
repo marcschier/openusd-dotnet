@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Wait only on a cold SDK cache; the ordinary restore and integrity/coverage gates still decide acceptance."""
+import http.client
 import json
 import os
 import re
@@ -15,6 +16,7 @@ VERIFIED_STEPS = (
     "Verify complete SDK build-cache pair",
 )
 NATIVE_LINUX_JOB = "linux-x64 verified native archive"
+API_RETRY_DELAYS_SECONDS = (1, 2)
 
 
 class CacheReadinessError(RuntimeError):
@@ -38,13 +40,27 @@ def read_api(repository, token, path):
     request = urllib.request.Request(url, headers={
         "Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28"})
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            raw = response.read(4194305)
-    except urllib.error.HTTPError as error:
-        raise CacheReadinessError(f"GitHub SDK-readiness metadata failed: {operation}; HTTP {error.code}.") from None
-    except (urllib.error.URLError, TimeoutError):
-        raise CacheReadinessError(f"GitHub SDK-readiness metadata failed: {operation}; transport unavailable.") from None
+    for attempt in range(len(API_RETRY_DELAYS_SECONDS) + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                raw = response.read(4194305)
+            break
+        except urllib.error.HTTPError as error:
+            status = error.code
+            error.close()
+            detail = f"HTTP {status}"
+            retryable = 500 <= status < 600
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead):
+            detail = "transport unavailable"
+            retryable = True
+        if not retryable or attempt == len(API_RETRY_DELAYS_SECONDS):
+            raise CacheReadinessError(f"GitHub SDK-readiness metadata failed: {operation}; {detail}.") from None
+        print(
+            f"GitHub SDK-readiness metadata retry: {operation}; {detail}; "
+            f"attempt {attempt + 2}/{len(API_RETRY_DELAYS_SECONDS) + 1}.",
+            file=sys.stderr,
+        )
+        time.sleep(API_RETRY_DELAYS_SECONDS[attempt])
     if len(raw) > 4194304:
         raise CacheReadinessError("GitHub SDK-readiness metadata exceeded its bound.")
     try:

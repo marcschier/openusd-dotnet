@@ -19,7 +19,7 @@ namespace OpenUsd.Physics.Extraction;
 /// fingerprint.
 /// </para>
 /// </remarks>
-public static class UsdPhysicsStageExtractor
+public static partial class UsdPhysicsStageExtractor
 {
     /// <summary>Extracts one physics page from the scheduled stage.</summary>
     /// <param name="scheduler">The scheduler that owns the stage.</param>

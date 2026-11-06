@@ -1,5 +1,96 @@
 # Rendering
 
+Native mesh synchronization shares byte-identical attribute and index buffers through copy-on-write
+arrays. Each sync's lookup tables are bounded to 65,536 entries per kind and eight candidates per
+hash; full metadata and payload comparisons prevent collision-based sharing. Resource commit,
+failed render cleanup and scene reset release the lookup owners without invalidating live meshes.
+
+File-backed scene ingestion shares byte-identical immutable mesh arrays within each applied page.
+Prim paths, transforms, material bindings and pick identities remain distinct; changed arrays
+detach rather than mutating other placements. Sharing uses bounded per-page content indexes
+and verifies full bytes after hashing.
+The Silk package declares its `System.IO.Hashing` runtime dependency explicitly so this path
+also works in isolated package-only and NativeAOT consumers.
+
+Material streaming can reuse exactly equivalent ordinary images across nonadjacent material
+batches after their GPU submissions complete. Completed images use a frame-local least-recently-used
+index limited to 256 entries apart from the active material's own working set. Cache entries are
+evicted before allocation to respect both residency limits and available GPU texture-pool credit;
+the material currently being recorded stays pinned. Texture channel, color space, affine, fallback
+and composite inputs must agree. UDIM atlases remain material-specific because their reachable tile
+sets can differ, and entering a volume batch clears the reuse index. Draw order, texture resolution
+and allocation budgets do not change; completion, cancellation and failure release the frame cache.
+Streaming built-in Preview Surface/MDL materials store eligible promoted RGB diffuse,
+emission and normal maps losslessly as an RGBA8 index mip chain plus an `R32Float` value table. The base
+level indexes up to 256 **bit-distinct float32 values per channel**, discovered after native
+decode, row flip and CPU affine processing; no GPU UNorm-to-float affine is substituted.
+Every lower mip indexes the original CPU-generated float32 texel: ordinary component
+averaging for diffuse/emission, and the unchanged averaging/renormalization for normals. All levels
+retain their original dimensions. The original nearest sampler selects the index texel
+and mip together, including mip ties, wrapping and clamping; the shader uses integer
+`Load` operations to recover the exact stored components. There is no LOD query, mip
+selection approximation, float16 conversion, octahedral encoding or regenerated GPU mip.
+
+The base-normal, detail-normal, diffuse and emission tables have dedicated, additive private sampled-texture
+bindings (37/38/39/40, D3D12 `t20`/`t21`/`t22`/`t23`, Metal texture indices 20/21/22/23), appended after existing
+material slots. They require no extra samplers and never occupy authored roughness or
+metallic bindings. Vulkan uses the renderer-neutral binding numbers directly. Projected
+shader cache identities are versioned so old persisted layouts cannot omit these slots.
+Only unused alpha is omitted from value tables: three scalar float32 loads reconstruct each
+RGB tuple without arithmetic on its components. A table row contains three times the
+clamped tuple width. Compact RGB color admits an indexed table only when its width differs
+from the primary texture's width; otherwise it retains exact `Rg32Float` plus `R32Float`
+split planes with equal widths. This is an explicit integer-dimension storage discriminator,
+not a LOD query. Small/complex palettes and unsupported table extents retain that split
+fallback; normals retain full RGBA32F with an unused-alpha sentinel. Only RGB-component
+color inputs are eligible: RGBA and authored-composite inputs keep their original representation
+and alpha semantics. Runtime-generated and UDIM color inputs are not changed.
+Index and value
+textures share admission, cache identity, eviction and failure/cancellation ownership.
+One indexed 4096-square RGB chain occupies **156,620,116 bytes**; three occupy
+**469,860,348 bytes**, within the unchanged 512 MiB pool before other live textures.
+Keeping unused float alpha would exceed that pool for the three-indexed-map class.
+This is logical texture
+payload accounting, not a claim about driver allocation overhead or total process RAM.
+The complete warehouse `opaque__rubber__matte_black_a_warehouse_a` source also authors a
+4096-square roughness map (`t_metal_scratches_a_roughtnes.png`). Its unchanged scalar mip
+chain adds 22,369,621 bytes, giving **425,088,337 material bytes** with both indexed
+normals. The painted-white concrete projection has **five** maps, not three: HDR
+diffuse, ORM roughness, ORM metallic, HDR base normal and a byte-valued detail normal.
+It occupies **447,457,958 bytes**. Gated single-quad hardware-D3D12 conformance tests
+read their complete original 4096-square assets without cropping or resizing, check exact allocation/upload totals,
+nonblank finite HDR, exact replayed HDR/depth and complete ownership release under
+512 MiB CPU/texture/staging pools. Scaled D3D12/Vulkan tests retain the independent
+full-float pixel/depth reference and exact admission/failure/cancellation checks.
+The native inventory gate traverses composed material prims but synchronizes only
+individual material references on a synthetic quad, never warehouse geometry. Its
+conservative storage-class report must be inspected before another full-root render.
+Full-resolution ceiling and street lamps occupy **380,316,326 bytes**; wall lamps occupy
+**447,457,958 bytes**, with every authored map retained.
+
+UDIM all-tile bounds are not actual allocation failures. Separate bounded subtree qualifications
+retain each referenced book's real mesh UVs, indices and resolved material bindings. Production
+reachability selects tile 1002 for cardboard, 1001 for fabric, and 1001/1003/1004 for paper.
+Independent double-precision triangle/tile clipping verifies that no required tile is omitted.
+Existing constant-channel compaction keeps all selected metallic tile identities while replacing
+their constant pixels with 1x1 tile payloads. Cardboard/fabric occupy **151,179,345 bytes** each,
+and paper **453,464,235 bytes**, including atlas metadata/gutters. These measured bounds replace
+the twelve conservative book bounds only after all four referenced owners pass; no full-warehouse
+geometry sync or rendering is implied.
+
+In streaming mode, a triangle batch proven entirely outside the current clip volume does not
+decode its material maps or issue a color draw. All source meshes, GPU geometry and source-body
+bindings remain retained; shadows and selection retain their independent passes. The test uses
+cached local bounds and the actual uploaded transform, including physics overrides, with a
+conservative numerical margin. Touching/intersecting bounds, displaced or GPU-deformed geometry,
+volumes, curves and points retain the normal draw path. Non-streaming behavior is unchanged.
+
+Byte-image affine transforms and non-normal byte mip generation use bounded lookup tables
+without changing the original floating-point operation order, rounding or clamping. Float-image
+and normal-vector filtering retain their existing behavior. Native eight-bit sRGB decoding
+likewise computes its 256 possible quantized channel values once, preserving the original
+double-precision transfer function and leaving alpha unchanged.
+
 Use this guide to trace renderer-neutral state through Storm or the hdSilk command-page path, then
 find the backend selection, fallback, picking, presentation, and platform evidence details.
 
@@ -46,14 +137,50 @@ without `openusd_silk_session_sync_with_mesh_preparation` fail explicitly, rathe
 without enforcing the requested limit.
 
 This profile reserves conservative logical numeric-buffer charges before hdSilk triangulates,
-converts or expands mesh data. `OpenUsdSilkPage.MeshPreparationUsage` reports the configured,
-retained and peak concurrent reservations after a successful sync. Shared prototype/record
-owners count once; old/new preparation generations overlap until completion or recovery.
+converts or expands mesh, point-Rprim and supported linear-curve data. `OpenUsdSilkPage.MeshPreparationUsage`
+reports the configured, retained and peak concurrent reservations after a successful sync.
+Shared prototype/record owners count once; old/new preparation generations overlap until completion or recovery.
 Unsupported geometry/profile choices fail the entire request, and a refused update publishes
 no page. Previously copied pages remain valid.
 
-Version 1 is restricted to Low-complexity, SmoothShaded mesh Rprims without Skel/external
-computations or volumes. Its numeric buffer metric excludes source/SDK materialization,
+Managed retention copies each published point-origin and corner-edge table once,
+then transfers those owned arrays into the immutable mesh. Lightweight instances
+and simulated-position updates share the unchanged tables. Caller-supplied table
+initializers still copy defensively, and retained data never aliases the source
+wire bytes. This avoids redundant allocation without changing identity or topology.
+
+Page ABI 27 also carries regular detail-normal maps independently of the primary
+normal and emission composite. `DetailUvRow0`/`DetailUvRow1` transform the existing
+coordinate stream for the detail sample; its tangent orientation is applied before
+per-fragment RNM. The checked surface block was 272 bytes at that ABI; page ABI 30 grows it to
+304 bytes. Normal-only bindings reuse registers absent from those permutations, without adding a
+sampled-volume collision.
+
+Version 1 admits Low-complexity, SmoothShaded meshes, point Rprims and linear basis curves
+with segmented, nonperiodic, periodic or pinned wraps. It refuses Skel/external computations,
+cubic or unsupported curves and volumes. Point Rprims reserve 48 logical bytes per source
+point; this does not change their one-pixel rendering or add authored-width support.
+Mesh points resolve from UsdSkel deformation, computed primvars, then authored points.
+If all sources are unresolved or wrongly typed, an unbounded sync warns and removes
+the mesh and its instances. Bounded preparation refuses the sync and retains the previous
+record. A typed empty array removes the mesh in either mode; a later valid edit restores
+the mesh, including refinement and supported attribute edits made while points were absent.
+A nonempty array that cannot cover the emitted triangles removes the mesh in an unbounded
+session and is refused by bounded preparation. If face counts are invalid or require more
+indices than supplied, an unbounded sync warns and removes the mesh and its instances
+before triangulation. Bounded preparation refuses that topology when points are nonempty;
+a typed empty array still removes the mesh in either mode. The invalid topology remains
+excluded from attribute and subdivision refresh until valid topology returns. In the
+unrefined path, indices in skipped holes, degenerate faces and trailing topology data do
+not invalidate emitted triangles. An active subdivision refiner requires its complete
+control-point array, including points used only by hole faces. Unreferenced trailing
+points remain valid for unexpanded meshes; changing their count advances pick topology
+and rechecks vertex attributes.
+For point Rprims, an unresolved or wrongly typed points value removes published geometry
+and emits a native warning in an unbounded session. Bounded preparation refuses the sync
+and retains the previous record. A typed empty array removes the points in either mode;
+a later valid edit republishes them.
+The numeric buffer metric excludes source/SDK materialization,
 allocator capacity/overhead, material/instance metadata, pages, texture caches and GPU storage.
 It is not a total-process memory guarantee. The exact charge formula and ownership contract
 are in [the native hdSilk guide](../native/hdSilk/README.md#optional-mesh-preparation-admission).
@@ -69,6 +196,13 @@ owned pages remain valid. Changing only this ceiling leaves unchanged geometry r
 the same ceiling before allocation. Older libraries that only implement preparation
 version 1 reject version 2 explicitly; the usage output stays version 1. Legacy and
 three-argument calls do not inherit a prior request's page ceiling.
+
+For valid triangle payloads whose presentation leaves topology unchanged, page
+construction now measures the remaining mesh commands and retirements before
+copying large point arrays or growing their serialized payload. Refusals report
+the aggregate additional bytes rather than only the next scalar write.
+Invalid records retain the existing per-path diagnostic behavior; other
+presentation/topology paths retain incremental bounded writing.
 
 This additional limit is not total process memory or a global live-page budget.
 Vector reallocation can overlap old/new native byte buffers, and native/managed buffers
@@ -97,7 +231,41 @@ Successful captures report effective ceilings as an informational
 new distinct job diagnostic per frame. Choose limits from measurements and retain external
 host-memory safeguards; this does not prove that a complete warehouse fits.
 
+### File-backed command updates
+
+To avoid one managed array for a multi-gigabyte update, pass `SilkCommandStorageLimits`
+as the third `SilkPreparationLimits` constructor argument. Viewer and MCP accept the
+same opt-in policy through all four positive decimal environment variables:
+`OPENUSD_SILK_STORAGE_LIVE_BYTES`, `OPENUSD_SILK_STORAGE_UPDATE_BYTES`,
+`OPENUSD_SILK_STORAGE_COMMAND_BYTES` and `OPENUSD_SILK_STORAGE_TRANSFER_BYTES`.
+The existing mesh/page pair is required. Update bytes cannot exceed live-file bytes;
+commands must fit both the update and page ceilings and Int32; the transfer buffer
+must fit the command ceiling. Missing or inconsistent settings fail explicitly.
+
+Private delete-on-close files hold complete immutable updates. A per-session pool
+counts all live serialized file bytes, including rejected-frame replay. Native flush
+precedes publication. The managed reader transfers buffered chunks rather than invoking
+native code per mesh, and preflight/application retain one transactional frame.
+Read, allocation and GPU-preparation failures preserve exact ordered replay.
+Successful capture releases its file reference rather than accumulating files per frame.
+This is not a global pool across sessions or a limit on filesystem cache, retained
+CPU geometry, GPU heaps or total process memory.
+
+Default sessions keep their contiguous page behavior. With storage enabled,
+`OpenUsdSilkPage.SerializedByteLength` reports the 64-bit extent; the existing Int32
+`ByteLength` getter throws if it cannot represent it. Public command views remain
+managed-owned and survive enumeration advancement. Copies of public enumerators hold
+their shared reader until collection; the renderer's private enumeration has deterministic
+release and reuses its admitted command buffer.
+
 ### Shared GPU buffer payload admission
+
+Descriptor bookkeeping is submission-owned rather than allocated per mesh draw:
+D3D12 reuses exact texture/sampler tables in bounded heap pages, while Vulkan groups
+draw descriptor sets into 256-set pools per layout. Distinct per-draw storage/uniform
+bindings remain independent, and completion/failure cleanup releases the submission's
+pages or pools. Descriptor and driver overhead are still outside logical buffer-byte
+admission; retain process-level safeguards for large scenes.
 
 `SilkGpuBufferBudget` is an opt-in, immutable ceiling on **logical buffer payload bytes**
 requested through the built-in RHI `CreateBuffer` methods. Configure it on the device
@@ -115,6 +283,42 @@ The page-preparation transaction and ordered retry described below preserve prio
 and retirements until enough capacity is released. A failed native teardown does not
 return unproven capacity.
 
+GPU buffer and texture owners retain pending cleanup after native destruction or reservation
+release fails. A concurrent or reentrant public `Dispose` returns while another release attempt
+owns the resource. A later `Dispose` or submission-lease release retries the remaining work;
+completed native destruction is not repeated. Graphics and compute programs and submission
+owners retain failed and unvisited leases until their release succeeds.
+
+D3D12 device disposal retires retained records after an idle wait succeeds or terminal device
+removal is confirmed. Failed records and their native/API owner remain intact; new resource or
+command-list creation, submission and public idle waits are rejected. A later serialized
+`Dispose` retries the remaining records without another idle wait. A nonterminal wait error
+occurs before teardown and restores ordinary device use. Only after all records retire does
+terminal device teardown proceed; errors in that final phase remain terminal. Concurrent and
+reentrant `Dispose` calls do not start a second retirement attempt. Confirmed device-removal
+diagnostics retain the original reason and wait exception across retries.
+
+D3D12 and Vulkan submissions retain command resources, staging allocations and resource
+leases when a fence wait cannot establish completion. If disposal cannot establish
+completion, the device retains the submission record until a successful idle wait or
+confirmed device loss permits retirement. Once a wait or poll establishes completion, a later
+device loss does not change the submission result, though unread pick data may be invalidated.
+If loss occurs before completion is established, later waits and polls report the loss.
+D3D12 readbacks first attempt a recovery drain
+after a signal or fence failure; an inconclusive drain leaves the source lease and staging
+with the device. Failed cleanup remains queued for retry without repeating completed releases.
+
+After a readback is submitted, D3D12 records the new texture state and Vulkan records the
+image layout before waiting. A submission or fence failure reports the error without returning
+pixels; a subsequent readback uses the submitted state. Vulkan pick readback also retains its
+slot when fence completion cannot be established. Vulkan descriptor-set release checks the
+native result before its submission record discards the descriptor.
+
+D3D12 WARP and Vulkan SwiftShader retirement cases inject wait, signal, allocation and cleanup
+failures. The test queues are drained or submission is bypassed before an injected completion
+or device-loss failure reaches the caller. These cases do not establish resource safety under
+physical device loss or unfinished GPU work on a hardware driver.
+
 This is **not physical VRAM or total memory admission**. Textures, backend-internal
 upload/readback staging, descriptor heaps, alignment/driver overhead, and native/managed
 source arrays remain outside this first GPU metric. Existing texture residency limits
@@ -126,8 +330,19 @@ into the final owned RGBA32F byte buffer, without a full-size intermediate manag
 float array, and the existing 256-cell UDIM atlas extent limit is checked before any
 tile is decoded. Accepted UDIM layouts and the existing invalid-layout diagnostic and
 authored fallback are unchanged. These safeguards do not bound native codec scratch,
-decoded/mip/atlas overlap, texture residency or backend-internal staging; aggregate
-texture/decode/staging admission remains separate work.
+decoded/mip/atlas overlap, texture residency or backend-internal staging. The independent
+texture-preparation pools below cover those logical ownership domains, not total process memory.
+
+D3D12 packs CPU-writable uniform buffers of up to 4 KiB into 64-KiB committed pages
+at 256-byte boundaries, including uniforms also exposed as read-only structured data.
+Each logical buffer retains its own size, bounds checks and admission reservation.
+Vertex/index-only, larger uniform and GPU-writable storage buffers remain dedicated.
+Binding and readback use the range's GPU address/offset, not the page base. A range
+cannot be reused until its last buffer/submission lease releases; reused ranges and
+padding are zeroed, and empty pages are released rather than retained indefinitely.
+The pool uses ordinary or GPU-local upload heaps according to the device's explicit
+policy. This removes the 64-KiB-per-tiny-buffer commitment without changing the logical
+buffer-byte metric or weakening frame publication.
 
 Viewer and MCP accept `OPENUSD_SILK_GPU_BUFFER_BYTES` as a positive invariant decimal
 byte count; unset preserves unbounded RHI buffer defaults, and malformed values fail
@@ -142,6 +357,67 @@ Successful captures report stable `HDSILK_GPU_BUFFER_ADMISSION` information; var
 usage stays on the budget snapshot rather than creating distinct diagnostics per frame.
 Admission reporting remains within the disk-job diagnostic limit and names any omitted
 renderer diagnostics explicitly.
+
+### Optional D3D12 GPU-local upload heaps
+
+`D3D12SilkGraphicsDevice.Create(useWarp: false, useGpuUploadHeaps: true)` explicitly
+places buffers marked `SilkBufferUsage.Upload` in `D3D12_HEAP_TYPE_GPU_UPLOAD`.
+The original overload and default remain unchanged. A hardware adapter must report
+Options16 GPU-upload support; WARP and unsupported runtimes/adapters are refused
+instead of silently falling back to system-memory upload heaps. `UsesGpuUploadHeaps`
+reports the chosen policy.
+
+CPU writes, buffer contents, draw bindings, readback and logical buffer reservations
+retain their existing contracts. GPU-only storage buffers still use DEFAULT heaps;
+backend-internal texture staging still uses its separately bounded upload storage.
+Viewer/MCP expose the explicit `OPENUSD_D3D12_GPU_UPLOAD_HEAPS=true|false` setting,
+off by default. Hosts require a GPU-buffer budget; MCP also requires hardware selection
+with `OPENUSD_MCP_USE_WARP=false`. `ViewerHostOptions.D3D12GpuUploadHeaps` can override
+the environment. The policy reaches isolated captures and child Viewers, whose ambient
+flag is removed before the effective value is installed. Other backends and legacy
+injected factories cannot silently bypass an enabled requirement.
+
+On the qualified RTX 5070, an identical 128-MiB write adds about 128 MiB to the
+process working set with an ordinary upload heap, versus about 160 KiB with a
+GPU-upload heap. DXGI records the allocation in nonlocal versus local memory,
+respectively. **Private commit still rises by roughly 128 MiB in both cases**:
+the option reduces observed host-resident pressure, not the logical buffer quota
+or process-commit charge. Device-local VRAM availability remains a separate constraint.
+Hardware controls verify the actual heap, exact bytes and quota boundary, unchanged
+color/depth pixels, and required package-only NativeAOT execution.
+An actual MCP hardware sequence additionally preserves three distinct authored times,
+raw HDR/depth output and complete reservation drainage with the policy enabled.
+
+### Shared texture-preparation policies in Viewer and MCP
+
+`SilkTexturePreparationBudgets` groups existing CPU texture, owned GPU texture and GPU
+staging pools without merging their metrics or selecting default ceilings. At least one
+pool must be configured. Reuse the same policy object across devices or embedding hosts
+to aggregate their ownership within a process. Configure it before resource construction;
+unsupported devices and late or replacement policies fail explicitly.
+
+Viewer and MCP accept three independent positive invariant decimal byte ceilings:
+`OPENUSD_SILK_CPU_TEXTURE_BYTES`, `OPENUSD_SILK_GPU_TEXTURE_BYTES` and
+`OPENUSD_SILK_GPU_STAGING_BYTES`. An unset domain stays unbounded; an empty, zero,
+malformed or overflowing value fails startup. These settings are independent of the
+existing buffer pool and native session/page ceilings.
+
+Embedding hosts can set `ViewerHostOptions.TexturePreparationBudgets`; an explicit
+object replaces the entire environment texture policy, including its unconfigured
+domains. `PreviewSilkFrameSourceFactory.TexturePreparationBudgets` provides the same
+interface for preview/sequence/product factories. Viewer viewport and isolated product
+renderers use the same configured device pools, including Vulkan and Metal composition
+device initialization. Storm cannot enforce these policies and is unavailable while
+any is configured. Captures report the stable per-domain admission diagnostics.
+
+Child Viewers receive only the effective maximum values. Their pools are independent;
+parent reservations are neither borrowed nor multiplied into a claimed cross-process
+limit. Ambient limits are removed from the child environment before effective values
+are installed. A caller must budget simultaneous child processes separately.
+
+These options do not bound source/SDK/geometry memory, detached capture arrays, native
+codec/OCIO scratch, imported presentation images, allocation alignment or driver overhead.
+They are not an OS-enforced memory cap or a complete-warehouse admission guarantee.
 
 ### Owned GPU texture payload admission
 
@@ -160,10 +436,9 @@ when the underlying device is configured.
 
 This metric excludes imported images, decoded CPU pixels, mip/atlas construction,
 upload/readback staging, descriptors, alignment and driver overhead. It is not physical
-VRAM or complete scene admission. This low-level policy is not yet exposed through
-Viewer/MCP startup options: environment, shadow and complete frame preparation still
-need publication coordination before advertising whole-host failure atomicity. Existing
-host buffer ceilings do not implicitly configure this separate texture pool.
+VRAM or complete scene admission. Viewer/MCP expose it through the opt-in shared
+texture-preparation policy above. Existing host buffer ceilings do not implicitly
+configure this separate texture pool.
 
 ### Backend staging payload admission
 
@@ -171,8 +446,9 @@ host buffer ceilings do not implicitly configure this separate texture pool.
 buffers and retained picking transfer storage. It counts the native transfer payload,
 including row, mip-offset and slice padding. Charges remain with pending creation,
 in-flight upload buffers and persistent picking/readback owners until native release.
-Failed upload preparation returns every charge acquired before submission; an unresolved
-D3D12 readback retained for later teardown retains its charge too.
+Failed upload preparation returns every charge acquired before submission. A submitted D3D12
+or Vulkan readback retains its charge while completion remains unresolved, until native and
+reservation release complete.
 
 The staging pool does not charge public `CreateBuffer` payloads or GPU texture storage
 again. It also does not cover CPU command-data copies, decoded images, native
@@ -180,10 +456,17 @@ memory-allocation alignment or driver overhead. Vulkan's internal
 host-visible picking uniform buffers belong to this pool. Metal shared textures can be
 read directly without allocating a staging buffer and therefore incur no fictitious
 readback charge. Unsupported devices and late/replacement configuration fail explicitly.
-This policy remains low-level until complete render preparation/publication is coordinated;
-it does not by itself promise that a refused frame leaves every prior scene cache intact.
+The admitted renderer coordinates this policy with the frame-publication transaction
+below; configuring the pool on a standalone RHI device does not itself create that transaction.
 
 ### Managed material-pixel admission and atomic preparation
+
+Texture wrap and color-space text is preserved whether Hydra supplies tokens or strings.
+An explicit non-auto `sourceColorSpace` wins; otherwise hdSilk reads the asset's
+`colorSpace:file` metadata before falling back to automatic decode behavior.
+Normal-map shading follows the material UV affine's tangent basis, including mirrored
+handedness, in both object and world space. Generated vertex tangents preserve the
+authored UV orientation rather than forcing every bitangent sign positive.
 
 Configure `SilkCpuTextureBudget` on a built-in device before constructing scene resources
 or recording texture copies. Alternatively pass it with `SilkTextureResidencyOptions`
@@ -195,12 +478,70 @@ without another managed transfer array or duplicate CPU charge. Native decode va
 dimensions still match the admitted destination. Raw volume reads require the declared
 length before allocating and reject an inconsistent stream.
 
+The Ptex face decoder captures encoded bytes once before discovering a sampling
+neighborhood, then uses that snapshot for sizing and pixel decode. A per-source limit
+admits the encoded length before allocation; when a CPU texture budget is supplied,
+the encoded and decoded bytes are charged together while their owners overlap.
+Replacing the path after capture does not change the snapshot. Capture does not promise
+an atomic file version against a simultaneous same-length in-place writer. Ptex's
+internal cache and codec allocations are not covered by these managed limits.
+For supported mapped surface inputs, the renderer uses the snapshot to build a face
+atlas and derives texture coordinates for each triangle corner without changing retained
+mesh topology. Each material can sample at most one Ptex surface input. Additional inputs use
+their authored texture fallback and report `OPENUSD_SILK_TEXTURE_PTEX_UNSUPPORTED`. A retained
+input with an unusable mapping or source format uses its published fallback and reports a
+diagnostic. Unsupported material inputs are not sampled; native translation rejects Ptex
+displacement and leaves the material undisplaced. Admission failures propagate instead of
+selecting a fallback.
+Backend pixel and lifecycle qualification of this path remains pending.
+
 Image ownership transfers to the retained cache; cache disposal returns its logical
 charge. Command-copy disposal returns only the CPU copy charge: the native staging
 buffer remains separately charged while its submission owns it. `Usage` is a snapshot
 of owned payload bytes, not GC heap residency. `SilkCpuTextureBudgetExceededException`
 propagates rather than selecting a missing-texture fallback. Captures include
 `HDSILK_CPU_TEXTURE_ADMISSION` when configured.
+
+Material texture scale/bias that can leave `[0,1]` requests RGBA32F from the native
+decoder before applying the affine. In particular, sRGB is not first linearized
+into eight-bit pixels and then promoted: that would permanently quantize dim values
+before a bright tint or emission multiplier. Standalone/default byte decoding is
+unchanged. A custom decoder returning RGBA8 still uses the owned promotion path.
+This preserves extended diffuse tints and signed normal
+strength/flip values without clipping; unit-range affines keep byte storage.
+Promotion reserves its float output while the original byte image remains owned,
+and subsequent row scratch, mip output, UDIM atlas and command copies retain their
+own overlapping charges. Fallback pixels use the same storage decision and still
+report the original texture failure. GPU texture and staging pools charge the actual
+float-format payload, not its smaller encoded source.
+
+The native eight-bit decoder reads tightly packed source channels into the caller's
+already-sized RGBA destination, then expands backwards in place. Each source pixel
+is saved before overlapping writes, preserving grayscale, grayscale-alpha, RGB and
+RGBA values and the existing sRGB conversion. This removes the bridge's duplicate
+full-image source vector; Hio/codec scratch remains outside the managed pixel pool.
+Sizing and undersized-buffer calls still write no pixel data, and the data/image ABIs
+are unchanged.
+
+Page ABI 26 adds the scalar-only `OmniPbrSpecularLevel`. For an SDK-proven OmniPBR
+profile, the dielectric Fresnel curve is `level * (0.08 + 0.92 * (1 - cosTheta)^5)`;
+the diffuse lobe receives its complement. The metallic layer is mixed independently,
+so metalness does not multiply that dielectric complement a second time. Both direct
+lighting and the split-sum environment path use the weighted normal/grazing endpoints.
+The accepted weight range is finite `[0,1]`; other authored weights remain explicitly
+unsupported rather than clamped. Default OmniPBR level `0.5` differs from a plain
+IOR-1.5 PreviewSurface at grazing angles. Materials without this scalar retain the
+existing PreviewSurface path, and unproven MDL bodies do not receive this profile.
+The constant occupies reserved surface slots without widening the 240-byte block.
+
+Page ABI 25 introduced `DiffuseTextureLuminanceMix`, a four-component scalar containing
+normalized nonnegative RGB luminance weights and a finite amount. It mixes
+linear diffuse texture RGB toward luminance before the texture's scale/bias, without
+altering alpha, constant diffuse color or other texture slots. Amounts outside
+`[0,1]` extrapolate without clipping, including authored saturation. Active mixing
+uses the same admitted float promotion for ordinary images, UDIM tiles and fallback.
+Malformed/duplicate records are refused before scene publication. Material-only
+mix changes invalidate the retained texture and use the existing rollback journal.
 
 With any material CPU/texture/staging admission enabled, page application stages
 ordinary/UDIM/volume material textures and their uploads before publishing the mesh
@@ -239,22 +580,182 @@ candidate instead of overwriting the current atlas. Failed allocation/submission
 the prior shadow binding and pixels. Same-size updates reuse two charged atlas slots;
 resolution changes retire the old size only after successful replacement. Shadow-instance
 buffer growth also allocates and writes its candidate before releasing the prior buffer.
-The renderer admits atlas/stand-in/sampler capacity before publishing a page, so texture
-quota refusal can still roll back CPU state and pending mesh retirements. Shadow raster
-work and caster batching remain later steps; atlas-capacity admission is not whole-frame
-publication.
+Under admission, color and shadow instance-table updates also use separate candidate
+buffers when capacity already fits. A partial write cannot corrupt the published table.
+Each table reuses at most two successful buffer slots, both charged, and unchanged tables
+skip writes. Growth admits old/candidate overlap before releasing the obsolete spare.
+These swaps protect each table update; they do not yet roll back all table updates when
+a later frame submission fails.
+Page preparation now uses the same material/culling/link batch key and ordering as
+rendering to admit both color-table slots before publishing new instances. It also
+admits the maximum eligible caster count across the page's shadow descriptors.
+Capacity candidates commit with the CPU/GPU page; a refused later geometry releases
+all earlier candidates. Ordered replay retains the original batching options.
+Changing rendering options after publication may still require new capacity, and
+this preflight does not promise success of later uploads, raster work or submission.
+The renderer admits atlas/stand-in/sampler capacity and completes changed shadow raster
+submissions before publishing an admitted page. Casters use the prospective scene's
+transforms, membership and materials, including unpublished GPU deformation vertices.
+The candidate atlas and its binding publish with the CPU/GPU page only after every
+light completes. Refusal on a later light preserves the prior atlas and scene. Retained
+renders without a page still use the shadow cache's independent transaction. This does
+not yet coordinate the final color/output submission.
 
 Frame-buffer creation and per-material/link-mask surface-constant creation are likewise
 prepared before page commit under admission. A changed surface allocates and writes its
 replacement before retiring the published block. Failed preparation restores old constant
 buffers and masks. Render target dimensions and render options are checked before sync
 or page application rather than after publishing the rejected input.
+Changed mesh and frame uniform blocks also use two reusable charged buffers under
+admission; partial candidate writes leave the published block untouched. Mesh/frame
+identity markers advance only after successful writes, so a refusal cannot suppress
+the next retry. Renderer page preparation reserves the frame and per-mesh uniform
+spares before commit; later writes can reuse them even when no buffer-pool credit
+remains. Low-level scene-resource callers retain on-demand allocation. These per-block
+guarantees do not yet journal every uniform swap with the final frame submission.
+With admission enabled, renderer page preparation dispatches changed GPU deformation
+poses into unpublished vertex buffers using the pending pose inputs. The page publishes
+the pose and vertices together only after the dispatch completes; a dispatch or later
+capacity refusal retains the previous vertex buffer and rendered pose. Two charged
+vertex slots are reused across animation, and dispatch-generation tracking prevents a
+freshly prepared pose from being dispatched again by the color/shadow frame.
 
-This is not complete process-memory or whole-frame admission. Native Hio/codec scratch,
+Admitted display-transform preparation stages changed lattice textures, intermediate
+targets, parameter blocks, pipelines and bindings without modifying published resources.
+Same-size lattice edits upload a separate candidate. A refused upload, binding or
+allocation leaves the previous transform drawable; unchanged requests reuse the
+published resources. Device-generation changes still invalidate the old generation.
+Render and capture entry points include this display preparation in the page journal:
+a refused display update cannot publish the CPU/GPU scene, and a later mesh or shadow
+failure restores the previous display resources. Ordered page replay preserves the
+target dimensions/format without holding a caller-owned target texture. Under admission,
+the journals remain open through color rendering and final color/depth publication.
+After an admitted page publishes a display request, retained rendering of that same
+request/target/exposure reuses its published lattice. A config edit rejected by page
+preparation cannot silently replace the old display outside the journal; the next
+page performs its reload. Explicit display-setting/target changes and standalone passes
+without renderer-page publication retain their own preparation behavior.
+The same preflight resolves distinct mesh/volume/material pipelines for the actual
+linear or display target format. A pipeline creation refusal therefore leaves the
+page unpublished rather than first failing during color command recording.
+Selection-overlay resource changes under admission likewise prepare the replacement
+pipeline, mask, parameters and binding before retiring the usable overlay. Refused
+format or style changes can redraw the previous settings without another allocation.
+Vulkan selection bindings own their compatible descriptor layout rather than relying
+on a device-wide last-created pipeline; disposing a candidate pipeline cannot break
+binding creation for another live renderer. Render entry points stage these overlay
+resources together with selection geometry before page commit. Targetless replay of
+a rejected frame admits temporary color and depth targets matching the saved descriptors,
+without retaining the caller's textures, and completes rendering/publication before
+another native page may advance. Preparation-only page replay retains its narrower
+depth-target requirement.
+Mask pipeline variants for the selected topology, vertex layout, subprimitive stage
+and visible/x-ray passes are also prepared before commit. A later preparation refusal
+restores the prior overlay, except after device loss: resources from that generation
+are retired rather than restored. Captures that intentionally omit selection do not
+eagerly prepare the overlay, including when replayed by a later viewport render.
+Admitted frame rendering separately journals mesh, frame and color-instance uniform
+publication until the color and output-copy submissions complete. A refused recording/submission
+restores the previous buffers, cached bytes and revision markers; newly allocated
+candidates release their reservations, and retry rewrites the complete constants.
+Replaced instance spares stay charged until success, and new batch slots disappear
+together on refusal. Repeated writes within a frame cannot overwrite its checkpoint's
+published GPU buffer or CPU byte/mesh tables. Counters continue to include attempted
+uploads. Only changed uniform state is checkpointed, and a changed device generation
+never restores prior-generation buffers. CPU uniform bookkeeping remains separate
+from the texture-pixel pool.
+An explicitly applied page is not undone by a later independent `Render` call.
+Actual device loss remains outside the rollback guarantee.
+Display-transform and selection resource/geometry journals also span final color
+submission, so an exposure or selection change refused at submission can reuse the
+previous binding and parameters rather than requiring another allocation to recover.
+Component-selection replacement retains old scoped index buffers until every new
+face/edge/point draw has been built. Failed allocation/write releases only candidates,
+and switching back to the last resolved selection can reuse it while memory remains
+constrained. Old/new index-buffer overlap remains charged.
+The same index-ownership journal resolves selected components against prospective
+CPU/GPU meshes during admitted page preparation. Index allocation or a later pipeline
+refusal restores the previous selection together with the scene, rather than first
+discovering the missing index capacity after page publication.
+The CPU pixel pool also admits the OCIO RGBA32Float lattice workspace and RGBA8
+output before allocation. Cache entries and published display passes share one output
+charge; eviction, config invalidation and failed preparation cannot release still-published
+pixels. Concurrent duplicate bakes release the unpublished copy. Native OCIO
+processor/config memory remains a separate domain.
+
+This is not complete process-memory or host-wide admission. Native Hio/codec scratch,
 per-point displacement amounts, general source/SDK memory, static lookup tables and remaining
-frame resources are distinct domains. Whole-frame publication and host configuration
-remain pending; these scoped guarantees do not claim that
+frame/capture resources are distinct domains. Host configuration remains pending;
+these scoped guarantees do not claim that
 every later render or device-loss failure is reversible.
+
+### Exact render-target publication copies
+
+D3D12, Vulkan and Metal command lists expose `ISilkTextureCopyGraphicsCommandList`.
+`CopyRenderTarget` records an exact GPU-to-GPU copy of matching single-level 2D color
+or D32 depth attachments, without a shader, filtering, color conversion, host pixel
+copy or staging allocation. It preserves raw RGBA8, binary16/32 HDR and depth values.
+Both targets must belong to the command list's device and carry the appropriate
+render-target usage; sampled-only textures, aliases, mismatched shapes/formats and
+copies inside a render scope are rejected before recording. Submission leases retain
+both native textures and their budget charges through completion.
+
+Admitted rendering uses a reusable renderer-owned color/depth pair. Scene rendering,
+display and selection write this unpublished pair first. Only after that submission
+and requested capture completion succeed does a separate exact-copy submission
+update the caller's color/depth targets. Both targets and old/new resize overlap are
+charged to the texture pool. Unchanged dimensions/format reuse the pair; unsupported
+command lists fail explicitly rather than reverting to unsafe in-place rendering.
+The no-policy path retains its direct rendering behavior.
+
+`SyncAndRender`, `ApplyAndRender` and display-capture page entry points hold their
+CPU/GPU, shadow, instance-capacity, display and selection journals until the copy
+submission completes. Refusal of either rendering or publication restores the previous
+scene and resources while the caller's old output remains untouched. Staged physics
+geometry is reapplied inside the same page journal, including authored-point stashes
+and driven-set/revision rollback. Retained rendering with a staged physics batch
+uses the same transaction without consuming a rejected native page or reloading
+its external texture/environment dependencies.
+Once the final copy has completed, publication is irreversible: a subsequent
+resource-cleanup failure is reported, but the scene remains consistent with the
+already-published output instead of claiming that the old frame was restored.
+Cancelled capture requests roll back before publication; ordered replay retains
+the required output shape but does not retain the cancelled caller's token.
+
+Built-in color/depth/HDR capture readback, built-in or CPU/GPU OCIO conversion and
+the capture selection overlay complete inside the frame transaction. No requested
+plane is dropped to satisfy a quota. Capture replay retains settings, output shape and
+preparation metadata, not caller textures or an owned OCIO processor handle; CPU OCIO
+replay reconstructs a processor from its immutable transform descriptor. Successful
+results retain their detached pixel arrays without another completion-time pixel copy.
+Those result arrays retain the existing per-capture size limits; they are not charged
+as decoded material pixels in the shared texture-pixel pool.
+
+For admitted frames with a queued pick, pick resources and submission are prepared
+before final output publication. A new hit is resolved only after the output copy
+completes. Target allocation, pick submission and publication failures fault the
+request rather than reporting a hit/miss from an unpublished frame. An unsubmitted
+slot is cancelled; a submitted but unpublished slot is discarded. Partial targets
+and candidate targets/pipelines are released. A failed resize restores the old pick
+targets, including when no texture capacity remains for another allocation.
+Other in-flight requests remain owned.
+Vulkan discards the aborted slot's framebuffer and descriptor cache too, so those
+native leases cannot pin failed-frame textures or uniform staging after rollback.
+The failed pick is not automatically replayed as a new user query; scene-page replay
+remains ordered independently.
+
+The GPU page journal separates reversible activation from final commit.
+Activation makes prospective mesh membership/metadata, surface capacity and prepared
+deformation pose/vertices available to a draw without retiring the old ownership.
+Disposal before commit restores the prior membership, metadata, revision, pose and
+vertex handles and releases candidate capacity. Frame-write journals must unwind
+before page activation is undone.
+Prepared shadow atlases likewise support provisional activation: a rejected frame
+can restore the previous atlas/spare, binding, layout and publication revisions,
+while successful completion retires replaced resources. Borrowed spare atlases
+remain owned and charged on rollback; resized candidates release only their own
+ownership. Disabling shadows is staged too, so a failed frame cannot retire the
+previous atlas before scene/output publication succeeds.
 
 ### Native-to-managed page acknowledgement
 
@@ -312,7 +813,7 @@ Aggregate GPU and cross-session admission remain separate work.
 
 ## Authored product preparation
 
-These interfaces are unreleased source additions and require the current matching data ABI 24 shim.
+These interfaces are unreleased source additions and require the current matching data ABI 26 shim.
 The published `0.14.0-alpha` Core runtime provides data ABI 17 and cannot serve this query.
 The storage-admission SDK profile admits resident USD/review values, bounded USDC/crate values,
 and bounded token-array edits before native specification evaluation. Crate admission uses the
@@ -362,12 +863,20 @@ window's bottom-left raster origin, and the effective pixel aspect ratio. The fi
 OpenUSD conform policies preserve off-axis camera offsets. Pixel-center inclusion is minimum
 inclusive and maximum exclusive, so adjacent tiles of an odd-width image do not duplicate a
 boundary pixel. Empty or unrepresentable pixel extents are explicit errors, not clamped output.
+Perspective depth preparation divides the far plane by the clipping depth before multiplication,
+so a finite float projection is not refused because an intermediate double product overflowed.
+`RenderProductRequestTests` covers the multiplication boundary with `double.MaxValue` as the far
+plane and still requires refusal when the resulting depth coefficient exceeds float range.
 
 Native specification aperture metadata describes default time. Preparation uses the actual
 camera sample instead, including animated aperture and parent/world transforms. A detached
 camera/transform overload is also available to hosts that already hold a camera sample.
-Stage-based preparation currently refuses authored extra `clippingPlanes` rather than silently
-dropping geometry clipping that its camera data interface cannot transfer.
+Stage-based preparation reads authored `clippingPlanes` at every camera sample, including
+motion-blur shutter samples, and passes them to the backend as eye-space planes. A plane keeps
+points where `a*x + b*y + c*z + d >= 0`. Under thin-lens depth of field, each lens sample shifts
+`d` by the lens offset so the plane stays fixed in the scene. Preparation refuses more than eight
+planes, a non-finite component and a zero normal; it never drops a plane to fit. The detached
+camera overloads take no planes.
 
 **Preparation is not rendering or output execution.** Variables with unknown sources, including
 LPEs, retain their original declarations; they are never relabeled as beauty. Custom setting names,
@@ -390,25 +899,81 @@ one bounded native property snapshot with complete, typed invariant scalar value
 blocked, missing or incompatible inputs are refused rather than replaced with camera defaults.
 The query admits at most 128 camera properties and 64 KiB of text.
 
+`RenderCameraFrameSettings` composes ISO, exposure time, responsivity, exposure stops and squared
+f-stop without losing a representable scale to an overflowing or underflowing intermediate.
+Ordinary normal intermediates retain the existing arithmetic; other inputs use normalized binary
+significands and a combined exponent before final rounding. A zero ISO, exposure time or
+responsivity produces zero scale even at an extreme finite exposure. A combined scale above
+double range is still refused, and attenuation below the smallest double rounds to zero.
+`RenderProductJobPlanTests` covers these boundaries and preserves the original sampled values.
+This calculation does not enable rendered exposure or relax the non-unit-exposure admission rule.
+
 `RenderProductJobPlan.PrepareAsync` selects an explicit product (or a sole product), copies finite
 time samples, and samples in scheduler batches of at most sixteen. It checks the observed stage
 revision before and after each batch. The caller must continue excluding or detecting writers
 through actual rendering; preparation alone is not a lifetime or revision guarantee for a later job.
 
-The initial profile deliberately accepts only raw `half4` / `color` and `float` / `depth`
-variables, one per plane, with one material-binding purpose and standard scene-purpose tokens.
+The profile accepts only raw `half4` / `color`, `float` / `depth`, `int` / `primId`,
+`int` / `instanceId`, `int` / `elementId` and `normal3f` / `normal` variables, one per plane, with
+one named material-binding purpose and standard scene-purpose tokens.
+Trailing allPurpose (`""`) entries after the named purpose are accepted, because UsdShade
+resolution of a named purpose already falls back to the allPurpose binding. The unauthored
+fallback `["full", ""]` therefore runs as `full`, and `["preview", ""]` as `preview`. A list
+that starts with `""` or names a second purpose, such as `["full", "preview"]`, is refused:
+hdSilk ingestion resolves one purpose, not an ordered list.
 Depth is normalized device depth, not metric camera distance. Named rendering color spaces,
-unevaluated settings, other source/data types, non-unit camera exposure and active motion-blur
-or depth-of-field requirements are not silently approximated. These remain incomplete portions
+unevaluated settings and other source/data types are not
+silently approximated. Authored camera exposure is applied: each frame
+multiplies HDR color by `LinearExposureScale` and adds its log2 stops to the companion's display
+exposure, so the raw plane and PNG agree. A zero scale is refused at planning; a binary16
+overflow fails the job before publication. These remain incomplete portions
 of the larger authored-render milestone.
+
+Motion blur is rendered by temporal accumulation. When the product leaves `disableMotionBlur`
+false and the camera's shutter interval is open, `PrepareExecutionFrame` samples the camera at
+eight stratified sub-interval centers, `frame + open + (close - open) * (i + 0.5) / 8`, and
+exposes them as `RenderPreparedFrame.AccumulationSamples`. Geometry follows each sample's time code.
+A sample whose raster or data window differs from the frame's is refused, as is a zero-length or
+inverted interval. The job renders every sample with the frame's settings and stores box-filter
+means: HDR color averages the binary16 samples in single precision before camera exposure, and
+the PNG companion averages display-encoded RGBA8 with round-half-up. The PNG is therefore a mean
+of displayed images, not a display transform of the HDR mean. Accumulation refuses normalized
+device depth, which has no defined averaged value, and simulation-backed sources. Its working
+set is about 24 bytes per pixel, so the output raster is limited to 4096 × 4096 pixels.
+Explicit-matrix frames carry no samples and remain refused with an open shutter.
+
+Depth of field is rendered by the same accumulation, using a thin-lens camera. It is active when
+the product leaves `disableDepthOfField` false and the sampled `fStop` is nonzero. A rasterizer
+renders through a pinhole, so a sharp image cannot show defocus without moving the eye.
+`PrepareExecutionFrame` therefore creates sixteen samples. Each sample moves the eye to a stratified
+point on the aperture disk and shears the frustum so the plane at `focusDistance` projects to the
+same pixels in every sample. Points off that plane land on different pixels, and their mean
+is the defocus blur. The 4 × 4 cell centers are mapped to the disk with the Shirley-Chiu
+concentric map. The disk radius is `focalLength × 0.1 / (2 × fStop)` scene units. The 0.1 factor
+converts USD's tenth-of-a-unit focal length, matching Hydra's camera adapter. It assumes the
+stage's linear unit is the scene unit; `metersPerUnit` is not applied. When the shutter is also
+open, sample `i` uses shutter stratum `(5i) mod 16`, so time and lens position are not
+correlated. Depth of field requires a perspective camera and a positive `focusDistance`;
+orthographic cameras and zero focus distances are refused rather than rendered without blur.
+It has the same depth, simulation and 4096 × 4096 limits as motion blur. Each sample's
+`LensOffset` and the manifest's `sampleLensOffsets` record the camera-space eye offsets.
 
 `plan.CreateJob` reuses the existing disk engine and quota policy. A source must explicitly
 implement `IRenderProductFrameSource.ValidateProduct` and honor every admitted filter and setting;
 viewport-only sources are rejected before staging output. A display PNG is an identified
 companion, never a substitute for a requested variable. The manifest retains product selection,
 original name without filename authority, ordered variable/file bindings, sampled optics,
-camera exposure inputs, raster origin and pixel aspect. Raw split planes retain crop/overscan
-metadata; current EXR output refuses windows/aspect that its encoder cannot represent.
+camera exposure inputs, raster origin and pixel aspect. Raw split planes carry crop/overscan
+only in that manifest. EXR color also stores it in the file: the full raster is the display
+window, the crop or overscan is the data window in downward-Y coordinates, and the effective
+pixel aspect is the `pixelAspectRatio` attribute. `CreateJob` refuses an EXR product whose
+pixel aspect lies outside 1/65536..65536 before staging output; raw output has no such limit.
+
+Each `productOutputs` binding includes the actual file `format`: `rgba16float-little-endian`
+for raw HDR color, `openexr-rgba16float` for EXR color, or `float32-little-endian` for depth.
+This identifies the stored container independently of the unchanged authored `dataType`.
+The binding also carries byte extent, SHA-256, row order and value convention; depth remains
+normalized device depth even when color uses EXR.
 
 This admitted profile is wired through shared jobs, MCP and the D3D12/Vulkan Viewer with hdSilk session
 ABI 6. Filter transitions repopulate from current USD data, including hidden geometry edits;
@@ -436,9 +1001,17 @@ The caller owns the source; the engine does not dispose it or mutate a USD stage
 The default hard limits are 4096 frames, 8192 pixels per side, 64 MiB per image and 4 GiB of total
 encoded output, including the manifest. Tighter caller limits are supported. Image dimensions must
 match the request. Filenames are generated from frame indexes, never scene-authored product paths.
-`manifest.json` retains camera matrices/clip planes, time, stage and renderer-state revision,
-display/purpose/draw settings, explicit colour/OCIO settings, bounded selection identity and SHA256.
+`manifest.json` records each frame's `format` (`png-rgba8`), `bytes` and `sha256`. It also retains
+camera matrices/clip planes, time, stage and renderer-state revision, display/purpose/draw settings,
+explicit colour/OCIO settings and bounded selection identity.
+When the frame source reports the backend that rendered a frame, the entry also records a `backend`
+object with its `kind` and `name`. The engine refuses an unknown kind or a name that is longer than 256
+characters or contains control characters, and every shutter sample of an accumulated frame must
+report the same backend. A source that reports no backend leaves the field out.
 The state revision is not mislabeled as an independently observed native stage revision.
+Diagnostics retain distinct severity/code/message records across frames. Only Information,
+Warning and Error severities are accepted; unknown numeric severities refuse the entire job
+before publication, cleaning up owned staging output rather than writing an invalid manifest.
 
 Files are written into a private sibling directory. Only the completed job is moved to its new final
 directory; existing directories are refused, and cancellation/render/encoding/quota failures remove
@@ -449,13 +1022,18 @@ and maintaining their scene/revision authority and renderer lifetime.
 On Windows, publication and staging cleanup tolerate short directory-sharing conflicts with four
 bounded waits totaling 300 ms. Publication remains cancellation-aware and create-only; other errors
 and persistent conflicts still fail. Cleanup drains its bounded sharing retry even after cancellation.
+An owned staging directory already removed by another filesystem actor is treated as cleaned up,
+without replacing the original frame error or cancellation. If rendering and cleanup both fail,
+both errors are preserved in an `AggregateException`; cleanup must not hide the primary cause.
 The production default uses system time. Internal retry-clock injection lets the unit tests advance
 to each 20/40/80/160-ms boundary without sleeping; Windows integration cases retain actual directory
 leases while controlling release, cancellation and destination collisions at those boundaries.
 
 This sequence API is an execution foundation, not implicit support for arbitrary authored
-render variables, arbitrary HDR containers, depth of field, motion blur or scene-supplied RenderPass commands. Product
-adapters must honor or explicitly refuse additional semantics before submitting prepared states.
+render variables, arbitrary HDR containers or scene-supplied RenderPass commands.
+Product motion blur and depth of field are the only accumulations it performs, and only for states
+supplied by an admitted product plan. Product adapters must honor or explicitly refuse additional
+semantics before submitting prepared states.
 
 The additive `includeDeviceDepth` request overload requires a `RenderJobDeviceDepth` plane from
 each source frame. The original request constructor remains color-only. Depth requests charge
@@ -470,6 +1048,62 @@ little-endian data. Each plane has its own byte length and SHA256 in the manifes
 This is the actual visible-pass attachment, nonlinear in perspective, not camera-space distance,
 normals, stable identity or a display-color conversion.
 
+A product `primId` variable (`int`) asks which prim is visible at each pixel. hdSilk answers
+it by running its existing pick pass over the whole raster instead of one pixel, on the same
+retained scene, depth-tested so only the front-most prim wins. Token resolution then maps each
+pixel to its prim. The job writes two files per frame:
+
+- `frame-NNNNNN.prim-id.i32` holds packed top-down little-endian int32 indices, with `-1` for
+  background.
+- `frame-NNNNNN.prim-id.json` maps each index to a prim path and instance index. Indices are
+  dense and sorted by path, then instance index; a non-instanced prim has instance index `-1`.
+
+Indices are local to one frame, so the same number can name different prims in two frames;
+compare paths, not indices. The raw file is written whether color goes to raw HDR or EXR. The
+manifest records both files with their bytes and SHA256 under the `visible-prim-identity-index`
+convention. Requesting the plane raises Silk's managed charge from 20 to 28 bytes per pixel and
+the job's frame accounting by 8 bytes per pixel. A table is limited to 65,536 identities and
+4,096-character paths. A device that cannot run the pick pass is refused, not given synthesized
+identity. The plane is refused with motion blur or depth of field, because an identity cannot be
+averaged across samples. The Viewer and MCP product jobs capture it, and MCP `read_sequence_frame`
+links the raw plane and its table as `primId` and `primIdTable`. Physics recordings refuse it.
+
+A product `instanceId` variable (`int`) records which instance of an instancer is visible at each
+pixel. It comes from the same pick pass and token readback as `primId`, so requesting both still
+runs one pass. Each pixel holds the instance index of the innermost Hydra instancer, which for a
+`PointInstancer` is the authored instance ordinal; background and non-instanced prims are `-1`.
+The job writes `frame-NNNNNN.instance-id.i32` as packed top-down little-endian int32 values, and
+the manifest records it with its bytes and SHA256 under the `innermost-instancer-instance-index`
+convention. Requesting either identity plane charges Silk 28 bytes per pixel and both charge 32;
+the job adds 8 bytes per pixel for the first plane and 4 for the second. The refusals match
+`primId`: non-pick devices, motion blur, depth of field and physics recordings. The Viewer and
+MCP product jobs capture it, and MCP `read_sequence_frame` links it as `instanceId`.
+
+A product `elementId` variable (`int`) records the authored face index of the front-most surface
+at each pixel, matching Hydra's `elementId` AOV. The pick pass already writes one token per
+triangle, and token resolution maps the triangle back to its authored face, so `primId`,
+`instanceId` and `elementId` all come from one pass and one readback. Background, points, curves
+and prims whose face identity hdSilk reports as unsupported are `-1`. A refined subdivision mesh
+reports the coarse authored face, as Hydra picking does. The job writes
+`frame-NNNNNN.element-id.i32` as packed top-down little-endian int32 values under the
+`authored-face-index` convention. Each identity plane after the first adds 4 bytes per pixel to
+Silk's charge and the job's frame accounting. The refusals match `instanceId`, and MCP
+`read_sequence_frame` links it as `elementId`.
+
+A product `normal` variable (`normal3f`) records the world-space unit shading normal of the
+front-most surface at each pixel. Silk draws it in a separate pass with its own checked
+`normal.vertex`/`normal.fragment` program into an RGBA32F target, on the same retained scene and
+camera as color. The value is the interpolated vertex normal, authored or generated from topology;
+normal maps are not applied. Back faces flip the way the mesh shader flips them, and clip planes
+still cut. Background and degenerate normals are `(0, 0, 0)`. The job writes
+`frame-NNNNNN.normal.f32x3` as packed top-down little-endian float32 triples, and the manifest
+records it as `float32x3-little-endian` under the `world-space-unit-normal-float32x3` convention.
+The plane adds 28 bytes per pixel to Silk's managed charge (16 for the readback, 12 for the packed
+output) and the same to the job's frame accounting. Motion blur, depth of field, renderers other
+than the Silk mesh renderer and physics recordings refuse it. D3D12 and Vulkan run it; Metal waits
+for a macOS-built `mesh.metallib` that contains the new program. The Viewer and MCP product jobs
+capture it, and MCP `read_sequence_frame` links it as `normal`.
+
 The additional `includeHdrColor` overload preserves actual pre-display HDR color in generated
 `.hdr.rgba16f` sidecars. `RenderJobHdrColor` borrows tightly packed top-down little-endian RGBA
 binary16 bytes from the source without copying or widening them. Every channel must be finite;
@@ -483,11 +1117,14 @@ color-only and color/depth constructors remain unchanged, and every requested pl
 with matching dimensions. Results retain file descriptors and hashes, not HDR pixel arrays.
 
 The overload accepting `RenderHdrColorFormat.Exr` writes `.hdr.exr` instead of raw half bytes,
-using the matching [Data ABI 24 encoder](image-exr-output.md). Existing overloads keep raw HDR
-and PNG defaults unchanged. EXR is opt-in, requires `includeHdrColor: true` and the Windows x64
-encoder profile, and borrows the same half plane without widening or copying it. Its lossless
-ZIPS output has equal origin-zero windows and square pixels, with unspecified primaries and
-stored alpha association. It is not a conversion to an authored render-product color space.
+using the matching [Data ABI 26 encoder](image-exr-output.md). Existing overloads keep raw HDR
+and PNG defaults unchanged. EXR is opt-in, requires `includeHdrColor: true` and a matching Windows
+x64 or little-endian Linux/macOS x64/ARM64 encoder, and borrows the same half plane without widening
+or copying it. Windows execution has prior evidence; the POSIX profiles still need hosted native
+and package-only execution. Its lossless ZIPS output has equal origin-zero windows and square pixels,
+with unspecified primaries and stored alpha association. Authored-product jobs write explicit
+windows and pixel aspect instead (see [Admitted authored-product jobs](#admitted-authored-product-jobs)).
+It is not a conversion to an authored render-product color space.
 
 The job gives EXR only the encoded budget remaining after PNG and depth, accounts its actual
 encoded extent, durably flushes and hashes it before publishing the complete directory. Native
@@ -733,7 +1370,9 @@ Loop, and bilinear schemes with USD boundary, face-varying, crease, corner, tria
 Points and vertex, varying, face-varying, and uniform primvars follow the refined topology; animated points reuse the
 cached refiner, and normals are normalized after interpolation. Refinement is refused before allocation when its
 predicted vertices or faces exceed the `1 << 21` bounds. Unsupported or invalid topology and undescribable face-varying
-channels publish the complete control cage with a bounded diagnostic, never a partial surface. The analytic
+channels publish the complete control cage with a bounded diagnostic when its points cover the emitted triangles.
+A refiner that needs more control points than the resolved array contains removes the mesh until valid points return.
+The analytic
 `hdsilk_subdivision_probe` gates exact level counts, known Catmull-Clark positions, primvar partition of unity,
 creases/corners, holes, subset mapping, face-varying values and normals, bilinear and Loop refinement, cache reuse, and
 bounded fallback.
@@ -753,11 +1392,17 @@ recreation, diagnostics, and explicit framebuffer evidence capture. Every render
 project-owned `openusd_render_camera`: `AUTO` preserves the fixed `(4,3,4)` look-at and 45-degree perspective camera,
 while `MATRICES` carries finite row-major double view/projection matrices. The struct has stable natural layout
 (`struct_size`, 32-bit mode, then two 16-double matrices), contains no booleans, and is also used by Storm ABI v8 and
-hdSilk session ABI v6; the hdSilk page ABI is v24. Asynchronous requests coalesce to one latest time/revision/camera;
+hdSilk session ABI v7; the hdSilk page ABI is v35. Asynchronous requests coalesce to one latest time/revision/camera;
 Stop, pick, selection, and other synchronous commands take priority, queued waiters are completed with cancellation, and
 new commands are rejected once closing begins. Native handles use a registry-backed never-dereferenced token so
 operations racing teardown retain shared state rather than waiting on freed memory. Managed session operations use one
 operation lease, and backend disposal dispatches session destruction and control detachment together to the UI thread.
+
+Explicit `CameraState` requests accept at most eight finite view-space clip planes. Constructor
+admission consumes at most nine planes from a caller enumerable, rejecting the first excess
+plane without traversing its tail. Valid planes remain an owned, ordered snapshot; source
+enumeration failures within that bound propagate and the enumerator is disposed. This managed
+admission rule does not change the native camera layout or backend clip-plane support.
 
 `CameraState.FromStageCamera` creates a renderer-neutral matrix camera directly from a `UsdGeomCamera` prim. The
 overloads without viewport dimensions preserve the authored aperture aspect; pass `ViewportDimensions` or width/height
@@ -811,6 +1456,11 @@ MCP decoding and Viewer comparison share the bounded RGBA PNG reader. It validat
 chunks before allocating pixels, supports the five standard scanline filters, and reconstructs rows
 in-place without concatenating IDAT payloads or retaining a full filtered image. PNG pixels and alpha
 are not transformed. The Viewer applies its stricter 64-MiB/8192-side/16-megapixel input policy.
+MCP decoding and historical contact-sheet input transfer the reader's freshly allocated pixels
+into the image wrapper without a second pixel-buffer copy. Public `ImageRgba8` construction
+still copies caller-owned pixels; native capture inputs retain that defensive boundary.
+The decoder allocation regression permits one decoded pixel buffer plus the encoded input copy
+and 128 KiB of overhead. This is a managed allocation bound, not a process or native-memory cap.
 
 ### CPU capture with OpenColorIO
 
@@ -828,6 +1478,12 @@ using var processor = transform.CreateProcessor();
 SilkFrameCaptureResult result = SilkFrameCapture.Capture(
     session, device, 1920, 1080, renderSettings, processor);
 ```
+
+On Windows, `.ocio` configs, `.ocioz` archives, and referenced LUTs can use non-ASCII paths.
+Relative processor paths resolve against the current working directory. Opening a non-ASCII archive
+temporarily selects a UTF-8 character locale for the calling thread, then restores its locale and
+mode, including when loading fails. This path requires the pinned build's shared MSVC runtime;
+Windows builds without the shared runtime reject non-ASCII archive paths.
 
 `RenderSettings.Exposure` is applied to linear RGB channels **before** the OCIO display/view
 transform. `RenderSettings.OutputTransform` must be `Identity` when an OCIO processor is
@@ -901,18 +1557,23 @@ the transformed image to match the untransformed one row for row.
 **Configuration identity.** A path is not an identity, and neither is file metadata. Every lattice
 lookup revalidates the configuration through a content-aware digest: OpenColorIO's own
 `Config::getCacheID` taken with the config's current context, combined with a hash of the config
-file's bytes and of the bytes of every file its transforms reference, resolved through that same
-context. Metadata alone is not enough, because a LUT rewritten to the same length inside one clock
-tick keeps its size and its modification time while changing every rendered pixel -- and that is
-exactly what `Config::getCacheID` misses. The walk covers colour spaces, looks, view transforms,
-and named transforms, recursing through group transforms, and is bounded at 256 files and 64 MiB;
-beyond either bound the identity is marked as bounded rather than silently claiming to be
-exhaustive. An edit, a changed or deleted referenced LUT, a retargeted link, and a context change
-that resolves a reference elsewhere therefore each invalidate the cached lattice on the CPU and,
-because the pass keys its uploaded texture on the lattice the cache returned rather than on the
-transform that was asked for, on the GPU as well.
+file's bytes. For text configs, the digest also hashes every referenced file, resolved through the
+same context. For `.ocioz` configs, LUTs resolve inside the archive, so the digest hashes the
+archive bytes rather than similarly named external files. Metadata alone is not enough, because a
+LUT rewritten to the same length inside one clock tick keeps its size and modification time while
+changing rendered pixels.
 
-The walk is transitive, not one level deep. A `FileTransform` naming a CTF or CLF file is opened
+The text-config walk covers colour spaces, looks, view transforms, and named transforms, recursing
+through group transforms. It is bounded at 256 files and 64 MiB of content. An archive uses the
+same 64-MiB content bound on its stored bytes; exactly 64 MiB is accepted, while a larger archive
+produces a partial identity. This bound does not limit OpenColorIO's decompression memory. Beyond
+either bound the identity is marked partial rather than silently claiming to be exhaustive. An
+edit, a changed or deleted referenced LUT, a retargeted link, and a context change that resolves a
+reference elsewhere therefore each invalidate the cached lattice on the CPU and, because the pass
+keys its uploaded texture on the lattice the cache returned rather than on the transform that was
+asked for, on the GPU as well.
+
+The text-config walk is transitive, not one level deep. A `FileTransform` naming a CTF or CLF file is opened
 and its `Reference` elements are followed to the files they name, recursively, so editing a LUT
 that only a referenced process list mentions still changes the identity. Whether a dependency *is*
 a process list is decided by its content, never by its name: the leading bytes are inspected for an
@@ -955,8 +1616,8 @@ resolved to a canonical form and recorded in a visited set, so a cycle terminate
 through several spellings -- `scale.spi1d`, `./scale.spi1d`, a link -- is hashed once. Deduplication
 happens *before* the 256-file and 64 MiB bounds are applied, so a config that names one LUT from
 three hundred colour spaces stays exhaustive rather than being downgraded by its own repetition.
-Windows paths are converted through the wide-character APIs throughout, so a config or LUT under a
-non-ASCII directory is read rather than silently missed.
+For Windows text configurations, the config loader and dependency walk use UTF-16 paths, so a config
+or LUT under a non-ASCII directory is read rather than silently missed.
 
 One revalidation costs exactly one walk. The identity is a fixed-format digest, so the managed
 side sizes its buffer statically and calls the entry point once, retrying only on a genuine
@@ -1086,11 +1747,10 @@ hdSilk normalizes both clip-space conventions in renderer-neutral scene constant
 `objectToClip` matrix drives every geometry pass on every RHI. Depth is converted from the OpenGL `[-1, 1]` range the
 Storm and Viewer cameras produce to the `[0, 1]` range D3D12, Vulkan, and Metal expect. Clip-space Y is mirrored when
 `ISilkGraphicsDevice.ClipSpaceYPointsDown` is set, which only the Vulkan backend reports, because Vulkan's framebuffer
-origin is top-left while D3D12 and Metal are bottom-left. Mirroring in the scene constants rather than through a
-negative-height viewport keeps fullscreen composite passes such as the selection outline upright: those share the
-backend's generic command-list viewport but never use `objectToClip`. `SilkCrossBackendParityTests` renders a
-vertically asymmetric scene and separately proves that scene compares unequal to its own vertical mirror, so a
-regression in either convention cannot pass the gate vacuously.
+origin is top-left while D3D12 and Metal are bottom-left. The scene-constant correction applies to geometry passes.
+Fullscreen passes do not use `objectToClip`, so they correct their framebuffer sampling orientation separately.
+`SilkCrossBackendParityTests` renders a vertically asymmetric scene and separately proves that scene compares unequal
+to its own vertical mirror, so a regression in either convention cannot pass the gate vacuously.
 
 ### hdSilk material texture table capability
 
@@ -1352,9 +2012,11 @@ was diagnosed, fell back successfully, and the successful fallback wiped the rec
 that silently lost its directionality is not a state this renderer can be in.
 
 Every control diagnostic above is emitted from the authored record, **independently of whether the
-prefilter succeeded**. A dome that prefilters correctly and also authors `enableColorTemperature` is
-still named, and because that control invalidates the semantics of the image the prefilter produced, it
-forces the fallback rather than silently rendering an image whose colour is not the authored one.
+prefilter succeeded**. A dome that prefilters correctly and also authors an enabled colour temperature
+that is not finite is still named. hdSilk tints a dome by any finite temperature before the record
+reaches the wire, so only the non-finite case remains; because the image the prefilter produced cannot
+carry the authored emission, that dome is forced onto the fallback rather than silently rendered in a
+colour the author did not describe.
 
 Explicit exclusions, none of which are approximated:
 
@@ -1594,23 +2256,174 @@ would produce a plausible but wrong render.
 ### hdSilk sampled volume density
 
 A `UsdVolVolume` with one `UsdVolOpenVDBAsset` density field is published by the native shim as a proxy mesh whose
-material carries a bulk cached R32 volume texture and its `width,height,depth` extent. `SilkSceneGpuResources`
-allocates one R32Float 3D texture through `ISilkVolumeTextureGraphicsDevice`, uploads the cache once through
-`ISilkVolumeTextureCommandList`, and binds it with the volume sampler slot; the C ABI stays renderer-neutral and
-carries no 3D-texture concept. Vulkan and D3D12 both implement the pair, and D3D12 repacks each depth slice into the
-row pitch `GetCopyableFootprints` reports. Metal implements it as an `MTLTextureType.Type3D` `R32Float` texture filled
-by a single `MTLBlitCommandEncoder` buffer copy, and binds it at Metal texture index 9 with sampler index 4, which is
-what the checked `mesh.volume.fragment.metal` declares. The `macos-arm64` render job requires the same sampled and
-uniform gates against that path. Release run `33931868184`, attempt 1, recorded both as executed; see
-[Testing](testing.md) for their measured results and the limits of that evidence. The separate depth-integration gate
-remains a D3D12/Vulkan claim, not a consequence of the Metal sampled-density result.
-A device that does not implement `ISilkVolumeTextureGraphicsDevice` never selects the sampled-volume path at all: the
-surface constants report the volume as unsampled and the mesh keeps its authored uniform density, rather than binding
-a texture the backend cannot create.
+material carries a bulk cached R32 density field and its `width,height,depth` extent. With scene materials enabled,
+the current source collects active density proxies into one fullscreen camera pass. Blending proxies separately loses
+the depth distribution within each field and cannot compose intersecting fields with different tints. The joint pass
+combines extinction and tint-weighted source contributions along the ray before compositing over the scene. The
+project-owned native C ABI remains renderer-neutral and does not expose backend 3D textures.
 
-Metal binds that texture directly, never through an argument buffer. `MetalArgumentBufferCompatibility` refuses the
-sampled-volume layout for a permanent reason -- an `MTLArgumentDescriptor` carries an explicit `TextureType`, and one
-built for `Type2D` does not describe the `texture3d` the checked program declares -- and refuses every other
+The joint path has local Windows software-backend evidence from an earlier source snapshot. In that run, the checked
+shader pipeline and `FlatOrdinalShaders` receipt were regenerated and verified: 41 programs and 166 checked files.
+The 114-case camera gate passed on both D3D12 WARP and Vulkan SwiftShader. Those results do not qualify later source
+changes. Linux, Metal and the native producer-to-renderer chain remain to be qualified. Vulkan and D3D12 implement
+`ISilkVolumeTextureGraphicsDevice` and `ISilkVolumeTextureCommandList`, and D3D12 repacks each depth slice to the
+pitch reported by `GetCopyableFootprints`. Metal uses an `MTLTextureType.Type3D` `R32Float` texture and a single
+`MTLBlitCommandEncoder` buffer copy. The historical checked `mesh.volume.fragment.metal` binds texture index 9 and
+sampler index 4. Release run `33931868184`, attempt 1, recorded the earlier Metal sampled and uniform gates as
+executed; [Testing](testing.md) describes the results and their limits. The earlier D3D12/Vulkan depth gate measured
+a 96-layer sampled slab and a uniform proxy at the same column mean rendering bit-identically. Neither result
+establishes joint-pass behavior, and the Metal result does not establish depth integration.
+
+For a sampled field, the proxy maps the active-index range through Hio's bounding-box matrix and the volume prim's
+local-to-world transform. The target field prim's scene transform is not applied. A missing OpenVDB file, an unreadable
+grid, or invalid or degenerate transformed bounds can produce a unit-cube uniform-density proxy with a native warning.
+Disabling sampling selects that proxy without a warning. A missing or unusable density relationship, or an empty file
+path, can instead cause the native volume to be skipped with a warning. A non-finite volume transform rejects the sync.
+The native publisher rejects field roles other than `density` before retaining a density field.
+This includes `temperature`, emission/color and velocity: their shading semantics remain deferred,
+and publishing just the density part of a multi-field volume would silently discard authored data.
+`VolumeRenderingConformanceTests.DeferredFieldRoles.cs` checks named refusal, repeatable failure and
+zero field-budget reservations. These native cases require a rebuilt matching shim before execution.
+
+The managed sampled-asset path has a different failure boundary. When both the device and command list support 3D
+texture creation and upload, a candidate that needs an explicitly referenced managed sampled file refuses the update
+if that file is missing. A candidate that needs a native field without an available decoded-field lease is also
+refused; neither case substitutes uniform density. A published atlas can remain usable after its source file
+disappears when the retained texture-object identities still match. This does not guarantee reuse after texture
+replacement or device loss; a replacement that needs the missing file is refused. When the device/command-list pair
+lacks 3D support, the uniform variant uses the authored density with the same camera clipping semantics.
+
+The current source preflight also refuses additional non-density texture inputs on sampled and uniform volume
+materials, duplicate density entries, and composited density textures. It names the mesh and offending input before
+publication. The Windows camera gate exercises these refusals and corrected retries. The camera pass does not evaluate
+arbitrary runtime MaterialX material shaders.
+
+The fullscreen pass unprojects each pixel's homogeneous clip endpoints and intersects the ray with each field in
+field-local space. Near/far boundaries, enabled eye-space clipping planes and a copied opaque depth buffer trim the
+visible interval. A depth value different from the clear value terminates the ray, including a one-ULP difference.
+Fullscreen coverage does not depend on a box face surviving raster clipping. The renderer copies depth after opaque
+draws and before transparent draws, so it does not sample the active depth attachment.
+
+A sampled-volume transform must be affine, invertible and numerically stable enough to define a field-local ray.
+The same admission applies to authored transforms and resolved physics overrides. An invalid transform refuses the
+page with the mesh, instance and material identity and is not queued for resource retry. The author can correct the
+matrix or bake the transform into the grid before retrying. Camera preflight also rejects singular or unrepresentable
+object-to-eye transforms, reversed-depth projections, and clip boundaries that change between finite and infinite
+when narrowed to shader floats. CPU range checks also address finite-endpoint ray-length overflow and
+inverse-transform/eye-coordinate product overflow before resource allocation. Collapsed ray normalization,
+near-parallel slab or clip arithmetic, and far-origin cancellation remain unqualified numerical blockers.
+
+The source refuses non-finite `DiffuseColor` or `Opacity` components on a bound density-volume material before the
+zero-opacity filter, and rejects a non-finite scalar `VolumeDensity` before atlas selection for each active field,
+including when a published atlas is reused. Direct camera-pass preparation makes the same channel checks before
+querying 3D command-list support or creating replacement resources. The field-copy path also refuses non-finite R32
+samples when preparing a new atlas.
+
+Camera preparation bounds the maximum absolute sample, the nonnegative density scale and their product to
+`float.MaxValue / 32`; the same bound applies to uniform fields and when an atlas is reused. Values outside the bound
+refuse the update before replacement texture or target allocation and preserve published resources. Each sampled
+field's maximum absolute value, maximum positive value and subnormal-sample flag are retained with the atlas and
+charged as 12 bytes against the camera CPU budget and any configured shared CPU texture budget. The charge transfers
+when an atlas is reused and is released when the atlas is no longer retained.
+
+A field with tint `2e38` and density `1e-38` rendered black on both Windows software backends even though its expected
+red contribution is about 2. A field with density `1e-10` and opacity `1e-30` also lost its visible contribution.
+The relevant per-step optical depths fall into the subnormal float range. When a field has positive density, opacity
+and samples, admission refuses a subnormal density scale, opacity or sample. It also computes the isolated
+optical depth of a unit-length field-local ray at the maximum positive density and authored opacity. If that depth is
+less than the smallest normal float multiplied by `2 * A`, where `A` is the sum of the active fields' longest axes
+and a uniform field contributes 1, the update is refused. Reuse rechecks the retained sample metadata against the
+current scale, opacity and workload. The low-signal check does not reject zero or negative density, zero opacity or
+fields without positive samples; the other admission checks still apply.
+
+This admission can refuse fields whose particular rays would render correctly. It does not prove that every admitted
+ray keeps its intermediate values normal: clipped chords and interpolated density can be smaller than the unit-ray
+estimate. On refusal, the prior scene and image remain published and a corrected page can be submitted.
+
+Managed validation and camera-pass tests cover boundary, refusal and corrected-retry cases on .NET 8, 9 and 10. The
+Windows software-backend camera gate also exercises representative finite-product refusals and corrected retries for
+uniform and sampled fields; it does not execute the exact admission boundary on the GPU. Density integration,
+ray/clip arithmetic, tint accumulation and display exposure remain unqualified for arbitrary finite inputs.
+
+The volume pass copies the material color target and composites against that background in the fragment shader,
+with fixed-function blending disabled. It adds the integrated volume source to the background attenuated by the
+accumulated optical depth. This representation can retain transmitted background after an opacity value rounds to
+one. The shader multiplies the background by the attenuation in three steps to preserve products that would be lost
+if `exp(-D)` underflowed first. The Windows D3D12 and Vulkan software-backend camera gate exercised bright and
+signed backgrounds, including a dark field with an optical depth of 100; Linux Vulkan and Metal remain unqualified.
+
+The earlier straight-alpha path produced infinity for a tint of 3 at exposure 127 on both Windows software backends,
+even though the blended result would fit in a float. Camera preflight checks each active field's fallback-adjusted,
+nonnegative tint against `2^exposure` in double precision and refuses a non-finite value, an exposure scale above
+`float.MaxValue`, or a tint/scale product above that limit. When a display transform is requested, admission uses
+the larger of 1 and `2^exposure` because rendering can fall back to the direct path. This bound can refuse a final
+composite that would fit after blending.
+
+The check runs before preparing replacement volume and output resources; refusal preserves the published scene and
+image. Zero-opacity fields and disabled scene materials bypass this tint/exposure check. The Windows camera gate
+exercises uniform and sampled fields on retained and staged pages, including refusal, preserved state and corrected
+retry. It also compares overlapping equal-tint fields at tint `2e38` and densities from `1e-37` through `1e30` with
+independent composite references. Managed tests cover the exact float boundary; the gate does not prove that other
+admitted tint, exposure or integration arithmetic remains finite.
+
+Both volume fragments use precise floating-point mode and form the field-local step length before multiplying by
+density. This avoids an overflowing intermediate reproduced with a thin, high-density field on Vulkan SwiftShader.
+Tests check the grouping in the compiled SPIR-V and generated Metal source. The Windows camera gate renders uniform
+and sampled fields at density `1e30` with opacity `0.5` and `1`; it does not establish Metal execution or the rest of
+the finite-input domain.
+
+Sampled fields share an R32Float atlas. The existing Z stack is retained when its padded depth fits the 2,048-voxel
+portable axis limit; otherwise a deterministic regular-cell grid minimizes volume, then longest axis, among the
+layouts considered. Every atlas axis is limited to 2,048. Each sampled field axis is limited to 1–512 voxels; a
+one-voxel repeated-boundary gutter covers each face, edge and corner, and metadata identifies the first interior voxel.
+The managed atlas payload cannot exceed `int.MaxValue` bytes. Device dimension limits and CPU/GPU budgets also apply,
+including the private 512 MiB camera CPU budget. A packable atlas does not imply that the sampling workload is admitted.
+
+Candidate preparation retains the published volume resources while reserving the replacement. Each camera pass uses
+an opaque-depth snapshot and a color snapshot with the target's dimensions and format. The renderer copies depth after
+opaque draws and before transparent draws, then copies color after the material draws. A color snapshot consumes
+`B * width * height` bytes of a configured logical GPU texture budget, where `B` is 4 for RGBA8, 8 for RGBA16Float and
+16 for RGBA32Float.
+
+When a GPU buffer, GPU texture, staging or CPU texture admission budget is configured, the renderer also prepares
+private output and preserves the published snapshots. If candidate allocation or output-copy submission is refused
+before publication, the previous snapshots, scene, physics overrides and image remain published and a corrected frame
+can retry. After two same-size, same-generation publications, each snapshot can alternate with a spare. Together the
+spares add `(4 + B) * width * height` bytes to the logical GPU texture budget. The volume pass separately prepares a
+D32 depth target, so a first replacement without spares can require two additional `4 * width * height` reservations
+and one additional `B * width * height` reservation alongside its other candidate resources.
+
+After output publication, a retirement failure cannot reverse the copied image. The renderer reports cleanup failures,
+keeps the published state and retries unfinished volume-resource, depth-snapshot and color-snapshot releases during
+later preparation or disposal. A direct render without an admission budget can reuse the published snapshots in place
+and does not provide the same pre-publication rollback guarantee. Windows software-backend cases exercise depth and
+color snapshot reuse, budget boundaries, rollback, retirement failure and corrected retry.
+
+The pass admits at most eight active fields; zero-opacity fields do not consume those slots. Its two phases use
+identical integer midpoint sampling lattices. For `N` active fields, let `A` be the sum of their longest sampled
+axes, counting a uniform or fallback field as axis 1. At most `2 * N - 1` segments lie between the field endpoints.
+Each phase is bounded by `P = 2 * A * (2 * N - 1)` positions, and both phases by `E = 2 * N * P` field evaluations
+per pixel. Admission refuses `P > 7,117` or `E > 64,040` before `CreateResources` and atlas or depth-target
+allocation; it also checks multiplication by viewport area for overflow. Two fields with longest axes of 512 give
+`P = 6,144` and `E = 24,576` and pass those per-pixel bounds. Three or eight such fields are refused. There is no
+sample clamp. For example, three 512 × 1 × 1 grids fit the Z-stack layout but are refused by the workload check.
+Midpoint quadrature does not reconstruct arbitrary density functions exactly. These are work bounds, not frame-time
+guarantees.
+
+For an isolated field, the intended opacity is `opacity * (1 - exp(-D))`, where `D` is the integrated authored
+density. The pass converts that alpha to optical depth and distributes it along the field before combining overlapping
+extinction and tint-weighted source. The field table is sorted by mesh path and instance index, so submission order is
+intended not to change the result. Reversing the camera can change the result for unequal tints. The Windows camera
+gate compares partial and nested intersections with independent references and exercises refusal and retry; it does
+not qualify every numerical input or backend.
+
+Ordinary transparent surfaces are not depth-interleaved with volume transport; the opaque-depth copy does not contain
+them. Physical density attenuation in shadow maps is also unsupported, independently of transparent-surface ordering.
+`UseSceneMaterials=false` retains ordinary proxy rendering rather than selecting the joint pass.
+
+Metal binds the density texture directly, never through an argument buffer. `MetalArgumentBufferCompatibility` refuses
+the sampled-volume layout for a permanent reason -- an `MTLArgumentDescriptor` carries an explicit `TextureType`, and
+one built for `Type2D` does not describe the `texture3d` the checked program declares -- and refuses every other
 texture-bearing layout for a second, liftable reason: no checked Metal program declares an argument buffer, so writing
 one would bind a buffer nothing reads and leave `[[texture(9)]]` and `[[sampler(4)]]` unset. Neither mistake is
 reportable through the Metal API; the draw would simply sample something undefined and still return an image. The
@@ -1618,31 +2431,19 @@ Tier 2 table therefore declines before allocating, `SilkGraphicsCapabilities.Sup
 reports `false` with that reason rather than echoing the hardware tier, and the encoder falls through to
 `SetFragmentTexture` and `SetFragmentSamplerState` at the indices `MetalShaderResourceIndices` encodes.
 
-The fragment shader for this path is its own checked program, `mesh.volume.fragment`, not a bit of the shared mesh
-permutation family. Only the sampled-volume binding layout declares the 3D texture and its sampler, and a D3D12 root
-signature must declare every resource its shader binary references, so those resources cannot live in the binary that
-ordinary mesh pipelines use. `SilkGraphicsPipelineCache.GetOrCreateSampledVolumePipeline` is the only caller that
-selects it. Before the split, the volume resources were restricted to the SPIR-V target, which left D3D12 with no
-density texture at all: it rendered sampled volumes at the authored uniform density, and its images did not change
-when the density grid moved.
+The joint shader source declares `volume.camera.vertex`, `volume.camera.fragment.atlas` and
+`volume.camera.fragment.uniform`; the fragments share their ray integration source. Its layout uses parameter
+buffer `b0`, field/frame storage `t6`/`t8`, atlas `t9` with sampler `s4` at Vulkan bindings 9/13, and opaque depth
+`t28` at Vulkan binding 45. The background color snapshot uses `t0` at Vulkan binding 2 and Metal texture index 0.
+The uniform layout omits the atlas and sampler. It does not consume environment bindings 46/47 or change the shared
+frame ABI. Each D3D12 root signature must cover the resources its variant uses.
 
-Because that program is the only one that samples the grid, a volume material that also binds 2D material maps, or one
-routed through the runtime MaterialX shader service, has no correct pipeline at all. `SilkMeshRenderer` raises an
-`InvalidDataException` naming the prim and the offending combination instead of falling through to an ordinary mesh
-pipeline. That fallback would shade the proxy at the authored uniform density and produce a plausible image with no
-volume in it, which is the same class of silent-but-wrong render the dedicated program exists to prevent.
-
-The fragment integrates the density column with one sample per voxel layer, and the layer count is the grid's own Z
-resolution rather than a constant. That extent already travels with the texture as `width,height,depth`, is already
-parsed to allocate the 3D texture, and is now also written into the surface constants so the shader integrates over
-exactly the grid it was given. A fixed step count reconstructs the column exactly only where the sample lattice happens
-to align with the layers: the retired constant of 32 was right for the one checked-in 32-deep asset and wrong for
-anything else. Over a 96-deep grid it steps straight over a two-layer feature and integrates it to exactly zero -- the
-volume still renders, it has simply lost the structure. Sampling at layer centres makes the linear filter return each
-texel exactly, so the sum is the true mean of the column.
-Silk accepts sampled density grids up to 512 layers deep for this exact integration path and rejects deeper grids with
-an explicit diagnostic rather than silently undersampling them. The gate measures a sampled 96-deep slab and a uniform
-proxy at its exact column mean rendering bit-identically on D3D12 and Vulkan.
+The retained `mesh.volume.vertex` and `mesh.volume.fragment` programs describe the earlier proxy pipeline selected
+by `SilkGraphicsPipelineCache.GetOrCreateSampledVolumePipeline`. Before its checked fragment was added, volume
+resources were restricted to SPIR-V, leaving D3D12 to render sampled volumes at uniform density even when the grid
+changed. The 114-case Windows software-backend camera receipts include opaque-depth, axis-admission and analytic
+oblique-slab cases against the regenerated joint shaders. The earlier 96-layer result does not cover the revised
+atlas or uniform-ray semantics.
 
 ### hdSilk draw ordering and retained uploads
 
@@ -1678,7 +2479,11 @@ Three things had to be true before an MDL-only material could even be named:
    empty identifier. UsdImaging does publish the source asset and subIdentifier under the node's
    `nodeTypeInfo`, but the legacy `HdMaterialNetwork` a render delegate reads has no field that
    carries them. `HdSilk_MdlMaterialSceneIndexPlugin` therefore folds the two values into the node
-   identifier as `mdl:<module>:<material>` before any delegate sees the network. It never rewrites a
+   identifier as `mdl:len:<module-byte-count>:<module><material>` before any delegate sees the network.
+   The producer and consumer share the same length-framed codec, so URI colons, parentheses in paths,
+   and namespaced SDK signature types such as `::base::mono_mode` retain their exact identities.
+   The older `mdl:<module>:<material>` form remains readable, including namespaced trailing signatures.
+   Malformed length framing is diagnosed as unavailable rather than guessed. The scene index never rewrites a
    node that already has an identifier, so a stage whose MDL nodes *do* resolve through an installed
    Sdr plugin is left untouched.
 3. **The result has to be nameable on the wire.** `MATERIAL_UPSERT` publishes
@@ -1747,8 +2552,10 @@ from, is recorded in `eng/mdl.lock.json` and `native/openusd_mdl/README.md`:
 `reflection_roughness_constant`, `reflectionroughness_texture`, `metallic_constant`,
 `metallic_texture`, `ORM_texture` (behind `enable_ORM_texture`, split into the
 occlusion/roughness/metallic channels), `opacity_constant`/`opacity_texture`/`opacity_threshold`
-(behind `enable_opacity`), `emissive_color`/`emissive_color_texture` (behind `enable_emission`),
-and `normalmap_texture`.
+(behind `enable_opacity`, with the separate texture gate and explicit mono mode),
+`emissive_color`/`emissive_color_texture` (behind `enable_emission`), and `normalmap_texture`.
+The qualified extensions also include tint, texture brightness/addition/desaturation,
+regular normal strength/flips, authored-set-zero UV affine and bounded scalar map influence.
 
 **`OmniSurface.mdl` / `OmniSurface`** — `diffuse_reflection_color` scaled by
 `diffuse_reflection_weight`, `metalness`, `specular_reflection_roughness`,
@@ -1783,12 +2590,13 @@ silent fallback to a default that looks like an authored value:
   module's own default. Where those differ, the distilled result differs from an MDL renderer by
   exactly that difference. The SDK-backed adapter closes this gap for a module the operator supplies;
   see below.
-* **`emissive_intensity`/`emission_intensity` other than 1.** A photometric multiplier has no
-  faithful destination in unitless `emissiveColor`, so it is reported rather than folded into the
-  colour.
-* **A partial `*_texture_influence`.** hdSilk binds one source per surface input and cannot blend a
-  texture against a constant, so a partial influence is reported rather than rendered as if it were
-  full.
+* **Unproven emission units.** The dependency-free and unproven-body profiles report
+  non-unit intensity instead of guessing a radiometric conversion. The SDK-proven OmniPBR
+  diffuse EDF profile maps exitance to visible surface radiance with `1/pi`, including color
+  textures and explicit masks; arbitrary EDFs and emitted-light transport remain unsupported.
+* **Unprojectable `*_texture_influence`.** Proven finite unit-range OmniPBR roughness/metallic
+  blends use texture scale/bias; unsupported combinations remain reported rather than rendered
+  as if they were full strength.
 
 MDL module loading, module parameter defaults, MDL expression graphs, layered BSDF evaluation, and
 MDL-generated GPU shader code are all outside the dependency-free adapter. The first three are
@@ -2045,6 +2853,19 @@ consumer that has to name a scene instance therefore reads the chain --
 levels. `SelectionItem.InstancerPath` and `SelectionItem.InstanceIndex` remain convenience views of
 the chain's innermost level, so they never report an index from one level beside a path from another.
 
+Those retained paths belong to Hydra's terminal scene namespace; native USD instances can
+therefore name propagated prototypes rather than authored instance proxies. Use
+`OpenUsdSilkSession.ResolveSourceIdentities(pageRevision, queries)` to resolve a batch of
+`(Path, InstanceIndex)` mesh keys to source `SelectionItem` values. It returns authored
+instance-proxy paths for native USD instances and source paths plus ordered contexts for
+point instances. The session and source stage must still match the latest synchronized page;
+stale revisions, stage edits and pending renderer replay are refused. Batches allow up to
+1,024 keys and 8 MiB of serialized output, with no partial result on failure. Older native
+runtimes lacking the optional source-identity extension throw `NotSupportedException`.
+The resolver preserves a separate per-prototype pick ordinal internally; stable wire indices
+cannot be passed directly to USD picking when prototype subsets or masks create gaps.
+Source selections must not replace the retained Hydra keys used for GPU lookup or outlines.
+
 Storm reports the same chain from its own native pick: every validated
 `openusd_render_pick_instance_context` entry is carried through in native order. The chain's
 innermost level is deliberately *not* cross-checked against the result's separately reported
@@ -2101,7 +2922,8 @@ table is renumbered.
 When valid normals are published, byte-identical corner attributes referring to the same source
 point share an indexed vertex. Different authored point identities, UVs, normals, other primvars
 and signed-zero values remain distinct. Triangle order and corner-edge identities do not change.
-Without published normals, the prior triangle-local generated-normal behavior is preserved.
+Without published normals, the native emitted layout still follows the resolved primvars;
+the page carries correspondence and the fallback mode separately.
 The Rprim borrows the active coarse/refined triangle tables rather than retaining another copy.
 Its attribute collection, triangle indices and face/point/edge identity arrays share native
 copy-on-write storage with published records. Edits detach only the changed arrays, retirement
@@ -2135,6 +2957,33 @@ presentation change may move it in either direction, and a lower revision is an 
 rather than a stale page. Because the value describes the presentation and not the payload, an
 ABI v8 instance-reference record publishes exactly the revision of the prototype payload whose
 geometry it reuses.
+
+### Units-aware pick measurement
+
+A pick hit's `WorldPosition` is in stage scene units, so the distance between two hits is
+meaningless until it is scaled by the stage's `metersPerUnit`. A stage that does not author
+`metersPerUnit` is interpreted with the UsdGeom fallback of 0.01, which means a value derived from
+unauthored metadata must be labelled as a fallback rather than presented as a confirmed scale.
+
+`UsdStage.GetLinearUnits()` returns `UsdStageLinearUnits`: the composed `MetersPerUnit` and
+`UpAxis`, each with an `Is...Authored` flag. It requires data ABI 26 and throws
+`NotSupportedException` on an older runtime. The native export refuses a non-finite or non-positive
+`metersPerUnit` and an up axis other than Y or Z instead of reporting them.
+
+`RenderPickMeasurement.TryCreate(start, end, units, out measurement, out refusal)` measures the
+straight line between two pick results. It produces a measurement only when both are `Hit` results
+with finite world positions, both were resolved against the same state revision and the same bound
+scene revision, and `units.MetersPerUnit` is positive and finite. Any other input returns `false`
+with one `RenderPickMeasurementRefusal` value naming the first failed check; no partial distance
+is returned. The scene revision may be unbound on both sides, but a bound revision on one side and
+an unbound one on the other is a mismatch.
+
+The measurement keeps the authoritative `SelectionItem` of each end, including instance and
+subprim identity, the scene-unit positions, the scene-unit `Delta`, and the units used. It computes
+`DistanceInSceneUnits` in double precision from the single-precision hit positions and
+`DistanceInMeters` as that distance times `MetersPerUnit`. `IsMetersPerUnitAuthored` carries the
+fallback flag through, so a consumer can report a fallback-derived length as such. The measurement
+does not apply `metersPerUnit` to render product optics; that remains a separate open item.
 
 ### Viewer click-to-selection integration
 
@@ -2340,7 +3189,9 @@ invalidate pipelines and bindings before reuse.
 On Vulkan, sampled masks and depth targets include `VK_IMAGE_USAGE_SAMPLED_BIT`. The mask pass uses
 `DEPTH_STENCIL_READ_ONLY_OPTIMAL`; the composite samples the mask in
 `SHADER_READ_ONLY_OPTIMAL`, preserves the loaded visible color attachment, and returns it to the
-existing transfer-read layout.
+existing transfer-read layout. The mask uses the scene's positive-height viewport. The fullscreen
+composite uses a negative-height viewport so mask and depth samples align with the color target
+instead of its vertical mirror.
 
 Both selection render passes use `AttachmentLoadOp.Load` on their color attachment, and a load is a
 read of whatever an earlier *color-attachment write* stored, so both declare that dependency
@@ -2422,6 +3273,11 @@ producing a different backend-specific error or a silently unbound resource. A s
 also carry `SilkTextureUsage.Sampled`. The last write to a slot before a draw wins, matching how
 pipeline and buffer bindings already behave.
 
+Within a command list, a pipeline change keeps the last material binding at each slot. A draw uses a
+retained binding only if its current layout declares the same set, binding and resource kind. A later
+pipeline can reuse that binding unless another bind has replaced it; an explicit bind that does not
+match the current layout is rejected.
+
 Backends differ in what they must keep alive, and the difference is deliberate:
 
 - **Vulkan** transitions the texture to `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL` (legitimately
@@ -2462,6 +3318,16 @@ convention: `outputs:rgb` drives a colour or vector input, and `outputs:r`, `out
 colour or vector input and to `r` for a scalar one, which is what its one decoded channel occupies. Any
 other output token, and any token whose width cannot drive the bound input, is rejected with a
 diagnostic and the input is left at its documented default; the wire never carries a guessed channel.
+
+The current page-26 profile additionally names three **scalar opacity-only**
+reductions: `AverageRgb`, `LuminanceRgb` and `MaximumRgb`. These are explicit
+operations, not invented `UsdUVTexture` ports. They run after scale/bias in admitted
+float storage, including UDIM/fallback paths, and replicate the result as other
+scalar channels do. Other parameters reject these selectors instead of accidentally
+using red, including vertex displacement and volume density.
+Positive opacity thresholds now discard values below the threshold and force
+survivors to opacity one; equality survives. This matches both PreviewSurface
+masking and OmniPBR cutout semantics. Zero-threshold fractional blending is unchanged.
 
 During texture preparation the selected channel is honoured after decode and after `scale`/`bias`, which
 is the order `UsdUVTexture` defines: the sampled texel is scaled and biased first and the outputs expose
@@ -2514,7 +3380,7 @@ The UDIM status bitmask in `SurfaceParameters.textureControls.y` uses the public
 `2` base colour, `4` normal, `8` roughness, `16` emissive, `32` metallic, `64` opacity, `128` occlusion,
 `256` specular colour, `512` clearcoat, `1024` clearcoat roughness, and `2048` IOR.
 Every scalar input has a separate slot, so each needs a separate bit; nothing aliases.
-Ordinary (non-UDIM) material textures upload a full packed mip chain rather than a single level. A
+Retained ordinary (non-UDIM) material textures upload a full packed mip chain rather than a single level. A
 shared backend-neutral layout stores mip 0 first, then ascending levels in order, each tightly packed
 to `max(1, base >> level)`; `UploadTexture` validates the source against that layout's exact total byte
 size on every backend. The CPU generates the chain with a 2x2 box filter (clamp-to-edge at odd
@@ -2525,11 +3391,21 @@ normal-map slots instead decode encoded RGB to a tangent-space direction, averag
 before re-encoding, falling back deterministically to straight-up (0, 0, 1) when neighbouring normals
 exactly cancel to a zero-length average. D3D12, Vulkan, and Metal each allocate every requested level,
 expose all of them to shader binding, and issue one upload per level from the same packed source
-buffer — D3D12 additionally repacks each level into its own 256-byte-aligned row pitch, while Vulkan and
-Metal consume the tightly packed source directly; base-level readback and the existing single-level 3D
+buffer — D3D12 and Metal repack levels into aligned native staging footprints, while Vulkan
+consumes the tightly packed source directly. Opt-in streaming preserves the same mip bytes through
+the progressive path described below; base-level readback and the existing single-level 3D
 volume-texture path are unchanged on every backend. `<UDIM>` atlases remain single-level in this slice:
 their sparse per-tile gutter/fallback layout cannot be naively downsampled, so atlas textures continue
 to allocate exactly one mip level regardless of tile resolution.
+Normal-map slots store encoded texels. After the entry's scale and bias, each RGB component lies in
+[0, 1], and the mip generator and the shader each decode it once as `2x - 1`. UsdPreviewSurface reads
+`normal` as an already decoded tangent-space direction, so a conforming normal map authors
+`scale = (2, 2, 2, 1)` and `bias = (-1, -1, -1, 0)` on its `UsdUVTexture`. Publishing that affine
+unchanged would decode each texel twice and tilt every mapped normal. hdSilk therefore re-expresses a
+PreviewSurface normal affine in encoded space: it halves each RGB scale, replaces each RGB bias with
+`(bias + 1) / 2`, and leaves alpha as authored. The canonical authoring becomes the identity and stays on
+the 8-bit upload path; any other affine keeps its meaning. MaterialX `ND_normalmap` and MDL normal
+projections already publish encoded texels, so the fold does not apply to them.
 Anisotropic sampling is capability-negotiated rather than assumed. `SilkGraphicsCapabilities` carries a
 backend-neutral `MaxSamplerAnisotropy` (defaulting to `1` so pre-existing callers keep their prior
 isotropic-only behaviour), and `SilkSamplerDescriptor` carries a validated trailing `MaxAnisotropy`
@@ -2565,7 +3441,7 @@ invalidates and re-decodes only the entries whose source file or resolved UDIM t
 other resolver-backed assets continue to use material dirtiness or explicit failed-texture retry
 because they do not expose portable filesystem metadata.
 
-Texture cache/residency is bounded rather than unlimited. `SilkTextureResidencyOptions` carries two
+By default, texture cache/residency is bounded rather than unlimited. `SilkTextureResidencyOptions` carries two
 independently configurable, validated nonzero `ulong` immutable budgets — a maximum decoded CPU byte
 count and a maximum estimated logical GPU byte count — both defaulting to 512 MiB and passed through a
 dedicated `SilkSceneGpuResources`/`SilkMeshRenderer` constructor overload alongside the original
@@ -2595,6 +3471,129 @@ benefit; a failed fallback still referenced this frame is pinned like any other 
 entry that alone exceeds a budget is evicted rather than retried in a loop, and separately reports the
 bounded `TextureBudgetExceeded` diagnostic. Re-referencing an evicted texture re-decodes and re-uploads
 it like any other cache miss.
+
+**Opt-in material working-set streaming.** The three-argument `SilkTextureResidencyOptions`
+constructor accepts `streamMaterialTextures: true`. `SilkMeshRenderer` then prepares full-resolution
+textures for each consecutive material/feature group in the existing batch order, submits and waits,
+disposes the completed command list, and releases that group's textures before preparing the next.
+Within a group, the built-in D3D12/Vulkan/Metal paths upload ordinary images progressively:
+one current mip is sent in full-width row bands of at most 8 MiB, each completed submission
+releasing its immutable command copy and native staging before the next band. The next mip
+is generated with the same filter as the retained path, then the preceding mip's pixels
+and reservation are released. This avoids overlapping the base image with a complete packed
+chain or overlapping two complete chains. All levels and full source resolution are retained
+on the GPU. Metal writes aligned staging directly into its native buffer rather than creating
+another managed padded copy.
+
+Ordinary streamed scalar maps use `R8Unorm` or `R32Float`, matching their decoded precision,
+after their existing color-space, scale/bias and channel reduction. Roughness, metallic, opacity, occlusion, clearcoat,
+clearcoat roughness and IOR shaders consume only that red component, including their
+component-wise composite operators. The conversion preserves the original byte/float precision,
+source dimensions, every mip's red bytes and the prior filtering policy, while
+reducing each scalar map's GPU payload and upload bytes by four. Conversion is admitted
+while the decoded RGBA base is still owned, then releases it before mip preparation.
+Color/vector maps, volume sampling and retained
+non-streaming paths are unchanged. This is channel-storage compaction, not resolution
+reduction or value quantization.
+
+Streamed UDIM atlases use the same row-upload interface without allocating a second full
+CPU atlas beside the decoded tiles. Tiles keep their dimensions and byte/float precision;
+one reusable full-width band of at most 8 MiB assembles the metadata row, sparse fallback
+cells, and clamped tile gutters. CPU admission includes both that band and the command's
+overlapping immutable copy. Gutters are read directly from their source tile, including when
+a band begins or ends inside a gutter. The GPU atlas remains single-level, full-resolution
+with its original per-tile filtering. Legacy atlases retain their RGBA metadata. All decoded
+reachable tiles must still fit the CPU pool together with at least two atlas rows.
+Decoding, each band, and completed submissions
+observe capture cancellation; a partial atlas is never installed in the texture cache.
+
+For the built-in projected shading path, streaming conservatively bounds transformed UVs
+over every indexed primitive using the material, including shared instances and the detail
+normal's independent affine. A tile is omitted only when no primitive can sample it;
+cross-tile primitives retain their complete bounding interval, and rounding margins retain
+boundary tiles. Draw order, indices, geometry and source assets are unchanged. Generated
+MaterialX fragments keep the conservative full-tile path because their coordinate logic may differ.
+
+Reachability and device extent limits can select a densely packed atlas with an explicit
+logical-cell lookup table. The renderer tries physical layouts within
+`SilkGraphicsCapabilities.MaxTextureDimension2D` (zero means unreported), minimizing allocated
+texels without resampling. Missing cells still sample the authored fallback. Packed scalar
+UDIMs use `R8Unorm` or `R32Float` after channel reduction; metadata occupies individual red
+texels instead of relying on four channels. Tiles whose consumed scalar is bit-identical
+at every pixel can use a single constant sample per tile, preserving distinct tile values
+and fallback. Nonconstant tiles retain every source pixel. Both legacy and packed atlases
+are recognized by the matched checked shader, without changing command-page or native ABIs.
+
+Decoded pixels are released before decoding the next map, while GPU textures remain alive
+through the group's draws. Volumes and custom devices without the internal
+row-upload interface retain the completed whole-map upload path and its admission checks.
+When several ordinary slots read one source image, streaming may retain one decoded base
+within that material batch and give each slot its own mutable copy. The source cache is at most
+64 MiB and one quarter of the configured CPU pixel budget, requires explicit room for two
+additional base images and one row, and is fully charged to that same budget. Insufficient
+headroom simply uses the normal uncached decode path. Color-space and precision requests must
+match, source dependencies are rechecked, and changing source or finishing the batch releases it.
+CPU pixel admission covers adjacent mip generation or the current mip plus its upload band,
+not every map's pixels and command copies simultaneously.
+Transparent ordering is unchanged. Revisited ordinary maps reuse completed uploads when their exact
+inputs still match and their entries remain within the bounded frame-local cache; evicted images are
+decoded again. Color and depth are cleared once, while display conversion and selection are applied
+only after the final batch.
+This deliberately trades decode/upload work and submissions for a smaller live working set, and is
+off by default. It is not a texture-resolution reduction or a virtual-texturing implementation.
+
+Built-in capture helpers own fresh, unpublished targets, so they render into one HDR/D32 pair
+instead of allocating a second pair solely for copying. Unused cached publication scratch is
+released before capture allocation. Capture readback, conversion and selection still finish
+before the detached result and scene update are committed. APIs rendering into caller-owned
+targets keep their separate GPU-copy publication step and preserve the old pixels on refusal.
+
+Streaming requires a configured `SilkGpuBufferBudget`, which enables private frame targets and
+transactional publication. Later-batch admission, submission, cleanup, or cancellation failures
+must not publish a partial frame; the rejected page remains eligible for ordered replay. The
+capture cancellation request is scoped to the material frame, including the single-mesh path,
+and checked before texture lookup/preparation, before each upload band, and after its completed
+submission. An in-flight upload is drained and accounted for before cancellation is thrown;
+once observed, no subsequent band or mip is prepared. Whole-map uploads check cancellation on either side
+of the completed upload as well. Unwinding releases the temporary textures and reservations
+without retaining the cancelled capture request for a later ordinary render. The
+retention budgets above are not hard allocation admission. Configure `SilkTexturePreparationBudgets`
+as well to bound CPU pixels, GPU texture payloads, and staging separately. Each individual material
+must still fit its GPU texture pool, and each map must fit CPU decoding/conversion,
+adjacent mip generation and at least one complete row's upload copy; otherwise its
+allocation is explicitly refused. Environment maps, displacement preparation, frame targets, and
+backend/driver allocations remain separate from the streamed ordinary/UDIM/volume/fallback cache.
+
+The 4K RGBA32F control retains and uploads all **357,913,936 mip bytes** with a
+**335,544,320-byte CPU-pixel peak**, fitting the existing 512-MiB pool. Hardware D3D12 and
+Vulkan HDR/PNG match the exact uniform-color reference. Tiny row tests read back every mip,
+including odd dimensions and caller-buffer mutation after recording. Exact/one-byte-short
+budget controls and later-mip/batch failure cases preserve the published frame and replay.
+Metal compiles and uses its existing aligned blit model; this Windows evidence does not
+claim new execution on a macOS device.
+
+Viewer and MCP expose the opt-in as `OPENUSD_SILK_STREAM_MATERIAL_TEXTURES=true` (or `1`).
+Embedding Viewer hosts may override it with `ViewerHostOptions.StreamMaterialTextures`.
+Retained capture and composition presenter overloads accept the same immutable residency
+options; child processes receive the effective choice rather than an ambient setting.
+
+Normal-mapped instances compare vertex-layout contents rather than attribute-list identity,
+so equivalent 48-byte layouts share geometry just like untextured instances. Authored
+normals also avoid allocating and computing an unused normal accumulator. When a material
+requires coordinates absent from a mesh, the renderer supplies deterministic `(0, 0)` vertex
+inputs instead of constructing an invalid input layout or reading unspecified attributes.
+It leaves authored mesh attributes unchanged and reports
+`OPENUSD_SILK_TEXTURE_COORDINATES_UNAVAILABLE` when native projection supplied no resolved
+coordinate default. Native `UsdPrimvarReader_float2` fallback and MaterialX
+`geompropvalue_vector2` default values are preserved as constant entries in the existing mesh
+attribute payload only when the named coordinate is absent. The values remain before the
+material UV transform, so that transform is applied exactly once. Existing authored attributes
+win, source layers are never changed, and lightweight instances reuse the prototype default.
+Changing or removing a reader default republishes its bound prototype families; unrelated
+shading-only edits do not. Connected or non-finite defaults are rejected. Surface textures
+must share a reader fallback even when they use different primvars; displacement must match
+the fallback of each surface texture using the same primvar. A conflict is diagnosed rather
+than silently merged. This projection uses the existing mesh attribute encoding.
 
 `SilkSceneGpuResources.Diagnostics` returns a deterministic snapshot of at most 128 deduplicated
 material and texture warnings. Unresolved relationships and unsupported surface networks retain flat
@@ -2628,9 +3627,10 @@ The documented MaterialX subset is intentionally a projection into that same dat
 - Direct `ND_image_*` inputs can drive base colour and normal maps; `ND_normalmap` unwraps to its input image and uses
   the existing tangent-space normal-map shader path. `ND_geompropvalue_vector2`, `ND_texcoord_vector2`, and
   `UsdPrimvarReader_float2` are the coordinate nodes that terminate a texture-coordinate chain and select the UV
-  primvar, defaulting to `st` when the graph has no coordinate connection at all. A `ND_texcoord_vector2` whose `index`
-  is non-zero names a second UV set and is rejected with a diagnostic, because hdSilk carries one coordinate stream per
-  material and resolving it to `st` would sample the first set while the graph asked for another.
+  primvar, defaulting to `st` when the graph has no coordinate connection at all. `ND_texcoord_vector2` maps index
+  `0` to `st` and each positive index `N` to `stN`. hdSilk carries at most two named coordinate streams per material,
+  so the texture bindings on that material can resolve to at most two distinct primvars. A connected, negative, or
+  non-integer index is rejected because the material wire cannot represent a dynamic or invalid index.
 - Constant `ND_multiply_*`, `ND_add_*`, `ND_subtract_*`, `ND_clamp_*`, `ND_mix_*`, and `ND_constant_*` chains are folded
   on the CPU for supported scalar/vector inputs, using the MaterialX nodedef defaults: `mix` defaults to `0`, which
   selects `bg`. An input the author replaced with a connection is never folded from the value Hydra leaves behind that
@@ -2707,16 +3707,25 @@ A MaterialX image node states its sampling with MaterialX names and MaterialX de
 reads it that way for `ND_image_*` and the UsdUVTexture way for `UsdUVTexture`:
 
 - `uaddressmode` and `vaddressmode` are read per axis and default to `periodic`, which is the wire's repeat mode.
-  `clamp` and `mirror` map to the matching wire modes, and `constant` maps to the wire's black mode because the
-  wire carries no border colour. Reading `wrapS`/`wrapT` from a MaterialX image found nothing and published black,
-  which the renderer resolves to clamp-to-edge, so a texture the graph tiles was smeared from its edge column of
-  texels. An address mode outside that enumeration is reported and the input keeps its default.
-- The wire's black mode is not a border colour. `SilkTextureWrap.Black` records what UsdUVTexture's `black`/unauthored
-  `wrap` and MaterialX `constant` addressing asked for, but no supported backend is handed a border colour and
-  `SilkSceneGpuResources` resolves it to `ClampToEdge`, so it renders identically to `SilkTextureWrap.Clamp`: a sample
-  outside the unit range returns the edge texel, not black and not a MaterialX node's `default` value. The two values
-  stay distinct because they record different authored intent; true border sampling would need a new wire field and an
-  ABI bump.
+  `clamp` and `mirror` map to the matching wire modes, and `constant` maps to `SilkTextureWrap.Constant`, added in
+  page ABI 29. An address mode outside the supported enumeration is reported and the input keeps its default.
+- `SilkTextureWrap.Black` records UsdUVTexture's authored `black` or an unrecognized wrap token. Samples outside the
+  image use a transparent-black border on D3D12, Vulkan, and Metal. An unauthored wrap instead publishes
+  `SilkTextureWrap.UseMetadata`, which resolves each axis from image metadata or uses the black fallback without a
+  diagnostic when a queried image has no wrap metadata. For a decoded image, an unavailable query or unsupported wrap
+  mode makes fragment sampling report a black-border fallback; vertex displacement refuses the field.
+- `SilkTextureWrap.Constant` returns the MaterialX `default` outside the image. No backend sampler takes a per-texture
+  border colour, so the texture cache surrounds the decoded image with a one-texel ring of the default, after scale and
+  bias, on each constant axis. The surface block carries a per-axis mask of the slots with a ring, and the shader remaps
+  the coordinate into the padded image and clamps it to the ring. Inside the unit range the result matches an
+  unpadded image; outside it is the default, and the filter blends the edge texel with the default across the last
+  half texel. Lower mip levels average the ring into the edge texels, so a minified edge is an approximation.
+- If the image plus its ring exceeds the device's 2D texture limit, the texture is treated as undecodable and binds
+  the default with a fallback diagnostic. An unreadable image binds a 1x1 default with the same ring. UDIM sets,
+  volume density, and displacement never get a ring.
+- Vertex displacement applies the same rule on the CPU without a ring: a constant axis reads the raw `default`
+  outside the image, and the authored scale and bias apply once after filtering. When one axis is black and the other
+  constant, a sample outside both reads black, which matches the clamp-to-border sampler deciding first.
 - `default` is the value the node produces when the file cannot be read, which is exactly what UsdUVTexture calls
   `fallback`, so it is carried in the same wire field. Only the components the node authors are overwritten, so a
   `color3` default keeps the opaque alpha.
@@ -2776,15 +3785,16 @@ Everything outside that is refused with a diagnostic:
   single-texture input. The first composited parameter in the fixed input order wins, which makes the choice
   deterministic rather than dependent on table order.
 - A connected `mix` factor is a third sampled input the renderer has no slot for.
-- Both operands must read the material's single texture-coordinate stream, which the primvar and transform
-  reconciliation above already guarantees; a pair that disagrees is dropped as a whole parameter.
+- Both operands must read the same texture-coordinate stream, because one input samples one stream. The primvar
+  reconciliation below drops a pair that disagrees as a whole parameter.
 - Three or more images in one input exceed the single composite slot and are reported by the fold that walks them.
 
 ### Texture-coordinate chains
 
-hdSilk walks the `st`/`texcoord` connection of every texture it publishes and folds the chain into one constant affine,
-published as page ABI v14's `uv_transform` and applied once per fragment before every texture sample. This is shared by
-the MaterialX projection and the UsdPreviewSurface path, because both reach the same texture table.
+hdSilk walks the `st`/`texcoord` connection of every texture it publishes and folds each supported chain into a
+constant affine. Page ABI 30 carries a primary transform and, when needed, an alternate transform per material;
+each surface parameter selects one before its texture samples. The MaterialX projection and UsdPreviewSurface
+path share this reconciliation because both reach the same texture table.
 
 - `ND_place2d_vector2` is reproduced exactly from `NG_place2d_vector2`: `pivot`, `scale`, `rotate`, `offset`, and both
   `operationorder` values (`SRT` and `TRS`), including `rotate2d`'s clockwise matrix for a positive angle in degrees.
@@ -2812,17 +3822,43 @@ a partial answer:
 The refusal is reported once, against the real cause. When the coordinate chain is what failed, hdSilk does not also
 report the image node as an unsupported input, because the image is understood and naming it would misdirect the reader.
 
-Because the renderer builds exactly one texture-coordinate stream per material, hdSilk reconciles **both** halves of
-that stream -- the UV transform and the UV primvar -- across every texture the material publishes. The stream is the
-one the first texture in the fixed input order resolves: `uv_transform` carries its affine, and the consumer derives
-the primvar from the first entry that names one. A later texture asking for a different transform, or for a different
-primvar, is rejected with a `TF_WARN` naming the material, the parameter, and which of the two diverged, instead of
-being sampled through coordinates it never authored.
+The renderer builds at most two texture-coordinate streams and carries at most two UV transforms per material. hdSilk
+therefore reconciles the transforms and the primvars across every surface texture the material publishes. The first
+texture in the fixed input order states the *primary* transform, which `uv_transform` carries. The first texture whose
+transform differs from it states the *alternate* transform, which page ABI 30 carries as `alternate_uv_transform`;
+`alternate_uv_parameter_mask` names the parameters that sample through it. The consumer derives the *primary* primvar
+from the first entry that names one and the *secondary* primvar from the first entry naming a different one; each
+texture then samples whichever of the two streams its entry names, through whichever of the two transforms its
+parameter selects. A transformed base colour beside an untransformed normal map, and a base colour on `uvSet0` beside
+a normal map on `uvSet1`, are therefore both supported, and neither texture is dropped.
 
-Both halves are ordinary authoring shapes, not contrived ones: a transformed base colour beside an untransformed
-normal map diverges on the transform, and a base colour on `uvSet0` beside a normal map on `uvSet1` diverges on the
-primvar. Either combination therefore remains outside the support claim, and one of the two textures is left at its
-default rather than silently sampled through the other's coordinates.
+Surface textures must also agree on the missing-coordinate reader fallback, even when they read
+different primvars. A conflicting input is left at its default with a diagnostic.
+
+Three shapes remain outside the projection and are rejected with a `TF_WARN` naming the material, the parameter, and
+the cause, instead of being sampled through coordinates they never authored:
+
+- A texture asking for a third transform. Transforms are claimed in the fixed input order, so a transformed base
+  colour, a roughness image behind a second `place2d`, and an untransformed normal map keep the base colour and the
+  roughness and leave the normal map at its default.
+- A texture asking for a third primvar. Streams are claimed in the fixed input order, so the texture that comes later
+  in that order is the one left at its default, not the one whose primvar name sorts later.
+- A composite whose two operands read different streams or different transforms. One input samples one stream
+  through one transform, so the whole parameter is dropped.
+
+Displacement and the detail normal never take the alternate transform. Displacement uses the primary transform, which
+is its own folded affine when no surface texture exists; a mismatch leaves displacement unpublished. The detail normal
+uses `DetailUvRow0`/`DetailUvRow1`. A mask bit naming either of them, or a parameter with no published surface
+texture, would make the shader read a transform nothing asked for. The native serializer therefore skips such a
+material with a `TF_WARN` and counts it as rejected, and the managed parser refuses the same mask with
+`InvalidDataException`.
+
+The second stream travels in the vertex payload rather than in the material wire, so it does not change the page
+ABI. A mesh with a secondary set uses a 40-byte vertex (56 bytes with tangents), with the secondary coordinates in the
+last two floats. Tangents follow the stream the normal map samples, or the detail normal's stream when there is no
+normal map. GPU deformation handles at most eight floats per vertex, so a mesh with a secondary set is deformed on the
+CPU. Either missing primvar uses its resolved reader fallback when one is published. Without a fallback, it reads as
+zero coordinates and reports `TextureCoordinatesUnavailable` naming the requested primvar.
 
 Unsupported MaterialX terminals and unsupported upstream nodes are not approximated. hdSilk publishes an unsupported
 material record or leaves the individual input at its documented default and emits a `TF_WARN` naming the material,
@@ -2835,7 +3871,26 @@ with the MaterialX standard libraries, validates the result, and records texture
 MaterialX, Vulkan uses `VkShaderGenerator` plus shaderc/glslang SPIR-V, Metal carries `MslShaderGenerator` source to
 the runtime shader service, and D3D12 translates the generated SPIR-V with SPIRV-Cross before compiling HLSL to DXIL
 with DXC. The page payload is still content-addressed and asynchronous on the managed side; the checked offline shader
-payload remains authoritative for built-in shaders and supplies the placeholder while generated programs compile.
+payload remains authoritative for built-in shaders and supplies the placeholder while generated programs compile. If
+compilation fails, the mesh renderer keeps drawing the checked shader and records one
+`OPENUSD_SILK_MATERIAL_SHADER_COMPILATION_FAILED` warning per shader cache key in
+`SilkMeshRenderer.MaterialShaderDiagnostics`. The message names the material path, the cache key and the compiler
+exception. Frame captures append these entries to the scene diagnostics they return, so MCP, the Viewer and disk jobs
+see the failure without reading the renderer directly. The renderer keeps at most 32 entries and then adds one
+`OPENUSD_SILK_DIAGNOSTIC_CAPACITY_EXCEEDED` entry. A later successful compile for the same cache key removes its entry.
+The compiler retains a failed key in its memory cache until eviction or disposal; a request after eviction can queue
+compilation again. Changing or removing a material does not by itself remove its earlier diagnostic, and the capacity
+warning remains set once reached.
+
+`OpenUsd.Rendering.Silk` depends on the `Silk.NET.SPIRV.Cross.Native` package, which supplies `spirv-cross` for each
+runtime identifier under the standard `runtimes/<rid>/native` layout. Only the D3D12 compiler loads it, but a consumer
+restoring the package gets the translator without copying it manually. DXC is not redistributed; the D3D12 compiler
+finds `dxc.exe` through `OPENUSD_DXC_PATH`, the application directory or `PATH`.
+
+The default material shader cache is stored under local application data, and D3D12 compiler scratch files use its
+`dxc` subdirectory. Set `OPENUSD_SILK_SHADER_CACHE_DIR` to an absolute directory before starting the process to move
+both. A relative directory is rejected. Setting `SilkMaterialShaderCompilerOptions.CacheDirectory` explicitly changes
+the cache directory only; the compiler scratch directory still follows the environment setting or its default.
 
 MaterialX 1.39.5 does not ship an HLSL generator or a direct SPIR-V generator. The usable generator
 families for this design are GLSL, Vulkan GLSL, ESSL, WGSL, MSL, OSL, and MDL. Vulkan therefore goes
@@ -2874,9 +3929,9 @@ invalidates the atom-aligned mapped range before CPU access, and polls completio
 The ID image transitions exactly from `COLOR_ATTACHMENT_OPTIMAL` to `TRANSFER_SRC_OPTIMAL` for the
 copy and back for reuse. Resize, submission failure, device loss, and device-generation changes
 invalidate cached pick resources and pending results while leaving visible render attachments
-unchanged. Teardown treats failed fence polling as terminal, skips further GPU waits after device
-loss, and still releases every slot's mappings, buffers, command pool, fence, and device lifetime
-registration. The NativeAOT RHI probe gates on SwiftShader and verifies an ID hit, one-pixel
+unchanged. Teardown releases pending owners after completed work, a successful device-idle wait or
+confirmed device loss. An inconclusive fence failure retains the resources for a later retry rather
+than treating the work as complete. The NativeAOT RHI probe gates on SwiftShader and verifies an ID hit, one-pixel
 readback, authoritative token resolution, and nullable geometry.
 
 Storm ABI v8 renders with the repository-owned camera-space directional headlight when a parity stage
@@ -2895,7 +3950,20 @@ is measured rather than hidden by the matte transport isolation.
 
 The hdSilk subset is intentionally narrow: `UsdLuxDistantLight` and `UsdLuxSphereLight` travel as
 direct lights with colour, intensity, exposure, diffuse/specular multipliers, radius, and world
-transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Shadow-enable is preserved as a
+transform; an untextured `UsdLuxDomeLight` contributes ambient fill. Rect and disk lights also apply
+`UsdLuxShapingAPI` the way Storm's area-light approximation does: when `shaping:cone:angle` is below
+180 degrees, a surface outside the cone receives nothing, and inside it the contribution is scaled by
+the emitter-axis cosine raised to `shaping:focus`. Because Storm's default cone is 90 degrees, an
+unshaped rect or disk light emits only from its front face. Cone softness and IES profiles are not
+applied, and finite-radius sphere lights remain unshaped. A zero-radius sphere light applies its
+ShapingAPI cone and focus when the cone is below 180 degrees, shaping its direct emission as a spot.
+Every direct light and every dome also honours `enableColorTemperature`:
+hdSilk multiplies the authored colour by `UsdLuxBlackbodyTemperatureAsRgb(colorTemperature)`, the
+same luminance-normalized tint Storm applies. It does so when it selects the frame's direct lights,
+resolves an untextured dome's ambient term, or builds a textured dome's environment record, so the
+retained record keeps the authored colour and both the prefilter and the mean-radiance fallback see
+the tinted emission. A dome whose enabled temperature is not finite has no tint to apply: hdSilk keeps
+its authored colour and names the prim. `normalize` is not applied. Shadow-enable is preserved as a
 diagnostic bit only, and `UsdLuxLightAPI` light linking is applied per draw (see "hdSilk UsdLux light
 and shadow linking"). The measured `light-distant-shadow` parity scene confirms Storm's offscreen
 harness is byte-identical when the authored distant-light shadow is disabled
@@ -3078,8 +4146,9 @@ ungrouped bake is still admitted.
   authored image.
 - **`collection:shadowLink` on a dome is never applied.** It restricts which prims cast that dome's
   shadow, and hdSilk casts no dome shadow at all — the raster shadow slice renders maps for distant
-  lights only, and a dome has no light-space projection to render one from. A textured dome reports
-  `OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION` and an untextured one warns. Folding it into
+  lights and supported sphere spots, and a dome has no light-space projection to render one from. A
+  textured dome reports `OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_SHADOW_COLLECTION` and an untextured one
+  warns. Folding it into
   the dome mask would silently turn a caster restriction into a receiver restriction and darken exactly
   the prims the author asked to keep lit.
 - **A dome the prefilter refused is still maskable, through its ambient term.** Its mean-radiance
@@ -3197,34 +4266,62 @@ failure is injected into a rebuild rather than into the first frame on purpose �
 holds the previous bake, so an upload wrongly counted as done leaves the old sky on screen instead of
 an obviously empty one.
 
-**A submission that never completes still releases everything it owns.** Between a command list
-reaching the queue and its wait returning, the submission holds the fence, the command list, the
-allocator, leases on every upload staging buffer the frame recorded from, the descriptor heaps it
-retained, and one registration against the device's own lifetime. A removed device is the ordinary way
-that wait fails, and it fails permanently: the wait disposal makes fails too. So the wait releases what
-it held whether it succeeded or not, and disposal releases the rest in a `finally` while *swallowing*
-its own second failure — rethrowing there would replace the reason the frame failed with a second
-observation of the same failure, and would leave the device permanently undisposable behind it. The
-D3D12 gate injects the failure into a real WARP submission after the work is queued, requires the
-original exception back unchanged, and then requires the device to tear down cleanly — which it refuses
-to do while any submission is still registered against it.
+**D3D12 and Vulkan submissions retain resources until completion is established.** A submission
+retains its execution resources, upload and other resource leases, and device-lifetime ownership.
+An inconclusive wait or completion-poll failure leaves those resources owned, and the device keeps
+the submission even if the caller does not dispose it. Failed disposal or resource release is also
+queued. After a successful device-idle wait or confirmed loss, the device retires the queued
+resources. A submission not explicitly disposed remains usable after a successful idle drain; a
+live pick readback keeps an unread result until it is read or reused. If the device is lost before
+the pick completes, the submission reports the loss and the readback rejects the result. Windows
+WARP and SwiftShader tests inject failures after draining or bypassing device work; they do not
+establish behavior under physical device loss.
 
 ### hdSilk raster shadows
 
-hdSilk casts raster shadows for authored `UsdLuxDistantLight`s. A light that authors
-`inputs:shadow:enable` gets one bounded light-space shadow map, its casters are rendered from light
-space through a depth-only pipeline before the colour pass, and every prim the light reaches is shaded
-against that map. Nothing else casts: a sphere, rect, disk or cylinder light is named as unsupported
-rather than approximated.
+hdSilk casts raster shadows for authored `UsdLuxDistantLight`s, zero-radius `UsdLuxSphereLight`s,
+finite-radius sphere lights, and rect, disk and cylinder lights. A distant light gets one bounded
+orthographic map; a zero-radius sphere light gets one perspective map when its ShapingAPI cone
+half-angle is greater than 0 and less than 90 degrees. Unshaped points and wider cones use six
+90-degree world-axis projections, including when the emitter is inside the caster bounds. A finite
+area emitter gets five perspective maps, one from each deterministic surface sample used by the
+direct-light shader. This is a bounded five-sample estimate of emitter visibility, not exact
+integration over the emitter. The samples use the full affine light transform, so rotation,
+nonuniform scale, shear and reflection affect the emitter positions used by both direct lighting and
+shadow maps. Sphere, disk and cylinder sample normals use the inverse-transpose transform with the
+determinant sign retained. A finite-area transform must be affine within an absolute `1e-12`
+tolerance, have basis rows with squared lengths above `1e-30`, and have a normalized determinant
+magnitude of at least `1e-6`; the managed frame rejects other transforms before applying the frame,
+and the native producer publishes no sample group for them. Shaping still determines which receivers
+the light reaches. The caster geometry
+is rendered through a depth-only pipeline before the colour pass. A sample group is refused when any
+sample cannot project the complete caster bounds; the producer does not replace it with a point or
+distant-light projection. Dome shadows and environment occlusion remain unsupported.
 
-**What travels.** Page ABI v19 adds the `SHADOW` command. It carries up to
-`OPENUSD_SILK_MAX_SHADOW_MAPS` (4) descriptors, each naming its light's index in the FRAME light
-table, its map index, a square power-of-two resolution between 256 and 2048, the row-major
+**What travels.** Page ABI v19 added the `SHADOW` command, and ABI v35 adds the `EMITTER_SAMPLE`
+descriptor flag. The command carries up to
+`OPENUSD_SILK_MAX_SHADOW_MAPS` (24) descriptors for up to four shadow lights. Each names its light's index in the
+FRAME light table, map index, square power-of-two resolution between 256 and 2048, the row-major
 light-space view and projection, a normalized depth bias, a world-space normal bias, and a PCF radius
-in texels. The matrices use exactly the FRAME camera's conventions — row-major, row-vector, OpenGL
-`[-w, +w]` clip depth — so one consumer-side depth conversion covers the camera and every light.
-hdSilk derives the projection from the world bounds of the published casters, cached per record as
-object-space bounds when the record is published so that an unchanged scene never re-walks its points.
+in texels. Distant-light descriptors set `ORTHOGRAPHIC`; spot and emitter-sample descriptors leave it
+clear and carry a perspective projection. A point light publishes six consecutive `CUBE_FACE` descriptors in
+`+X, -X, +Y, -Y, +Z, -Z` order. Its group has one light index, resolution and flag set; incomplete
+groups, repeated lights outside a group and a fifth shadow light are refused. A finite-area emitter
+publishes five consecutive `EMITTER_SAMPLE` descriptors with the same light index, resolution and
+flags. Sphere samples use one pole and four tangent/bitangent points; rect samples use the centre and
+four corners; disk samples use the centre and four cardinal points; cylinder samples use five side
+points. The matrices use the FRAME camera's conventions: row-major, row-vector, OpenGL `[-w, +w]`
+clip depth. Emitter positions are calculated by transforming each local sample offset with the
+authored basis rows before adding the light translation. The shader uses those same basis rows for
+direct-light sample positions; surface normals for sphere, disk and cylinder samples use the inverse
+transpose, including reflection orientation. One consumer-side depth conversion covers the camera and
+every light. hdSilk derives
+projections from the world bounds of the published casters, cached per record as object-space bounds
+when the record is published so an unchanged scene never re-walks its points. A spot map is published
+only when the caster bounds lie wholly in front of its emitter. Each emitter sample gets its own
+perspective frustum fitted to the complete caster bounds; if any sample cannot contain them, hdSilk
+refuses the whole group. Cube faces cover all directions and extend to the farthest axis-aligned
+caster bound.
 The table is compared and published whole: a page whose descriptors are unchanged publishes no command
 at all, which is how a consumer knows a retained map is still the one those lights and those caster
 bounds produced, and a scene that authors no shadow publishes no command and allocates nothing.
@@ -3236,62 +4333,226 @@ two collections separately, so an unlit or off-screen blocker still casts. Recei
 restricted either, because a prim excluded from a light's caster set is
 still lit by that light and still occluded by its other casters. A descriptor whose caster set is
 narrowed carries `OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED`, so a consumer that ignored the mask would
-know it is rendering a different image. A caster whose material is opacity-masked — an authored
-opacity texture, an `opacityThreshold` above zero, or a constant opacity below one — is dropped from
-every map and reported as `OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED` against its prim path: the
-depth-only program binds no material and cannot discard, so drawing it would cast the solid shadow of
-a cutout card rather than of its visible coverage. Such a prim is still lit and still receives.
+know it is rendering a different image. A `UsdPreviewSurface` caster with constant opacity and a
+positive `opacityThreshold` casts either a solid shadow or none. Below the threshold the colour pass
+discards the entire surface, so it is omitted from every map without an unsupported-caster diagnostic.
+At or above the threshold the colour pass makes it opaque, so the depth-only pass draws its geometric
+coverage. Omitted opacity defaults to one. A PreviewSurface opacity texture with a positive threshold
+casts where its sampled opacity is at or above that threshold. Opacity inputs on other material kinds
+exclude the caster and report `OPENUSD_SILK_SHADOW_CASTER_UNSUPPORTED` against its prim path.
+Unsupported casters are still lit and still receive shadows. The continuous-opacity path below has
+local Windows software-backend coverage, not complete platform qualification. Ptex opacity inputs
+also exclude the caster and report that diagnostic: the shadow programs cannot
+sample Ptex and do not substitute the scalar default for its authored fallback. This exclusion
+applies even when the fallback is zero or one; replacing the input with a standard opacity texture
+restores cutout or bounded transmission classification.
 
-**How it is drawn.** `shadow.vertex`/`shadow.fragment` are their own checked program family, not a
-permutation of the mesh family: a shadow pass binds no material, no surface constants and no frame
-constants, and a backend pipeline layout must declare every resource its binary references. The caster
-transform arrives already composed into light clip space in the same instance-table layout the mesh
-vertex stage reads, so an instanced batch casts with one draw. The pass binds no colour attachment at
-all — D3D12 sets zero render targets, Vulkan uses a depth-only render pass and framebuffer — and the
-depth image is transitioned to a shader-readable state at the end of the pass rather than left for the
-sampling path to discover. Backends advertise this through
-`SilkGraphicsCapabilities.SupportsRasterShadows`.
+**Blended caster model.** A depth-only map cannot distinguish a partly transmitting surface in front
+of a receiver from one behind it. The renderer therefore retains up to
+four positive-opacity intersections per shadow texel, each as a 32-bit shadow depth and scalar
+transmittance `1 - saturate(opacity)`. Depth peeling operates on general triangle casters, including
+multiple intersections within one mesh; it does not restrict accepted geometry to planar cards.
+Every layer uses the same material opacity function as the masked and colour passes, including
+texture channels, UV selection and transforms, scale, bias, borders and composites. Zero-opacity
+fragments consume no layer. Positive `opacityThreshold` continues to select cutout coverage rather
+than transmission. This is a thin-surface attenuation model, not coloured absorption, refraction or
+volume transport; entering and leaving a closed mesh are separate surface intersections.
 
-**How it is sampled.** Every map lives in one shadow atlas, bound to every mesh pipeline as a single
-sampled texture and sampler; the tile a map occupies is a runtime value in the frame constants rather
-than four more binding slots. The checked mesh fragment offsets the receiver along its **world-space
-geometric normal** — derived from the screen-space derivatives of the world position, which applies
-the object-to-world transform's inverse transpose exactly and needs no normal matrix in the pinned
-80-byte instance block — subtracts a slope-scaled depth bias, and filters nine taps at the
+The first peel selects the nearest positive-opacity intersection without a previous layer.
+Later peels discard pixels whose previous layer is empty, so an exhausted pixel cannot restart
+at its nearest surface and produce duplicate attenuation or a false overflow.
+
+For each of the nine percentage-closer filtering (PCF) taps, the receiver first compares its biased
+depth with the opaque/cutout map. An occluded tap contributes zero. Otherwise it multiplies the
+transmittances of only those layers whose depths precede that receiver. A layer behind the receiver
+does not attenuate it. The filter averages these complete tap results, rather than multiplying
+separately filtered opaque visibility and transmission.
+
+A fifth peel checks for overflow. A separate equality pass blends a fixed alpha of one half at the
+nearest peeled depth: one fragment produces approximately 128 in the byte probe, while two produce
+approximately 191. Any fifth intersection or equal-depth multiplicity refuses the candidate with
+`ShadowTransmissionLayerOverflow` or `ShadowTransmissionEqualDepth`, naming its light, layer and atlas
+pixel. Equal stored depths cannot be ordered reliably and are not silently merged. Overflow is
+conservatively checked across the complete light frustum, including intersections hidden by opaque
+geometry or behind the current camera's receivers.
+
+The atlas resource owns the original depth image, four RGBA32Float layer images, one reusable peel
+depth image and one RGBA8 validation probe: 76 bytes per atlas pixel, compared with four for the
+opaque-only atlas. An active atlas and same-sized replacement can coexist during publication. GPU
+texture admission charges these images separately, staging admission covers probe readback, and CPU
+texture admission reserves the complete byte probe before allocating it. Existing ceilings are not
+increased and authored resolution is not reduced to fit. A refusal releases the candidate and leaves
+the prior map published. Geometry, deformation, materials, texture dependencies, retry, links and
+device generation retain their existing invalidation semantics; removing the last transmitting
+caster returns to the opaque resource set, and retiring the shadow table releases both atlas sets.
+A model refusal does not retain an invalid page for ordered resource retry, so a corrected page can
+be submitted.
+
+When any CPU-texture, GPU-texture or GPU-staging budget is absent, a provisional per-renderer
+transmission-workspace limit of 2 GiB also applies. Before allocating a candidate, checked byte
+accounting includes the retained active and spare atlas bundles, any new candidate bundle, the
+managed probe and one peak backend readback payload with 256-byte row alignment. A compatible
+spare is counted once; an incompatible spare remains counted until publication retires it.
+This also applies when preparation retained a transmission spare but a later page removes
+transmission before rendering. Opaque replacement still checks the retained workspace, keeps
+that spare through rollback, and releases it only after replacement publication succeeds.
+Opaque-only scenes without retained transmission bundles keep their existing allocation behavior.
+When all three budgets are configured, their existing ceilings govern admission instead of this
+default limit; every configured budget remains in force when one or two of the others are absent.
+
+An over-limit candidate reports `ShadowTransmissionWorkspaceLimit` with the required bytes and
+the applicable limit before allocation, leaving the published atlas unchanged. The caller can
+submit a corrected page with fewer maps or lower authored resolution, retire unused shadows, or
+configure all three budgets before device allocation. The refused page is not retained for ordered
+resource retry. The limit covers logical transmission-workspace payload per renderer, not
+whole-process memory, driver overhead or device memory; multiple renderers can each own a workspace.
+The managed `SilkShadowTransmissionTests` and `SilkShadowAtlasRetentionTests` classes cover boundary,
+ownership, refusal and retry cases; all 68 cases passed locally.
+
+There is no native page ABI change. Managed bindings 41 through 44 carry the four layer textures;
+negative internal PCF radius encodes their presence as `-(radius + 1)` without altering the published
+descriptor. Checked DXIL, SPIR-V and reflection payloads have been regenerated and verified for the
+linear point-depth source. A hosted checkpoint also built the combined Metal library, but did not
+execute a Metal raster-shadow pipeline. A later Windows checkpoint passed selected point-light
+transmission cases on D3D12 WARP and Vulkan SwiftShader after the linear point-depth change. The
+full transmission gate, end-to-end native/package execution and physical-device qualification
+remain outstanding. Metal continues to advertise no raster-shadow capability.
+
+The CI gate adds `SilkShadowTransmissionConformanceTests` to the existing cubic and point-shadow
+report/receipt runner. Windows requires all 54 named argument cases to pass, covering 27 D3D12 WARP
+and 27 packaged SwiftShader cases, with no skips. Linux requires all 27 named Vulkan cases to pass and
+permits only the 27 explicitly identified D3D12 platform skips. A skipped Vulkan
+case, missing or duplicate identity, substituted method, incorrect count, stale execution time or
+reused report publication generation rejects the evidence. Both jobs retain the raw report,
+HTML and log with a hashed execution receipt after a successful run. A failed run retains its log and
+any reports it produced, but does not produce a successful receipt. The earlier 30-case Windows run
+passed, as did the synthetic report/workflow-contract controls. That run predates the linear
+point-depth change. The full 54-case Windows gate and the Linux gate have not yet run for the current
+source.
+The same runner separately checks `SilkFiniteAreaShadowTests`: Windows requires both named methods
+on D3D12 and Vulkan to pass, while Linux requires both Vulkan passes and permits only the two named
+D3D12 platform skips. These four identities have their own report and receipt; transmission evidence
+cannot substitute for finite-area execution. All four passed locally on the Windows software backends.
+
+For camera evidence, the runner selects only `VolumeCameraConformanceTests/CameraIntegrationBackendGate`.
+Each intended-backend receipt must contain the complete set of 134 named camera cases, including thin, high-density
+uniform and sampled fields, and staged refusal and corrected retry for non-finite density values and excessive finite
+sample/scale and tint/exposure products. The set also includes overlapping high-tint fields, low-signal refusals and
+inactive-material controls, background transmission, color-format and alpha cases, snapshot budget and rollback cases,
+and resource-retirement failures. These cases are distinct from the three reported test identities. Those identities
+require D3D12 and Vulkan passes with Metal skipped on Windows, a Vulkan pass with D3D12 and Metal skipped on Linux,
+and a Metal pass with D3D12 and Vulkan skipped on macOS.
+The same run validates the expected backend camera receipts against its UTC start, copies them
+into the evidence artifact, verifies source and copied hashes, and validates the retained copies.
+Missing, stale or incomplete receipts reject the run even when the TUnit report passed. The macOS
+job retains its required Metal-library build. Both 134-case Windows software-backend receipts passed this validation;
+Linux, macOS and the native producer-to-renderer chain remain to be qualified.
+
+If execution or report validation fails, the runner copies any present camera receipts into
+`camera-failure-receipts` and records the original error in `camera.failure.json`. These copies
+are diagnostic only: stale, partial and malformed files are retained without producing a success
+receipt. A copy error is recorded per backend, does not stop other backend copies, and cannot
+replace the original failure. If the artifact directory cannot be written, the runner reports
+the retention error in the log; process termination before the failure handler runs cannot
+preserve receipts.
+
+**How it is drawn.** Opaque and masked shadow casters use separate checked pipeline layouts. The opaque
+program binds no material or surface constants. The masked program binds the surface block, opacity
+image and sampler, and the composite image and sampler; it selects and transforms the same primary or
+secondary UVs and calls the same opacity-sampling function as the colour pass. That function applies
+the texture channel, scale and bias, UDIM addressing, constant border and composite before comparing
+the saturated result with the threshold. A sample below the threshold is discarded; equality casts.
+The caster transform arrives already composed into light clip space in the same instance-table layout
+the mesh vertex stage reads, so an instanced batch casts with one draw. Masked casters are grouped by
+material, submitted and waited before their shared instance buffer or streamed texture working set is
+reused. The pass binds no colour attachment — D3D12 sets zero render targets, Vulkan uses a depth-only
+render pass and framebuffer — and transitions the depth image for sampling. Backends advertise this
+through `SilkGraphicsCapabilities.SupportsRasterShadows`.
+
+**How it is sampled.** Opaque and cutout depths share one atlas and sampler. When transmission is
+present, four additional textures hold the peeled layers at the same tile coordinates. A map's tile
+is a runtime value in the frame constants rather than a separate binding. Four or fewer maps retain
+the 2-by-2 atlas layout; larger tables use a square grid rounded up from the map count. Each light
+names its first map and map count. A cube
+receiver chooses the face with the greatest positive forward distance before sampling. For a finite-area
+light, the checked mesh fragment resolves each of its five illumination samples through the matching
+map and applies that visibility only to the sample's direct-light contribution. The five contributions
+are averaged; when transmission layers are present, each sample includes their attenuation before
+the average. The checked mesh fragment offsets
+the receiver along its **world-space geometric normal**. Screen-space derivatives of world position produce that normal.
+The object-to-world inverse transpose is applied exactly without a normal matrix in the pinned 80-byte instance block.
+The fragment applies a slope-scaled depth bias and filters nine taps at the
 descriptor's PCF radius. The normal's sign is resolved against each light rather than against the
 camera, because a derivative-based normal carries the sign of the triangle's screen winding. The
-caster pass itself rasterizes with the device's own clip-space convention, so every backend stores the
-same map and the colour pass reconstructs the atlas coordinate with one convention everywhere.
-Everything
-outside a map's own frustum is fully lit, because the projection is derived from the caster bounds and
-a receiver outside it has no caster in front of it by construction. A frame with no shadow map names
+caster pass rasterizes using the device's clip-space convention, and the colour pass reconstructs
+the atlas coordinate in that convention. A receiver outside the map's frustum is treated as fully
+lit. Geometry beyond the fitted depth range is therefore not tested against a caster inside it.
+A frame with no shadow map names
 slot `-1` for every light and never reaches the atlas, and binds a one-texel stand-in depth image
 purely because the checked binary references the slot in every permutation, exactly as it does for the
 composite material image.
 
+For a point light, the caster writes clip-space `w` multiplied by one scale shared by its six cube
+faces. The scale uses the largest face far distance rounded outward; the producer's near plane is
+unchanged. Opaque, cutout and transmission casters store this depth, and the colour pass uses it
+for comparisons. Each face has an outward-rounded encoded far limit derived from its own projection.
+A receiver beyond the selected face's limit is lit, and a caster fragment beyond it is discarded,
+including during transmission peeling and overflow checks. A longer face does not extend the comparison
+range of a shorter face. Other shadow maps retain their raster depth. The shadow fragments write
+`SV_Depth` for all projections, which can reduce early-depth optimization; the performance effect
+has not been measured. The unequal-face receiver, opaque and masked caster, and constant and textured
+transmission cases passed on D3D12 WARP and Vulkan SwiftShader. Native-producer and physical-device
+qualification remain pending.
+
+For a published perspective-depth bias `b` and a face with near and far distances `n` and `f`, the
+renderer calculates `B = n * f / (f - n)` and a converted bias `q = b / (B * s)`, where `s` is the
+shared point-depth scale. It compares a receiver with encoded depth `L` as
+`L / (1 + q * slopeFactor * L)`, using the same slope factor as the raster-depth path. During shadow
+preparation, a cube face is rejected for a non-finite or non-affine view, an unsupported perspective
+depth projection, or a depth range, encoded face limit or converted bias the GPU cannot represent.
+This includes a subnormal scale, near-depth value or nonzero converted bias, and a converted bias above
+`float.MaxValue / 3`. The check runs before allocating an atlas candidate. The checks do not prove
+every finite input, including extreme world-coordinate cancellation.
+
 **What is retained.** The atlas is re-rendered exactly when one of its inputs changes: the published
 descriptor table, the caster geometry revision (which moves on upsert, removal, deformation, and
-restoration), the caster restriction, or the device generation. The device generation it keys on is the
-combined one every reset a backend reports advances, not the picking or selection-outline generation
-alone: a device lost on an ordinary colour or shadow submission drops every image the device held,
-including this atlas, without either subsystem generation moving. An unchanged scene reuses the
-retained maps and reproduces the frame byte for byte; a retired descriptor table releases the atlas.
+restoration), the material revision, the caster restriction, the device generation, or a captured
+opacity-image dependency, or an explicit failed-texture retry. The dependency records file existence,
+length and last-write time for each successfully resolved ordinary image or UDIM tile used by the map,
+independently of whether texture streaming later evicts its GPU image. An in-place change to an
+already-resolved file invalidates the map; the dependency check does not discover newly added UDIM
+tiles or automatically recover a failed fallback. Calling either `RetryFailedTextures` overload
+invalidates the map so a repaired opacity image can change its coverage. A material-only edit can
+change whether a caster is solid, masked, transmitting, invisible, or unsupported without changing
+its mesh. The
+maximum displacement of prepared casters expands the shadow frustum and depth range before rendering;
+if a spot near plane would cross the emitter, preparation rejects the projection instead of
+publishing a map that can clip displaced geometry. Cube displacement expands the far range but
+keeps its near plane and 90-degree faces, so neighboring faces do not open angular gaps. The
+device generation it keys on is the combined one every reset a backend reports advances, not the
+picking or selection-outline generation alone: a device lost on an ordinary colour or shadow
+submission drops every image the device held, including this atlas, without either subsystem generation
+moving. An unchanged scene reuses the retained maps and reproduces the frame byte for byte; a retired
+descriptor table releases the atlas.
 
-**What a refused allocation leaves behind.** Only a resolution change replaces the image itself, and
-that is the one path a refused allocation can interrupt. The retained atlas is unpublished and released
-before the replacement is requested, so a device that declines the allocation leaves the cache holding
-nothing rather than a field still pointing at the image it just disposed. The colour pass then binds the
-one-texel stand-in — every light already resolves to slot `-1` in that state — and the next frame
-allocates and renders the atlas again. `SilkShadowAtlasRetentionTests` drives both directions: a refused
-first allocation and a refused reallocation, each followed by a frame that must recover to a live image
-of the resolution the descriptor asks for.
+**What a refused allocation leaves behind.** With resource admission configured, a replacement map
+and its texture updates are prepared before publication. A refused allocation or submission retains
+the previously published atlas, its dependency stamps and texture ownership; a later attempt can
+retry. Without configured admission and without retained transmission resources, a resolution change
+releases the old opaque image before allocating its replacement. If that allocation fails, the cache
+holds no disposed atlas and the colour pass binds the one-texel stand-in until a later frame allocates
+and renders the replacement. Transmission and its retained spare use the workspace and replacement
+rules above, including the provisional limit when a budget is absent. `SilkShadowAtlasRetentionTests`
+drives refused first allocations and reallocations, while `SilkShadowAdmissionTests` checks preservation
+and retry through admitted allocation and submission failures.
 
 **What is named rather than approximated.** A shadow-enabled light with no descriptor is reported as
 `OPENUSD_SILK_SHADOW_UNSUPPORTED` against its light-table index and resolved type, with the reason: a
-light type with no exact light-space projection, a scene whose published geometry has no world extent
-to derive one from, a table over the map budget, or a device that cannot record a depth-only pass. The
-diagnostic is re-derived whenever the frame or the shadow table moves, so a light that starts getting a
-map, or stops asking for one, stops being reported.
+light shape with no supported projection, invalid finite-area dimensions or transforms, an emitter
+sample whose perspective frustum cannot contain the complete caster bounds, a scene whose published
+geometry has no world extent to derive one from, a table over the map budget, or a device that cannot
+record a depth-only pass. The diagnostic is re-derived whenever the frame or the shadow table moves,
+so a light that starts getting a map, or stops asking for one, stops being reported.
 
 **Evidence.** `SilkShadowConformance` renders a receiver in front of a caster under one tilted distant
 light on D3D12 WARP and Vulkan SwiftShader and requires the shadow to land where the geometry says it
@@ -3304,8 +4565,35 @@ whole dark-row span rather than one sample, because a caster matrix that skips t
 convention relocates the shadow rather than removing it: the span is rows 36..50 on both backends with
 the convention applied, and 24..63 on Vulkan without it — a Y-symmetric scene cannot see the
 difference. A rotated, non-uniformly scaled receiver that is its own only caster must not darken a
-single pixel, and an opacity-masked caster must stop occluding and be named.
-`SilkShadowWireTests` pins the wire layout and its rejections, including the reserved header field,
+single pixel. `SilkShadowAdmissionTests` checks
+constant and textured opacity below, at, and above the threshold, material-only transitions, UV and
+composite sampling, instance groups, retained-map reuse, image edits, diagnostics, refusal, retry and
+resource release on D3D12 WARP and Vulkan SwiftShader, including admitted and streamed paths.
+`SilkGraphicsPipelineTests` pins the separate opaque and masked layouts, and package tests compare the
+checked masked shader payloads embedded for each target framework. `SilkShadowWireTests` pins the
+cutoff defaults, adjacent threshold values and invalid
+inputs as well as the wire layout and its rejections, including the reserved header field.
+`SilkTextureResidencyTests` distinguishes cutout and continuous-opacity caster classification.
+`SilkShadowTransmissionConformanceTests` declares independent analytic transmission ratios
+for single and multiple layers, behind-receiver geometry, texture changes, shadow links and lifecycle,
+as well as overflow/equal-depth refusal and opaque/cutout interaction. An earlier set of 30 cases
+passed locally on D3D12 WARP and Vulkan SwiftShader before the linear point-depth change.
+`SilkShadowTransmissionTests` and `SilkShadowAtlasRetentionTests`
+also passed 68 managed resource-accounting, allocation-refusal and validation cases before that change.
+`PerspectiveSpotShadowPixelsMatchAnalyticReceiver` checks shaped-sphere illumination against a
+perspective descriptor on both backends; `hdsilk_direct_lights_probe` pins native spot descriptor
+production and cone boundaries. `RectEmitterShadowsMatchFiveRayReferenceAcrossUpdateAndRetirement`
+checks one, two and zero blocked emitter samples, map reuse, geometry update, restoration and
+retirement on D3D12 WARP and Vulkan SwiftShader. The transformed-emitter pixel cases also passed on
+both software backends. The changed native emitter-producer probe remains to be qualified against a
+matching native build. `SilkShadowAtlasRetentionTests` checks perspective displacement frustum expansion
+and rejects a displacement that crosses the near plane.
+The six-face parser, atlas transport and displacement tests pass in the managed suite.
+`EveryPointCubeFacePreservesWorldLightingUpdatesAndRestoration` adds six rotated analytic receiver
+cases, reversed mesh submission, caster updates and exact restoration. Its backend execution and
+the changed native producer probes remain pending a matching native rebuild and resource admission;
+their presence does not qualify point-shadow pixels. Authored direct BRDF lighting now uses the
+world-space mapped normal and eye together; the unauthored camera headlight retains its old basis.
 `SilkShadowDiagnosticTests` pins the naming in both directions,
 `SilkShadowNormalSpaceSourceContractTests` pins the world space the shadow bias works in — a defect
 the constant depth bias hides from any gate a 64-pixel frame can resolve — and `hdsilk_probe` pins
@@ -3329,18 +4617,22 @@ synchronisation behaviour rather than shading:
   `VulkanSampledDepthBarrierSourceContractTests` instead of being left to a backend that happens to be
   permissive.
 
-What is deliberately not claimed: shadows from sphere, rect, disk, cylinder and dome lights, which
-need a cube or perspective light-space projection this producer has not derived; more than four
-simultaneous shadow maps; cascaded or camera-fitted light-space partitions, since the single map is
-fitted to the whole caster bound rather than to the view frustum; shadows from line and point
+What is deliberately not claimed: qualified pixels for the new six-face point path; platform,
+physical-device or native-producer qualification for the five-sample finite-area and blended-caster
+paths beyond the Windows software-backend cases above; shadows from dome lights, which need an environment
+visibility model this producer has not derived; more than four simultaneous shadow lights; cascaded or
+camera-fitted light-space partitions, since the single map is fitted to the whole caster bound rather
+than to the view frustum; shadows from line and point
 topologies, which rasterize at one pixel and would publish a single-texel artefact rather than an
-occluder; alpha-tested and translucent shadow casters, which are dropped and named rather than
-approximated with a solid shadow, because the depth-only program binds no material and cannot discard;
+occluder; opacity coverage on non-PreviewSurface materials, which is dropped and named rather than
+approximated with a solid shadow;
+density-volume shadow transport, whose caster is excluded and named rather than treated as opaque;
 and Metal, which is
 source-complete but reports no raster-shadow capability and is therefore unclaimed and unrun — a Metal
 device allocates no map and diagnoses every shadow-enabled light. Storm's own offscreen shadow path
 remains unusable as a reference (see "hdSilk UsdLux lights"), so all of the above is gated
 analytically rather than against Storm.
+With scene materials disabled, the volume proxy casts as ordinary solid geometry.
 
 Storm ABI v8 implements nearest-hit primitive picking with the pinned OpenUSD v26.08
 `UsdImagingGLEngine::TestIntersection` convention. The versioned native request binds one physical
@@ -3488,7 +4780,7 @@ selecting a different renderer.
 
 ## Renderer-neutral physics render contract
 
-`OpenUsd.Rendering.Physics` owns the renderer-side physics contract. It never references
+The physics module within `OpenUsd.Rendering` owns the renderer-side contract. It never references
 `OpenUsd.Physics`, USD prim handles, or PhysX handles: the renderer only sees
 `PhysicsRenderObjectId`, an opaque stable simulation identity carrying the raw
 `UsdPhysicsObjectId` value, a `PhysicsRenderObjectKind`, and a point-instance index.
@@ -3507,6 +4799,11 @@ snapshot buffers with per-buffer reference counts, so a publisher never blocks a
 observes one complete snapshot; partially written and abandoned buffers are never published. Only
 complete snapshots become latest. `DroppedPublications`, `RefusedWrites`, and `TruncatedReads` are
 capacity diagnostics, and `Invalidate` drops the retained snapshot on stop or reset.
+One producer owns write operations. `TryBeginWrite` clears the recycled buffer's
+completion state; the new claim must be filled and completed before publication.
+`Publish` and `Abandon` each consume that claim exactly once and reject an unclaimed
+buffer without changing the latest frame or reference accounting. A producer must
+not retain its borrowed snapshot reference after either operation ends the claim.
 
 `PhysicsRenderInterpolator` retains the two latest complete snapshots and blends them by simulation
 time, clamping to the newest sample rather than extrapolating. Rotations use canonical shortest-path
@@ -3547,6 +4844,21 @@ introduced, and unchanged uniform bytes still suppress the upload. Clearing the 
 authored transform on the next update, so reset, stop, and invalidation return the stage to its
 authored render state. `RenderBackendCapability.PhysicsTransformOverrides` advertises backends that
 implement this path; both hdSilk and Storm advertise it.
+
+For exact capture, `Stage(bindings, overrides)` copies a whole bounded transform publication before
+scene synchronization. `SilkMeshRenderer` calls `RefreshStaged` after applying the authored page,
+so the simulated pose retains the scale/shear of the frame actually being captured rather than the
+previous frame. `SourceRevision` identifies the publication resolved by the latest refresh; staging
+alone does not advance it. Capacity refusal preserves the preceding staged batch, and changing the
+binding table before resolution is an error. Staging and resolution allocate nothing after warmup.
+`Clear` removes both the resolved overrides and the pending batch.
+
+`SilkFrameCapturer.PhysicsOverrides` and `PhysicsDeformations` connect caller-owned bounded tables
+to retained captures without exposing its renderer. The capture and table owner must serialize
+updates. Apply an empty deformation batch through a capture before removing a deformation table,
+or dispose a private capturer, to release its simulated geometry; assigning null alone is not a
+geometry-restoration operation. Host recording adapters must still verify actual applied counts,
+drain capture and restore state before publishing a completed job.
 
 ### hdSilk deformable geometry
 
@@ -3812,13 +5124,28 @@ Count equality alone cannot establish that those retained identities are still v
 An authored-direct-light flag preserves authored darkness even with zero effective entries; a scene with
 no authored lighting keeps its deterministic camera headlight.
 
-The full native frame is 23368 bytes (23096 without the dome extension); direct entries remain 176 bytes.
-The GPU frame is 15296 bytes at existing binding 8, addressed as a raw buffer because D3D12 restricts
+The full native frame is 25416 bytes. It is 23368 bytes without the page ABI 28 shaping table and 23096
+bytes without the dome extension; direct entries remain 176 bytes. The GPU frame is 19264 bytes at
+existing binding 8, addressed as a raw buffer because D3D12 restricts
 a structured-buffer **element** to 2048 bytes. Checked D3D12, Vulkan and Metal shader sources share
 this layout; no additional slot or per-element P/Invoke is introduced. Light and shadow masks, batch keys,
 surface cache keys, instance inheritance and shadow slots preserve all 128 indices. The separate eight-dome
-profile and four-map distant-shadow budget are unchanged; area-light shadows, dome shadows and previously
+profile and four-light shadow budget are unchanged; the atlas now admits up to 24 maps for six-face
+point groups. Area-light shadows, dome shadows and previously
 unsupported nested category semantics are not made complete by increasing direct-light capacity.
+
+Fragment shaders dynamically read each light and shadow-slot vector directly from that raw
+frame buffer. They do not copy the seven 128-entry arrays into invocation-local storage.
+The previous SPIR-V declared 15180 bytes of numeric local storage; the direct-read form declares
+844 bytes while preserving the same layout and all light indices. On the qualified RTX 5070
+Windows Vulkan run, first material-pipeline setup fell from approximately 1.13 GB of additional
+private memory to 34 MB. The original three-mesh book then rendered all full-resolution maps
+under its unchanged 1.5-GiB diagnostic cap: uninstrumented job peaks were 1153552384 bytes for
+Vulkan and 1266049024 bytes for D3D12, with byte-identical displayed output. These are bounded
+book measurements, not a full-warehouse or cross-platform memory guarantee.
+The projected MaterialX runtime-program cache salt is version 6 so persisted programs from
+before the direct-read change are not reused. Independently generated backend fragments keep
+their existing cache identity.
 
 Page ABI v4 adds the vertex attribute table and the material binding, and is the transport every material
 feature depends on. Each `MESH_UPSERT` carries `attribute_count` entries of `(semantic, component_count,
@@ -3853,6 +5180,15 @@ for a material with no transform. `SilkSurfaceUniformWriter` packs it into the s
 `(m00, m01, tx, 0)` and `(m10, m11, ty, 0)` at offsets 144 and 160, which the mesh fragment shader applies
 once to the interpolated coordinate before any texture sample.
 
+Page ABI v30 appends `alternate_uv_parameter_mask`, a little-endian `u32`, and then `alternate_uv_transform`, six
+floats in the same row-major layout, after `uv_transform`. Bit `1 << parameter` selects the alternate transform for
+that parameter's texture; a material with one transform publishes mask zero and the identity. The managed parser
+rejects a command that ends inside this tail and a mask bit naming displacement, volume density, the detail normal,
+or a parameter without a texture entry. `SilkSurfaceUniformWriter` packs the alternate rows at offsets 272 and 288 and
+stores the matching shader texture-slot bits in lane `w` of offset 192, so the surface block is 304 bytes. The
+fragment shader transforms the coordinate once per transform and picks per texture slot; normal-map tangent
+orientation follows the alternate rows when the normal slot selects them.
+
 The table is how every per-vertex value other than position travels, so authored normals, texture coordinates
 and arbitrary primvars all use one mechanism and a new attribute needs no further ABI bump. Attribute data is
 always float and always already resolved onto the emitted triangle-list vertices, so a consumer never
@@ -3870,12 +5206,17 @@ Constant, vertex, varying, uniform, and face-varying mesh primvars are therefore
 native resolver. Varying primvars must have one value per point after Hydra resolution. Remaining
 gaps are not hidden behind guessed indexing: unsupported or length-mismatched values are omitted.
 
-Authored normals are the first attribute to use it, and they close a real gap. Before v4 the renderer
-recomputed area-weighted vertex normals from topology because the page could not carry them, so authored
-normals were silently discarded. hdSilk now publishes them when it can resolve them directly onto emitted
-vertices; when it cannot, it publishes none and the renderer computes them exactly as before, rather than
-this delegate guessing at a re-indexing it cannot verify. Both paths still normalise and reject a degenerate
-normal, so an authored zero or non-finite value never reaches the GPU.
+hdSilk publishes authored normals through this attribute table when it can resolve them onto the emitted
+vertices. Otherwise, smooth mesh normals use the published polygon-corner correspondence. Copies share a
+normal only while their source identity and current position match, so a face-varying seam can remain
+smooth without joining unrelated or diverged vertices. Polygon and bilinear meshes use a triangle-local
+fallback: the renderer derives a vertex for each triangle corner and computes its normal from that triangle.
+The retained points, indices and simulation topology do not change. Displacement follows each derived
+normal, and simulated points cause the normals to be recomputed.
+
+Meshes without a correspondence block use area-weighted incident triangles. Each result is normalized;
+a non-finite result or one whose squared length is at most `1e-30` uses `(0, 0, 1)`. Storm can also use
+limit normals on refined subdivision surfaces, which these fallbacks do not reproduce.
 
 Points use the same command stream with additive `POINT_LIST` topology. The measured Storm rule is:
 without authored widths, `UsdGeomPoints` uses a world-space default width that can cover most of a
@@ -3883,7 +5224,14 @@ parity frame; with constant width `0.0001` in `parity-points-asymmetric.usda`, S
 Vulkan SwiftShader all rasterize exactly one pixel per point. hdSilk currently supports that measured
 one-pixel point-list subset and does not implement wide point splats.
 
-Linear segmented basis curves use `LINE_LIST` topology and now carry their authored widths through the
+Linear segmented, nonperiodic, periodic and pinned basis curves use `LINE_LIST` topology. Periodic
+curves close each curve independently; nonperiodic and pinned curves connect consecutive control
+points. Invalid topology removes the retained curve until a valid edit republishes it. Cubic curves
+remain unsupported. The bounded preparation profile also admits these linear wraps. Native topology
+and D3D12 WARP/Vulkan SwiftShader reference tests cover both bounded and legacy modes, but do not
+establish Storm or Metal parity.
+
+Linear curves carry their authored widths through the
 same attribute table, under the name `widths` with semantic `OPENUSD_SILK_ATTRIBUTE_WIDTH` and one
 component. Constant, uniform, varying, and vertex interpolations are all resolved: a constant width
 publishes one `CONSTANT` element, and the other three publish one `VERTEX` element per emitted line
@@ -3974,7 +5322,8 @@ For a skinned `UsdGeomMesh`, hdSilk finds the containing `UsdSkelRoot`, resolves
 `UsdSkelAnimation` supplies weights, computes skinning transforms at the capture time, and publishes the resulting
 points and normals before asking Hydra for computed primvars. The ExtComputation `points` pull remains only a fallback
 for unsupported or non-UsdSkel computed points, and topology refreshes still force a point refresh so deformed positions
-can never be indexed against a stale point array.
+can never be indexed against a stale point array. If a previously resolved deformation becomes unavailable, even a
+normals-only sync refreshes the computed or authored fallback rather than retaining the old deformed points.
 
 The evaluation scope is keyed by the render delegate's scene state, not by thread. Hydra syncs Rprims on a worker pool
 that the thread calling `Render()` does not own, so the thread-local scope this path started with reached only the prims
@@ -4252,18 +5601,17 @@ evaluates exactly; the prim is drawn with the default surface, the surface is st
 and the geometry still moves. The retained-scene consumer therefore resolves the displacement material
 without the shadeability filter it applies to the surface material.
 
-**The height field has its own coordinate set.** hdSilk carries one texture-coordinate stream per
-material for the *surface* textures, and reconciles them before publishing, because they are sampled
-together by one fragment shader. Displacement is not part of that reconciliation: it is sampled per
+**The height field has its own coordinate set.** hdSilk carries at most two texture-coordinate
+streams per material for the *surface* textures, and reconciles them before publishing, because they
+are sampled together by one fragment shader. Displacement is not part of that reconciliation: it is sampled per
 vertex, on the CPU, from whatever primvar it authors, so a material shading through `st` and displacing
 through `st2` is exactly representable and publishes both -- neither is dropped, and neither is
-rewritten into the other. The displacement keeps its own folded affine as well: it adopts one freely
-when no surface texture states one, and is refused by name only when a surface transform is already
-published and the displacement's diverges from it, which is the one case the single published
-transform genuinely cannot represent. `VerifyDisplacementStageProbe` gates this against a composed
-stage, not a hand-built map.
+rewritten into the other. With no surface texture, the displacement's folded affine becomes the
+material's primary transform. Otherwise, a different affine or a different missing-coordinate fallback
+for the same primvar leaves displacement unpublished with a diagnostic. Displacement cannot select
+the alternate surface transform.
 
-The rules are gated against a real stage as well as against hand-built networks:
+The terminal and independent-coordinate behavior is also checked against a composed stage:
 `test-assets/displacement-terminal-stage.usda` is composed by UsdImaging and read through
 `GetMaterialResource`, and `VerifyDisplacementStageProbe` checks the claims a hand-built network map
 cannot make -- a connected output publishes, an unconnected one publishes nothing even though the same
@@ -4280,7 +5628,7 @@ amount along the normal it is shaded with:
   the schema default: nothing moves, nothing is reported, and the prim shares the retained geometry of
   a material that authors no displacement at all.
 - A `displacement` connected to a `UsdUVTexture` is sampled per vertex from that texture's authored
-  coordinate set. The material's single folded affine transforms the coordinate, the authored
+  coordinate set. The material's primary folded affine transforms the coordinate, the authored
   `wrapS`/`wrapT` address the result, and the texels are filtered bilinearly at the base level. Base
   level only: a vertex has no screen-space derivative, so there is no defensible level of detail to
   select and reading a mip would silently low-pass the height field.
@@ -4310,24 +5658,28 @@ two sides cannot drift apart silently.
   the library's own auto resolution does not call a single-channel image sRGB, while a three- or
   four-channel eight-bit image is linearized as it should be. Deciding from the decoded RGBA format
   alone would have linearized every eight-bit height map the author left at the schema default.
-- `useMetadata` uses the observed per-axis wrap. An axis the library was asked about and reported
-  nothing for is USD's documented "no metadata" case and resolves to `black`.
-- When the image library was **not consulted at all**, neither input can be resolved from anything, and
-  the exact deferred case is refused by name as `MetadataUnavailable` rather than resolved from a
-  default nobody authored. When the file's own metadata names an addressing mode the wire cannot carry
-  -- Hio's mirror-clamp-to-edge is neither of UsdUVTexture's mirroring or clamping modes -- the case is
-  refused as `MetadataUnsupported` rather than rounded to the nearest mode this renderer implements.
+- `useMetadata` uses the observed per-axis wrap for fragment sampling and vertex displacement. An axis
+  the library was asked about and reported nothing for is USD's documented "no metadata" case and
+  resolves to `black`.
+- For vertex displacement, when the image library was **not consulted at all**, the deferred case is
+  refused by name as `MetadataUnavailable`. When the file's own metadata names an addressing mode the
+  wire cannot carry -- Hio's mirror-clamp-to-edge is neither of UsdUVTexture's mirroring or clamping
+  modes -- displacement is refused as `MetadataUnsupported` rather than rounded to the nearest mode.
+  Fragment sampling uses the black border and reports a texture-fallback diagnostic for unavailable
+  or unsupported metadata.
 
-**Border addressing is exact, and the affine lands after it.** `black` and `useMetadata` are a
-transparent-black border in the vertex stage: a texel outside the image contributes zero *sampled*
-value, including its share of a bilinear blend near an edge, which is what a border-addressed sampler
-computes and what a clamp cannot reproduce. The authored `scale` and `bias` are then applied to the
-filtered value, because that is where UsdUVTexture puts them -- the reader samples, then scales and
-biases. A fully bordered sample therefore resolves to the authored bias rather than to zero, and a
-blend that straddles an edge carries the bias exactly once instead of once per texel. The fragment
-stage still resolves both border modes to clamp-to-edge, because the wire carries no border colour and
-no backend is handed one; the vertex stage owns its own addressing and has no such constraint. The two
-modes are distinct on the wire: `OPENUSD_SILK_WRAP_USE_METADATA` is published for an authored
+**Border addressing is exact, and the affine lands after it.** `black` selects a transparent-black
+border in both fragment sampling and vertex displacement. A `useMetadata` axis selects the image's
+observed wrap mode, or the same border when metadata is absent. A texel outside a border-addressed
+image contributes zero *sampled* value, including its share of a bilinear blend near an edge, which is
+what a border-addressed sampler computes and what a clamp cannot reproduce. The authored `scale` and
+`bias` are then applied to the filtered value, because that is where UsdUVTexture puts them -- the
+reader samples, then scales and biases. A fully bordered sample therefore resolves to the authored
+bias rather than to zero, and a blend that straddles an edge carries the bias exactly once instead of
+once per texel. MaterialX `constant` instead reads its authored `default` outside the image; fragment sampling
+uses a padded ring. The low-level displacement field also handles a `constant` border on the CPU, although a
+MaterialX displacement terminal is not projected. `black` and `useMetadata` remain distinct on the wire:
+`OPENUSD_SILK_WRAP_USE_METADATA` is published for an authored
 `useMetadata` and for an unauthored `wrap` -- which is the same thing, since `useMetadata` is the
 schema default -- while `OPENUSD_SILK_WRAP_BLACK` is published for an authored `black` and for a token
 this delegate does not recognise.

@@ -529,6 +529,183 @@ public sealed class VulkanCompositionPresentationTests
         await Assert.That(diagnostics.RingReuseFrames).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task HostReadbackSelectedWhenCompositorCannotImportExternalObjects()
+    {
+        VulkanCompositionCapabilitySnapshot lavapipe = CreateLinuxCapabilities() with
+        {
+            MissingExtensions = ["VK_KHR_external_semaphore_fd"],
+            SemaphoreExportable = false
+        };
+        var readbackOnly = new CompositionPresentationTarget(
+            [CompositionHostReadback.ImageHandleType],
+            [],
+            null,
+            null);
+        var externalOnly = CreateTarget(lavapipe);
+
+        CompositionPresenterProbeResult readback =
+            VulkanCompositionCompatibility.Probe(readbackOnly, lavapipe);
+        CompositionPresenterProbeResult external =
+            VulkanCompositionCompatibility.Probe(externalOnly, lavapipe);
+        CompositionPresenterProbeResult oldVulkan =
+            VulkanCompositionCompatibility.Probe(
+                readbackOnly,
+                lavapipe with { ApiVersion = Vk.Version10 });
+
+        await Assert.That(readback.IsAvailable).IsTrue();
+        await Assert.That(readback.Status).Contains("host-readback");
+        await Assert.That(
+                VulkanCompositionCompatibility.SelectsHostReadback(readbackOnly, lavapipe))
+            .IsTrue();
+        await Assert.That(external.IsAvailable).IsFalse();
+        await Assert.That(external.Status).Contains("VK_KHR_external_semaphore_fd");
+        await Assert.That(oldVulkan.IsAvailable).IsFalse();
+    }
+
+    [Test]
+    public async Task ExternalObjectsPreferredOverHostReadbackWhenBothAreOffered()
+    {
+        VulkanCompositionCapabilitySnapshot capabilities = CreateLinuxCapabilities();
+        var target = new CompositionPresentationTarget(
+            [capabilities.ImageHandleType, CompositionHostReadback.ImageHandleType],
+            [capabilities.SemaphoreHandleType],
+            capabilities.DeviceLuid,
+            capabilities.DeviceUuid);
+
+        CompositionPresenterProbeResult result =
+            VulkanCompositionCompatibility.Probe(target, capabilities);
+
+        await Assert.That(result.IsAvailable).IsTrue();
+        await Assert.That(result.Status).DoesNotContain("host-readback");
+        await Assert.That(
+                VulkanCompositionCompatibility.SelectsHostReadback(target, capabilities))
+            .IsFalse();
+    }
+
+    [Test]
+    public async Task HostReadbackPresentsChangedPixelsAcrossEditsAndResizeThenDrains()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        bool required = IsRequiredMode();
+        float red = 0.25f;
+        int callbacks = 0;
+        VulkanCompositionViewportPresenter presenter;
+        try
+        {
+            presenter = VulkanCompositionViewportPresenter.Create(
+                context =>
+                {
+                    callbacks++;
+                    return context.Renderer.Render(
+                        context.ColorTarget,
+                        context.DepthTarget,
+                        new SilkMeshRenderOptions(new SilkColor(red, 0.5f, 0.75f, 1), 1));
+                },
+                required);
+        }
+        catch (Exception exception) when (
+            !required && IsPresentationUnavailable(exception))
+        {
+            Skip.Test($"Vulkan presentation is unavailable: {exception.Message}");
+            throw;
+        }
+
+        await using (presenter)
+        {
+            var target = new CompositionPresentationTarget(
+                [CompositionHostReadback.ImageHandleType],
+                [],
+                null,
+                null);
+            CompositionPresenterProbeResult probe = await presenter.ProbeAsync(target);
+            if (!probe.IsAvailable)
+            {
+                Skip.Test(probe.Status);
+            }
+            await Assert.That(probe.Status).Contains("host-readback");
+
+            byte[] first;
+            byte[] edited;
+            await using (ICompositionPresentationGeneration generation =
+                await presenter.CreateGenerationAsync(new ViewportDimensions(32, 24), 2))
+            {
+                var frame = (ICompositionReadbackFrame)generation.Frames[0];
+                await Assert.That(frame.Image.HandleType)
+                    .IsEqualTo(CompositionHostReadback.ImageHandleType);
+                await Assert.That(frame.Semaphores).IsEmpty();
+                await Assert.That(() => frame.CopyPresentedPixels(new byte[32 * 24 * 4]))
+                    .Throws<InvalidOperationException>();
+                await Assert.That(async () => await frame.LeaseImageHandleAsync())
+                    .Throws<NotSupportedException>();
+
+                CompositionFrameRenderResult rendered = await presenter.RenderAsync(frame);
+                await Assert.That(rendered.Status)
+                    .IsEqualTo(CompositionFrameRenderStatus.Presented);
+                await Assert.That(rendered.Synchronization.Kind)
+                    .IsEqualTo(CompositionFrameSynchronizationKind.Automatic);
+                first = new byte[32 * 24 * 4];
+                frame.CopyPresentedPixels(first);
+
+                red = 0.875f;
+                await presenter.RenderAsync(frame);
+                edited = new byte[32 * 24 * 4];
+                frame.CopyPresentedPixels(edited);
+
+                VulkanCompositionPresenterDiagnostics live = presenter.GetDiagnostics();
+                await Assert.That(live.PresentationPath).IsEqualTo("HostReadback");
+                await Assert.That(live.ImageHandleType)
+                    .IsEqualTo(CompositionHostReadback.ImageHandleType);
+                await Assert.That(live.ActiveFrames).IsEqualTo(2);
+            }
+
+            await AssertUniformPixel(first, 64, 128, 191);
+            await AssertUniformPixel(edited, 223, 128, 191);
+
+            await using (ICompositionPresentationGeneration resized =
+                await presenter.CreateGenerationAsync(new ViewportDimensions(48, 20), 3))
+            {
+                var frame = (ICompositionReadbackFrame)resized.Frames[2];
+                await presenter.RenderAsync(frame);
+                byte[] pixels = new byte[48 * 20 * 4];
+                frame.CopyPresentedPixels(pixels);
+                await Assert.That(frame.Image.Size).IsEqualTo(new ViewportDimensions(48, 20));
+                await AssertUniformPixel(pixels, 223, 128, 191);
+                await Assert.That(() => frame.CopyPresentedPixels(new byte[32 * 24 * 4]))
+                    .Throws<ArgumentException>();
+            }
+
+            VulkanCompositionPresenterDiagnostics drained = presenter.GetDiagnostics();
+            await Assert.That(drained.ActiveGenerations).IsEqualTo(0);
+            await Assert.That(drained.ActiveFrames).IsEqualTo(0);
+            await Assert.That(drained.PresentedFrames).IsEqualTo(3);
+            await Assert.That(drained.RingReuseFrames).IsEqualTo(1);
+            await Assert.That(callbacks).IsEqualTo(3);
+        }
+    }
+
+    private static async Task AssertUniformPixel(byte[] pixels, byte red, byte green, byte blue)
+    {
+        for (int offset = 0; offset < pixels.Length; offset += 4)
+        {
+            if (Math.Abs(pixels[offset] - red) > 2 ||
+                Math.Abs(pixels[offset + 1] - green) > 2 ||
+                Math.Abs(pixels[offset + 2] - blue) > 2 ||
+                pixels[offset + 3] != byte.MaxValue)
+            {
+                await Assert.That(
+                        $"{pixels[offset]},{pixels[offset + 1]},{pixels[offset + 2]},{pixels[offset + 3]}")
+                    .IsEqualTo($"{red},{green},{blue},255")
+                    .Because($"pixel {offset / 4} must hold the presented clear color");
+            }
+        }
+    }
+
     private static CompositionPresentationTarget CreateTarget(
         VulkanCompositionCapabilitySnapshot capabilities) =>
         new(

@@ -81,6 +81,7 @@ if ($LASTEXITCODE -ne 0)
     throw 'Could not read the locked shader toolchain model.'
 }
 $model = $modelJson | ConvertFrom-Json
+$shaderManifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $checkedManifest = Get-Content (Join-Path $CheckedRoot 'manifest.json') -Raw | ConvertFrom-Json
 $structuralArguments = @(
     (Join-Path $PSScriptRoot 'scripts/checked_payload.py'),
@@ -234,7 +235,31 @@ try
         $airRelativePaths += $airRelative
         $metalArguments = @(
             '-sdk', 'macosx',
-            'metal', "-std=$($model.metalStandard)",
+            'metal', "-std=$($model.metalStandard)"
+        )
+        $authoredProgramMatches = @(
+            $shaderManifest.programs |
+                Where-Object {
+                    $_.source -eq $program.source -and
+                    $_.stage -eq $program.stage -and
+                    (
+                        $program.entryPoint -eq $_.entryPoint -or
+                        $program.entryPoint.StartsWith(
+                            "$($_.entryPoint)_",
+                            [System.StringComparison]::Ordinal)
+                    )
+                }
+        )
+        if ($authoredProgramMatches.Count -ne 1)
+        {
+            throw "Expected one authored program for $($program.name)."
+        }
+        $floatingPointMode = $authoredProgramMatches[0].PSObject.Properties['floatingPointMode']
+        if ($null -ne $floatingPointMode -and $floatingPointMode.Value -eq 'precise')
+        {
+            $metalArguments += '-fno-fast-math'
+        }
+        $metalArguments += @(
             '-c', $sourceRelative,
             '-o', $airRelative
         )

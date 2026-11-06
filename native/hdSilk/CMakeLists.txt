@@ -26,6 +26,10 @@ set(OPENUSD_HDSILK_SOURCES
     src/mdlAdapter.cpp
     src/mdlMaterialSceneIndexPlugin.h
     src/mdlMaterialSceneIndexPlugin.cpp
+    src/nurbsGeometry.h
+    src/nurbsGeometry.cpp
+    src/nurbsSceneIndexPlugin.h
+    src/nurbsSceneIndexPlugin.cpp
     src/mesh.h
     src/mesh.cpp
     src/meshVertexLayout.h
@@ -33,6 +37,8 @@ set(OPENUSD_HDSILK_SOURCES
     src/pageWriter.h
     src/points.h
     src/points.cpp
+    src/ptexFaceDecoder.h
+    src/ptexFaceDecoder.cpp
     src/renderDelegate.h
     src/renderDelegate.cpp
     src/rendererPlugin.h
@@ -41,10 +47,15 @@ set(OPENUSD_HDSILK_SOURCES
     src/renderPass.cpp
     src/sceneState.h
     src/sceneState.cpp
+    src/volumeBounds.h
     src/subdivision.h
     src/subdivision.cpp)
 
 find_package(MaterialX CONFIG REQUIRED)
+find_package(Ptex CONFIG REQUIRED)
+if(NOT TARGET Ptex::Ptex_dynamic)
+    message(FATAL_ERROR "hdSilk requires the Ptex::Ptex_dynamic target.")
+endif()
 
 # OpenSubdiv ships inside the pinned OpenUSD install prefix but exports no CMake
 # package, and pxrTargets does not re-export it: OpenUSD links osdCPU privately
@@ -141,6 +152,7 @@ function(configure_openusd_hdsilk_target target_name core_target)
             hio
             ${OPENUSD_OPENSUBDIV_CPU_LIBRARY}
             MaterialXFormat
+            Ptex::Ptex_dynamic
             ${OPENUSD_HDSILK_MATERIALX_VULKAN_LIBS}
             ${OPENUSD_HDSILK_MATERIALX_MSL_LIBS})
     if(MSVC)
@@ -190,6 +202,14 @@ if(OPENUSD_HDSILK_BUILD_TESTS)
     configure_openusd_hdsilk_target(
         openusd_hdsilk_test
         openusd_dotnet_renderer_test)
+    target_sources(
+        openusd_hdsilk_test
+        PRIVATE
+            tests/curve_sync_test_hook.cpp
+            tests/geometry_sync_test_hook.cpp
+            tests/mesh_sync_test_hook.cpp
+            tests/nurbs_sync_test_hook.cpp
+            tests/ptex_sync_test_hook.cpp)
     target_compile_definitions(
         openusd_hdsilk_test
         PRIVATE

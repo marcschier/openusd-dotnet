@@ -124,6 +124,7 @@ internal sealed partial class ViewerAuthoredEditController : IAsyncDisposable, I
             {
                 ulong before = stage.ChangeSerial;
                 using UsdLayer layer = stage.GetLocalLayer(capture.LayerIdentifier);
+                ValidateMaterialBindingChanges(stage, copy);
                 if (ViewerCameraBookmarkCatalog.UsesReservedNamespace(capture.Snapshot.Addresses))
                 {
                     ValidateBookmarkCapture(stage, layer, layer.CaptureAuthored([.. capture.Snapshot.Addresses]));

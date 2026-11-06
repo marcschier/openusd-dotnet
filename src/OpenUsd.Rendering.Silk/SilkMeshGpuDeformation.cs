@@ -77,6 +77,7 @@ internal sealed class SilkMeshGpuDeformation : IDisposable
 
     /// <summary>Gets the pose identity currently written into the vertex buffer.</summary>
     internal ulong DispatchedIdentity { get; private set; }
+    internal ulong DispatchedGeneration { get; private set; } = ulong.MaxValue;
 
     /// <summary>Gets whether a dispatch is required before the next draw.</summary>
     internal bool NeedsDispatch => DispatchedIdentity != PendingIdentity;
@@ -168,19 +169,40 @@ internal sealed class SilkMeshGpuDeformation : IDisposable
 
     internal sealed class PreparedPose(SilkMeshGpuDeformation owner, ulong identity) : IDisposable
     {
+        private readonly ulong _previousIdentity = owner.PendingIdentity;
+        private bool _activated;
         private bool _committed;
         private bool _disposed;
         internal ulong Identity { get; } = identity;
 
-        internal void Commit()
+        internal void Record(ISilkGraphicsCommandList commands, ISilkGraphicsBuffer vertices)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_activated || _committed || !owner._posePending || owner._sparePose is not { } pending)
+            {
+                throw new InvalidOperationException("The deformation pose is not pending.");
+            }
+            owner.Record(commands, vertices, pending);
+        }
+
+        internal void Activate()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_committed || !owner._posePending)
             {
                 throw new InvalidOperationException("The deformation pose is not pending.");
             }
-            owner._sparePose!.Swap(owner);
-            owner.PendingIdentity = Identity;
+            if (!_activated)
+            {
+                owner._sparePose!.Swap(owner);
+                owner.PendingIdentity = Identity;
+                _activated = true;
+            }
+        }
+
+        internal void Commit()
+        {
+            Activate();
             owner._posePending = false;
             _committed = true;
         }
@@ -193,6 +215,11 @@ internal sealed class SilkMeshGpuDeformation : IDisposable
             }
             if (!_committed)
             {
+                if (_activated)
+                {
+                    owner._sparePose!.Swap(owner);
+                    owner.PendingIdentity = _previousIdentity;
+                }
                 owner._sparePose?.Dispose();
                 owner._sparePose = null;
                 owner._posePending = false;
@@ -206,6 +233,10 @@ internal sealed class SilkMeshGpuDeformation : IDisposable
     /// the vertex fetch of every later draw.
     /// </summary>
     internal void Record(ISilkGraphicsCommandList commands, ISilkGraphicsBuffer vertices)
+        => Record(commands, vertices, null);
+
+    private void Record(
+        ISilkGraphicsCommandList commands, ISilkGraphicsBuffer vertices, PoseBuffers? pose)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(commands);
@@ -224,19 +255,19 @@ internal sealed class SilkMeshGpuDeformation : IDisposable
         commands.SetStorageBuffer(
             0,
             SilkDeformComputeReflection.MatricesBinding,
-            _matrices);
+            pose is null ? _matrices : pose.Matrices!);
         commands.SetStorageBuffer(
             0,
             SilkDeformComputeReflection.BlendWeightsBinding,
-            _blendWeights);
+            pose is null ? _blendWeights : pose.Weights!);
         commands.SetStorageBuffer(
             0,
             SilkDeformComputeReflection.BlendSpansBinding,
-            _blendSpans);
+            pose is null ? _blendSpans : pose.Spans!);
         commands.SetStorageBuffer(
             0,
             SilkDeformComputeReflection.BlendDeltasBinding,
-            _blendDeltas);
+            pose is null ? _blendDeltas : pose.Deltas!);
         commands.SetStorageBuffer(
             0,
             SilkDeformComputeReflection.TexCoordsBinding,
@@ -244,13 +275,23 @@ internal sealed class SilkMeshGpuDeformation : IDisposable
         commands.SetComputeUniformBuffer(
             0,
             SilkDeformComputeReflection.ParametersBinding,
-            _parameters);
+            pose is null ? _parameters : pose.Parameters!);
         commands.Dispatch(PointCount);
         commands.BufferBarrier(vertices);
     }
 
     /// <summary>Marks the recorded dispatch as the one now in the buffer.</summary>
-    internal void MarkDispatched() => DispatchedIdentity = PendingIdentity;
+    internal void MarkDispatched(ulong generation)
+    {
+        DispatchedIdentity = PendingIdentity;
+        DispatchedGeneration = generation;
+    }
+
+    internal void RestoreDispatch(ulong identity, ulong generation)
+    {
+        DispatchedIdentity = identity;
+        DispatchedGeneration = generation;
+    }
 
     /// <summary>
     /// Forgets what the vertex buffer holds without touching the uploads.

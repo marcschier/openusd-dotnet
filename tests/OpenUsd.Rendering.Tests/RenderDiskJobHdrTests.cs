@@ -97,10 +97,30 @@ public sealed class RenderDiskJobHdrTests
                 Path.Combine(root, "complete"), [state], includeDeviceDepth: true, includeHdrColor: true), source);
             RenderDiskFrameResult frame = result.Frames.Single();
             long totalFrame = frame.Bytes + frame.DepthBytes + frame.HdrColorBytes;
-            await Assert.That(Convert.ToHexString(await File.ReadAllBytesAsync(
-                Path.Combine(result.OutputDirectory, frame.HdrColorFileName!))))
+            byte[] hdrOutput = await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, frame.HdrColorFileName!));
+            await Assert.That(Convert.ToHexString(hdrOutput))
                 .IsEqualTo("00B800800040003C00440034002C0038");
+            byte[] depthOutput = await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, frame.DepthFileName!));
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement metadataFrame = manifest.RootElement.GetProperty("frames")[0];
+            JsonElement depthMetadata = metadataFrame.GetProperty("deviceDepth");
+            await Assert.That(depthMetadata.GetProperty("format").GetString())
+                .IsEqualTo("float32-little-endian");
             await Assert.That(frame.DepthBytes).IsEqualTo(8L);
+            await Assert.That(depthMetadata.GetProperty("bytes").GetInt64()).IsEqualTo(frame.DepthBytes);
+            await Assert.That(depthMetadata.GetProperty("bytes").GetInt64()).IsEqualTo(depthOutput.LongLength);
+            await Assert.That(depthMetadata.GetProperty("sha256").GetString()).IsEqualTo(
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(depthOutput)).ToLowerInvariant());
+            JsonElement hdrMetadata = metadataFrame.GetProperty("hdrColor");
+            await Assert.That(hdrMetadata.GetProperty("format").GetString())
+                .IsEqualTo("rgba16float-little-endian");
+            await Assert.That(hdrMetadata.GetProperty("bytes").GetInt64()).IsEqualTo(frame.HdrColorBytes);
+            await Assert.That(hdrMetadata.GetProperty("bytes").GetInt64()).IsEqualTo(hdrOutput.LongLength);
+            await Assert.That(hdrMetadata.GetProperty("sha256").GetString()).IsEqualTo(
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(hdrOutput)).ToLowerInvariant());
             var shortFrame = new RenderDiskJobRequest(
                 Path.Combine(root, "refused-frame"), [state], true, true,
                 new RenderDiskJobLimits(maximumFrameBytes: totalFrame - 1));

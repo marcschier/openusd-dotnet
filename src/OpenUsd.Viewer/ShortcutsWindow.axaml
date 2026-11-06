@@ -36,7 +36,8 @@
         HorizontalAlignment="Right"
         MinWidth="88"
         Margin="0,12,0,0" />
-    <ScrollViewer>
+    <ScrollViewer x:Name="ShortcutScroll" Focusable="True"
+                  AutomationProperties.Name="Scrollable keyboard and mouse shortcuts">
       <ItemsControl x:Name="ShortcutItems" AutomationProperties.Name="Shortcut list">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="local:ViewerShortcut">

@@ -124,11 +124,12 @@ internal static class ViewerPhysicsRenderCapacities
 /// </summary>
 internal static class ViewerSilkPhysicsOverrideApplier
 {
-    /// <summary>Resolves and applies the newest staged batch on the presenting thread.</summary>
+    /// <summary>Copies the newest batch for resolution after the frame's authored page is applied.</summary>
     /// <param name="stage">The stage the render loop wrote the batch into.</param>
     /// <param name="overrides">The reusable resolved hdSilk override table.</param>
     /// <param name="renderer">The mesh renderer that owns the retained scene.</param>
-    internal static void Apply(
+    /// <returns>The staged pose count, or null when there is no new batch to acknowledge.</returns>
+    internal static int? Apply(
         ViewerPhysicsOverrideStage stage,
         SilkPhysicsTransformOverrides overrides,
         SilkMeshRenderer renderer)
@@ -138,19 +139,26 @@ internal static class ViewerSilkPhysicsOverrideApplier
         ArgumentNullException.ThrowIfNull(renderer);
         if (!stage.TryTake(out ViewerPhysicsOverrideBatch batch))
         {
-            return;
+            return null;
         }
 
         using (batch)
         {
-            int resolved = overrides.Refresh(renderer.Scene, batch.Bindings, batch.Overrides);
-            stage.PublishReport(
-                batch.Overrides.Revision,
-                resolved,
-                Math.Max(0, batch.Overrides.Count - resolved));
+            overrides.Stage(batch.Bindings, batch.Overrides);
+            renderer.PhysicsOverrides = overrides;
+            return batch.Overrides.Count;
         }
+    }
 
-        renderer.PhysicsOverrides = overrides;
+    /// <summary>Reports resolved poses only after the presentation renderer successfully draws.</summary>
+    internal static void Complete(
+        ViewerPhysicsOverrideStage stage, SilkPhysicsTransformOverrides overrides, int? stagedCount)
+    {
+        if (stagedCount is { } expected)
+        {
+            stage.PublishReport(overrides.SourceRevision, overrides.ResolvedOverrideCount,
+                Math.Max(0, expected - overrides.ResolvedOverrideCount));
+        }
     }
 
     /// <summary>

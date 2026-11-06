@@ -62,8 +62,14 @@ extern "C" {
  * has actually been simulated. Every added field is additive, but the build
  * page header, the result capacities, the result header, the result page, the
  * world status, and the ABI record table all moved, so the version moves with
- * them. */
-#define OPENUSD_PHYSX_WORLD_ABI_VERSION 7u
+ * them.
+ *
+ * Version 8 requires the bounded CPU mesh preparation entry points in
+ * openusd_physx_mesh.h. The world page layout remains unchanged, but current
+ * composition depends on those exports for compact convex and multi-hull
+ * collision geometry. An older runtime must fail negotiation, not fail later
+ * when the first mesh is prepared. */
+#define OPENUSD_PHYSX_WORLD_ABI_VERSION 8u
 
 /* "USDPHYSX" in little endian byte order. */
 #define OPENUSD_PHYSX_PAGE_MAGIC UINT64_C(0x5853594850445355)
@@ -2063,6 +2069,35 @@ OPENUSD_PHYSX_API openusd_physx_status openusd_physx_world_query(
 OPENUSD_PHYSX_API openusd_physx_status openusd_physx_world_get_status(
     const openusd_physx_world* world,
     openusd_physx_world_status_info* info,
+    openusd_physx_error_buffer* error);
+
+typedef struct openusd_physx_shape_identity
+{
+    uint64_t actor_id;
+    uint64_t shape_id;
+} openusd_physx_shape_identity;
+
+typedef struct openusd_physx_shape_snapshot_info
+{
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t actor_count;
+    uint32_t shape_count;
+    uint32_t convex_mesh_count;
+    uint32_t triangle_mesh_count;
+} openusd_physx_shape_snapshot_info;
+
+#define OPENUSD_PHYSX_SHAPE_SNAPSHOT_VERSION 1u
+
+/* Snapshots actual attached SDK shapes, not merely declared page records. This
+ * bounded inspection profile supports rigid actors (including static colliders).
+ * Articulations, controllers and vehicles are explicitly unsupported here.
+ * An undersized caller buffer receives counts but no partial identities. */
+OPENUSD_PHYSX_API openusd_physx_status openusd_physx_world_copy_shape_identities(
+    const openusd_physx_world* world,
+    openusd_physx_shape_identity* identities,
+    uint32_t capacity,
+    openusd_physx_shape_snapshot_info* info,
     openusd_physx_error_buffer* error);
 
 #ifdef __cplusplus

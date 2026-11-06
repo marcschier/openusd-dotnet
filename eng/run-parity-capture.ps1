@@ -47,7 +47,32 @@ $runtimeRoot = Join-Path $stageRoot 'runtime'
 $binTarget = Join-Path $runtimeRoot 'bin'
 $libTarget = Join-Path $runtimeRoot 'lib'
 $pluginPath = Join-Path $runtimeRoot 'plugin/usd'
-$testHostRoot = Join-Path $repoRoot "tests/OpenUsd.Rendering.ConformanceTests/bin/$Configuration/net10.0"
+function Resolve-ParityTestHostRoot
+{
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][string]$BuildConfiguration
+    )
+
+    $dotnet = Join-Path $RepositoryRoot $(if ($IsWindows) { '.dotnet\dotnet.exe' } else { '.dotnet/dotnet' })
+    if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf))
+    {
+        $dotnet = (Get-Command dotnet -CommandType Application -ErrorAction Stop |
+            Select-Object -First 1).Source
+    }
+    $project = Join-Path $RepositoryRoot 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+    $target = @(& $dotnet msbuild $project -nologo "-p:Configuration=$BuildConfiguration" `
+        '-p:TargetFramework=net10.0' '-getProperty:TargetPath')
+    if ($LASTEXITCODE -ne 0 -or $target.Count -ne 1 -or
+        -not [IO.Path]::IsPathFullyQualified($target[0]) -or
+        [IO.Path]::GetFileName($target[0]) -cne 'OpenUsd.Rendering.ConformanceTests.dll')
+    {
+        throw 'Parity capture could not resolve the managed test host through MSBuild TargetPath.'
+    }
+    return [IO.Path]::GetDirectoryName($target[0])
+}
+
+$testHostRoot = Resolve-ParityTestHostRoot -RepositoryRoot $repoRoot -BuildConfiguration $Configuration
 foreach ($report in @(
     'parity-capture-corpus.json',
     'parity-capture-evidence.json',
@@ -585,6 +610,15 @@ try
     $windowsWglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'PtexQuadReferenceRespondsToOffsetsAndAuthoredFaceIndices',
+        'PtexReferenceRespondsToAuthoredFaceOffsets',
+        'NativePtexQuadOffsetsUpdateAndRestoreProductionPixels',
+        'StormCoarseNormalsFollowSchemeAndPointIdentity',
+        'StormCoarseNgonNormalsUseFaceAdjacency',
+        'StormNonplanarNgonSmoothNormalsUseEachOriginalFaceCorner',
+        'StormCoarseSmoothNormalsIncludeHoleFaces',
+        'StormNonplanarPolygonFlatNormalsUseEachEmittedTriangle',
+        'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
         'DisplayColorReachesPixelsForImplicitSurfacesAndMeshes',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
@@ -599,8 +633,10 @@ try
         'ChasePresentationRetainsHighlightsOnD3D12',
         'InstancedScaleSceneRetainsOneGeometryAndRespondsToEditsOnD3D12',
         'AuthoredRenderProductCropMatchesFullRasterOnD3D12',
+        'RenderProductOverridesMatchAuthoredRasterOnD3D12',
         'FloatTexturePreservesHdrBeforeScaleOnD3D12',
         'MixedTextureSlotWrapModesRemainIndependentOnD3D12',
+        'UseMetadataPixelsMatchObservedPerAxisWrapsOnD3D12',
         'SparseUdimTilesAndFallbackRenderOnD3D12',
         'SilkWireframeDrawModeDivergesFromSmoothShadedPixelsOnD3D12',
         'SilkFrameCaptureReturnsDimensionsAndNonTrivialPixels',
@@ -616,11 +652,20 @@ try
         'MaterialXPlace2dUvTransformSelectsAnotherTexelOnD3D12',
         'MaterialXImageArithmeticFoldsToTextureScaleBiasOnD3D12',
         'MaterialXPeriodicAddressModeTilesOnD3D12',
+        'MaterialXTexcoordIndexSelectsSecondUvSetOnD3D12',
         'MaterialXTwoImageCompositeShadesPerPixelOnD3D12',
-        'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12')
+        'MaterialXGeneratedUnlitMatchesPreviewSelfConsistencyOnD3D12',
+        'OpenPbrProjectionMatchesPreviewPixelReferenceOnD3D12',
+        'OpenPbrBaseColorMapMatchesPreviewTextureOnD3D12',
+        'OpenPbrRoughnessMapMatchesPreviewTextureOnD3D12',
+        'OpenPbrNormalMapMatchesPreviewTextureOnD3D12')
     $macosCglTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'PtexQuadReferenceRespondsToOffsetsAndAuthoredFaceIndices',
+        'PtexReferenceRespondsToAuthoredFaceOffsets',
+        'NativePtexQuadOffsetsUpdateAndRestoreProductionPixels',
+        'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
@@ -632,6 +677,10 @@ try
     $linuxGlxTestNames = @(
         'CapturesStormAndHdSilkBackendsDeterministically',
         'ComparisonDetectsPerturbedCaptures',
+        'PtexQuadReferenceRespondsToOffsetsAndAuthoredFaceIndices',
+        'PtexReferenceRespondsToAuthoredFaceOffsets',
+        'NativePtexQuadOffsetsUpdateAndRestoreProductionPixels',
+        'CuratedResourceBudgetsKeepTheFixedFrameBlockOutsideVariableHeadroom',
         'CuratedSceneParityClaimsAreStructured',
         'SilkComplexityDefaultPreservesExplicitLowPointPage',
         'SilkComplexityMediumChangesPointPage',
@@ -642,6 +691,7 @@ try
         'ChasePresentationRetainsHighlightsOnVulkan',
         'InstancedScaleSceneRetainsOneGeometryAndRespondsToEditsOnVulkan',
         'AuthoredRenderProductCropMatchesFullRasterOnVulkan',
+        'RenderProductOverridesMatchAuthoredRasterOnVulkan',
         'FifthDirectLightContributesOnVulkan',
         'FloatTexturePreservesHdrBeforeScaleOnVulkan',
         'MaterialXStandardSurfaceMatchesPreviewSelfConsistencyOnVulkan',
@@ -650,7 +700,12 @@ try
         'MaterialXPlace2dUvTransformSelectsAnotherTexelOnVulkan',
         'MaterialXImageArithmeticFoldsToTextureScaleBiasOnVulkan',
         'MaterialXPeriodicAddressModeTilesOnVulkan',
+        'MaterialXTexcoordIndexSelectsSecondUvSetOnVulkan',
         'MaterialXTwoImageCompositeShadesPerPixelOnVulkan',
+        'OpenPbrProjectionMatchesPreviewPixelReferenceOnVulkan',
+        'OpenPbrBaseColorMapMatchesPreviewTextureOnVulkan',
+        'OpenPbrRoughnessMapMatchesPreviewTextureOnVulkan',
+        'OpenPbrNormalMapMatchesPreviewTextureOnVulkan',
         'TextureWrapModesMatchRepeatWithinUnitUvRangeOnVulkan',
         'TextureWrapModesDivergeOutsideUnitUvRangeOnVulkan',
         'TextureAutoColorSpaceMatchesSrgbOnDiffuseTextureOnVulkan',
@@ -658,6 +713,7 @@ try
         'TextureScaleBiasFallbackMatchesEquivalentConstantOnVulkan',
         'TextureScaleBiasFallbackDivergesWhenBiasIsRemovedOnVulkan',
         'MixedTextureSlotWrapModesRemainIndependentOnVulkan',
+        'UseMetadataPixelsMatchObservedPerAxisWrapsOnVulkan',
         'NonDiffuseTextureSlotsMatchNeutralInputsOnVulkan',
         'NonDiffuseTextureSlotsDivergeFromNeutralInputsOnVulkan',
         'RemainingPreviewSurfaceConstantInputsMatchEquivalentMaterialsOnVulkan',
@@ -669,9 +725,14 @@ try
         'DiskLightEdgeOnMatchesUnlitSceneOnVulkan',
         'DiskLightFaceOnDivergesFromEdgeOnLightOnVulkan',
         'CylinderLightZeroLengthMatchesSphereLightOnVulkan',
-        'CylinderLightFullLengthDivergesFromSphereLightOnVulkan')
+        'CylinderLightFullLengthDivergesFromSphereLightOnVulkan',
+        'ShapedRectLightWithFullConeMatchesUnshapedRectOnVulkan',
+        'ShapedRectLightNarrowConeDivergesFromFullConeOnVulkan',
+        'ShapedDiskLightFocusDivergesFromUnfocusedDiskOnVulkan',
+        'ShapedRectLightBackSideMatchesUnlitSceneOnVulkan')
     if ($Rid -eq 'win-x64')
     {
+        $normalReferenceStarted = [DateTime]::UtcNow
         & (Join-Path $PSScriptRoot 'run-managed-tests.ps1') `
             -Project $testProject `
             -Framework net10.0 `
@@ -680,7 +741,17 @@ try
             -TestArguments @(
                 '--treenode-filter',
                 (New-StormParityTreeFilter -TestNames $windowsWglTestNames))
-        exit (Get-ValidatedParityExitCode -TestExitCode $LASTEXITCODE)
+        $testExitCode = $LASTEXITCODE
+        $normalReferenceFinished = [DateTime]::UtcNow
+        if ($testExitCode -eq 0)
+        {
+            & python (Join-Path $PSScriptRoot 'verify-storm-normal-reference-report.py') `
+                --report (Join-Path $testHostRoot 'TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json') `
+                --started-utc $normalReferenceStarted.ToString('O') `
+                --finished-utc $normalReferenceFinished.ToString('O')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
+        exit (Get-ValidatedParityExitCode -TestExitCode $testExitCode)
     }
 
     if ($Rid -eq 'osx-arm64')

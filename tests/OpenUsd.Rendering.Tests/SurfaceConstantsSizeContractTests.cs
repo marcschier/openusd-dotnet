@@ -52,6 +52,8 @@ public sealed class SurfaceConstantsSizeContractTests
         int shaderSize = ReadShaderSurfaceParametersByteSize(root);
         const int expectedPrefixFloats = 208 / sizeof(float);
         const int wideMaskBytes = 2 * 16;
+        const int detailUvBytes = 2 * 16;
+        const int alternateUvBytes = 2 * 16;
 
         List<string> mismatches = [];
         foreach (string relative in HandWrittenCopies)
@@ -86,11 +88,31 @@ public sealed class SurfaceConstantsSizeContractTests
             string[] values = literal.Groups["values"].Value
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             int written = values.Length;
-            if (written != expectedPrefixFloats || written * sizeof(float) + wideMaskBytes != shaderSize)
+            if (written != expectedPrefixFloats
+                || written * sizeof(float) + wideMaskBytes + detailUvBytes + alternateUvBytes != shaderSize)
             {
                 mismatches.Add(
                     $"{relative} writes {written} prefix floats plus two UInt128 masks, " +
+                    "two detail UV rows and two alternate UV rows, " +
                     $"the shader block holds {shaderSize} bytes");
+            }
+            Match detail = Regex.Match(body,
+                @"MemoryMarshal\.AsBytes<float>\(\s*\[(?<values>[^\]]*)\]\)\.CopyTo\(\w+\.AsSpan\(240\)\)",
+                RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            string[] detailValues = detail.Groups["values"].Value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (!detail.Success || !detailValues.SequenceEqual(["1", "0", "0", "0", "0", "1", "0", "0"]))
+            {
+                mismatches.Add($"{relative} does not write independent identity detail UV rows at 240");
+            }
+            Match alternate = Regex.Match(body,
+                @"MemoryMarshal\.AsBytes<float>\(\s*\[(?<values>[^\]]*)\]\)\.CopyTo\(\w+\.AsSpan\(272\)\)",
+                RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            string[] alternateValues = alternate.Groups["values"].Value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (!alternate.Success || !alternateValues.SequenceEqual(["1", "0", "0", "0", "0", "1", "0", "0"]))
+            {
+                mismatches.Add($"{relative} does not write identity alternate UV rows at 272");
             }
             if (written > 35 && (values[19] != "0" || values[35] != "0"))
             {
@@ -112,16 +134,17 @@ public sealed class SurfaceConstantsSizeContractTests
             // size as a row count. When it does, that count must agree too.
             Match declared = Regex.Match(
                 body,
-                @"surfaceConstantsByteSize\s*=\s*(?<rows>\d+)\s*\*\s*4\s*\*\s*sizeof\(float\)",
+                @"surfaceConstantsByteSize\s*=\s*(?:(?<rows>\d+)\s*\*\s*4\s*\*\s*sizeof\(float\)|(?<bytes>\d+))",
                 RegexOptions.CultureInvariant);
             if (declared.Success)
             {
-                int rows = int.Parse(declared.Groups["rows"].Value, CultureInfo.InvariantCulture);
-                if (rows * 4 * sizeof(float) != shaderSize)
+                int bytes = declared.Groups["rows"].Success
+                    ? int.Parse(declared.Groups["rows"].Value, CultureInfo.InvariantCulture) * 4 * sizeof(float)
+                    : int.Parse(declared.Groups["bytes"].Value, CultureInfo.InvariantCulture);
+                if (bytes != shaderSize)
                 {
                     mismatches.Add(
-                        $"{relative} declares {rows} rows, the shader block holds " +
-                        $"{shaderSize / (4 * sizeof(float))}");
+                        $"{relative} declares {bytes} bytes, the shader block holds {shaderSize}");
                 }
             }
         }
@@ -134,6 +157,23 @@ public sealed class SurfaceConstantsSizeContractTests
                 "transform. " + string.Join("; ", mismatches));
     }
 
+    [Test]
+    [Arguments("mesh.slang")]
+    [Arguments("shadow.mask.fragment.slang")]
+    public async Task ShadersIncludeTheSharedSurfaceParameters(string shaderFile)
+    {
+        string source = await File.ReadAllTextAsync(
+            Path.Combine(FindRepositoryRoot(), "eng", "shaders", "sources", shaderFile));
+        await Assert.That(Regex.IsMatch(
+            source,
+            """(?m)^[ \t]*#[ \t]*include[ \t]+"material\.surface\.slang"[ \t]*\r?$""",
+            RegexOptions.CultureInvariant)).IsTrue();
+        await Assert.That(Regex.IsMatch(
+            source,
+            @"\bstruct\s+SurfaceParameters\b",
+            RegexOptions.CultureInvariant)).IsFalse();
+    }
+
     /// <summary>
     /// Computes the byte size of <c>SurfaceParameters</c> from the shader source
     /// so the expectation is derived from the shader rather than restated.
@@ -141,7 +181,7 @@ public sealed class SurfaceConstantsSizeContractTests
     private static int ReadShaderSurfaceParametersByteSize(string root)
     {
         string source = File.ReadAllText(
-            Path.Combine(root, "eng", "shaders", "sources", "mesh.slang"));
+            Path.Combine(root, "eng", "shaders", "sources", "material.surface.slang"));
         Match block = Regex.Match(
             source,
             @"struct\s+SurfaceParameters\s*\{(?<body>[^}]*)\}",
@@ -149,7 +189,7 @@ public sealed class SurfaceConstantsSizeContractTests
         if (!block.Success)
         {
             throw new InvalidOperationException(
-                "SurfaceParameters was not found in mesh.slang.");
+                "SurfaceParameters was not found in material.surface.slang.");
         }
 
         int total = 0;
@@ -186,7 +226,7 @@ public sealed class SurfaceConstantsSizeContractTests
     {
         int shaderSize = ReadShaderSurfaceParametersByteSize(FindRepositoryRoot());
         int writerSize = SilkSurfaceUniformWriter.ByteSize;
-        await Assert.That(shaderSize).IsEqualTo(240);
-        await Assert.That(writerSize).IsEqualTo(240);
+        await Assert.That(shaderSize).IsEqualTo(304);
+        await Assert.That(writerSize).IsEqualTo(304);
     }
 }

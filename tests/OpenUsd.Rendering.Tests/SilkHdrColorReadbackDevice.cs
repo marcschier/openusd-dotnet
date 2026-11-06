@@ -8,9 +8,27 @@ internal sealed class SilkHdrColorReadbackDevice : ISilkGraphicsDevice
 {
     internal byte[] Pixel { get; } = [0x00, 0x30, 0x00, 0x38, 0x00, 0x40, 0x00, 0x3C];
 
+    internal float DepthValue { get; set; } = 1;
+
     internal int DepthReadbacks { get; private set; }
 
     internal Action? AfterHdrReadback { get; set; }
+
+    internal Action? AfterDepthReadback { get; set; }
+
+    internal bool FailNextHdrTarget { get; set; }
+
+    internal int TextureRequests { get; private set; }
+
+    internal int LiveTextures { get; private set; }
+
+    internal int CreatedTextures { get; private set; }
+
+    internal int ReleasedTextures { get; private set; }
+
+    internal int Submissions { get; private set; }
+
+    internal SilkTextureFormat LastCreatedTextureFormat { get; private set; }
 
     public SilkGraphicsBackend Backend => SilkGraphicsBackend.Vulkan;
 
@@ -23,7 +41,20 @@ internal sealed class SilkHdrColorReadbackDevice : ISilkGraphicsDevice
         uint width, uint height, SilkTextureFormat format = SilkTextureFormat.Rgba8Unorm) =>
         throw new NotSupportedException();
 
-    public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor) => new Texture(this, descriptor);
+    public ISilkGraphicsTexture CreateTexture2D(SilkTextureDescriptor descriptor)
+    {
+        TextureRequests++;
+        if (FailNextHdrTarget && descriptor.Format == SilkTextureFormat.Rgba16Float)
+        {
+            FailNextHdrTarget = false;
+            throw new InvalidOperationException("Injected HDR target creation failure.");
+        }
+        var texture = new Texture(this, descriptor);
+        LiveTextures++;
+        CreatedTextures++;
+        LastCreatedTextureFormat = descriptor.Format;
+        return texture;
+    }
 
     public ISilkGraphicsSampler CreateSampler(SilkSamplerDescriptor descriptor) => throw new NotSupportedException();
 
@@ -50,7 +81,11 @@ internal sealed class SilkHdrColorReadbackDevice : ISilkGraphicsDevice
 
     public ISilkGraphicsCommandList CreateCommandList() => new Commands();
 
-    public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList) => new Submission();
+    public ISilkGraphicsSubmission Submit(ISilkGraphicsCommandList commandList)
+    {
+        Submissions++;
+        return new Submission();
+    }
 
     public void WaitIdle()
     {
@@ -67,9 +102,14 @@ internal sealed class SilkHdrColorReadbackDevice : ISilkGraphicsDevice
         public override void ReadbackForTesting(Span<byte> destination)
         {
             _ = ValidateReadback(destination.Length);
+            if (Format == SilkTextureFormat.Rgba8Unorm)
+            {
+                destination.Fill(0x20);
+                return;
+            }
             if (Format != SilkTextureFormat.Rgba16Float)
             {
-                throw new NotSupportedException("Only the HDR readback boundary is supplied by this device.");
+                throw new NotSupportedException("Only color readback boundaries are supplied by this device.");
             }
             for (int offset = 0; offset < destination.Length; offset += 8)
             {
@@ -81,12 +121,15 @@ internal sealed class SilkHdrColorReadbackDevice : ISilkGraphicsDevice
         public override void ReadbackForTesting(Span<float> destination)
         {
             _ = ValidateDepthReadback(destination.Length);
-            destination.Fill(1);
+            destination.Fill(owner.DepthValue);
             owner.DepthReadbacks++;
+            owner.AfterDepthReadback?.Invoke();
         }
 
         protected override void ReleaseNative()
         {
+            owner.LiveTextures--;
+            owner.ReleasedTextures++;
         }
     }
 

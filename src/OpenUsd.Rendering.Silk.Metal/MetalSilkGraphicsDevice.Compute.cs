@@ -227,7 +227,8 @@ internal sealed class MetalSilkComputeShaderProgram(
     IDisposable[] resourceLeases)
     : SilkGraphicsResourceBase, ISilkComputeShaderProgram
 {
-    private IDisposable[]? _resourceLeases = resourceLeases;
+    private IDisposable?[]? _resourceLeases = resourceLeases;
+    private bool _releasingLeases;
 
     internal MetalSilkGraphicsDevice Device { get; } = device;
 
@@ -241,16 +242,12 @@ internal sealed class MetalSilkComputeShaderProgram(
 
     protected override void ReleaseNative()
     {
-        IDisposable[]? leases = Interlocked.Exchange(ref _resourceLeases, null);
-        if (leases is not null)
-        {
-            foreach (IDisposable lease in leases)
-            {
-                lease.Dispose();
-            }
-        }
+        RetireOwnedLeases(ref _resourceLeases, ref _releasingLeases);
         Device.ReleaseDependentObject();
     }
+
+    internal static void RetireOwnedLeases(ref IDisposable?[]? leases, ref bool releasing) =>
+        SilkOwnedResourceLeases.Dispose(ref leases, ref releasing);
 }
 
 [SupportedOSPlatform("macos")]
@@ -267,6 +264,8 @@ internal sealed class MetalSilkComputePipeline(
     private MTLFunction _function = function;
     private MTLComputePipelineState _pipeline = pipeline;
     private IDisposable? _programLease = programLease;
+    private SilkResourceReleaseSteps _releaseSteps;
+    private Action<int>? _releaseStep;
 
     internal MetalSilkGraphicsDevice Device { get; } = device;
 
@@ -280,10 +279,36 @@ internal sealed class MetalSilkComputePipeline(
 
     protected override void ReleaseNative()
     {
-        _pipeline.Dispose();
-        _function.Dispose();
-        _library.Dispose();
-        Interlocked.Exchange(ref _programLease, null)?.Dispose();
-        Device.ReleaseDependentObject();
+        RetireOwnedNativeSteps(ref _releaseSteps, _releaseStep ??= ReleaseStep);
+    }
+
+    internal static void RetireOwnedNativeSteps(ref SilkResourceReleaseSteps steps, Action<int> release) =>
+        steps.Release(5, release);
+
+    private void ReleaseStep(int step)
+    {
+        switch (step)
+        {
+            case 0:
+                _pipeline.Dispose();
+                _pipeline = default;
+                break;
+            case 1:
+                _function.Dispose();
+                _function = default;
+                break;
+            case 2:
+                _library.Dispose();
+                _library = default;
+                break;
+            case 3:
+                SilkOwnedResourceLeases.Dispose(ref _programLease);
+                break;
+            case 4:
+                Device.ReleaseDependentObject();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(step));
+        }
     }
 }

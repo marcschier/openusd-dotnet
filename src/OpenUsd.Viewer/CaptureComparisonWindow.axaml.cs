@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -21,16 +22,22 @@ internal sealed partial class CaptureComparisonWindow : Window
     private WriteableBitmap? _afterBitmap;
     private string? _beforePath;
     private string? _afterPath;
+    private ViewerCapturePresentation? _presentation;
+    private CaptureReviewDraft? _pendingReview;
     private bool _closing;
     private bool _picking;
+    private bool _restoreOperationFocus;
 
     internal CaptureComparisonWindow()
     {
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
+        ViewerTextBoxScrolling.ContainCaretRequests(ComparisonNotes);
         ChooseBeforeButton.Click += async (_, _) => await ChooseAsync(before: true);
         ChooseAfterButton.Click += async (_, _) => await ChooseAsync(before: false);
         CompareAgainButton.Click += async (_, _) => await LoadSelectedPairAsync();
+        OpenPresentationButton.Click += async (_, _) => await ChoosePresentationAsync(save: false);
+        SavePresentationButton.Click += async (_, _) => await ChoosePresentationAsync(save: true);
         CancelComparisonButton.Click += (_, _) => CancelLoading();
         CloseComparisonButton.Click += (_, _) => Close();
         ComparisonMode.SelectionChanged += (_, _) => ApplyComparisonMode();
@@ -40,6 +47,7 @@ internal sealed partial class CaptureComparisonWindow : Window
         Closed += (_, _) =>
         {
             DisposeImages();
+            _pendingReview = null;
             _closed.TrySetResult();
         };
     }
@@ -69,12 +77,148 @@ internal sealed partial class CaptureComparisonWindow : Window
         return _loadTask;
     }
 
-    private async Task ChooseAsync(bool before)
+    internal Task LoadPresentationAsync(string path)
     {
-        _picking = true;
-        UpdateAvailability();
+        RequireAvailable();
+        _loadTask = LoadCoreAsync(path, path, presentationFile: true);
+        return _loadTask;
+    }
+
+    internal Task SavePresentationAsync(string path)
+    {
+        RequireAvailable();
+        ViewerCapturePresentation presentation = _presentation ??
+            throw new InvalidOperationException("Load a complete comparison before saving it.");
+        _loadTask = SavePresentationCoreAsync(path, presentation with
+        {
+            DisplayMode = ComparisonMode.SelectedIndex,
+            Notes = ComparisonNotes.Text ?? string.Empty
+        });
+        return _loadTask;
+    }
+
+    private void RequireAvailable()
+    {
+        if (_loadCancellation is not null || _closing)
+        {
+            throw new InvalidOperationException("The comparison window is already loading, saving or closing.");
+        }
+    }
+
+    private async Task ChoosePresentationAsync(bool save)
+    {
         try
         {
+            if (save ? !StorageProvider.CanSave : !StorageProvider.CanOpen)
+            {
+                throw new NotSupportedException("The storage provider does not support this file picker.");
+            }
+            _picking = true;
+            UpdateAvailability();
+            var type = new FilePickerFileType("Saved capture comparison") { Patterns = ["*.usdcompare.json"] };
+            IStorageFile? file;
+            if (save)
+            {
+                file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+                {
+                    Title = "Save historical capture comparison to a new file",
+                    SuggestedFileName = "comparison.usdcompare.json",
+                    FileTypeChoices = [type],
+                    DefaultExtension = "usdcompare.json"
+                });
+            }
+            else
+            {
+                IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                {
+                    Title = "Open historical capture comparison",
+                    AllowMultiple = false,
+                    FileTypeFilter = [type]
+                });
+                file = files.Count == 0 ? null : files[0];
+            }
+            if (_closing)
+            {
+                return;
+            }
+            if (file is null)
+            {
+                SetStatus("Comparison file selection cancelled. The current comparison was kept.");
+                return;
+            }
+            string? path = file.TryGetLocalPath();
+            if (path is null)
+            {
+                SetStatus("Choose a local comparison file; remote storage is not supported.", error: true);
+                return;
+            }
+            await (save ? SavePresentationAsync(path) : LoadPresentationAsync(path));
+        }
+        catch (IOException exception)
+        {
+            SetStatus($"The comparison file picker failed: {exception.Message}", error: true);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            SetStatus($"The comparison file picker failed: {exception.Message}", error: true);
+        }
+        catch (NotSupportedException exception)
+        {
+            SetStatus($"The comparison file picker is unavailable: {exception.Message}", error: true);
+        }
+        finally
+        {
+            _picking = false;
+            UpdateAvailability();
+        }
+    }
+
+    private async Task SavePresentationCoreAsync(string path, ViewerCapturePresentation presentation)
+    {
+        using var cancellation = new CancellationTokenSource();
+        _loadCancellation = cancellation;
+        UpdateAvailability();
+        SetStatus("Saving historical comparison references and decoded pixel checksums...");
+        try
+        {
+            await Task.Run(() => ViewerCapturePresentationFile.SaveAsync(path, presentation, cancellation.Token),
+                cancellation.Token);
+            SetStatus("Comparison saved. Keep both capture files at their original paths. " +
+                "Reopening verifies decoded pixels; this does not establish current scene or camera state.");
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            SetStatus("Comparison save cancelled. The displayed images were kept.");
+        }
+        catch (InvalidDataException exception)
+        {
+            SetStatus($"Could not save comparison: {exception.Message}", error: true);
+        }
+        catch (IOException exception)
+        {
+            SetStatus($"Could not save comparison: {exception.Message} Choose a new destination.", error: true);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            SetStatus($"Could not save comparison: {exception.Message}", error: true);
+        }
+        finally
+        {
+            _loadCancellation = null;
+            UpdateAvailability();
+        }
+    }
+
+    private async Task ChooseAsync(bool before)
+    {
+        try
+        {
+            if (!StorageProvider.CanOpen)
+            {
+                throw new NotSupportedException("The storage provider does not support opening files.");
+            }
+            _picking = true;
+            UpdateAvailability();
             IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
                 Title = before ? "Choose before capture (A)" : "Choose after capture (B)",
@@ -138,10 +282,18 @@ internal sealed partial class CaptureComparisonWindow : Window
         return Task.CompletedTask;
     }
 
-    private async Task LoadCoreAsync(string beforePath, string afterPath)
+    private async Task LoadCoreAsync(string beforePath, string afterPath, bool presentationFile = false)
     {
         using var cancellation = new CancellationTokenSource();
         _loadCancellation = cancellation;
+        string previousNotes = ComparisonNotes.Text ?? string.Empty;
+        if (_presentation is { } previous)
+        {
+            _pendingReview = previousNotes.Length == 0 ? null : new CaptureReviewDraft(
+                CaptureReviewIdentity.From(previous.BeforePath, previous.Images.Before),
+                CaptureReviewIdentity.From(previous.AfterPath, previous.Images.After),
+                previousNotes);
+        }
         DisposeImages();
         UpdateAvailability();
         BeforeName.Text = Path.GetFileName(beforePath);
@@ -151,15 +303,42 @@ internal sealed partial class CaptureComparisonWindow : Window
         SetStatus("Loading captures... Cancel stops reading; a partial pair is never displayed.");
         try
         {
-            ViewerCapturePair pair = await _loadPair(beforePath, afterPath, cancellation.Token);
+            ViewerCapturePresentation presentation = presentationFile
+                ? await ViewerCapturePresentationFile.LoadAsync(beforePath, cancellation.Token)
+                : new ViewerCapturePresentation(Path.GetFullPath(beforePath), Path.GetFullPath(afterPath),
+                    await _loadPair(beforePath, afterPath, cancellation.Token), ComparisonMode.SelectedIndex);
+            ViewerCapturePair pair = presentation.Images;
             cancellation.Token.ThrowIfCancellationRequested();
+            ViewerCaptureStateReceiptResult beforeState = await ViewerCaptureStateReceiptFile.ReadForComparisonAsync(
+                presentation.BeforePath, pair.Before, cancellation.Token);
+            ViewerCaptureStateReceiptResult afterState = await ViewerCaptureStateReceiptFile.ReadForComparisonAsync(
+                presentation.AfterPath, pair.After, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (!presentationFile && _pendingReview is { } draft &&
+                draft.Before == CaptureReviewIdentity.From(presentation.BeforePath, pair.Before) &&
+                draft.After == CaptureReviewIdentity.From(presentation.AfterPath, pair.After))
+            {
+                presentation = presentation with { Notes = draft.Notes };
+            }
             _beforeBitmap = CreateBitmap(pair.Before);
             _afterBitmap = CreateBitmap(pair.After);
+            _presentation = presentation;
+            _beforePath = presentation.BeforePath;
+            _afterPath = presentation.AfterPath;
+            BeforeName.Text = Path.GetFileName(_beforePath);
+            AfterName.Text = Path.GetFileName(_afterPath);
+            ToolTip.SetTip(BeforeName, _beforePath);
+            ToolTip.SetTip(AfterName, _afterPath);
+            ComparisonMode.SelectedIndex = presentation.DisplayMode;
+            ComparisonNotes.Text = presentation.Notes;
+            ComparisonNotesExpander.IsExpanded = presentation.Notes.Length != 0;
             BeforeImage.Source = _beforeBitmap;
             AfterImage.Source = _afterBitmap;
+            _pendingReview = null;
             SetStatus(
                 $"A: {pair.Before.Width} x {pair.Before.Height}; B: {pair.After.Width} x {pair.After.Height}. " +
-                "Images fit independently. Use the display mode for A or B; render and OCIO settings are unchanged.");
+                ViewerCaptureStateReceiptResult.DescribePair(beforeState, afterState) + " " +
+                "Render/OCIO settings are unchanged.");
             ApplyComparisonMode();
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -189,6 +368,14 @@ internal sealed partial class CaptureComparisonWindow : Window
         }
     }
 
+    private sealed record CaptureReviewDraft(CaptureReviewIdentity Before, CaptureReviewIdentity After, string Notes);
+
+    private sealed record CaptureReviewIdentity(string Path, int Width, int Height, string PixelSha256)
+    {
+        internal static CaptureReviewIdentity From(string path, ViewerCaptureImage image) =>
+            new(path, image.Width, image.Height, Convert.ToHexString(SHA256.HashData(image.Rgba)));
+    }
+
     private static WriteableBitmap CreateBitmap(ViewerCaptureImage image)
     {
         var bitmap = new WriteableBitmap(
@@ -214,12 +401,29 @@ internal sealed partial class CaptureComparisonWindow : Window
 
     private void UpdateAvailability()
     {
+        bool ownsFocus = IsActive || IsKeyboardFocusWithin;
+        _restoreOperationFocus |= CancelComparisonButton.IsKeyboardFocusWithin;
         bool available = _loadCancellation is null && !_closing && !_picking;
         ChooseBeforeButton.IsEnabled = available;
         ChooseAfterButton.IsEnabled = available;
+        OpenPresentationButton.IsEnabled = available;
+        SavePresentationButton.IsEnabled = available && _presentation is not null;
+        ComparisonNotes.IsEnabled = available && _presentation is not null;
         CompareAgainButton.IsEnabled = available && _beforePath is not null && _afterPath is not null;
-        ComparisonMode.IsEnabled = _beforeBitmap is not null && _afterBitmap is not null;
+        ComparisonMode.IsEnabled = available && _beforeBitmap is not null && _afterBitmap is not null;
         CancelComparisonButton.IsEnabled = _loadCancellation is not null && !_closing;
+        if (ownsFocus && !_closing)
+        {
+            if (CancelComparisonButton.IsEnabled)
+            {
+                CancelComparisonButton.Focus();
+            }
+            else if (available && _restoreOperationFocus)
+            {
+                (CompareAgainButton.IsEnabled ? CompareAgainButton : ChooseBeforeButton).Focus();
+                _restoreOperationFocus = false;
+            }
+        }
     }
 
     private void SetStatus(string message, bool error = false)
@@ -276,5 +480,8 @@ internal sealed partial class CaptureComparisonWindow : Window
         _afterBitmap?.Dispose();
         _beforeBitmap = null;
         _afterBitmap = null;
+        _presentation = null;
+        ComparisonNotes.Text = string.Empty;
+        ComparisonNotesExpander.IsExpanded = false;
     }
 }

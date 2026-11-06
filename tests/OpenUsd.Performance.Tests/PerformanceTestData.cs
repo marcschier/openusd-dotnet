@@ -8,6 +8,8 @@ namespace OpenUsd.Performance.Tests;
 
 internal static class PerformanceTestData
 {
+    private const int MeshCommandFixedSize = 276;
+
     internal static byte[] CreateFrameCommand(int width = 1920, int height = 1080)
     {
         var bytes = new byte[272];
@@ -51,7 +53,7 @@ internal static class PerformanceTestData
         const int pointCount = 3;
         int indexCount = checked(triangleCount * 3);
         int size = checked(
-            268 +
+            MeshCommandFixedSize +
             path.Length +
             (pointCount * 3 * sizeof(float)) +
             (indexCount * sizeof(uint)) +
@@ -84,9 +86,9 @@ internal static class PerformanceTestData
         }
         WriteIdentityMatrix(bytes.AsSpan(80, 16 * sizeof(double)));
         BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(80 + (12 * sizeof(double))), x);
-        path.CopyTo(bytes, 268);
+        path.CopyTo(bytes, MeshCommandFixedSize);
 
-        int pointsOffset = 268 + path.Length;
+        int pointsOffset = MeshCommandFixedSize + path.Length;
         ReadOnlySpan<float> points = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         for (int index = 0; index < points.Length; index++)
         {
@@ -134,7 +136,7 @@ internal static class PerformanceTestData
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         byte[] instancerPath = Encoding.UTF8.GetBytes("/World/Instancer");
         int size = checked(
-            268 + path.Length + instancerPath.Length + 8 + instancerPath.Length);
+            MeshCommandFixedSize + path.Length + instancerPath.Length + 8 + instancerPath.Length);
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)SilkCommandType.MeshUpsert);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)size);
@@ -167,9 +169,9 @@ internal static class PerformanceTestData
         // instance index, which is what makes the flattened pair truthful for a
         // single-level scene.
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(264), 1);
-        path.CopyTo(bytes, 268);
-        instancerPath.CopyTo(bytes, 268 + path.Length);
-        int contextOffset = 268 + path.Length + instancerPath.Length;
+        path.CopyTo(bytes, MeshCommandFixedSize);
+        instancerPath.CopyTo(bytes, MeshCommandFixedSize + path.Length);
+        int contextOffset = MeshCommandFixedSize + path.Length + instancerPath.Length;
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(contextOffset),
             (uint)instancerPath.Length);

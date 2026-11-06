@@ -1,5 +1,58 @@
 # Copyright (c) marcschier. Licensed under the MIT License.
 
+function Get-ViewerInputMetadata
+{
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$RunApi,
+        [ValidateRange(1, 1000)][int]$MaxAttempts = 36,
+        [ValidateRange(0, 60)][int]$RetryDelaySeconds = 5
+    )
+
+    $jobs = $null
+    $artifacts = $null
+    for ($attempt = 0; $attempt -lt $MaxAttempts; $attempt++)
+    {
+        $nonce = [guid]::NewGuid().ToString('N')
+        $jobs = gh api -H 'Cache-Control: no-cache' "$RunApi/jobs?per_page=100&readiness=$nonce" |
+            ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer pack-job evidence.' }
+        $packJobs = @($jobs.jobs | Where-Object {
+            $_.name.StartsWith('pack Viewer inputs ', [StringComparison]::Ordinal)
+        })
+        $unfinished = @($packJobs | Where-Object status -ne 'completed')
+        $allCompleted = $packJobs.Count -eq 3 -and $unfinished.Count -eq 0
+        if ($allCompleted -or $attempt -eq $MaxAttempts - 1)
+        {
+            $artifacts = gh api -H 'Cache-Control: no-cache' "$RunApi/artifacts?per_page=100&readiness=$nonce" |
+                ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer input-artifact evidence.' }
+            if ($allCompleted)
+            {
+                $failed = @($packJobs | Where-Object {
+                    $_.conclusion -cne 'success' -or
+                    @($_.steps | Where-Object conclusion -CEQ 'failure').Count -ne 0
+                })
+                if ($failed.Count -ne 0) { break }
+                $unpublished = @($packJobs | Where-Object {
+                    $rid = $_.name.Substring('pack Viewer inputs '.Length)
+                    $uploaded = @($_.steps | Where-Object {
+                        $_.name -ceq 'Upload packed Viewer inputs' -and $_.conclusion -ceq 'success'
+                    }).Count -ne 0
+                    $present = @($artifacts.artifacts | Where-Object {
+                        $_.name -ceq "openusd-viewer-input-nupkg-$rid"
+                    }).Count -ne 0
+                    $uploaded -and !$present
+                })
+                if ($unpublished.Count -eq 0) { break }
+            }
+        }
+        if ($attempt -lt $MaxAttempts - 1) { Start-Sleep -Seconds $RetryDelaySeconds }
+    }
+
+    [ordered]@{ jobs = $jobs; artifacts = $artifacts }
+}
+
 function Get-ViewerInputReadiness
 {
     [CmdletBinding()]
@@ -61,7 +114,11 @@ function Get-ViewerInputReadiness
             $job[0].conclusion -cne 'success' -or
             @($job[0].steps | Where-Object conclusion -CEQ 'failure').Count -ne 0)
         {
-            throw "The actual $rid Viewer pack job failed, was cancelled or has mismatched evidence."
+            $observed = @($job | Select-Object id, run_id, head_sha, status, conclusion) |
+                ConvertTo-Json -Depth 3 -Compress
+            throw ("The actual $rid Viewer pack job failed, was cancelled or has mismatched evidence. " +
+                "Expected run=$($WorkflowRun.id), source=$($WorkflowRun.head_sha), completed/success; " +
+                "observed=$observed. Inspect the retained readiness metadata for step conclusions.")
         }
         $members = @($inputs | Where-Object name -CEQ "$prefix$rid")
         if ($members.Count -gt 1) { throw "Viewer inputs contain duplicate artifacts for $rid." }

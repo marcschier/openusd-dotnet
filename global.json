@@ -1,13 +1,13 @@
 {
   "sdk": {
-    "version": "10.0.401",
+    "version": "10.0.403",
     "rollForward": "disable",
     "allowPrerelease": false,
     "paths": [
       ".dotnet",
       "$host$"
     ],
-    "errorMessage": "Required .NET SDK 10.0.401 not found. Run ./eng/install-dotnet.ps1 or ./eng/install-dotnet.sh."
+    "errorMessage": "Required .NET SDK 10.0.403 not found. Run ./eng/install-dotnet.ps1 or ./eng/install-dotnet.sh."
   },
   "test": {
     "runner": "Microsoft.Testing.Platform"

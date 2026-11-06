@@ -283,6 +283,25 @@ public readonly struct UsdPrim : IUsdStageBound
     public UsdVec3f[] GetVec3fArray(string attributeName, double timeCode) =>
         FromNative(Stage.Native.GetVec3fArray(Path, attributeName, timeCode));
 
+    /// <summary>Sets a float4-array attribute at default time.</summary>
+    public void SetVec4fArray(string attributeName, ReadOnlySpan<UsdVec4f> values) =>
+        Stage.Native.SetVec4fArray(Path, attributeName, ToNative(values));
+
+    /// <summary>Authors a time sample for a float4-array attribute.</summary>
+    public void SetVec4fArray(
+        string attributeName,
+        ReadOnlySpan<UsdVec4f> values,
+        double timeCode) =>
+        Stage.Native.SetVec4fArray(Path, attributeName, ToNative(values), timeCode);
+
+    /// <summary>Gets a float4-array or color4f-array attribute at default time.</summary>
+    public UsdVec4f[] GetVec4fArray(string attributeName) =>
+        FromNative(Stage.Native.GetVec4fArray(Path, attributeName));
+
+    /// <summary>Gets a sampled float4-array or color4f-array attribute.</summary>
+    public UsdVec4f[] GetVec4fArray(string attributeName, double timeCode) =>
+        FromNative(Stage.Native.GetVec4fArray(Path, attributeName, timeCode));
+
     /// <summary>Sets a color3f-array attribute at default time.</summary>
     public void SetColor3fArray(string attributeName, ReadOnlySpan<UsdVec3f> values) =>
         Stage.Native.SetColor3fArray(Path, attributeName, ToNative(values));
@@ -703,6 +722,28 @@ public readonly struct UsdPrim : IUsdStageBound
             native[index] = values[index].ToNative();
         }
         return native;
+    }
+
+    private static OpenUsd.Interop.OpenUsdNativeVec4f[] ToNative(ReadOnlySpan<UsdVec4f> values)
+    {
+        var native = new OpenUsd.Interop.OpenUsdNativeVec4f[values.Length];
+        for (int index = 0; index < values.Length; ++index)
+        {
+            UsdVec4f value = values[index];
+            native[index] = new OpenUsd.Interop.OpenUsdNativeVec4f(value.X, value.Y, value.Z, value.W);
+        }
+        return native;
+    }
+
+    private static UsdVec4f[] FromNative(OpenUsd.Interop.OpenUsdNativeVec4f[] values)
+    {
+        var managed = new UsdVec4f[values.Length];
+        for (int index = 0; index < values.Length; ++index)
+        {
+            OpenUsd.Interop.OpenUsdNativeVec4f value = values[index];
+            managed[index] = new UsdVec4f(value.X, value.Y, value.Z, value.W);
+        }
+        return managed;
     }
 
     private static UsdVec2f[] FromNative(OpenUsd.Interop.OpenUsdNativeVec2f[] values)

@@ -113,14 +113,15 @@ internal static partial class ViewerCompletedJobPreviewJourney
     internal static T Required<T>(Control owner, string name) where T : Control =>
         owner.FindControl<T>(name) ?? throw new InvalidOperationException($"Missing results control: {name}");
 
-    internal static async Task WaitUntilAsync(Func<bool> condition)
+    internal static async Task WaitUntilAsync(Func<bool> condition, Func<string>? describe = null)
     {
         DateTime deadline = DateTime.UtcNow.AddSeconds(15);
         while (!condition())
         {
             if (DateTime.UtcNow >= deadline)
             {
-                throw new TimeoutException("The completed-results preview did not reach the expected state.");
+                throw new TimeoutException("The completed-results preview did not reach the expected state." +
+                    (describe is null ? string.Empty : " " + describe()));
             }
             await Task.Delay(20);
         }

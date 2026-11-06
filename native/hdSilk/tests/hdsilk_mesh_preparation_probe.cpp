@@ -16,11 +16,13 @@ void Require(bool value, const char* message)
 
 void ReservationArithmeticIsExactAndRejectsOverflow()
 {
+    const HdSilkMeshPreparationPlan triangle(3, 1);
+    Require(triangle.bytes == 335, "The triangle reservation must include normal correspondence.");
     HdSilkMeshPreparationPlan plan(4, 2);
-    Require(plan.bytes == 372, "The coarse numeric buffer reservation changed.");
+    Require(plan.bytes == 604, "The coarse reservation must include independent normal correspondence.");
     plan.Attribute(1, 3, true);
     plan.Attribute(4, 2, false);
-    Require(plan.bytes == 596, "The attribute overlap reservation changed.");
+    Require(plan.bytes == 828, "The attribute overlap reservation changed.");
     const auto expectOverflow = [](auto action)
     {
         bool failed = false;
@@ -31,7 +33,25 @@ void ReservationArithmeticIsExactAndRejectsOverflow()
     expectOverflow([] { (void)HdSilkMeshPreparationPlan(1, UINT64_MAX); });
     expectOverflow([] { (void)HdSilkMeshPreparationPlan(UINT64_MAX, 0); });
     expectOverflow([&] { plan.Attribute(UINT64_MAX, 4, false); });
-    Require(plan.bytes == 596, "Failed accounting changed the existing reservation.");
+    Require(plan.bytes == 828, "Failed accounting changed the existing reservation.");
+}
+
+void CurveReservationIncludesSourceAndOverlappingLineBuffers()
+{
+    Require(HdSilkCurvePreparationPlan(4, 4, 3).bytes == 292,
+        "The linear-curve reservation changed.");
+    Require(HdSilkCurvePreparationPlan(0, 0, 0).bytes == sizeof(float),
+        "An empty width source must reserve the resolved default.");
+    const auto expectOverflow = [](auto action)
+    {
+        bool failed = false;
+        try { action(); }
+        catch (const std::overflow_error&) { failed = true; }
+        Require(failed, "Curve reservation arithmetic silently wrapped.");
+    };
+    expectOverflow([] { (void)HdSilkCurvePreparationPlan(UINT64_MAX, 0, 0); });
+    expectOverflow([] { (void)HdSilkCurvePreparationPlan(0, UINT64_MAX, 0); });
+    expectOverflow([] { (void)HdSilkCurvePreparationPlan(0, 0, UINT64_MAX); });
 }
 
 void LimitsAndSharedOwnersPreserveExactBoundaries()
@@ -125,11 +145,12 @@ int main()
     try
     {
         ReservationArithmeticIsExactAndRejectsOverflow();
+        CurveReservationIncludesSourceAndOverlappingLineBuffers();
         LimitsAndSharedOwnersPreserveExactBoundaries();
         FailedReplacementRetainsOldAndNewUntilRecovery();
         ConcurrentReservationsCannotOvercommit();
         WorkerRefusalIsPublishedOnTheCallerAndResetForRetry();
-        std::cout << "hdSilk mesh preparation: 5 reservation contracts passed\n";
+        std::cout << "hdSilk mesh preparation: 6 reservation contracts passed\n";
         return 0;
     }
     catch (const std::exception& error)

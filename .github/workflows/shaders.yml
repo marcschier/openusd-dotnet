@@ -8,24 +8,54 @@ on:
     paths:
       - '.github/workflows/shaders.yml'
       - '.github/workflows/performance.yml'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
       - 'docs/shader-pipeline.md'
       - 'docs/rendering.md'
       - 'docs/testing.md'
       - 'eng/shaders/**'
+      - 'eng/run-compact-ordinal-conformance.ps1'
+      - 'eng/run-platform-conformance.ps1'
+      - 'eng/run-managed-tests.ps1'
+      - 'eng/prepare-vulkan-test-runtime.ps1'
+      - 'eng/vulkan-test-runtime-registry.ps1'
+      - 'eng/vulkan-test-runtime.lock.json'
+      - 'eng/tests/test_shader_workflow_gates.py'
+      - 'src/OpenUsd.Rendering/**'
+      - 'src/OpenUsd.Rendering.Silk/**'
+      - 'src/OpenUsd.Rendering.Silk.D3D12/**'
+      - 'src/OpenUsd.Rendering.Silk.Vulkan/**'
       - 'src/OpenUsd.Rendering.Silk.Metal/**'
-      - 'tests/OpenUsd.Rendering.ConformanceTests/Metal*.cs'
+      - 'src/OpenUsd.Rendering.Storm/**'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/**'
       - 'tests/OpenUsd.Rendering.Tests/Metal*.cs'
   pull_request:
     branches: [ master, main ]
     paths:
       - '.github/workflows/shaders.yml'
       - '.github/workflows/performance.yml'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
       - 'docs/shader-pipeline.md'
       - 'docs/rendering.md'
       - 'docs/testing.md'
       - 'eng/shaders/**'
+      - 'eng/run-compact-ordinal-conformance.ps1'
+      - 'eng/run-platform-conformance.ps1'
+      - 'eng/run-managed-tests.ps1'
+      - 'eng/prepare-vulkan-test-runtime.ps1'
+      - 'eng/vulkan-test-runtime-registry.ps1'
+      - 'eng/vulkan-test-runtime.lock.json'
+      - 'eng/tests/test_shader_workflow_gates.py'
+      - 'src/OpenUsd.Rendering/**'
+      - 'src/OpenUsd.Rendering.Silk/**'
+      - 'src/OpenUsd.Rendering.Silk.D3D12/**'
+      - 'src/OpenUsd.Rendering.Silk.Vulkan/**'
       - 'src/OpenUsd.Rendering.Silk.Metal/**'
-      - 'tests/OpenUsd.Rendering.ConformanceTests/Metal*.cs'
+      - 'src/OpenUsd.Rendering.Storm/**'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/**'
       - 'tests/OpenUsd.Rendering.Tests/Metal*.cs'
 
 permissions:
@@ -130,6 +160,7 @@ jobs:
             eng/shaders/out/ci-windows/artifact-manifest.json
             eng/shaders/out/ci-windows/executed-commands.json
             eng/shaders/out/ci-windows/host-toolchain.json
+            eng/shaders/out/ci-windows/*.dxil
             eng/shaders/out/logs/windows
           if-no-files-found: warn
 
@@ -303,6 +334,8 @@ jobs:
             -c Release `
             -f net10.0 `
             -p:OpenUsdRequireMetalShaderLibrary=true
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./eng/run-compact-ordinal-conformance.ps1 -Configuration Release
           ./eng/run-platform-conformance.ps1 -Partition Metal -Configuration Release
           ./eng/run-managed-tests.ps1 `
             -Project $project `
@@ -361,4 +394,6 @@ jobs:
             eng/shaders/out/metal-package/*.nupkg
             eng/shaders/out/logs/macos
             artifacts/platform-conformance
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0-report.html
           if-no-files-found: warn

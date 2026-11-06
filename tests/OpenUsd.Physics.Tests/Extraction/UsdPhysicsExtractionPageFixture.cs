@@ -19,6 +19,7 @@ internal sealed class UsdPhysicsExtractionPageFixture
     private readonly List<(float X, float Y, float Z)> _points = [];
     private readonly List<uint> _indices = [];
     private readonly List<byte[]> _diagnostics = [];
+    private readonly List<byte[]> _hulls = [];
 
     internal double MetersPerUnit { get; set; } = 1.0;
 
@@ -73,6 +74,20 @@ internal sealed class UsdPhysicsExtractionPageFixture
     {
         _indices.Add(value);
         return _indices.Count - 1;
+    }
+
+    internal void AddHull(int firstPoint, int pointCount)
+    {
+        var record = new byte[PhysicsExtractAbi.HullRecordBytes];
+        WriteU32(record, 0, (uint)firstPoint);
+        WriteU32(record, 4, (uint)pointCount);
+        _hulls.Add(record);
+    }
+
+    internal void SetObjectHulls(int objectIndex, int firstHull, int hullCount)
+    {
+        WriteU32(_objects[objectIndex], 208, (uint)firstHull);
+        WriteU32(_objects[objectIndex], 212, (uint)hullCount);
     }
 
     internal int AddObject(
@@ -241,6 +256,7 @@ internal sealed class UsdPhysicsExtractionPageFixture
             Points(),
             Indices(),
             Concat(_diagnostics),
+            Concat(_hulls),
         ];
 
         int[] counts =
@@ -255,6 +271,7 @@ internal sealed class UsdPhysicsExtractionPageFixture
             _points.Count,
             _indices.Count,
             _diagnostics.Count,
+            _hulls.Count,
         ];
 
         var offsets = new int[PhysicsExtractAbi.SectionCount];

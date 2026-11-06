@@ -82,8 +82,8 @@ present or required, because nothing in this repository opens one.
     whose correct mean is under a third of what an unweighted texel average would report. The
     weighting makes the mean correct as a mean; it does not make the result directional.
   - `dome-unsupported-diagnostics.usda` — one dome per unsupported condition (an `angular`
-    mapping, a deliberately absent asset, and `enableColorTemperature`), each of which must name
-    its own prim in a diagnostic and fall back to that dome's untextured emission.
+    mapping, a deliberately absent asset, and an enabled non-finite `colorTemperature`), each of
+    which must name its own prim in a diagnostic and fall back to that dome's untextured emission.
   - `light-shadow-linking.usda` — UsdLux light and shadow linking. Two identical quads under a pure
     red `DistantLight` whose `collection:lightLink:excludes` names one of them while keeping the
     `UsdLuxLightAPI` schema default `includeRoot = true`, plus a pure blue `DistantLight` that

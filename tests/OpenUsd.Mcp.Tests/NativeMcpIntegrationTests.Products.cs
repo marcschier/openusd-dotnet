@@ -135,9 +135,12 @@ public sealed partial class NativeMcpIntegrationTests
 
     [Test]
     [NotInParallel]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task AuthoredProductTimeAndCropAreExecutedRatherThanResizingTheViewport(bool bounded)
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task AuthoredProductTimeAndCropAreExecutedRatherThanResizingTheViewport(
+        bool bounded, bool rasterOverride)
     {
         if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
         {
@@ -147,19 +150,28 @@ public sealed partial class NativeMcpIntegrationTests
         NativeLayout layout = RequireNativeLayout(requireImaging: true);
         using var files = new WorkspaceTestFiles();
         string scene = ProductScene
-            .Replace("int2 resolution = (16, 16)", "int2 resolution = (32, 16)", StringComparison.Ordinal)
+            .Replace("int2 resolution = (16, 16)",
+                rasterOverride ? "int2 resolution = (64, 32)" : "int2 resolution = (32, 16)",
+                StringComparison.Ordinal)
             .Replace("token productName = \"../must-not-be-used.exr\"",
-                "token productName = \"../must-not-be-used.exr\"\n    float4 dataWindowNDC = (0.25, 0, 0.75, 1)",
+                "token productName = \"../must-not-be-used.exr\"\n    float4 dataWindowNDC = " +
+                (rasterOverride
+                    ? "(-0.25, -0.25, 1.25, 1.25)\n    float pixelAspectRatio = 2\n" +
+                        "    token aspectRatioConformPolicy = \"adjustApertureHeight\""
+                    : "(0.25, 0, 0.75, 1)"),
                 StringComparison.Ordinal)
             .Replace("double3 xformOp:translate = (-1, 1, -4)",
                 "double3 xformOp:translate.timeSamples = { 0: (-1, 1, -4), 2: (1, 1, -4) }",
                 StringComparison.Ordinal);
         await File.WriteAllTextAsync(files.SourcePath, scene);
+        var textureBudgets = new OpenUsd.Rendering.Silk.SilkTexturePreparationBudgets(
+            new(1_000_000), new(1_000_000), new(1_000_000));
         var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
             Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
             Path.Combine(files.OutputRoot, "viewer-not-launched.exe"),
             PreparationLimits: bounded ? new OpenUsd.Rendering.Silk.SilkPreparationLimits(1_000_000, 1_000_000) : null,
-            GpuBufferBudget: bounded ? new OpenUsd.Rendering.Silk.SilkGpuBufferBudget(1_000_000) : null);
+            GpuBufferBudget: bounded ? new OpenUsd.Rendering.Silk.SilkGpuBufferBudget(1_000_000) : null,
+            TexturePreparationBudgets: bounded ? textureBudgets : null);
         await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
             .BuildServiceProvider();
         IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
@@ -173,6 +185,11 @@ public sealed partial class NativeMcpIntegrationTests
             StageRevision = session.StageRevision,
             SettingsPath = "/SettingsFull",
             ProductPath = "/Product",
+            Width = rasterOverride ? 32 : null,
+            Height = rasterOverride ? 16 : null,
+            PixelAspectRatio = rasterOverride ? 1 : null,
+            AspectRatioConformPolicy = rasterOverride ? "expandAperture" : null,
+            DataWindowNdc = rasterOverride ? [0.25f, 0, 0.75f, 1] : null,
             FrameCount = 2,
             TimeStep = 2
         };
@@ -183,6 +200,15 @@ public sealed partial class NativeMcpIntegrationTests
         await Assert.That(job.Diagnostics.Any(static entry =>
             entry.Code == "HDSILK_GPU_BUFFER_ADMISSION" &&
             entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal))).IsEqualTo(bounded);
+        foreach (string code in new[]
+            { "HDSILK_CPU_TEXTURE_ADMISSION", "HDSILK_GPU_TEXTURE_ADMISSION", "HDSILK_GPU_STAGING_ADMISSION" })
+        {
+            await Assert.That(job.Diagnostics.Any(entry =>
+                entry.Code == code && entry.Message.Contains("ceiling=1000000", StringComparison.Ordinal)))
+                .IsEqualTo(bounded);
+        }
+        await Assert.That(textureBudgets.GpuTextureBudget!.Usage.ReservedBytes > 0).IsEqualTo(bounded);
+        await Assert.That(textureBudgets.GpuStagingBudget!.Usage.PeakReservedBytes > 0).IsEqualTo(bounded);
         for (int index = 0; index < 2; index++)
         {
             McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
@@ -203,6 +229,7 @@ public sealed partial class NativeMcpIntegrationTests
         await Assert.That(raster.GetProperty("dataWindowMinX").GetInt32()).IsEqualTo(8);
         await Assert.That(raster.GetProperty("dataWindowMinY").GetInt32()).IsEqualTo(0);
         await Assert.That(raster.GetProperty("pixelAspectRatio").GetDouble()).IsEqualTo(1d);
+        await Assert.That(raster.GetProperty("aspectRatioConformPolicy").GetString()).IsEqualTo("expandAperture");
         McpSequenceSheetResultDto sheet = await service.ReadSequenceSheetAsync(new ReadSequenceSheetRequest
         {
             JobId = job.JobId,
@@ -220,7 +247,7 @@ public sealed partial class NativeMcpIntegrationTests
         await Assert.That(Convert.ToHexString(sheetImage.Pixels.Span.Slice((4 * 32 + 20) * 4, 4)))
             .IsEqualTo("800000FF");
         string renders = Path.GetDirectoryName(Path.Combine(files.OutputRoot, job.OutputDirectory))!;
-        await Assert.That(async () => await service.RenderProductAsync(new RenderProductCaptureRequest
+        McpRenderSequenceResultDto exrJob = await service.RenderProductAsync(new RenderProductCaptureRequest
         {
             SessionId = session.SessionId,
             Generation = session.Generation,
@@ -228,9 +255,27 @@ public sealed partial class NativeMcpIntegrationTests
             SettingsPath = request.SettingsPath,
             ProductPath = request.ProductPath,
             HdrColorFormat = "exr"
-        }, default)).Throws<OpenUsdMcpFailureException>();
-        await Assert.That(Directory.GetDirectories(renders)).Count().IsEqualTo(1);
+        }, default);
+        using (JsonDocument exrManifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, exrJob.ManifestPath))))
+        {
+            JsonElement exrFrame = exrManifest.RootElement.GetProperty("frames")[0];
+            await Assert.That(exrFrame.GetProperty("hdrColor").GetProperty("format").GetString())
+                .IsEqualTo("openexr-rgba16float");
+            await Assert.That(exrFrame.GetProperty("hdrColor").GetProperty("convention").GetString())
+                .IsEqualTo("renderer-working-composited-camera-exposed-before-display");
+        }
+        await Assert.That(Directory.GetDirectories(renders)).Count().IsEqualTo(2);
         await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        await service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision
+        }, default);
+        await Assert.That(textureBudgets.CpuTextureBudget!.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textureBudgets.GpuTextureBudget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(textureBudgets.GpuStagingBudget.Usage.ReservedBytes).IsEqualTo(0ul);
     }
 
     [Test]
@@ -317,6 +362,337 @@ public sealed partial class NativeMcpIntegrationTests
         }
     }
 
+    [Test]
+    [NotInParallel]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AuthoredPrimIdProductsPublishResolvableVisiblePrimIdentities(bool primIdOnly)
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1 with a matching ingestion-capable runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        string scene = ProductScene
+            .Replace("rel orderedVars = </Color>",
+                primIdOnly ? "rel orderedVars = </PrimId>" : "rel orderedVars = [</Color>, </PrimId>]",
+                StringComparison.Ordinal)
+            .Replace("def Scope \"Looks\" {",
+                "def RenderVar \"PrimId\" {\n    token dataType = \"int\"\n    string sourceName = \"primId\"\n" +
+                "    token sourceType = \"raw\"\n}\ndef Scope \"Looks\" {",
+                StringComparison.Ordinal);
+        await File.WriteAllTextAsync(files.SourcePath, scene);
+        var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
+            Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+        await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
+        IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            SettingsPath = "/SettingsFull",
+            ProductPath = "/Product"
+        }, default);
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static output => output.Plane)
+            .SequenceEqual(primIdOnly ? ["primId"] : ["hdrColor", "primId"])).IsTrue();
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.DeviceDepth).IsNull();
+        await Assert.That(frame.HdrColor is null).IsEqualTo(primIdOnly);
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(primIdOnly ? 3 : 4);
+        ArtifactResourceContent raw = await artifacts.ReadAsync(new Uri(frame.PrimId!.Uri)) ??
+            throw new InvalidOperationException("The completed primId plane is absent.");
+        await Assert.That(raw.Content.Length).IsEqualTo(16 * 16 * 4);
+        ArtifactResourceContent table = await artifacts.ReadAsync(new Uri(frame.PrimIdTable!.Uri)) ??
+            throw new InvalidOperationException("The completed primId table is absent.");
+        using JsonDocument document = JsonDocument.Parse(table.Content);
+        JsonElement identities = document.RootElement.GetProperty("identities");
+        await Assert.That(document.RootElement.GetProperty("background").GetInt32()).IsEqualTo(-1);
+        await Assert.That(identities.GetArrayLength()).IsEqualTo(2);
+        await Assert.That(path(4, 4)).IsEqualTo("/World/Default");
+        await Assert.That(path(12, 4)).IsEqualTo("/World/Render");
+        await Assert.That(value(4, 12)).IsEqualTo(-1);
+        await Assert.That(value(12, 12)).IsEqualTo(-1);
+        await Assert.That(identities[value(4, 4)].GetProperty("instanceIndex").GetInt32()).IsEqualTo(-1);
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, job.ManifestPath)));
+        JsonElement manifestPrimId = manifest.RootElement.GetProperty("frames")[0].GetProperty("primId");
+        await Assert.That(manifestPrimId.GetProperty("file").GetString()).IsEqualTo("frame-000000.prim-id.i32");
+        await Assert.That(manifestPrimId.GetProperty("tableFile").GetString())
+            .IsEqualTo("frame-000000.prim-id.json");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        return;
+
+        int value(int x, int y) =>
+            System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(raw.Content.Span.Slice((y * 16 + x) * 4, 4));
+
+        string? path(int x, int y) => identities[value(x, y)].GetProperty("path").GetString();
+    }
+
+    [Test]
+    [NotInParallel]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AuthoredInstanceIdProductsPublishVisiblePointInstancerIndices(bool instanceIdOnly)
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1 with a matching ingestion-capable runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        string scene = ProductScene
+            .Replace("rel orderedVars = </Color>",
+                instanceIdOnly ? "rel orderedVars = </InstanceId>" : "rel orderedVars = [</PrimId>, </InstanceId>]",
+                StringComparison.Ordinal)
+            .Replace("def Scope \"Looks\" {",
+                "def RenderVar \"PrimId\" {\n    token dataType = \"int\"\n    string sourceName = \"primId\"\n" +
+                "    token sourceType = \"raw\"\n}\n" +
+                "def RenderVar \"InstanceId\" {\n    token dataType = \"int\"\n" +
+                "    string sourceName = \"instanceId\"\n" +
+                "    token sourceType = \"raw\"\n}\ndef Scope \"Looks\" {",
+                StringComparison.Ordinal)
+            .Replace("    def Xform \"ProxyParent\" {",
+                "    def PointInstancer \"Instancer\" {\n" +
+                "        rel prototypes = </World/Instancer/Prototypes/Proto>\n" +
+                "        int[] protoIndices = [0, 0, 0]\n" +
+                "        point3f[] positions = [(-1, 0, -4), (1, 0, -4), (0, -1, -4)]\n" +
+                "        def Scope \"Prototypes\" {\n" +
+                "            def Cube \"Proto\" {\n" +
+                "                double size = 0.75\n" +
+                "            }\n" +
+                "        }\n" +
+                "    }\n" +
+                "    def Xform \"ProxyParent\" {",
+                StringComparison.Ordinal);
+        await File.WriteAllTextAsync(files.SourcePath, scene);
+        var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
+            Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+        await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
+        IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            SettingsPath = "/SettingsFull",
+            ProductPath = "/Product"
+        }, default);
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static output => output.Plane)
+            .SequenceEqual(instanceIdOnly ? ["instanceId"] : ["primId", "instanceId"])).IsTrue();
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.HdrColor).IsNull();
+        await Assert.That(frame.PrimId is null).IsEqualTo(instanceIdOnly);
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(instanceIdOnly ? 2 : 4);
+        ArtifactResourceContent raw = await artifacts.ReadAsync(new Uri(frame.InstanceId!.Uri)) ??
+            throw new InvalidOperationException("The completed instanceId plane is absent.");
+        await Assert.That(raw.Content.Length).IsEqualTo(16 * 16 * 4);
+        await Assert.That(value(raw, 4, 8)).IsEqualTo(0);
+        await Assert.That(value(raw, 12, 8)).IsEqualTo(1);
+        await Assert.That(value(raw, 8, 12)).IsEqualTo(2);
+        await Assert.That(value(raw, 4, 4)).IsEqualTo(-1).Because("a non-instanced prim has no instance index");
+        await Assert.That(value(raw, 8, 4)).IsEqualTo(-1).Because("background has no instance index");
+        if (!instanceIdOnly)
+        {
+            ArtifactResourceContent primId = await artifacts.ReadAsync(new Uri(frame.PrimId!.Uri)) ??
+                throw new InvalidOperationException("The completed primId plane is absent.");
+            ArtifactResourceContent table = await artifacts.ReadAsync(new Uri(frame.PrimIdTable!.Uri)) ??
+                throw new InvalidOperationException("The completed primId table is absent.");
+            using JsonDocument document = JsonDocument.Parse(table.Content);
+            JsonElement identities = document.RootElement.GetProperty("identities");
+            for (int pixel = 0; pixel < 16 * 16; pixel++)
+            {
+                int index = value(primId, pixel % 16, pixel / 16);
+                int expected = index < 0 ? -1 : identities[index].GetProperty("instanceIndex").GetInt32();
+                if (value(raw, pixel % 16, pixel / 16) != expected)
+                {
+                    Assert.Fail($"Pixel {pixel} instance index disagrees with its prim identity table entry.");
+                }
+            }
+        }
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, job.ManifestPath)));
+        JsonElement plane = manifest.RootElement.GetProperty("frames")[0].GetProperty("instanceId");
+        await Assert.That(plane.GetProperty("file").GetString()).IsEqualTo("frame-000000.instance-id.i32");
+        await Assert.That(plane.GetProperty("convention").GetString())
+            .IsEqualTo("innermost-instancer-instance-index");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        return;
+
+        static int value(ArtifactResourceContent content, int x, int y) =>
+            System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(
+                content.Content.Span.Slice((y * 16 + x) * 4, 4));
+    }
+
+    [Test]
+    [NotInParallel]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AuthoredElementIdProductsPublishVisibleAuthoredFaceIndices(bool elementIdOnly)
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1 with a matching ingestion-capable runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        string scene = ProductScene
+            .Replace("rel orderedVars = </Color>",
+                elementIdOnly ? "rel orderedVars = </ElementId>" : "rel orderedVars = [</PrimId>, </ElementId>]",
+                StringComparison.Ordinal)
+            .Replace("def Scope \"Looks\" {",
+                "def RenderVar \"PrimId\" {\n    token dataType = \"int\"\n    string sourceName = \"primId\"\n" +
+                "    token sourceType = \"raw\"\n}\n" +
+                "def RenderVar \"ElementId\" {\n    token dataType = \"int\"\n    string sourceName = \"elementId\"\n" +
+                "    token sourceType = \"raw\"\n}\ndef Scope \"Looks\" {",
+                StringComparison.Ordinal);
+        await File.WriteAllTextAsync(files.SourcePath, scene);
+        var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
+            Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+        await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
+        IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            SettingsPath = "/SettingsFull",
+            ProductPath = "/Product"
+        }, default);
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static output => output.Plane)
+            .SequenceEqual(elementIdOnly ? ["elementId"] : ["primId", "elementId"])).IsTrue();
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.HdrColor).IsNull();
+        await Assert.That(frame.PrimId is null).IsEqualTo(elementIdOnly);
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(elementIdOnly ? 2 : 4);
+        ArtifactResourceContent raw = await artifacts.ReadAsync(new Uri(frame.ElementId!.Uri)) ??
+            throw new InvalidOperationException("The completed elementId plane is absent.");
+        await Assert.That(raw.Content.Length).IsEqualTo(16 * 16 * 4);
+        int front = value(raw, 4, 4);
+        await Assert.That(front).IsBetween(0, 5).Because("a cube has six authored faces");
+        await Assert.That(value(raw, 12, 4)).IsEqualTo(front)
+            .Because("both cubes show the same authored face toward the camera");
+        await Assert.That(value(raw, 8, 8)).IsEqualTo(-1).Because("background has no element");
+        await Assert.That(value(raw, 4, 12)).IsEqualTo(-1).Because("the proxy cube is not rendered");
+        if (!elementIdOnly)
+        {
+            ArtifactResourceContent primId = await artifacts.ReadAsync(new Uri(frame.PrimId!.Uri)) ??
+                throw new InvalidOperationException("The completed primId plane is absent.");
+            for (int pixel = 0; pixel < 16 * 16; pixel++)
+            {
+                bool surface = value(primId, pixel % 16, pixel / 16) >= 0;
+                if ((value(raw, pixel % 16, pixel / 16) >= 0) != surface)
+                {
+                    Assert.Fail($"Pixel {pixel} element coverage disagrees with its prim identity coverage.");
+                }
+            }
+        }
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, job.ManifestPath)));
+        JsonElement plane = manifest.RootElement.GetProperty("frames")[0].GetProperty("elementId");
+        await Assert.That(plane.GetProperty("file").GetString()).IsEqualTo("frame-000000.element-id.i32");
+        await Assert.That(plane.GetProperty("convention").GetString()).IsEqualTo("authored-face-index");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        return;
+
+        static int value(ArtifactResourceContent content, int x, int y) =>
+            System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(
+                content.Content.Span.Slice((y * 16 + x) * 4, 4));
+    }
+
+    [Test]
+    [NotInParallel]
+    public async Task AuthoredNormalProductsPublishWorldSpaceSurfaceNormals()
+    {
+        if (Environment.GetEnvironmentVariable("OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED") != "1")
+        {
+            Skip.Test("Set OPENUSD_RENDER_PRODUCT_EXECUTION_REQUIRED=1 with a matching ingestion-capable runtime.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        NativeLayout layout = RequireNativeLayout(requireImaging: true);
+        using var files = new WorkspaceTestFiles();
+        string scene = ProductScene
+            .Replace("rel orderedVars = </Color>", "rel orderedVars = </Normal>", StringComparison.Ordinal)
+            .Replace("def Scope \"Looks\" {",
+                "def RenderVar \"Normal\" {\n    token dataType = \"normal3f\"\n    string sourceName = \"normal\"\n" +
+                "    token sourceType = \"raw\"\n}\ndef Scope \"Looks\" {",
+                StringComparison.Ordinal);
+        await File.WriteAllTextAsync(files.SourcePath, scene);
+        var options = new OpenUsdMcpApplicationOptions(files.SourceRoot, files.OutputRoot,
+            Path.Combine(layout.ShimRoot, "plugin", "usd"), files.OutputRoot,
+            Path.Combine(files.OutputRoot, "viewer-not-launched.exe"));
+        await using ServiceProvider provider = new ServiceCollection().AddOpenUsdMcpServices(options)
+            .BuildServiceProvider();
+        IOpenUsdMcpService service = provider.GetRequiredService<IOpenUsdMcpService>();
+        IArtifactResourceStore artifacts = provider.GetRequiredService<IArtifactResourceStore>();
+        McpSessionDto session = await service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        McpRenderSequenceResultDto job = await service.RenderProductAsync(new RenderProductCaptureRequest
+        {
+            SessionId = session.SessionId,
+            Generation = session.Generation,
+            StageRevision = session.StageRevision,
+            SettingsPath = "/SettingsFull",
+            ProductPath = "/Product"
+        }, default);
+        await Assert.That(job.AuthoredProduct!.Outputs.Select(static output => output.Plane)
+            .SequenceEqual(["normal"])).IsTrue();
+        McpSequenceFrameResultDto frame = await service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 0 }, default);
+        await Assert.That(frame.HdrColor).IsNull();
+        await Assert.That(frame.PrimId).IsNull();
+        await Assert.That(frame.ArtifactResources.Count).IsEqualTo(2);
+        ArtifactResourceContent raw = await artifacts.ReadAsync(new Uri(frame.Normal!.Uri)) ??
+            throw new InvalidOperationException("The completed normal plane is absent.");
+        await Assert.That(raw.Content.Length).IsEqualTo(16 * 16 * 12);
+        foreach ((int x, int y) in new[] { (4, 4), (12, 4) })
+        {
+            float nx = value(raw, x, y, 0);
+            float ny = value(raw, x, y, 1);
+            float nz = value(raw, x, y, 2);
+            await Assert.That(MathF.Sqrt(nx * nx + ny * ny + nz * nz)).IsEqualTo(1f).Within(1e-3f);
+            await Assert.That(nz).IsGreaterThan(0.5f)
+                .Because("the smooth cube face toward the -z looking camera faces world +z");
+        }
+        for (int channel = 0; channel < 3; channel++)
+        {
+            await Assert.That(value(raw, 8, 8, channel)).IsEqualTo(0f).Because("background has no surface");
+        }
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+            Path.Combine(files.OutputRoot, job.ManifestPath)));
+        JsonElement plane = manifest.RootElement.GetProperty("frames")[0].GetProperty("normal");
+        await Assert.That(plane.GetProperty("file").GetString()).IsEqualTo("frame-000000.normal.f32x3");
+        await Assert.That(plane.GetProperty("convention").GetString())
+            .IsEqualTo("world-space-unit-normal-float32x3");
+        await Assert.That(await File.ReadAllTextAsync(files.SourcePath)).IsEqualTo(scene);
+        return;
+
+        static float value(ArtifactResourceContent content, int x, int y, int channel) =>
+            System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(
+                content.Content.Span.Slice(((y * 16 + x) * 3 + channel) * 4, 4));
+    }
     private static async Task AssertHalf(byte[] pixels, int x, int y, string expected) =>
         await Assert.That(Convert.ToHexString(pixels.AsSpan((y * 16 + x) * 8, 8))).IsEqualTo(expected);
 

@@ -67,6 +67,11 @@ struct HdSilkMeshPreparationPlan
         bytes = Add(Multiply(Add(points, vertices), 3 * sizeof(float)),
             Multiply(Add(Multiply(corners, 9), Multiply(triangles, 2)), sizeof(uint32_t)));
         bytes = Add(bytes, Add(Multiply(points, sizeof(uint32_t)), points));
+        // Independent source identities and both cached and published polygon
+        // adjacency survive even when picking is refused. Their reservation
+        // also covers the source-to-triangle lookup used during triangulation.
+        bytes = Add(bytes, Multiply(Add(vertices, Multiply(corners, 6)), sizeof(uint32_t)));
+        bytes = Add(bytes, Multiply(points, 4 * sizeof(uint32_t)));
     }
 
     void Attribute(uint64_t elements, uint32_t components, bool constant)
@@ -76,6 +81,33 @@ struct HdSilkMeshPreparationPlan
         // Pending flattened values and up to three triangulated/expanded/compact
         // buffers may overlap. Source Vt storage and allocator overhead are not this metric.
         bytes = Add(bytes, Multiply(Add(source, Multiply(emitted, 3)), sizeof(float)));
+    }
+
+    void PtexMapping(uint64_t triangles, uint64_t scratchEntries)
+    {
+        const uint64_t mappingBytes = Add(
+            sizeof(uint32_t), Multiply(6, sizeof(float)));
+        bytes = Add(bytes, Multiply(Multiply(triangles, 3), mappingBytes));
+        bytes = Add(bytes, Multiply(scratchEntries, sizeof(uint32_t)));
+    }
+};
+
+struct HdSilkCurvePreparationPlan
+{
+    uint64_t bytes = 0;
+
+    HdSilkCurvePreparationPlan(uint64_t points, uint64_t widths, uint64_t segments)
+    {
+        using Plan = HdSilkMeshPreparationPlan;
+        const uint64_t endpoints = Plan::Multiply(segments, 2);
+        const uint64_t sourceWidths = widths == 0 ? 1 : widths;
+        // Source point/width conversion, emitted points and normals, indices,
+        // overlapping emitted widths, and one identity per line segment.
+        bytes = Plan::Add(
+            Plan::Add(Plan::Multiply(points, 3 * sizeof(float)),
+                Plan::Multiply(sourceWidths, sizeof(float))),
+            Plan::Add(Plan::Multiply(endpoints, 9 * sizeof(float)),
+                Plan::Multiply(segments, sizeof(uint32_t))));
     }
 };
 

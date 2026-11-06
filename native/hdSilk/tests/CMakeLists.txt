@@ -10,10 +10,22 @@ else()
 endif()
 add_test(NAME hdsilk_vertex_layout COMMAND hdsilk_vertex_layout_probe)
 
+add_executable(hdsilk_volume_bounds_probe hdsilk_volume_bounds_probe.cpp)
+target_compile_features(hdsilk_volume_bounds_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_volume_bounds_probe PRIVATE usd_m)
+target_include_directories(hdsilk_volume_bounds_probe SYSTEM PRIVATE "${pxr_DIR}/include")
+if(MSVC)
+    target_compile_options(hdsilk_volume_bounds_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(hdsilk_volume_bounds_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_volume_bounds COMMAND hdsilk_volume_bounds_probe)
+
 add_executable(hdsilk_mesh_preparation_probe hdsilk_mesh_preparation_probe.cpp)
 target_compile_features(hdsilk_mesh_preparation_probe PRIVATE cxx_std_17)
 find_package(Threads REQUIRED)
 target_link_libraries(hdsilk_mesh_preparation_probe PRIVATE Threads::Threads)
+target_link_libraries(openusd_hdsilk_test PRIVATE Threads::Threads)
 if(MSVC)
     target_compile_options(hdsilk_mesh_preparation_probe PRIVATE /W4 /WX /permissive- /EHsc)
 else()
@@ -21,6 +33,30 @@ else()
 endif()
 add_test(NAME hdsilk_mesh_preparation COMMAND hdsilk_mesh_preparation_probe)
 set_tests_properties(hdsilk_mesh_preparation PROPERTIES TIMEOUT 60)
+
+add_executable(
+    hdsilk_nurbs_geometry_probe
+    nurbs_geometry_probe.cpp
+    ../src/nurbsGeometry.cpp)
+target_compile_features(hdsilk_nurbs_geometry_probe PRIVATE cxx_std_17)
+target_include_directories(hdsilk_nurbs_geometry_probe PRIVATE ../src)
+if(MSVC)
+    target_compile_options(hdsilk_nurbs_geometry_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(hdsilk_nurbs_geometry_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_nurbs_geometry COMMAND hdsilk_nurbs_geometry_probe)
+
+add_executable(hdsilk_point_preparation_probe hdsilk_point_preparation_probe.cpp)
+target_compile_features(hdsilk_point_preparation_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_point_preparation_probe PRIVATE Threads::Threads)
+if(MSVC)
+    target_compile_options(hdsilk_point_preparation_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(hdsilk_point_preparation_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_point_preparation COMMAND hdsilk_point_preparation_probe)
+set_tests_properties(hdsilk_point_preparation PROPERTIES TIMEOUT 60)
 
 add_executable(
     hdsilk_probe
@@ -234,7 +270,89 @@ endif()
 
 add_test(NAME hdsilk_probe
     COMMAND hdsilk_probe ${HDSILK_PROBE_PLUGIN_DIR} ${HDSILK_PROBE_STAGE})
-set_tests_properties(hdsilk_probe hdsilk_vertex_layout
+add_test(NAME hdsilk_ptex_mapping_parser COMMAND hdsilk_probe --ptex-mapping-parser)
+add_test(NAME hdsilk_texture_metadata COMMAND hdsilk_probe --texture-metadata)
+add_test(NAME hdsilk_uv_fallback COMMAND hdsilk_probe --uv-fallback)
+add_test(NAME hdsilk_displacement_uv COMMAND hdsilk_probe --displacement-uv)
+add_test(NAME hdsilk_preview_unsupported_input COMMAND hdsilk_probe --preview-unsupported-input)
+add_test(NAME hdsilk_linear_curve_topology COMMAND hdsilk_probe --linear-curve-topology)
+add_test(NAME hdsilk_curve_invalid_points COMMAND hdsilk_probe --curve-invalid-points)
+add_test(NAME hdsilk_points_invalid_points COMMAND hdsilk_probe --points-invalid-points)
+add_test(NAME hdsilk_mesh_invalid_points COMMAND hdsilk_probe --mesh-invalid-points)
+add_test(NAME hdsilk_mesh_computed_points COMMAND hdsilk_probe --mesh-computed-points)
+add_test(NAME hdsilk_nurbs_rational_curve_sync
+    COMMAND hdsilk_probe --nurbs-sync rational-curve ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_rational_patch_sync
+    COMMAND hdsilk_probe --nurbs-sync rational-patch ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_trimmed_patch_sync
+    COMMAND hdsilk_probe --nurbs-sync trimmed-patch ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_dirty_curve_sync
+    COMMAND hdsilk_probe --nurbs-sync dirty-curve ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_dirty_patch_sync
+    COMMAND hdsilk_probe --nurbs-sync dirty-patch ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_bounded_curve_sync
+    COMMAND hdsilk_probe --nurbs-sync bounded-curve ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_bounded_patch_sync
+    COMMAND hdsilk_probe --nurbs-sync bounded-patch ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_patch_form_acceptance_sync
+    COMMAND hdsilk_probe --nurbs-sync patch-form-acceptance ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_empty_curve_weights_sync
+    COMMAND hdsilk_probe --nurbs-sync empty-curve-weights ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_empty_patch_weights_sync
+    COMMAND hdsilk_probe --nurbs-sync empty-patch-weights ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_concurrent_sampling
+    COMMAND hdsilk_probe --nurbs-sync concurrent-sampling ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_primvar_retention
+    COMMAND hdsilk_probe --nurbs-sync primvar-retention ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_nurbs_diagnostic_recovery
+    COMMAND hdsilk_probe --nurbs-sync diagnostic-recovery ${HDSILK_PROBE_PLUGIN_DIR})
+add_test(NAME hdsilk_mesh_skel_normals_recovery
+    COMMAND hdsilk_probe --mesh-skel-normals-recovery
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-deformation-probe.usda")
+add_test(NAME hdsilk_curve_non_geometry_sync COMMAND hdsilk_probe --curve-non-geometry-sync)
+add_test(NAME hdsilk_geometry_non_geometry_sync COMMAND hdsilk_probe --geometry-non-geometry-sync)
+add_test(NAME hdsilk_surface_uv_fallback COMMAND hdsilk_probe --surface-uv-fallback)
+add_test(NAME hdsilk_independent_uv_fallback COMMAND hdsilk_probe --independent-uv-fallback)
+add_test(NAME hdsilk_composite_uv_fallback COMMAND hdsilk_probe --composite-uv-fallback)
+add_test(NAME hdsilk_independent_fallback_publication COMMAND hdsilk_probe --independent-fallback-publication)
+add_test(NAME hdsilk_mdl_identifiers COMMAND hdsilk_probe --mdl-identifiers)
+add_test(NAME hdsilk_source_identity_ordinary COMMAND hdsilk_probe --decode-scene-identities
+    ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/minimal.usda
+    /World/Cube)
+add_test(NAME hdsilk_source_identity_nested COMMAND hdsilk_probe --decode-scene-identities
+    ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-nested-linking-probe.usda
+    /World/GroupA/TwigA/Leaf /World/GroupA/TwigB/Leaf
+    /World/GroupB/TwigA/Leaf /World/GroupB/TwigB/Leaf
+    "/World/ScatterProtos/Red|/World/Scatter:0"
+    "/World/ScatterProtos/Blue|/World/Scatter:1"
+    "/World/ScatterProtos/Blue|/World/Scatter:3")
+add_test(NAME hdsilk_source_identity_nested_masked COMMAND hdsilk_probe --decode-scene-identities
+    ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-source-nested-masked.usda
+    "/World/Outer/Inner/Leaf|/World/Outer:0|/World/Outer/Inner:0"
+    "/World/Outer/Inner/Leaf|/World/Outer:0|/World/Outer/Inner:2"
+    "/World/Outer/Inner/Leaf|/World/Outer:2|/World/Outer/Inner:0"
+    "/World/Outer/Inner/Leaf|/World/Outer:2|/World/Outer/Inner:2")
+add_test(NAME hdsilk_source_identity_transform_stack COMMAND hdsilk_probe --decode-scene-identities
+    ${HDSILK_PROBE_PLUGIN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-source-transform-stack.usda
+    /World/A/Mesh /World/B/Mesh)
+set_tests_properties(hdsilk_probe hdsilk_ptex_mapping_parser hdsilk_vertex_layout hdsilk_volume_bounds
+    hdsilk_texture_metadata hdsilk_uv_fallback
+    hdsilk_displacement_uv hdsilk_preview_unsupported_input hdsilk_linear_curve_topology hdsilk_curve_invalid_points
+    hdsilk_points_invalid_points hdsilk_mesh_invalid_points hdsilk_mesh_computed_points
+    hdsilk_nurbs_rational_curve_sync hdsilk_nurbs_rational_patch_sync hdsilk_nurbs_trimmed_patch_sync
+    hdsilk_nurbs_dirty_curve_sync hdsilk_nurbs_dirty_patch_sync
+    hdsilk_nurbs_bounded_curve_sync hdsilk_nurbs_bounded_patch_sync
+    hdsilk_nurbs_patch_form_acceptance_sync
+    hdsilk_nurbs_empty_curve_weights_sync hdsilk_nurbs_empty_patch_weights_sync
+    hdsilk_nurbs_concurrent_sampling
+    hdsilk_nurbs_primvar_retention
+    hdsilk_nurbs_diagnostic_recovery
+    hdsilk_mesh_skel_normals_recovery
+    hdsilk_curve_non_geometry_sync hdsilk_geometry_non_geometry_sync hdsilk_surface_uv_fallback
+    hdsilk_independent_uv_fallback
+    hdsilk_composite_uv_fallback hdsilk_independent_fallback_publication hdsilk_mdl_identifiers
+    hdsilk_source_identity_ordinary hdsilk_source_identity_nested hdsilk_source_identity_nested_masked
+    hdsilk_source_identity_transform_stack
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
 
 # The subdivision probe is a separate executable rather than another case inside
@@ -268,6 +386,111 @@ add_test(NAME hdsilk_subdivision_probe
         ${HDSILK_SUBDIVISION_PROBE_STAGE})
 set_tests_properties(hdsilk_subdivision_probe
     PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}")
+
+add_executable(
+    hdsilk_ptex_topology_probe
+    hdsilk_ptex_topology_probe.cpp
+    ../src/subdivision.cpp)
+target_compile_features(hdsilk_ptex_topology_probe PRIVATE cxx_std_17)
+target_link_libraries(
+    hdsilk_ptex_topology_probe PRIVATE usd_m ${OPENUSD_OPENSUBDIV_CPU_LIBRARY})
+target_include_directories(hdsilk_ptex_topology_probe PRIVATE ../src)
+target_include_directories(hdsilk_ptex_topology_probe SYSTEM PRIVATE "${pxr_DIR}/include")
+if(MSVC)
+    target_compile_options(hdsilk_ptex_topology_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_ptex_topology_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME hdsilk_ptex_topology COMMAND hdsilk_ptex_topology_probe)
+set_tests_properties(hdsilk_ptex_topology
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
+
+add_executable(hdsilk_ptex_sync_probe hdsilk_ptex_sync_probe.cpp)
+target_compile_features(hdsilk_ptex_sync_probe PRIVATE cxx_std_17)
+target_link_libraries(
+    hdsilk_ptex_sync_probe PRIVATE openusd_hdsilk_test openusd_dotnet_renderer_test usd_m)
+target_include_directories(hdsilk_ptex_sync_probe PRIVATE ../src)
+target_include_directories(hdsilk_ptex_sync_probe SYSTEM PRIVATE "${pxr_DIR}/include")
+if(MSVC)
+    target_compile_options(hdsilk_ptex_sync_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_ptex_sync_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_dependencies(hdsilk_ptex_sync_probe hdsilk_probe_runtime)
+foreach(mode IN ITEMS usd filtered filtered-unindexed legacy)
+    add_test(
+        NAME hdsilk_ptex_sync_${mode}
+        COMMAND hdsilk_ptex_sync_probe ${mode} ${HDSILK_PROBE_PLUGIN_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-ptex-sync.usda)
+endforeach()
+set_tests_properties(
+    hdsilk_ptex_sync_usd
+    hdsilk_ptex_sync_filtered
+    hdsilk_ptex_sync_filtered-unindexed
+    hdsilk_ptex_sync_legacy
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
+
+add_test(
+    NAME hdsilk_ptex_diagnostics
+    COMMAND ${CMAKE_COMMAND}
+        "-DPROBE=$<TARGET_FILE:hdsilk_ptex_sync_probe>"
+        "-DPLUGIN_DIR=${HDSILK_PROBE_PLUGIN_DIR}"
+        "-DFIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/hdsilk-ptex-sync.usda"
+        "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_ptex_diagnostics.cmake")
+set_tests_properties(
+    hdsilk_ptex_diagnostics
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
+
+add_executable(
+    hdsilk_ptex_decode_probe
+    hdsilk_ptex_decode_probe.cpp
+    ../src/ptexFaceDecoder.cpp)
+target_compile_features(hdsilk_ptex_decode_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_ptex_decode_probe PRIVATE Ptex::Ptex_dynamic)
+target_include_directories(hdsilk_ptex_decode_probe PRIVATE ../src)
+if(MSVC)
+    target_compile_options(hdsilk_ptex_decode_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_ptex_decode_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+get_filename_component(
+    HDSILK_PTEX_DECODE_FIXTURE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/native-profile/ptex/quad-colors.ptx"
+    ABSOLUTE)
+add_test(
+    NAME hdsilk_ptex_decode
+    COMMAND hdsilk_ptex_decode_probe "${HDSILK_PTEX_DECODE_FIXTURE}")
+set_tests_properties(
+    hdsilk_ptex_decode
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
+
+add_executable(hdsilk_ptex_decode_api_probe hdsilk_ptex_decode_api_probe.cpp)
+target_compile_features(hdsilk_ptex_decode_api_probe PRIVATE cxx_std_17)
+target_link_libraries(hdsilk_ptex_decode_api_probe PRIVATE openusd_hdsilk_test)
+target_include_directories(
+    hdsilk_ptex_decode_api_probe PRIVATE ../include ../openusd_dotnet/include)
+if(MSVC)
+    target_compile_options(
+        hdsilk_ptex_decode_api_probe PRIVATE /W4 /WX /permissive- /EHsc)
+else()
+    target_compile_options(
+        hdsilk_ptex_decode_api_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_dependencies(hdsilk_ptex_decode_api_probe hdsilk_probe_runtime)
+get_filename_component(
+    HDSILK_PTEX_ADJACENCY_FIXTURE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../test-assets/native-profile/ptex/tetrahedron.ptx"
+    ABSOLUTE)
+add_test(
+    NAME hdsilk_ptex_decode_api
+    COMMAND hdsilk_ptex_decode_api_probe
+        "${HDSILK_PTEX_DECODE_FIXTURE}" "${HDSILK_PTEX_ADJACENCY_FIXTURE}")
+set_tests_properties(hdsilk_ptex_decode_api
+    PROPERTIES ENVIRONMENT_MODIFICATION "${HDSILK_PROBE_ENV_MODS}" TIMEOUT 60)
 
 add_executable(hdsilk_scene_ingestion_probe hdsilk_scene_ingestion_probe.cpp)
 target_compile_features(hdsilk_scene_ingestion_probe PRIVATE cxx_std_17)

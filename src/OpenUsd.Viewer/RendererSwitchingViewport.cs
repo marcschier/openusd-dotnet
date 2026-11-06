@@ -470,7 +470,7 @@ internal sealed class RendererSwitchingViewport : Grid
         EventHandler<PointerWheelEventArgs>? windowPointerWheel = null;
         EventHandler<KeyEventArgs>? windowKeyDown = null;
         EventHandler<KeyEventArgs>? windowKeyUp = null;
-        if (OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
         {
             windowPointerMoved = (_, _) => Interlocked.Increment(ref _pointerMoves);
             windowPointerPressed = (_, _) => Interlocked.Increment(ref _pointerButtons);
@@ -649,13 +649,18 @@ internal sealed class RendererSwitchingViewport : Grid
                 Size original = window.ClientSize;
                 window.Width = original.Width + 16;
                 window.Height = original.Height + 12;
-                await Task.Delay(TimeSpan.FromMilliseconds(150), cancellationToken);
+                await WaitForLinuxResizeAsync(
+                    window, storm, new Size(original.Width + 16, original.Height + 12),
+                    (widthBefore, heightBefore), restoring: false, cancellationToken);
                 nativeObserved = storm?.GetDiagnostics();
                 scalingObserved = window.RenderScaling;
                 (widthObserved, heightObserved) = GetPhysicalSize(window, nativeObserved);
                 window.Width = original.Width;
                 window.Height = original.Height;
-                await Task.Delay(TimeSpan.FromMilliseconds(150), cancellationToken);
+                await WaitForLinuxResizeAsync(
+                    window, storm, original, (widthBefore, heightBefore),
+                    restoring: true, cancellationToken);
+                await FocusForEvidenceAsync(window, cancellationToken);
                 xTestInjections.Add(InjectXTestEvidence(
                     NativeXTestApi.Instance,
                     parent.Handle,
@@ -663,6 +668,7 @@ internal sealed class RendererSwitchingViewport : Grid
                     8,
                     "ViewerTopLevel",
                     Environment.GetEnvironmentVariable("DISPLAY")));
+                await DrainUiDispatcherAsync(cancellationToken);
                 if (storm is not null)
                 {
                     xTestInjections.Add(InjectXTestEvidence(
@@ -798,6 +804,31 @@ internal sealed class RendererSwitchingViewport : Grid
             heightAfter,
             win32Messages.ToArray(),
             xTestInjections.ToArray());
+    }
+
+    private static async Task WaitForLinuxResizeAsync(
+        Window window,
+        StormNativeControlHost? storm,
+        Size requestedClientSize,
+        (int Width, int Height) originalPhysicalSize,
+        bool restoring,
+        CancellationToken cancellationToken)
+    {
+        for (int attempt = 0; attempt < 40; attempt++)
+        {
+            await DrainUiDispatcherAsync(cancellationToken);
+            (int Width, int Height) physicalSize = GetPhysicalSize(window, storm?.GetDiagnostics());
+            bool physicalSizeReady = restoring
+                ? physicalSize == originalPhysicalSize
+                : physicalSize != originalPhysicalSize;
+            if (window.ClientSize == requestedClientSize && physicalSizeReady)
+            {
+                return;
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken);
+        }
+        throw new TimeoutException(
+            $"The Linux window did not complete its diagnostic resize to {requestedClientSize}.");
     }
 
     private async Task FocusForEvidenceAsync(

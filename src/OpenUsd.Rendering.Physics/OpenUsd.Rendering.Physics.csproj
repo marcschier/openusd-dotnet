@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>OpenUsd.Rendering.Physics</AssemblyName>
+    <RootNamespace>OpenUsd.Rendering.Physics</RootNamespace>
+    <Description>Optional exact-step physics publication and atomic simulation recording for OpenUsd renderers.</Description>
+    <PackageTags>openusd;usd;physics;rendering;recording;nativeaot</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OpenUsd.Rendering\OpenUsd.Rendering.csproj" />
+    <ProjectReference Include="..\OpenUsd.Physics\OpenUsd.Physics.csproj" />
+  </ItemGroup>
+</Project>

@@ -270,7 +270,7 @@ struct openusd_payload_arc_list
 
 namespace
 {
-constexpr uint32_t DataAbiVersion = 24;
+constexpr uint32_t DataAbiVersion = 26;
 constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_STRING_LIST_V2 |
     OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -304,7 +304,11 @@ constexpr uint64_t DataCapabilities =
     OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT_INSPECTION |
     OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT |
     OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT |
-    OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT;
+    OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT |
+    OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS |
+    OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS |
+    OPENUSD_CAPABILITY_REVIEW_STAGE_ADOPTION |
+    OPENUSD_CAPABILITY_REVIEW_SOURCE_PUBLICATION;
 static_assert(sizeof(openusd_error_buffer) == sizeof(void*) * 3);
 static_assert(offsetof(openusd_error_buffer, data) == 0);
 static_assert(offsetof(openusd_error_buffer, capacity) == sizeof(void*));

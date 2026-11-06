@@ -71,7 +71,8 @@ internal static class VolumeCommandAuthoring
         float authoredDensity,
         string? volumeGrid,
         string? extent,
-        IReadOnlyList<TextureSpec>? additionalTextures = null)
+        IReadOnlyList<TextureSpec>? additionalTextures = null,
+        float? opacity = null)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(materialPath);
         var textures = new List<TextureSpec>();
@@ -98,8 +99,9 @@ internal static class VolumeCommandAuthoring
                 Encoding.UTF8.GetByteCount(texture.Asset) +
                 Encoding.UTF8.GetByteCount(texture.UvPrimvar));
         }
-        const int scalarBytes = 8 + (3 * sizeof(float)) + 8 + sizeof(float);
-        const int uvTransformBytes = 6 * sizeof(float);
+        int scalarBytes = 8 + (3 * sizeof(float)) + 8 + sizeof(float) +
+            (opacity.HasValue ? 8 + sizeof(float) : 0);
+        const int uvTransformBytes = (12 * sizeof(float)) + sizeof(uint);
         byte[] bytes = new byte[
             32 + pathBytes.Length + scalarBytes + textureBytes +
             (2 * sizeof(uint)) + uvTransformBytes];
@@ -108,13 +110,17 @@ internal static class VolumeCommandAuthoring
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(8), ComputeStableHash(materialPath));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16), checked((uint)pathBytes.Length));
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), (uint)SilkSurfaceKind.VolumeDensity);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(24), opacity.HasValue ? 3u : 2u);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(28), checked((uint)textures.Count));
         pathBytes.CopyTo(bytes.AsSpan(32));
 
         int offset = 32 + pathBytes.Length;
         WriteScalar(bytes, ref offset, SilkMaterialParameter.DiffuseColor, [0.9f, 0.36f, 0.12f]);
         WriteScalar(bytes, ref offset, SilkMaterialParameter.VolumeDensity, [authoredDensity]);
+        if (opacity is { } authoredOpacity)
+        {
+            WriteScalar(bytes, ref offset, SilkMaterialParameter.Opacity, [authoredOpacity]);
+        }
         foreach (TextureSpec texture in textures)
         {
             WriteTexture(bytes, ref offset, texture);
@@ -129,31 +135,118 @@ internal static class VolumeCommandAuthoring
                 bytes.AsSpan(offset + (index * sizeof(float))),
                 identityUvTransform[index]);
         }
+        offset += 6 * sizeof(float) + sizeof(uint);
+        for (int index = 0; index < identityUvTransform.Length; index++)
+        {
+            BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(offset + (index * sizeof(float))),
+                identityUvTransform[index]);
+        }
         return bytes;
     }
 
-    /// <summary>Builds the front-facing quad the volume proxy is shaded on.</summary>
-    /// <remarks>
-    /// A quad rather than the native shim's cube, because the contract under test is the
-    /// density integration a fragment performs, and a single unambiguous front face keeps
-    /// the comparison free of any interior-face ordering question.
-    /// </remarks>
+    /// <summary>Builds a cube whose full unit chord is visible to the sampling-test camera.</summary>
     internal static byte[] CreateVolumeProxyMeshCommand(string meshPath, string materialPath)
+    {
+        byte[] mesh = CreateVolumeCameraProxyMeshCommand(meshPath, materialPath, zOffset: -1);
+        BinaryPrimitives.WriteUInt32LittleEndian(mesh.AsSpan(40), 0);
+        return mesh;
+    }
+
+    internal static byte[] CreateVolumeSamplingFrameCommand(uint width, uint height)
+    {
+        byte[] frame = SilkMeshRendererConformance.CreateFrameCommand(
+            width, height, SilkMeshRendererConformance.Identity());
+        BinaryPrimitives.WriteDoubleLittleEndian(frame.AsSpan(144 + 10 * sizeof(double)), -2.0 / 1.9);
+        BinaryPrimitives.WriteDoubleLittleEndian(frame.AsSpan(144 + 14 * sizeof(double)), -2.1 / 1.9);
+        return frame;
+    }
+
+    /// <summary>Builds a native-style cube proxy for camera-ray volume tests.</summary>
+    /// <remarks>
+    /// The cube permits ray intersections through the volume, including when the
+    /// camera is inside it.
+    /// </remarks>
+    internal static byte[] CreateVolumeCameraProxyMeshCommand(
+        string meshPath,
+        string materialPath,
+        float zOffset = 0.7f,
+        ulong id = 1)
     {
         float[] points =
         [
-            -0.5f, -0.5f, 0.2f,
-             0.5f, -0.5f, 0.2f,
-             0.5f,  0.5f, 0.2f,
-            -0.5f,  0.5f, 0.2f,
+            -0.5f, -0.5f, -0.5f,
+             0.5f, -0.5f, -0.5f,
+             0.5f,  0.5f, -0.5f,
+            -0.5f,  0.5f, -0.5f,
+            -0.5f, -0.5f,  0.5f,
+             0.5f, -0.5f,  0.5f,
+             0.5f,  0.5f,  0.5f,
+            -0.5f,  0.5f,  0.5f,
         ];
-        uint[] indices = [0, 1, 2, 0, 2, 3];
+        uint[] indices =
+        [
+            0, 2, 1, 0, 3, 2,
+            4, 5, 6, 4, 6, 7,
+            0, 1, 5, 0, 5, 4,
+            1, 2, 6, 1, 6, 5,
+            2, 3, 7, 2, 7, 6,
+            3, 0, 4, 3, 4, 7,
+        ];
         byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
-            1,
+            id,
             meshPath,
             points,
             indices);
+        BinaryPrimitives.WriteDoubleLittleEndian(
+            mesh.AsSpan(80 + (14 * sizeof(double))),
+            zOffset);
         return WithMaterialBinding(mesh, materialPath);
+    }
+
+    internal static byte[] CreateDepthOccluderMeshCommand(
+        string meshPath,
+        float z,
+        ulong id = 100)
+    {
+        float[] points =
+        [
+            -2, -2, 0,
+             2, -2, 0,
+             2,  2, 0,
+            -2,  2, 0,
+        ];
+        uint[] indices = [0, 1, 2, 0, 2, 3];
+        byte[] mesh = SilkMeshRendererConformance.CreateMeshCommand(
+            id,
+            meshPath,
+            points,
+            indices,
+            color: [0, 1, 0, 1]);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            mesh.AsSpan(44),
+            (uint)SilkMeshCullStyle.Nothing);
+        BinaryPrimitives.WriteDoubleLittleEndian(
+            mesh.AsSpan(80 + (14 * sizeof(double))),
+            z);
+        return mesh;
+    }
+
+    internal static byte[] WithTransform(byte[] mesh, ReadOnlySpan<double> transform)
+    {
+        ArgumentNullException.ThrowIfNull(mesh);
+        if (transform.Length != 16)
+        {
+            throw new ArgumentException("A mesh transform must contain 16 elements.", nameof(transform));
+        }
+        byte[] transformed = [.. mesh];
+        for (int index = 0; index < transform.Length; index++)
+        {
+            BinaryPrimitives.WriteDoubleLittleEndian(
+                transformed.AsSpan(80 + (index * sizeof(double))),
+                transform[index]);
+        }
+        return transformed;
     }
 
     /// <summary>
@@ -169,8 +262,14 @@ internal static class VolumeCommandAuthoring
         ArgumentNullException.ThrowIfNull(mesh);
         byte[] pathBytes = Encoding.UTF8.GetBytes(materialPath);
         byte[] bound = new byte[mesh.Length + pathBytes.Length];
-        mesh.CopyTo(bound, 0);
-        pathBytes.CopyTo(bound, mesh.Length);
+        int materialOffset = checked(276 +
+            (int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(48)) +
+            ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(52)) * 12) +
+            ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(56)) * 4) +
+            ((int)BinaryPrimitives.ReadUInt32LittleEndian(mesh.AsSpan(60)) * 4));
+        mesh.AsSpan(0, materialOffset).CopyTo(bound);
+        pathBytes.CopyTo(bound, materialOffset);
+        mesh.AsSpan(materialOffset).CopyTo(bound.AsSpan(materialOffset + pathBytes.Length));
         BinaryPrimitives.WriteUInt32LittleEndian(bound.AsSpan(4), checked((uint)bound.Length));
         BinaryPrimitives.WriteUInt64LittleEndian(
             bound.AsSpan(208),
@@ -236,14 +335,11 @@ internal static class VolumeCommandAuthoring
                 component == 3 ? 1f : 0.5f);
         }
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 76), (uint)texture.Channel);
-        // The composite pair a material may use to fold a second image onto this one.
-        // Written explicitly as None/0 rather than left as incidental zeroes, because
-        // these two fields are what set the entry's stride: getting them wrong shifts
-        // every later field and the parser reports it as an unrelated truncation.
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(offset + 80),
-            (uint)SilkCompositeOperator.None);
-        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 84), 0f);
+            (uint)texture.CompositeOperator);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 84), texture.CompositeFactor);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 88), (uint)SilkTextureSourceKind.Standard);
         assetBytes.CopyTo(bytes.AsSpan(offset + TextureHeaderByteCount));
         uvBytes.CopyTo(bytes.AsSpan(offset + TextureHeaderByteCount + assetBytes.Length));
         offset += TextureHeaderByteCount + assetBytes.Length + uvBytes.Length;
@@ -254,15 +350,17 @@ internal static class VolumeCommandAuthoring
     /// </summary>
     /// <remarks>
     /// Mirrors <c>SilkMaterialTextureEntry</c>: the channel ends at 80 and the composite
-    /// operator and factor occupy 80..88. Kept as one named constant because every offset
-    /// in <see cref="WriteTexture"/> and the buffer sizing above must move together.
+    /// operator and factor occupy 80..88; the source kind occupies 88..92. The
+    /// offsets in <see cref="WriteTexture"/> and the buffer sizing above move together.
     /// </remarks>
-    private const int TextureHeaderByteCount = 88;
+    private const int TextureHeaderByteCount = 92;
 
     internal readonly record struct TextureSpec(
         string Asset,
         SilkMaterialParameter Parameter,
         string UvPrimvar,
         int ComponentCount,
-        SilkTextureChannel Channel);
+        SilkTextureChannel Channel,
+        SilkCompositeOperator CompositeOperator = SilkCompositeOperator.None,
+        float CompositeFactor = 0);
 }

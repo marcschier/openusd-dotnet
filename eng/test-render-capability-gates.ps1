@@ -16,8 +16,13 @@ $platformSmoke = Get-Content (
     Join-Path $repoRoot 'eng/run-platform-smoke.ps1') -Raw
 $parityCapture = Get-Content (
     Join-Path $repoRoot 'eng/run-parity-capture.ps1') -Raw
-$stormParityTests = Get-Content (
-    Join-Path $repoRoot 'tests/OpenUsd.Rendering.ConformanceTests/StormSilkParityCaptureDriverTests.cs') -Raw
+$stormParitySources = @(
+    Get-ChildItem (
+        Join-Path $repoRoot 'tests/OpenUsd.Rendering.ConformanceTests') `
+        -Filter 'StormSilkParityCaptureDriverTests*.cs' -File |
+        Sort-Object Name |
+        ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw })
+$stormParityTests = $stormParitySources -join "`n"
 $linuxSmoke = Get-Content (
     Join-Path $repoRoot 'eng/run-avalonia-vulkan-smoke-linux.sh') -Raw
 $testingDoc = Get-Content (Join-Path $repoRoot 'docs/testing.md') -Raw
@@ -165,6 +170,27 @@ $stormParityTestNames = @([regex]::Matches(
         $stormParityTests,
         '(?s)\[Test\].*?public async Task (?<name>[A-Za-z0-9_]+)\(') |
         ForEach-Object { $_.Groups['name'].Value })
+$testAttributeCount = ([regex]::Matches($stormParityTests, '(?m)^\s*\[Test\]\s*$')).Count
+if ($stormParityTestNames.Count -ne $testAttributeCount -or
+    @($stormParityTestNames | Sort-Object -Unique).Count -ne $stormParityTestNames.Count)
+{
+    throw 'Could not discover every unique Storm parity test across its partial source files.'
+}
+# The resource census intentionally skips unless explicitly enabled.
+$optInParityTests = @('RecordsCuratedResourceFootprintsForBaselineReview')
+$windowsQualifiedStormReferences = @(
+    'StormCoarseNormalsFollowSchemeAndPointIdentity',
+    'StormCoarseNgonNormalsUseFaceAdjacency',
+    'StormNonplanarNgonSmoothNormalsUseEachOriginalFaceCorner',
+    'StormCoarseSmoothNormalsIncludeHoleFaces',
+    'StormNonplanarPolygonFlatNormalsUseEachEmittedTriangle')
+foreach ($testName in @($optInParityTests + $windowsQualifiedStormReferences))
+{
+    if ($testName -notin $stormParityTestNames)
+    {
+        throw "Declared Storm parity test '$testName' was not discovered."
+    }
+}
 $windowsOnlyStormParityTestNames = @([regex]::Matches(
         $stormParityTests,
         '(?s)\[Test\]\s*\[SupportedOSPlatform\("windows"\)\]\s*' +
@@ -179,6 +205,7 @@ $expectedWindowsWglTests = @($stormParityTestNames |
     Where-Object {
         $_ -notlike '*OnVulkan' -and
         $_ -notlike '*OnMetal' -and
+        $_ -notin $optInParityTests -and
         $_ -notin $macosOnlyStormParityTestNames
     })
 $expectedMacosCglTests = @($stormParityTestNames |
@@ -186,6 +213,8 @@ $expectedMacosCglTests = @($stormParityTestNames |
         $_ -notlike '*OnVulkan' -and
         $_ -notlike '*OnD3D12' -and
         $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels' -and
+        $_ -notin $optInParityTests -and
+        $_ -notin $windowsQualifiedStormReferences -and
         $_ -notin $windowsOnlyStormParityTestNames
     })
 $expectedLinuxGlxTests = @($stormParityTestNames |
@@ -193,6 +222,8 @@ $expectedLinuxGlxTests = @($stormParityTestNames |
         $_ -notlike '*OnMetal' -and
         $_ -notlike '*OnD3D12' -and
         $_ -notmatch 'D3D12|SilkFrameCapture|DisplayColorReachesPixels' -and
+        $_ -notin $optInParityTests -and
+        $_ -notin $windowsQualifiedStormReferences -and
         $_ -notin $windowsOnlyStormParityTestNames -and
         $_ -notin $macosOnlyStormParityTestNames
     })
@@ -202,6 +233,8 @@ Assert-SetEqual $linuxGlxTests $expectedLinuxGlxTests 'Linux GLX parity test lis
 Assert-Contains $parityCapture '-MinimumExpectedTests $windowsWglTestNames.Count' 'Parity capture runner'
 Assert-Contains $parityCapture '-MinimumExpectedTests $macosCglTestNames.Count' 'Parity capture runner'
 Assert-Contains $parityCapture '-MinimumExpectedTests $linuxGlxTestNames.Count' 'Parity capture runner'
+Assert-Contains $parityCapture 'verify-storm-normal-reference-report.py' 'Parity capture runner'
+Assert-Contains $renderWorkflow "'eng/verify-storm-normal-reference-report.py'" 'Render workflow'
 Assert-Contains $platformSmoke 'prepare-mesa-wgl-test-runtime.ps1' 'Platform smoke runner'
 Assert-Contains $platformSmoke '-Preflight' 'Platform smoke runner'
 Assert-Contains $mesaWglLock 'mesa-llvmpipe-x64-26.2.4.7z' 'Mesa WGL runtime lock'

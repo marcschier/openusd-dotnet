@@ -790,6 +790,199 @@ internal static class OffscreenRhiConformance
         commands.EndRendering();
     }
 
+    internal static async Task MaterialBindingsFollowPipelineTransitions(
+        ISilkGraphicsDevice device,
+        SilkShaderBinaryFormat shaderFormat)
+    {
+        const uint size = 64;
+        using ISilkGraphicsTexture color = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(size, size));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(size, size));
+        using ISilkGraphicsTexture retained = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(size, size));
+        using ISilkGraphicsTexture rebound = device.CreateTexture2D(
+            SilkTextureDescriptor.ColorTarget(size, size));
+        using ISilkGraphicsTexture sampled = device.CreateTexture2D(
+            new SilkTextureDescriptor(
+                2, 1, SilkTextureFormat.Rgba8Unorm,
+                SilkTextureUsage.Sampled | SilkTextureUsage.CopyDestination));
+        using ISilkGraphicsSampler sampler = device.CreateSampler(
+            SilkSamplerDescriptor.NearestClamp);
+        using ISilkGraphicsBuffer surface = CreateSurfaceConstants(device);
+        using ISilkGraphicsBuffer alternateSurface = CreateSurfaceConstants(device);
+        alternateSurface.Write(MemoryMarshal.AsBytes<float>([1, 0, 0.5f, 0]), 144);
+        using ISilkGraphicsBuffer frame = CreateFrameConstants(device);
+        using ISilkGraphicsBuffer vertices = device.CreateBuffer(
+            3 * 8 * sizeof(float), SilkBufferUsage.Vertex | SilkBufferUsage.Upload);
+        vertices.Write(MemoryMarshal.AsBytes<float>(
+        [
+            -0.75f, -0.75f, 0.25f, 0, 0, 1, 0.25f, 0.5f,
+             0.00f,  0.75f, 0.25f, 0, 0, 1, 0.25f, 0.5f,
+             0.75f, -0.75f, 0.25f, 0, 0, 1, 0.25f, 0.5f
+        ]));
+        using ISilkGraphicsBuffer indices = device.CreateBuffer(
+            3 * sizeof(uint), SilkBufferUsage.Index | SilkBufferUsage.Upload);
+        indices.Write(MemoryMarshal.AsBytes<uint>([0, 2, 1]));
+        using ISilkGraphicsBuffer instances = device.CreateBuffer(
+            80, SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload);
+        instances.Write(MemoryMarshal.AsBytes<float>(
+        [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1,
+            1, 1, 1, 1
+        ]));
+        SilkBindingLayoutDescriptor sceneLayout = SilkBindingLayoutDescriptor.ShadowMaskedParameters;
+        sceneLayout = sceneLayout with
+        {
+            MaterialSlots =
+            [
+                .. sceneLayout.MaterialSlots,
+                new SilkBindingSlot(
+                    0, SilkBindingLayoutDescriptor.FrameParametersBinding,
+                    SilkBindingKind.StorageBuffer, 0,
+                    SilkShaderStageVisibility.Vertex | SilkShaderStageVisibility.Fragment),
+                new SilkBindingSlot(
+                    0, SilkBindingLayoutDescriptor.ShadowSamplerBinding,
+                    SilkBindingKind.Sampler, 0, SilkShaderStageVisibility.Fragment),
+                new SilkBindingSlot(
+                    0, SilkBindingLayoutDescriptor.ShadowAtlasTextureBinding,
+                    SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment)
+            ]
+        };
+        using ISilkGraphicsShaderModule sceneVertex = device.CreateShaderModule(
+            SilkCheckedShaderAssets.LoadMaskedShadowVertex(shaderFormat));
+        using ISilkGraphicsShaderModule sceneFragment = device.CreateShaderModule(
+            SilkCheckedShaderAssets.LoadTransmissionShadowFragment(
+                shaderFormat, SilkShadowTransmissionPass.FirstPeel));
+        using ISilkGraphicsBindingLayout sceneBindings = device.CreateBindingLayout(sceneLayout);
+        using ISilkGraphicsShaderProgram sceneProgram = device.CreateShaderProgram(
+            new SilkShaderProgramDescriptor(sceneVertex, sceneFragment, sceneBindings));
+        using ISilkGraphicsPipeline scenePipeline = device.CreateGraphicsPipeline(
+            new SilkGraphicsPipelineDescriptor(
+                sceneProgram,
+                SilkVertexLayoutDescriptor.PositionNormalTexCoord,
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureFormat.D32Float));
+        SilkBindingLayoutDescriptor normalLayout = SilkBindingLayoutDescriptor.NormalParameters;
+        normalLayout = normalLayout with
+        {
+            MaterialSlots =
+            [
+                .. normalLayout.MaterialSlots,
+                new SilkBindingSlot(
+                    0, SilkBindingLayoutDescriptor.ShadowSamplerBinding,
+                    SilkBindingKind.SampledTexture, 0, SilkShaderStageVisibility.Fragment)
+            ]
+        };
+        using ISilkGraphicsShaderModule normalVertex = device.CreateShaderModule(
+            SilkCheckedShaderAssets.LoadNormalVertex(shaderFormat));
+        using ISilkGraphicsShaderModule normalFragment = device.CreateShaderModule(
+            SilkCheckedShaderAssets.LoadNormalFragment(shaderFormat));
+        using ISilkGraphicsBindingLayout normalBindings = device.CreateBindingLayout(normalLayout);
+        using ISilkGraphicsShaderProgram normalProgram = device.CreateShaderProgram(
+            new SilkShaderProgramDescriptor(normalVertex, normalFragment, normalBindings));
+        using ISilkGraphicsPipeline normalPipeline = device.CreateGraphicsPipeline(
+            new SilkGraphicsPipelineDescriptor(
+                normalProgram,
+                SilkVertexLayoutDescriptor.PositionNormalTexCoord,
+                SilkTextureFormat.Rgba8Unorm,
+                SilkTextureFormat.D32Float)
+            {
+                TopologyKind = SilkTopologyKind.PointList
+            });
+        void bindScene(ISilkGraphicsCommandList commands)
+        {
+            commands.SetGraphicsPipeline(scenePipeline);
+            commands.SetViewport(new SilkViewport(0, 0, size, size));
+            commands.SetScissor(new SilkScissor(0, 0, size, size));
+            commands.SetVertexBuffer(vertices);
+            commands.SetIndexBuffer(indices);
+            commands.SetUniformBuffer(0, 0, instances);
+            BindAlwaysOnSlots(commands, instances, surface, frame);
+            commands.SetSampler(0, SilkBindingLayoutDescriptor.OpacitySamplerBinding, sampler);
+            commands.SetTexture(0, SilkBindingLayoutDescriptor.OpacityTextureBinding, sampled);
+            commands.SetSampler(0, SilkBindingLayoutDescriptor.CompositeSamplerBinding, sampler);
+            commands.SetTexture(0, SilkBindingLayoutDescriptor.CompositeTextureBinding, sampled);
+            commands.SetSampler(0, SilkBindingLayoutDescriptor.ShadowSamplerBinding, sampler);
+            commands.SetTexture(0, SilkBindingLayoutDescriptor.ShadowAtlasTextureBinding, sampled);
+        }
+
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            commands.UploadTexture(sampled, [64, 0, 0, 255, 192, 0, 0, 255]);
+            commands.ClearColor(color, new SilkColor(0, 0, 0, 1));
+            commands.ClearDepth(depth, 1);
+            commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
+            bindScene(commands);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+            using ISilkGraphicsSubmission submission = device.Submit(commands);
+            submission.Wait();
+        }
+        byte[] expected = new byte[size * size * 4];
+        color.ReadbackForTesting(expected);
+        await Assert.That(CountNonBlackPixels(expected)).IsGreaterThan(0);
+
+        using (ISilkGraphicsCommandList commands = device.CreateCommandList())
+        {
+            commands.ClearColor(color, new SilkColor(0, 0, 0, 1));
+            commands.ClearColor(retained, new SilkColor(0, 0, 0, 1));
+            commands.ClearColor(rebound, new SilkColor(0, 0, 0, 1));
+            commands.ClearDepth(depth, 1);
+            commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
+            bindScene(commands);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+
+            commands.ClearDepth(depth, 1);
+            commands.BeginRendering(new SilkRenderingDescriptor(color, depth));
+            commands.SetGraphicsPipeline(normalPipeline);
+            await Assert.That(() => commands.SetStorageBuffer(
+                0, SilkBindingLayoutDescriptor.SurfaceParametersBinding, surface))
+                .Throws<InvalidOperationException>();
+            await Assert.That(() => commands.SetSampler(
+                0, SilkBindingLayoutDescriptor.ShadowSamplerBinding, sampler))
+                .Throws<InvalidOperationException>();
+            await Assert.That(() => commands.SetTexture(
+                0, SilkBindingLayoutDescriptor.ShadowAtlasTextureBinding, sampled))
+                .Throws<InvalidOperationException>();
+            commands.DrawIndexed(3);
+            commands.SetTexture(0, SilkBindingLayoutDescriptor.ShadowSamplerBinding, sampled);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+
+            commands.ClearDepth(depth, 1);
+            commands.BeginRendering(new SilkRenderingDescriptor(retained, depth));
+            commands.SetGraphicsPipeline(scenePipeline);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+
+            commands.ClearDepth(depth, 1);
+            commands.BeginRendering(new SilkRenderingDescriptor(rebound, depth));
+            commands.SetGraphicsPipeline(scenePipeline);
+            commands.SetSampler(0, SilkBindingLayoutDescriptor.ShadowSamplerBinding, sampler);
+            commands.SetStorageBuffer(
+                0, SilkBindingLayoutDescriptor.SurfaceParametersBinding, alternateSurface);
+            commands.DrawIndexed(3);
+            commands.EndRendering();
+            using ISilkGraphicsSubmission submission = device.Submit(commands);
+            submission.Wait();
+        }
+
+        byte[] actual = new byte[expected.Length];
+        retained.ReadbackForTesting(actual);
+        await Assert.That(actual.AsSpan().SequenceEqual(expected)).IsTrue();
+        rebound.ReadbackForTesting(actual);
+        int center = checked((int)(((size / 2 * size) + (size / 2)) * 4));
+        await Assert.That(expected[center + 1]).IsGreaterThan((byte)180);
+        await Assert.That(expected[center + 1]).IsLessThan((byte)200);
+        await Assert.That(actual[center + 1]).IsGreaterThan((byte)50);
+        await Assert.That(actual[center + 1]).IsLessThan((byte)80);
+    }
+
     private static byte[] RenderCheckedTriangle(
         ISilkGraphicsDevice device,
         SilkShaderBinaryFormat shaderFormat,
@@ -806,8 +999,14 @@ internal static class OffscreenRhiConformance
             SilkTextureDescriptor.DepthTarget(size, size));
         using ISilkGraphicsShaderModule vertexShader = device.CreateShaderModule(
             SilkCheckedShaderAssets.LoadMeshVertex(shaderFormat));
-        using ISilkGraphicsShaderModule fragmentShader = device.CreateShaderModule(
-            SilkCheckedShaderAssets.LoadMeshFragment(shaderFormat));
+        SilkShaderModuleDescriptor fragmentDescriptor =
+            SilkCheckedShaderAssets.LoadMeshFragment(shaderFormat);
+        string? debugFragment = Environment.GetEnvironmentVariable("OPENUSD_DEBUG_FRAGMENT_SPIRV");
+        if (shaderFormat == SilkShaderBinaryFormat.SpirV && debugFragment is not null)
+        {
+            fragmentDescriptor = fragmentDescriptor with { Code = File.ReadAllBytes(debugFragment) };
+        }
+        using ISilkGraphicsShaderModule fragmentShader = device.CreateShaderModule(fragmentDescriptor);
         using ISilkGraphicsBindingLayout bindingLayout = device.CreateBindingLayout(layout);
         using ISilkGraphicsShaderProgram program = device.CreateShaderProgram(
             new SilkShaderProgramDescriptor(
@@ -1464,6 +1663,8 @@ internal static class OffscreenRhiConformance
         ]).CopyTo(values);
         BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(208), UInt128.MaxValue);
         BinaryPrimitives.WriteUInt128LittleEndian(values.AsSpan(224), UInt128.MaxValue);
+        MemoryMarshal.AsBytes<float>([1, 0, 0, 0, 0, 1, 0, 0]).CopyTo(values.AsSpan(240));
+        MemoryMarshal.AsBytes<float>([1, 0, 0, 0, 0, 1, 0, 0]).CopyTo(values.AsSpan(272));
         buffer.Write(values);
         return buffer;
     }
@@ -1481,7 +1682,7 @@ internal static class OffscreenRhiConformance
     /// render correctly; SwiftShader on Linux returned zeros, so the triangle
     /// came back unlit and only the Linux leg of CI failed.
     /// </remarks>
-    private const int FrameConstantsByteSize = 15296;
+    private const int FrameConstantsByteSize = 19264;
 
     private static ISilkGraphicsBuffer CreateFrameConstants(ISilkGraphicsDevice device)
     {

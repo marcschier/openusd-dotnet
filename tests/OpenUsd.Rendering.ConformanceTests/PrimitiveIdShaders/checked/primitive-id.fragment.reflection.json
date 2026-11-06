@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 2,
+  "source": "primitive-id.fragment.slang",
+  "entryPoint": {
+    "name": "primitiveIdProbeFragmentMain",
+    "stage": "fragment",
+    "profile": "ps_6_0",
+    "threadGroupSize": null
+  },
+  "resources": [],
+  "stageInputs": [
+    {
+      "name": "position",
+      "semantic": {
+        "name": "SV_POSITION",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "primitiveId",
+      "semantic": {
+        "name": "SV_PRIMITIVEID",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "uint32"
+      }
+    }
+  ],
+  "stageOutputs": [
+    {
+      "name": "result",
+      "semantic": {
+        "name": "SV_TARGET",
+        "index": 0,
+        "systemValue": true
+      },
+      "location": null,
+      "type": {
+        "kind": "vector",
+        "elementCount": 4,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    }
+  ]
+}

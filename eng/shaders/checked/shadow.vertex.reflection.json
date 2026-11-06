@@ -187,6 +187,36 @@
           "scalarType": "float32"
         }
       }
+    },
+    {
+      "name": "lightDepth",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 2,
+        "systemValue": false
+      },
+      "location": 0,
+      "type": {
+        "kind": "scalar",
+        "scalarType": "float32"
+      }
+    },
+    {
+      "name": "pointDepth",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 3,
+        "systemValue": false
+      },
+      "location": 1,
+      "type": {
+        "kind": "vector",
+        "elementCount": 2,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
     }
   ]
 }

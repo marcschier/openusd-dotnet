@@ -62,6 +62,7 @@ if ($PackageConsumer)
 }
 
 $env:OPENUSD_ROOT = $openUsdInstallRoot
+& (Join-Path $PSScriptRoot 'fetch-vhacd.ps1')
 Push-Location (Join-Path $repoRoot 'native')
 try
 {

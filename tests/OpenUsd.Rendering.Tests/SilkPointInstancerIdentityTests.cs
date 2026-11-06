@@ -359,7 +359,7 @@ public sealed class SilkPointInstancerIdentityTests
         float[] points = carriesGeometry ? geometry.Points : [];
         uint[] indices = carriesGeometry ? geometry.Indices : [];
         uint[] subprims = carriesGeometry ? geometry.Subprims : [];
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -401,7 +401,7 @@ public sealed class SilkPointInstancerIdentityTests
             (uint)instancerPathBytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(264), 1);
 
-        int cursor = 268;
+        int cursor = 276;
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in points)

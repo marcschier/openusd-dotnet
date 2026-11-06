@@ -1,11 +1,163 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Numerics;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using OpenUsd.Rendering;
 
 namespace OpenUsd.Mcp.Tests;
 
 public sealed class SequenceContactSheetTests
 {
+    [Test]
+    [Arguments("automatic")]
+    [Arguments("matrices")]
+    [Arguments("clip-planes")]
+    public async Task HistoricalFrameAndSheetRetainRequestedCamerasAfterSceneRetirement(string mode)
+    {
+        await using var fixture = new Fixture();
+        int planeCount = mode == "clip-planes" ? CameraState.MaxClipPlanes : 0;
+        fixture.Backend.PreparePreviewCameras = times => times.Select(time => mode == "automatic"
+            ? CameraState.Default
+            : new CameraState(
+                Matrix4x4.CreateTranslation((float)time + 0.125f, -0.25f, 3.5f),
+                Matrix4x4.CreateScale(1.25f, 2.5f, 3.75f),
+                Enumerable.Range(0, planeCount).Select(index => new Vector4(index, 0.5f, -1.25f, 2.75f))))
+            .ToArray();
+        McpRenderSequenceResultDto job = await fixture.RenderAsync(3);
+        await fixture.Service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = job.SessionId,
+            Generation = job.Generation,
+            StageRevision = job.StageRevision
+        }, default);
+        fixture.Backend.PreparePreviewCameras = _ =>
+            throw new InvalidOperationException("Historical reads must not sample the current scene.");
+        McpSessionDto replacement = await fixture.Service.OpenSceneAsync(
+            new OpenSceneRequest { SourcePath = "scene.usda" }, default);
+        await Assert.That(replacement.SessionId).IsNotEqualTo(job.SessionId);
+        McpSequenceFrameResultDto frame = await fixture.Service.ReadSequenceFrameAsync(
+            new ReadSequenceFrameRequest { JobId = job.JobId, FrameIndex = 2 }, default);
+        McpSequenceSheetResultDto sheet = await fixture.Service.ReadSequenceSheetAsync(
+            new ReadSequenceSheetRequest { JobId = job.JobId, FrameIndices = [2, 0], Width = 8, Height = 4 }, default);
+        JsonElement frameJson = JsonSerializer.SerializeToElement(frame, JsonSerializerOptions.Web);
+        JsonElement sheetJson = JsonSerializer.SerializeToElement(sheet, JsonSerializerOptions.Web);
+        JsonElement renderRequest = frameJson.GetProperty("renderRequest");
+        await Assert.That(renderRequest.GetProperty("width").GetInt32()).IsEqualTo(2);
+        await Assert.That(renderRequest.GetProperty("height").GetInt32()).IsEqualTo(1);
+        await Assert.That(renderRequest.GetProperty("purposes").GetString()).IsEqualTo("Default, Proxy, Render");
+        await Assert.That(renderRequest.GetProperty("visibility").GetString()).IsEqualTo("RespectAuthored");
+        await Assert.That(renderRequest.GetProperty("drawMode").GetString()).IsEqualTo("SmoothShaded");
+        await Assert.That(renderRequest.GetProperty("samplesPerPixel").GetInt32()).IsEqualTo(1);
+        await Assert.That(renderRequest.GetProperty("enableLighting").GetBoolean()).IsTrue();
+        await Assert.That(renderRequest.GetProperty("enableShadows").GetBoolean()).IsTrue();
+        await Assert.That(renderRequest.GetProperty("backfaceCulling").GetBoolean()).IsTrue();
+        await Assert.That(renderRequest.GetProperty("useSceneMaterials").GetBoolean()).IsTrue();
+        await Assert.That(renderRequest.GetProperty("complexity").GetString()).IsEqualTo("Low");
+        await Assert.That(renderRequest.GetProperty("outputTransform").GetString()).IsEqualTo("Reinhard");
+        await Assert.That(renderRequest.GetProperty("exposure").GetSingle()).IsEqualTo(-6);
+        await Assert.That(renderRequest.GetProperty("clearColor").EnumerateArray()
+            .Select(static value => value.GetSingle()).SequenceEqual([0, 0, 0, 1])).IsTrue();
+        await Assert.That(renderRequest.GetProperty("displayTransform").ValueKind).IsEqualTo(JsonValueKind.Null);
+        JsonElement camera = frameJson.GetProperty("cameraRequest");
+        await Assert.That(camera.GetProperty("mode").GetString())
+            .IsEqualTo(mode == "automatic" ? "automatic" : "matrices");
+        await Assert.That(camera.GetProperty("clipPlanes").GetArrayLength()).IsEqualTo(planeCount);
+        JsonElement tiles = sheetJson.GetProperty("tiles");
+        await Assert.That(tiles[0].GetProperty("renderRequest").GetRawText()).IsEqualTo(renderRequest.GetRawText());
+        await Assert.That(tiles[1].GetProperty("renderRequest").GetRawText()).IsEqualTo(renderRequest.GetRawText());
+        await Assert.That(tiles[0].GetProperty("frameIndex").GetInt32()).IsEqualTo(2);
+        await Assert.That(tiles[1].GetProperty("frameIndex").GetInt32()).IsEqualTo(0);
+        if (mode == "automatic")
+        {
+            await Assert.That(camera.GetProperty("view").ValueKind).IsEqualTo(JsonValueKind.Null);
+            await Assert.That(camera.GetProperty("projection").ValueKind).IsEqualTo(JsonValueKind.Null);
+            await Assert.That(tiles[1].GetProperty("cameraRequest").GetProperty("view").ValueKind)
+                .IsEqualTo(JsonValueKind.Null);
+        }
+        else
+        {
+            float[] expectedView = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.125f, -0.25f, 3.5f, 1];
+            float[] expectedProjection = [1.25f, 0, 0, 0, 0, 2.5f, 0, 0, 0, 0, 3.75f, 0, 0, 0, 0, 1];
+            await Assert.That(camera.GetProperty("view").EnumerateArray().Select(static item => item.GetSingle())
+                .SequenceEqual(expectedView)).IsTrue();
+            await Assert.That(camera.GetProperty("projection").EnumerateArray()
+                .Select(static item => item.GetSingle()).SequenceEqual(expectedProjection)).IsTrue();
+            await Assert.That(tiles[0].GetProperty("cameraRequest").GetRawText()).IsEqualTo(camera.GetRawText());
+            await Assert.That(tiles[1].GetProperty("cameraRequest").GetProperty("view")[12].GetSingle())
+                .IsEqualTo(0.125f);
+            for (int index = 0; index < planeCount; index++)
+            {
+                await Assert.That(camera.GetProperty("clipPlanes")[index].EnumerateArray()
+                    .Select(static value => value.GetSingle()).SequenceEqual([index, 0.5f, -1.25f, 2.75f])).IsTrue();
+            }
+        }
+        ArtifactResourceContent png = await fixture.Artifacts.ReadAsync(new Uri(frame.Artifact.Uri)) ??
+            throw new InvalidOperationException("The original PNG resource is absent.");
+        await Assert.That(PngRgba8Decoder.Decode(png.Content.Span).Pixels.Span[0]).IsEqualTo((byte)3);
+        await Assert.That(fixture.Source.Calls).IsEqualTo(3);
+        await Assert.That(fixture.Artifacts.Count).IsEqualTo(2);
+        await Assert.That(frame.SessionId).IsEqualTo(job.SessionId);
+        await Assert.That(sheet.Generation).IsEqualTo(job.Generation);
+        await Assert.That(sheet.StageRevision).IsEqualTo(job.StageRevision);
+    }
+
+    [Test]
+    public async Task HistoricalJobsAreDiscoverableAcrossClosedAndNewScenesWithoutReadingOrRendering()
+    {
+        await using var fixture = new Fixture();
+        McpSequenceJobsResultDto empty = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(empty.Jobs).IsEmpty();
+        await Assert.That(fixture.Source.Calls).IsEqualTo(0);
+        McpRenderSequenceResultDto first = await fixture.RenderAsync(3);
+        McpSequenceJobsResultDto original = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(original.Jobs.Count).IsEqualTo(1);
+        await Assert.That(original.Jobs[0]).IsSameReferenceAs(first);
+        await fixture.Service.CloseSceneAsync(new SceneRevisionRequest
+        {
+            SessionId = first.SessionId,
+            Generation = first.Generation,
+            StageRevision = first.StageRevision
+        }, default);
+        File.Delete(Path.Combine(fixture.Files.OutputRoot, first.OutputDirectory, "frame-000000.png"));
+        McpSequenceJobsResultDto retired = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(retired.Jobs[0]).IsSameReferenceAs(first);
+        McpRenderSequenceResultDto second = await fixture.RenderAsync(1);
+        await Assert.That(second.SessionId).IsNotEqualTo(first.SessionId);
+        McpSequenceJobsResultDto current = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(current.Jobs.Select(static job => job.JobId)
+            .SequenceEqual(new[] { first.JobId, second.JobId }.Order(StringComparer.Ordinal))).IsTrue();
+        await Assert.That(current.Jobs.Single(job => job.JobId == first.JobId)).IsSameReferenceAs(first);
+        await Assert.That(current.Jobs.Single(job => job.JobId == second.JobId)).IsSameReferenceAs(second);
+        await Assert.That(original.Jobs.Count).IsEqualTo(1);
+        await Assert.That(empty.Jobs).IsEmpty();
+        await Assert.That(first.AuthoredProduct).IsNull();
+        await Assert.That(first.Simulation).IsNull();
+        await Assert.That(Path.IsPathRooted(first.OutputDirectory)).IsFalse();
+        await Assert.That(Path.IsPathRooted(first.ManifestPath)).IsFalse();
+        await Assert.That(async () => await fixture.Service.ReadSequenceSheetAsync(
+            new ReadSequenceSheetRequest { JobId = first.JobId, Width = 8, Height = 4 }, default))
+            .Throws<FileNotFoundException>();
+        await Assert.That(fixture.Source.Calls).IsEqualTo(4);
+        await Assert.That(fixture.Artifacts.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task CancelledJobListingLeavesTheHistoricalSnapshotAndQuotasUntouched()
+    {
+        await using var fixture = new Fixture();
+        McpRenderSequenceResultDto job = await fixture.RenderAsync(1);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.That(async () => await fixture.Service.ListSequenceJobsAsync(cancellation.Token))
+            .Throws<OperationCanceledException>();
+        McpSequenceJobsResultDto result = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(result.Jobs.Count).IsEqualTo(1);
+        await Assert.That(result.Jobs[0]).IsSameReferenceAs(job);
+        await Assert.That(fixture.Source.Calls).IsEqualTo(1);
+        await Assert.That(fixture.Artifacts.Count).IsEqualTo(0);
+    }
+
     [Test]
     public async Task CompletedFramesKeepOrderAspectAndCapturedRevisionWithoutRerendering()
     {
@@ -27,6 +179,8 @@ public sealed class SequenceContactSheetTests
         }, default);
         await Assert.That(sheet.SessionId).IsEqualTo(job.SessionId);
         await Assert.That(sheet.StageRevision).IsEqualTo(job.StageRevision);
+        await Assert.That(sheet.AuthoredProduct).IsNull();
+        await Assert.That(sheet.Tiles.All(static tile => tile.Simulation is null)).IsTrue();
         await Assert.That(sheet.Tiles.Select(static tile => tile.FrameIndex).SequenceEqual([19, 0])).IsTrue();
         await Assert.That(sheet.Tiles[0].TimeCode).IsEqualTo(19d);
         await Assert.That(sheet.Tiles[1].X).IsEqualTo(4);
@@ -136,6 +290,8 @@ public sealed class SequenceContactSheetTests
         McpRenderSequenceResultDto first = await fixture.RenderAsync(1);
         for (int index = 0; index < 8; index++)
         {
+            McpSequenceJobsResultDto jobs = await fixture.Service.ListSequenceJobsAsync(default);
+            await Assert.That(jobs.Jobs.Count).IsEqualTo(1);
             _ = await fixture.Service.ReadSequenceSheetAsync(
                 new ReadSequenceSheetRequest { JobId = first.JobId, Width = 4, Height = 4 }, default);
         }
@@ -155,6 +311,10 @@ public sealed class SequenceContactSheetTests
         await Assert.That(fixture.Source.Calls).IsEqualTo(8);
         await Assert.That(async () => await fixture.Service.RenderSequenceAsync(request, default))
             .Throws<WorkspaceQuotaExceededException>();
+        McpSequenceJobsResultDto full = await fixture.Service.ListSequenceJobsAsync(default);
+        await Assert.That(full.Jobs.Count).IsEqualTo(8);
+        await Assert.That(full.Jobs.Select(static job => job.JobId).Distinct().Count()).IsEqualTo(8);
+        await Assert.That(full.Jobs.Single(job => job.JobId == first.JobId)).IsSameReferenceAs(first);
     }
 
     private sealed class Fixture : IAsyncDisposable
@@ -163,6 +323,7 @@ public sealed class SequenceContactSheetTests
         internal SourceFactory Source { get; } = new();
         internal ArtifactResourceStore Artifacts { get; }
         internal OpenUsdMcpService Service { get; }
+        internal RecordingWorkspaceBackend Backend { get; } = new();
         private readonly McpSessionWorkspace _workspace;
         private readonly CaptureWorker _worker;
         private readonly PreviewCaptureProcessor _processor;
@@ -170,8 +331,9 @@ public sealed class SequenceContactSheetTests
 
         internal Fixture(int maximumResources = 128)
         {
-            _workspace = Files.CreateWorkspace(new RecordingWorkspaceBackend());
-            Artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(maximumResources));
+            _workspace = Files.CreateWorkspace(Backend);
+            Artifacts = new ArtifactResourceStore(new ArtifactResourceStoreOptions(
+                maximumResources, FileStorageRoot: Path.Combine(Files.OutputRoot, "artifacts")));
             _processor = new PreviewCaptureProcessor(Source, Artifacts);
             _worker = new CaptureWorker(_processor);
             _provider = new ServiceCollection().AddSingleton(_worker)

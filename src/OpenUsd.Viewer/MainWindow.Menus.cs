@@ -50,6 +50,7 @@ public sealed partial class MainWindow
         setAccessibleName(OpenStageButton, ViewerCommandIds.FileOpenStage);
         setAccessibleName(OpenStageMenuItem, ViewerCommandIds.FileOpenStage);
         setAccessibleName(OpenReviewMenuItem, ViewerCommandIds.FileOpenReview);
+        setAccessibleName(AdoptReviewMenuItem, ViewerCommandIds.FileAdoptReview);
         setAccessibleName(OpenSampleMenuItem, ViewerCommandIds.FileOpenSample);
         setAccessibleName(ReloadStageButton, ViewerCommandIds.FileReloadStage);
         setAccessibleName(ReloadStageMenuItem, ViewerCommandIds.FileReloadStage);
@@ -57,6 +58,7 @@ public sealed partial class MainWindow
         setAccessibleName(RenderImageSequenceMenuItem, ViewerCommandIds.FileRenderImageSequence);
         setAccessibleName(RenderAuthoredProductMenuItem, ViewerCommandIds.FileRenderAuthoredProduct);
         setAccessibleName(CompareCapturesMenuItem, ViewerCommandIds.FileCompareCaptures);
+        setAccessibleName(CompletedJobsMenuItem, ViewerCommandIds.FileCompletedJobs);
         setAccessibleName(RecentStagesMenu, ViewerCommandIds.FileRecentStages);
         setAccessibleName(FileExitMenuItem, ViewerCommandIds.FileExit);
         setAccessibleName(SaveReviewMenuItem, ViewerCommandIds.FileSaveReview);
@@ -167,6 +169,7 @@ public sealed partial class MainWindow
             PhysicsSpeedQuadrupleMenuItem, ViewerCommandIds.PhysicsSpeedQuadruple);
         setAccessibleName(PhysicsPreviewMenuItem, ViewerCommandIds.PhysicsPreviewApply);
         setAccessibleName(PhysicsBakeButton, ViewerCommandIds.PhysicsBake);
+        setAccessibleName(PhysicsRecordSequenceMenuItem, ViewerCommandIds.PhysicsRecordSequence);
         setAccessibleName(PhysicsGizmoNoneMenuItem, ViewerCommandIds.PhysicsGizmoNone);
         setAccessibleName(PhysicsGizmoMoveMenuItem, ViewerCommandIds.PhysicsGizmoMove);
         setAccessibleName(PhysicsGizmoRotateMenuItem, ViewerCommandIds.PhysicsGizmoRotate);
@@ -209,6 +212,7 @@ public sealed partial class MainWindow
         setAccessibleName(
             ToolsSelectionVisibleOnlyMenuItem, ViewerCommandIds.ToolsSelectionVisibleOnly);
         setAccessibleName(ToolsSelectionXRayMenuItem, ViewerCommandIds.ToolsSelectionXRay);
+        setAccessibleName(ToolsMeasureDistanceMenuItem, ViewerCommandIds.ToolsMeasureDistance);
         setAccessibleName(
             ToolsCopyDiagnosticsMenuItem, ViewerCommandIds.ToolsDeveloperCopyDiagnostics);
         setAccessibleName(CopyDiagnosticsButton, ViewerCommandIds.ToolsDeveloperCopyDiagnostics);
@@ -428,6 +432,7 @@ public sealed partial class MainWindow
         ToolsPickTargetPointMenuItem.Click += OnToolsPickTargetMenuClick;
         ToolsSelectionVisibleOnlyMenuItem.Click += OnToolsSelectionModeMenuClick;
         ToolsSelectionXRayMenuItem.Click += OnToolsSelectionModeMenuClick;
+        ToolsMeasureDistanceMenuItem.Click += OnToolsMeasureDistanceMenuClick;
 
         ToolsCopyDiagnosticsMenuItem.Click += OnCopyDiagnosticsClick;
         ToolsExportDiagnosticsMenuItem.Click += OnExportDiagnosticsClick;

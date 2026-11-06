@@ -9,6 +9,41 @@ namespace OpenUsd.Rendering.Tests;
 public sealed partial class RenderDiskJobPublicationTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MissingOwnedStagingDoesNotReplaceTheOriginalFailure(bool canceled)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-missing-staging-").FullName;
+        using var cancellation = new CancellationTokenSource();
+        Exception expected = canceled
+            ? new OperationCanceledException(cancellation.Token)
+            : new InvalidDataException("Injected frame failure.");
+        var source = new FrameSource(() =>
+        {
+            Directory.Delete(Directory.GetDirectories(root).Single());
+            if (canceled)
+            {
+                cancellation.Cancel();
+            }
+            throw expected;
+        });
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithViewport(new ViewportDimensions(1, 1));
+        var request = new RenderDiskJobRequest(Path.Combine(root, "complete"), [state]);
+        try
+        {
+            Exception? actual = await Assert.That(
+                () => RenderDiskJob.Execute(request, source, cancellation.Token)).ThrowsException();
+            await Assert.That(actual).IsSameReferenceAs(expected);
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     [Arguments("released")]
     [Arguments("canceled")]
     [Arguments("held")]
@@ -75,7 +110,10 @@ public sealed partial class RenderDiskJobPublicationTests
                     await Assert.That(operation.IsCompleted).IsFalse();
                     clock.Advance(TimeSpan.FromMilliseconds(1));
                 }
-                _ = await Assert.ThrowsAsync<IOException>(() => operation);
+                AggregateException failure = (await Assert.ThrowsAsync<AggregateException>(() => operation))!;
+                await Assert.That(failure.InnerExceptions.Count).IsEqualTo(2);
+                await Assert.That(failure.InnerExceptions[0] is IOException).IsTrue();
+                await Assert.That(failure.InnerExceptions[1] is IOException).IsTrue();
                 await Assert.That(Directory.Exists(request.OutputDirectory)).IsFalse();
                 await Assert.That(clock.CreatedTimers).IsEqualTo(8);
             }
@@ -117,6 +155,9 @@ public sealed partial class RenderDiskJobPublicationTests
             {
             }
             catch (IOException) when (outcome is "held" or "collision")
+            {
+            }
+            catch (AggregateException) when (outcome == "held")
             {
             }
             Directory.Delete(root, recursive: true);

@@ -299,6 +299,9 @@ public sealed partial class SilkNativePageCopyRecoveryTests
 
     private readonly unsafe struct NativeCopy : OpenUsdSilkRuntime.IPreparedPageCopy
     {
+        public static SilkVolumeAssets? RetainVolumeAssets(nint page) =>
+            OpenUsdSilkRuntime.RetainPageVolumeAssets(page);
+
         internal static Exception? CopyFailure { get; set; }
         internal static Action? BeforeCopy { get; set; }
         private static Exception? UsageFailure { get; set; }

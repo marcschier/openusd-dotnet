@@ -5,6 +5,37 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class PhysicsRenderBindingTests
 {
     [Test]
+    public async Task SubtreeReferencesRemainResolvableAfterRebindingAcrossProducerKinds()
+    {
+        var table = new PhysicsRenderBindingTable(1);
+        var bound = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        var producer = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.Controller);
+        await Assert.That(table.TryBindSubtree(bound, "/Body", default, PhysicsRenderOrientation.Identity)).IsTrue();
+        ulong revision = table.Revision;
+        var position = new UsdVec3d(1, 2, 3);
+        await Assert.That(table.TryBindSubtree(bound, "/Body", position, PhysicsRenderOrientation.Identity)).IsTrue();
+        await Assert.That(table.TryResolve(producer, out PhysicsRenderBinding binding)).IsTrue();
+        await Assert.That(binding.IncludesDescendants).IsTrue();
+        await Assert.That(binding.ReferencePosition).IsEqualTo(position);
+        await Assert.That(table.Revision).IsGreaterThan(revision);
+        await Assert.That(table.Count).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task InvalidSubtreeReferencesDoNotReplaceAnExistingBinding()
+    {
+        var table = new PhysicsRenderBindingTable(1);
+        var id = new PhysicsRenderObjectId(101, PhysicsRenderObjectKind.RigidBody);
+        _ = table.TryBindSubtree(id, "/Body", default, PhysicsRenderOrientation.Identity);
+        ulong revision = table.Revision;
+        await Assert.That(() => table.TryBindSubtree(id, "/Body",
+            new UsdVec3d(double.NaN, 0, 0), PhysicsRenderOrientation.Identity)).Throws<ArgumentException>();
+        await Assert.That(() => table.TryBindSubtree(id, "/Body", default, default)).Throws<ArgumentException>();
+        await Assert.That(table.Revision).IsEqualTo(revision);
+        await Assert.That(table.Count).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task BindsResolvesAndUnbindsStableIdentities()
     {
         var table = new PhysicsRenderBindingTable(4);

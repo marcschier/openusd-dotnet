@@ -12,6 +12,86 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class CameraAbiTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ClipPlaneAdmissionStopsAtFirstExcessPlaneAndDisposesTheEnumerator(bool invalidFirst)
+    {
+        int yielded = 0;
+        bool disposed = false;
+        IEnumerable<Vector4> planes()
+        {
+            try
+            {
+                for (int index = 0; index < CameraState.MaxClipPlanes + 2; index++)
+                {
+                    yielded++;
+                    if (yielded > CameraState.MaxClipPlanes + 1)
+                    {
+                        throw new InvalidOperationException(
+                            "Camera admission enumerated beyond the first excess plane.");
+                    }
+                    yield return invalidFirst && index == 0 ? new Vector4(float.NaN) : new Vector4(index, 1, 2, 3);
+                }
+            }
+            finally
+            {
+                disposed = true;
+            }
+        }
+
+        await Assert.That(() => _ = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, planes()))
+            .Throws<ArgumentOutOfRangeException>();
+        await Assert.That(yielded).IsEqualTo(CameraState.MaxClipPlanes + 1);
+        await Assert.That(disposed).IsTrue();
+    }
+
+    [Test]
+    public async Task ClipPlaneSourceFailureWithinAdmissionIsPreservedAndDisposed()
+    {
+        var failure = new IOException("Clip source failed before the ABI bound.");
+        bool disposed = false;
+        IEnumerable<Vector4> planes()
+        {
+            try
+            {
+                yield return Vector4.UnitX;
+                throw failure;
+            }
+            finally
+            {
+                disposed = true;
+            }
+        }
+        IOException? observed = null;
+        try
+        {
+            _ = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, planes());
+        }
+        catch (IOException exception)
+        {
+            observed = exception;
+        }
+        await Assert.That(observed).IsSameReferenceAs(failure);
+        await Assert.That(disposed).IsTrue();
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(8)]
+    public async Task AdmittedClipPlanesRetainExactOwnedOrder(int count)
+    {
+        Vector4[] input = Enumerable.Range(0, count).Select(static index => new Vector4(index, 2, 3, -4)).ToArray();
+        var camera = new CameraState(Matrix4x4.Identity, Matrix4x4.Identity, input.Select(static plane => plane));
+        Array.Fill(input, Vector4.Zero);
+        await Assert.That(camera.ClipPlanes.Count).IsEqualTo(count);
+        for (int index = 0; index < count; index++)
+        {
+            await Assert.That(camera.ClipPlanes[index]).IsEqualTo(new Vector4(index, 2, 3, -4));
+        }
+    }
+
+    [Test]
     public async Task NativeCameraLayoutMatchesTheSharedCAbi()
     {
         await Assert.That(Unsafe.SizeOf<NativeRenderMatrix>()).IsEqualTo(128);

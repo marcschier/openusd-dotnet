@@ -35,6 +35,11 @@
     },
     {
       "family": "meshVolume",
+      "stage": "vertex",
+      "maxPermutations": 1
+    },
+    {
+      "family": "meshVolume",
       "stage": "fragment",
       "maxPermutations": 1
     }
@@ -173,6 +178,30 @@
           }
         },
         {
+          "name": "shadowTransmission0",
+          "access": "read",
+          "d3d": { "registerClass": "t", "register": 24, "space": 0 },
+          "vulkan": { "binding": 41, "set": 0 }
+        },
+        {
+          "name": "shadowTransmission1",
+          "access": "read",
+          "d3d": { "registerClass": "t", "register": 25, "space": 0 },
+          "vulkan": { "binding": 42, "set": 0 }
+        },
+        {
+          "name": "shadowTransmission2",
+          "access": "read",
+          "d3d": { "registerClass": "t", "register": 26, "space": 0 },
+          "vulkan": { "binding": 43, "set": 0 }
+        },
+        {
+          "name": "shadowTransmission3",
+          "access": "read",
+          "d3d": { "registerClass": "t", "register": 27, "space": 0 },
+          "vulkan": { "binding": 44, "set": 0 }
+        },
+        {
           "name": "environmentSampler",
           "access": "read",
           "d3d": {
@@ -241,6 +270,34 @@
       "permutationResources": [
         {
           "feature": "MAP_MATERIAL",
+          "name": "emissiveValuesTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 23,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 40,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
+          "name": "diffuseValuesTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 22,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 39,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_MATERIAL",
           "name": "baseColorSampler",
           "access": "read",
           "d3d": {
@@ -292,6 +349,62 @@
           },
           "vulkan": {
             "binding": 3,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "detailNormalSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 4,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 13,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "detailNormalTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "normalValuesTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 20,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 37,
+            "set": 0
+          }
+        },
+        {
+          "feature": "MAP_NORMAL",
+          "name": "detailNormalValuesTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 21,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 38,
             "set": 0
           }
         },
@@ -578,6 +691,59 @@
       ]
     },
     {
+      "name": "mesh.volume.vertex",
+      "source": "eng/shaders/sources/mesh.slang",
+      "entryPoint": "volumeVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "permutationFamily": "meshVolume",
+      "permutationFeatures": [],
+      "defines": {
+        "VOLUME_DENSITY_TEXTURES": 1
+      },
+      "resources": [
+        {
+          "name": "SceneParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "instanceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
+        },
+        {
+          "name": "frameParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 8,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 8,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
       "name": "mesh.volume.fragment",
       "source": "eng/shaders/sources/mesh.slang",
       "entryPoint": "volumeFragmentMain",
@@ -656,6 +822,19 @@
           }
         },
         {
+          "name": "volumeOpaqueDepthTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 28,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 45,
+            "set": 0
+          }
+        },
+        {
           "name": "shadowSampler",
           "access": "read",
           "d3d": {
@@ -680,6 +859,30 @@
             "binding": 31,
             "set": 0
           }
+        },
+        {
+          "name": "shadowTransmission0",
+          "access": "read",
+          "d3d": { "registerClass": "t", "register": 24, "space": 0 },
+          "vulkan": { "binding": 41, "set": 0 }
+        },
+        {
+          "name": "shadowTransmission1",
+          "access": "read",
+          "d3d": { "registerClass": "t", "register": 25, "space": 0 },
+          "vulkan": { "binding": 42, "set": 0 }
+        },
+        {
+          "name": "shadowTransmission2",
+          "access": "read",
+          "d3d": { "registerClass": "t", "register": 26, "space": 0 },
+          "vulkan": { "binding": 43, "set": 0 }
+        },
+        {
+          "name": "shadowTransmission3",
+          "access": "read",
+          "d3d": { "registerClass": "t", "register": 27, "space": 0 },
+          "vulkan": { "binding": 44, "set": 0 }
         },
         {
           "name": "environmentSampler",
@@ -777,6 +980,242 @@
       "stage": "fragment",
       "profile": "ps_6_0",
       "resources": []
+    },
+    {
+      "name": "shadow.mask.vertex",
+      "source": "eng/shaders/sources/shadow.vertex.slang",
+      "entryPoint": "shadowMaskedVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "shadowInstanceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "shadow.mask.fragment",
+      "source": "eng/shaders/sources/shadow.mask.fragment.slang",
+      "entryPoint": "shadowMaskedFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        {
+          "name": "surfaceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 7,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 7,
+            "set": 0
+          }
+        },
+        {
+          "name": "opacitySampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 16,
+            "set": 0
+          }
+        },
+        {
+          "name": "opacityTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 5,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 17,
+            "set": 0
+          }
+        },
+        {
+          "name": "compositeSampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 12,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 28,
+            "set": 0
+          }
+        },
+        {
+          "name": "compositeTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 15,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 29,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "shadow.transmission.first.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.first.fragment.slang",
+      "entryPoint": "shadowTransmissionFirstFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        { "name": "surfaceParameters", "access": "read", "d3d": { "registerClass": "t", "register": 7, "space": 0 }, "vulkan": { "binding": 7, "set": 0 } },
+        { "name": "opacitySampler", "access": "read", "d3d": { "registerClass": "s", "register": 6, "space": 0 }, "vulkan": { "binding": 16, "set": 0 } },
+        { "name": "opacityTexture", "access": "read", "d3d": { "registerClass": "t", "register": 5, "space": 0 }, "vulkan": { "binding": 17, "set": 0 } },
+        { "name": "compositeSampler", "access": "read", "d3d": { "registerClass": "s", "register": 12, "space": 0 }, "vulkan": { "binding": 28, "set": 0 } },
+        { "name": "compositeTexture", "access": "read", "d3d": { "registerClass": "t", "register": 15, "space": 0 }, "vulkan": { "binding": 29, "set": 0 } }
+      ]
+    },
+    {
+      "name": "shadow.transmission.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.fragment.slang",
+      "entryPoint": "shadowTransmissionFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        { "name": "surfaceParameters", "access": "read", "d3d": { "registerClass": "t", "register": 7, "space": 0 }, "vulkan": { "binding": 7, "set": 0 } },
+        { "name": "opacitySampler", "access": "read", "d3d": { "registerClass": "s", "register": 6, "space": 0 }, "vulkan": { "binding": 16, "set": 0 } },
+        { "name": "opacityTexture", "access": "read", "d3d": { "registerClass": "t", "register": 5, "space": 0 }, "vulkan": { "binding": 17, "set": 0 } },
+        { "name": "compositeSampler", "access": "read", "d3d": { "registerClass": "s", "register": 12, "space": 0 }, "vulkan": { "binding": 28, "set": 0 } },
+        { "name": "compositeTexture", "access": "read", "d3d": { "registerClass": "t", "register": 15, "space": 0 }, "vulkan": { "binding": 29, "set": 0 } },
+        { "name": "previousShadowLayer", "access": "read", "d3d": { "registerClass": "t", "register": 24, "space": 0 }, "vulkan": { "binding": 41, "set": 0 } }
+      ]
+    },
+    {
+      "name": "shadow.transmission.probe.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.fragment.slang",
+      "entryPoint": "shadowTransmissionProbeFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        { "name": "surfaceParameters", "access": "read", "d3d": { "registerClass": "t", "register": 7, "space": 0 }, "vulkan": { "binding": 7, "set": 0 } },
+        { "name": "opacitySampler", "access": "read", "d3d": { "registerClass": "s", "register": 6, "space": 0 }, "vulkan": { "binding": 16, "set": 0 } },
+        { "name": "opacityTexture", "access": "read", "d3d": { "registerClass": "t", "register": 5, "space": 0 }, "vulkan": { "binding": 17, "set": 0 } },
+        { "name": "compositeSampler", "access": "read", "d3d": { "registerClass": "s", "register": 12, "space": 0 }, "vulkan": { "binding": 28, "set": 0 } },
+        { "name": "compositeTexture", "access": "read", "d3d": { "registerClass": "t", "register": 15, "space": 0 }, "vulkan": { "binding": 29, "set": 0 } },
+        { "name": "previousShadowLayer", "access": "read", "d3d": { "registerClass": "t", "register": 24, "space": 0 }, "vulkan": { "binding": 41, "set": 0 } }
+      ]
+    },
+    {
+      "name": "shadow.transmission.constant.first.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.constant.first.fragment.slang",
+      "entryPoint": "shadowTransmissionConstantFirstFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        { "name": "surfaceParameters", "access": "read", "d3d": { "registerClass": "t", "register": 7, "space": 0 }, "vulkan": { "binding": 7, "set": 0 } }
+      ]
+    },
+    {
+      "name": "shadow.transmission.constant.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+      "entryPoint": "shadowTransmissionConstantFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        { "name": "surfaceParameters", "access": "read", "d3d": { "registerClass": "t", "register": 7, "space": 0 }, "vulkan": { "binding": 7, "set": 0 } },
+        { "name": "previousShadowLayer", "access": "read", "d3d": { "registerClass": "t", "register": 24, "space": 0 }, "vulkan": { "binding": 41, "set": 0 } }
+      ]
+    },
+    {
+      "name": "shadow.transmission.constant.probe.fragment",
+      "source": "eng/shaders/sources/shadow.transmission.constant.fragment.slang",
+      "entryPoint": "shadowTransmissionConstantProbeFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        { "name": "surfaceParameters", "access": "read", "d3d": { "registerClass": "t", "register": 7, "space": 0 }, "vulkan": { "binding": 7, "set": 0 } },
+        { "name": "previousShadowLayer", "access": "read", "d3d": { "registerClass": "t", "register": 24, "space": 0 }, "vulkan": { "binding": 41, "set": 0 } }
+      ]
+    },
+    {
+      "name": "normal.vertex",
+      "source": "eng/shaders/sources/normal.vertex.slang",
+      "entryPoint": "normalVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": [
+        {
+          "name": "normalInstanceParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
+        },
+        {
+          "name": "frameParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 8,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 8,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "normal.fragment",
+      "source": "eng/shaders/sources/normal.fragment.slang",
+      "entryPoint": "normalFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "resources": [
+        {
+          "name": "frameParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 8,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 8,
+            "set": 0
+          }
+        }
+      ]
     },
     {
       "name": "pick.vertex",
@@ -1081,6 +1520,190 @@
           },
           "vulkan": {
             "binding": 3,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "volume.camera.vertex",
+      "source": "eng/shaders/sources/volume.camera.vertex.slang",
+      "entryPoint": "volumeCameraVertexMain",
+      "stage": "vertex",
+      "profile": "vs_6_0",
+      "resources": []
+    },
+    {
+      "name": "volume.camera.fragment.uniform",
+      "source": "eng/shaders/sources/volume.camera.fragment.uniform.slang",
+      "entryPoint": "volumeCameraUniformFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        {
+          "name": "VolumeCameraParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "backgroundColorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeFields",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
+        },
+        {
+          "name": "frameParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 8,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 8,
+            "set": 0
+          }
+        },
+        {
+          "name": "opaqueDepthTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 28,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 45,
+            "set": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "volume.camera.fragment.atlas",
+      "source": "eng/shaders/sources/volume.camera.fragment.atlas.slang",
+      "entryPoint": "volumeCameraAtlasFragmentMain",
+      "stage": "fragment",
+      "profile": "ps_6_0",
+      "floatingPointMode": "precise",
+      "resources": [
+        {
+          "name": "VolumeCameraParameters",
+          "access": "constant",
+          "d3d": {
+            "registerClass": "b",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 0,
+            "set": 0
+          }
+        },
+        {
+          "name": "backgroundColorTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 0,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 2,
+            "set": 0
+          }
+        },
+        {
+          "name": "volumeFields",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 6,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 6,
+            "set": 0
+          }
+        },
+        {
+          "name": "frameParameters",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 8,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 8,
+            "set": 0
+          }
+        },
+        {
+          "name": "densityAtlas",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 9,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 9,
+            "set": 0
+          }
+        },
+        {
+          "name": "densitySampler",
+          "access": "read",
+          "d3d": {
+            "registerClass": "s",
+            "register": 4,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 13,
+            "set": 0
+          }
+        },
+        {
+          "name": "opaqueDepthTexture",
+          "access": "read",
+          "d3d": {
+            "registerClass": "t",
+            "register": 28,
+            "space": 0
+          },
+          "vulkan": {
+            "binding": 45,
             "set": 0
           }
         }

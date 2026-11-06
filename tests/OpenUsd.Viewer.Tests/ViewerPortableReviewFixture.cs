@@ -150,7 +150,24 @@ internal sealed class ViewerPortableReviewFixture : IDisposable
         }
     }
 
-    public void Dispose() => Directory.Delete(Root, recursive: true);
+    // Under full-suite load an indexer or a released texture handle can hold a fixture file for a
+    // moment after the test finishes, so deletion retries briefly before reporting the lock.
+    public void Dispose()
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(Root, recursive: true);
+                return;
+            }
+            catch (Exception exception) when (
+                attempt < 6 && exception is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(20 << attempt);
+            }
+        }
+    }
 
     [DllImport("kernel32.dll", ExactSpelling = true, CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -104,8 +104,20 @@ check_cxx_source_compiles("
 #endif
 int main() { return 0; }
 " OPENUSD_IMAGE_EXR_WINDOWS_X64)
+check_cxx_source_compiles("
+#if (!defined(__linux__) && !defined(__APPLE__)) || \
+    (!defined(__x86_64__) && !defined(__aarch64__)) || \
+    __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
+#error Guarded EXR descriptor profile unavailable
+#endif
+static_assert(sizeof(void*) == 8);
+int main() { return 0; }
+" OPENUSD_IMAGE_EXR_POSIX)
 if(OPENUSD_IMAGE_EXR_WINDOWS_X64)
     find_package(OpenEXR 3.1 CONFIG REQUIRED)
+elseif(OPENUSD_IMAGE_EXR_POSIX)
+    find_package(OpenEXR 3.1 CONFIG REQUIRED)
+    find_package(Threads REQUIRED)
 endif()
 
 function(configure_openusd_dotnet_target target_name)
@@ -129,6 +141,8 @@ function(configure_openusd_dotnet_target target_name)
     target_link_libraries(${target_name} PRIVATE OpenColorIO::OpenColorIO)
     if(OPENUSD_IMAGE_EXR_WINDOWS_X64)
         target_link_libraries(${target_name} PRIVATE OpenEXR::OpenEXR ntdll)
+    elseif(OPENUSD_IMAGE_EXR_POSIX)
+        target_link_libraries(${target_name} PRIVATE OpenEXR::OpenEXR Threads::Threads)
     endif()
     if(TARGET openusd_native_sanitizers)
         target_link_libraries(${target_name} PRIVATE openusd_native_sanitizers)

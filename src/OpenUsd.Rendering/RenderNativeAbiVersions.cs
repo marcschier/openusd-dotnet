@@ -6,5 +6,5 @@ internal static class RenderNativeAbiVersions
 {
     internal const uint StormAbi = 9;
     internal const uint StormChildAbi = 9;
-    internal const uint SilkSessionAbi = 6;
+    internal const uint SilkSessionAbi = 7;
 }

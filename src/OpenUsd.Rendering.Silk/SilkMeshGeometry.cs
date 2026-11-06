@@ -11,9 +11,14 @@ internal sealed record SilkMeshGeometry(
     string UvPrimvar,
     bool HasTangents,
     bool Displaced = false,
-    float MaximumDisplacement = 0)
+    float MaximumDisplacement = 0,
+    string SecondaryUvPrimvar = "",
+    bool DerivedCornerVertices = false,
+    bool PtexUvSecondary = false)
 {
     internal uint IndexCount => checked((uint)Indices.Length);
+    internal uint VertexCount => checked((uint)(Vertices.Length /
+        (VertexLayout.Stride / sizeof(float))));
 }
 
 internal static class SilkMeshGeometryBuilder
@@ -24,7 +29,12 @@ internal static class SilkMeshGeometryBuilder
         SilkMeshData mesh,
         string uvPrimvar = "",
         bool requireTangents = false,
-        ReadOnlySpan<float> displacementAmounts = default)
+        ReadOnlySpan<float> displacementAmounts = default,
+        bool requireTextureCoordinates = false,
+        string secondaryUvPrimvar = "",
+        bool tangentsFromSecondary = false,
+        SilkPtexAtlasLayout? ptexAtlas = null,
+        bool ptexAsSecondary = false)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         ReadOnlySpan<float> points = mesh.Points.Span;
@@ -52,6 +62,13 @@ internal static class SilkMeshGeometryBuilder
                 mesh,
                 "displacement amounts must carry exactly one value per point");
         }
+        for (int point = 0; point < displacementAmounts.Length; point++)
+        {
+            if (!float.IsFinite(displacementAmounts[point]))
+            {
+                throw InvalidMesh(mesh, $"displacement amount {point} is not finite");
+            }
+        }
 
         for (int i = 0; i < points.Length; i++)
         {
@@ -61,14 +78,29 @@ internal static class SilkMeshGeometryBuilder
             }
         }
 
+        ReadOnlySpan<float> authored = mesh.AuthoredNormals.Span;
+        bool useAuthored = authored.Length == points.Length;
+        bool triangleLocal = mesh.TriangleLocalNormalFallback && !useAuthored &&
+            mesh.TopologyKind == SilkTopologyKind.TriangleList;
+        int[] unreferencedPoints = triangleLocal || ptexAtlas is { IsFallback: false }
+            ? SilkSubprimPickGeometry.FindUnreferencedAuthoredPoints(mesh)
+            : [];
+        int vertexCount = triangleLocal
+            ? checked(meshIndices.Length + unreferencedPoints.Length)
+            : pointCount;
         uint[] indices = new uint[meshIndices.Length];
-        double[] normals = new double[points.Length];
+        double[] normals = useAuthored ? [] : new double[checked(vertexCount * 3)];
         for (int i = 0; i < meshIndices.Length; i++)
         {
             indices[i] = checked((uint)ValidateIndex(mesh, meshIndices, pointCount, i));
         }
 
-        if (mesh.TopologyKind == SilkTopologyKind.TriangleList)
+        if (!useAuthored && !triangleLocal && mesh.TopologyKind == SilkTopologyKind.TriangleList &&
+            mesh.NormalIdentityArray.Length != 0)
+        {
+            BuildPolygonNormals(mesh, points, indices, normals);
+        }
+        else if (!useAuthored && mesh.TopologyKind == SilkTopologyKind.TriangleList)
         {
             for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
             {
@@ -79,67 +111,85 @@ internal static class SilkMeshGeometryBuilder
                 int pa = a * 3;
                 int pb = b * 3;
                 int pc = c * 3;
-                double abx = points[pb] - points[pa];
-                double aby = points[pb + 1] - points[pa + 1];
-                double abz = points[pb + 2] - points[pa + 2];
-                double acx = points[pc] - points[pa];
-                double acy = points[pc + 1] - points[pa + 1];
-                double acz = points[pc + 2] - points[pa + 2];
+                double abx = (double)points[pb] - points[pa];
+                double aby = (double)points[pb + 1] - points[pa + 1];
+                double abz = (double)points[pb + 2] - points[pa + 2];
+                double acx = (double)points[pc] - points[pa];
+                double acy = (double)points[pc + 1] - points[pa + 1];
+                double acz = (double)points[pc + 2] - points[pa + 2];
                 double nx = (aby * acz) - (abz * acy);
                 double ny = (abz * acx) - (abx * acz);
                 double nz = (abx * acy) - (aby * acx);
                 double lengthSquared = (nx * nx) + (ny * ny) + (nz * nz);
-                if (!double.IsFinite(lengthSquared) || lengthSquared <= NormalEpsilonSquared)
+                if (!double.IsFinite(lengthSquared))
                 {
                     continue;
                 }
 
-                double inverseLength = 1.0 / Math.Sqrt(lengthSquared);
-                nx *= inverseLength;
-                ny *= inverseLength;
-                nz *= inverseLength;
-                Accumulate(normals, pa, nx, ny, nz);
-                Accumulate(normals, pb, nx, ny, nz);
-                Accumulate(normals, pc, nx, ny, nz);
+                // A tiny face can still change the sum at a shared vertex.
+                Accumulate(normals, triangleLocal ? triangle * 3 : pa, nx, ny, nz);
+                Accumulate(normals, triangleLocal ? (triangle + 1) * 3 : pb, nx, ny, nz);
+                Accumulate(normals, triangleLocal ? (triangle + 2) * 3 : pc, nx, ny, nz);
             }
         }
 
         SilkVertexAttributeData? uvAttribute = string.IsNullOrEmpty(uvPrimvar)
             ? null
             : mesh.FindTexCoord(uvPrimvar);
-        bool hasUv = uvAttribute is not null;
+        bool hasUv = uvAttribute is not null || requireTextureCoordinates || ptexAtlas is not null;
         bool hasTangents = hasUv && requireTangents;
-        double[] tangents = hasTangents ? new double[checked(pointCount * 3)] : [];
+        // A second surface coordinate set is emitted only beside a first one. A mesh
+        // that lacks it reads zeros, exactly as a missing first set does.
+        bool hasSecondary = hasUv &&
+            (ptexAsSecondary ||
+                (!string.IsNullOrEmpty(secondaryUvPrimvar) &&
+                    !string.Equals(secondaryUvPrimvar, uvPrimvar, StringComparison.Ordinal)));
+        SilkVertexAttributeData? secondaryAttribute = hasSecondary
+            ? mesh.FindTexCoord(secondaryUvPrimvar)
+            : null;
+        // Tangents follow the coordinate set the normal map samples, or the
+        // tangent frame would rotate the mapped normal by the angle between sets.
+        SilkVertexAttributeData? tangentAttribute = hasSecondary && tangentsFromSecondary
+            ? secondaryAttribute
+            : uvAttribute;
+        double[] tangents = hasTangents ? new double[checked(vertexCount * 3)] : [];
+        double[] bitangents = hasTangents ? new double[checked(vertexCount * 3)] : [];
 
-        if (hasTangents && mesh.TopologyKind == SilkTopologyKind.TriangleList)
+        if (hasTangents && tangentAttribute is not null && mesh.TopologyKind == SilkTopologyKind.TriangleList)
         {
             for (int triangle = 0; triangle < meshIndices.Length; triangle += 3)
             {
                 int a = checked((int)indices[triangle]);
                 int b = checked((int)indices[triangle + 1]);
                 int c = checked((int)indices[triangle + 2]);
-                AccumulateTangent(mesh, points, uvAttribute!, tangents, a, b, c);
+                AccumulateTangent(mesh, points, tangentAttribute, tangents, bitangents, a, b, c,
+                    triangleLocal ? triangle : a,
+                    triangleLocal ? triangle + 1 : b,
+                    triangleLocal ? triangle + 2 : c);
             }
         }
 
         // Authored normals win when the delegate resolved them onto emitted
-        // vertices; otherwise they are area-weighted from topology as before.
+        // vertices; otherwise they are area-weighted from topology.
         // Both paths still normalise and reject a degenerate normal, so an
         // authored zero or non-finite value cannot reach the GPU.
-        ReadOnlySpan<float> authored = mesh.AuthoredNormals.Span;
-        bool useAuthored = authored.Length == points.Length;
-
-        int strideFloats = hasTangents ? 12 : hasUv ? 8 : 6;
-        float[] vertices = new float[checked(pointCount * strideFloats)];
+        int strideFloats = (hasTangents ? 12 : hasUv ? 8 : 6) + (hasSecondary ? 2 : 0);
+        float[] vertices = new float[checked(vertexCount * strideFloats)];
         float maximumDisplacement = 0;
-        for (int point = 0; point < pointCount; point++)
+        for (int vertex = 0; vertex < vertexCount; vertex++)
         {
+            int point = triangleLocal
+                ? vertex < indices.Length
+                    ? checked((int)indices[vertex])
+                    : unreferencedPoints[vertex - indices.Length]
+                : vertex;
             int source = point * 3;
-            int destination = point * strideFloats;
+            int normalSource = triangleLocal ? vertex * 3 : source;
+            int destination = vertex * strideFloats;
 
-            double nx = useAuthored ? authored[source] : normals[source];
-            double ny = useAuthored ? authored[source + 1] : normals[source + 1];
-            double nz = useAuthored ? authored[source + 2] : normals[source + 2];
+            double nx = useAuthored ? authored[source] : normals[normalSource];
+            double ny = useAuthored ? authored[source + 1] : normals[normalSource + 1];
+            double nz = useAuthored ? authored[source + 2] : normals[normalSource + 2];
             double lengthSquared = (nx * nx) + (ny * ny) + (nz * nz);
             if (!double.IsFinite(lengthSquared) || lengthSquared <= NormalEpsilonSquared)
             {
@@ -161,10 +211,6 @@ internal static class SilkMeshGeometryBuilder
             // renderer claims is deform, then displace, and a re-derived frame
             // would make the claim untestable against the CPU deformation oracle.
             float amount = displacementAmounts.IsEmpty ? 0 : displacementAmounts[point];
-            if (!float.IsFinite(amount))
-            {
-                throw InvalidMesh(mesh, $"displacement amount {point} is not finite");
-            }
             float positionX = points[source] + (amount * normalX);
             float positionY = points[source + 1] + (amount * normalY);
             float positionZ = points[source + 2] + (amount * normalZ);
@@ -183,14 +229,14 @@ internal static class SilkMeshGeometryBuilder
             vertices[destination + 5] = normalZ;
             if (hasUv)
             {
-                vertices[destination + 6] = uvAttribute!.GetComponent(point, 0);
-                vertices[destination + 7] = uvAttribute.ComponentCount > 1
+                vertices[destination + 6] = uvAttribute?.GetComponent(point, 0) ?? 0;
+                vertices[destination + 7] = uvAttribute is { ComponentCount: > 1 }
                     ? uvAttribute.GetComponent(point, 1)
                     : 0;
             }
             if (hasTangents)
             {
-                int tangentSource = point * 3;
+                int tangentSource = vertex * 3;
                 double tx = tangents[tangentSource];
                 double ty = tangents[tangentSource + 1];
                 double tz = tangents[tangentSource + 2];
@@ -207,23 +253,116 @@ internal static class SilkMeshGeometryBuilder
                 vertices[destination + 8] = checked((float)(tx * inverseTangentLength));
                 vertices[destination + 9] = checked((float)(ty * inverseTangentLength));
                 vertices[destination + 10] = checked((float)(tz * inverseTangentLength));
-                vertices[destination + 11] = 1;
+                double bx = bitangents[tangentSource];
+                double by = bitangents[tangentSource + 1];
+                double bz = bitangents[tangentSource + 2];
+                double handedness = ((normalY * tz - normalZ * ty) * bx) +
+                    ((normalZ * tx - normalX * tz) * by) + ((normalX * ty - normalY * tx) * bz);
+                vertices[destination + 11] = handedness < 0 ? -1 : 1;
+            }
+            if (hasSecondary)
+            {
+                int secondary = destination + strideFloats - 2;
+                vertices[secondary] = secondaryAttribute?.GetComponent(point, 0) ?? 0;
+                vertices[secondary + 1] = secondaryAttribute is { ComponentCount: > 1 }
+                    ? secondaryAttribute.GetComponent(point, 1)
+                    : 0;
+            }
+            if (triangleLocal && vertex < indices.Length)
+            {
+                indices[vertex] = checked((uint)vertex);
             }
         }
 
-        SilkVertexLayoutDescriptor layout = hasTangents
-            ? SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent
-            : hasUv
+        SilkVertexLayoutDescriptor layout = (hasTangents, hasSecondary) switch
+        {
+            (true, true) => SilkVertexLayoutDescriptor.PositionNormalTexCoordTangentSecondary,
+            (true, false) => SilkVertexLayoutDescriptor.PositionNormalTexCoordTangent,
+            (false, true) => SilkVertexLayoutDescriptor.PositionNormalTexCoordSecondary,
+            _ => hasUv
                 ? SilkVertexLayoutDescriptor.PositionNormalTexCoord
-                : SilkVertexLayoutDescriptor.PositionNormal;
+                : SilkVertexLayoutDescriptor.PositionNormal
+        };
+        uint[] emittedIndices = indices;
+        if (ptexAtlas is { IsFallback: true })
+        {
+            int textureCoordinate = ptexAsSecondary ? strideFloats - 2 : 6;
+            for (int vertex = 0; vertex < vertexCount; vertex++)
+            {
+                int destination = checked((vertex * strideFloats) + textureCoordinate);
+                vertices[destination] = 0.5f;
+                vertices[destination + 1] = 0.5f;
+            }
+        }
+        else if (ptexAtlas is not null)
+        {
+            if (mesh.TopologyKind != SilkTopologyKind.TriangleList)
+            {
+                throw InvalidMesh(mesh, "Ptex sampling requires triangle-list topology");
+            }
+            SilkPtexAtlasLayout.ValidateMapping(mesh);
+            if (!triangleLocal)
+            {
+                (vertices, emittedIndices) = ExpandTriangleCorners(
+                    vertices, indices, strideFloats, unreferencedPoints);
+            }
+            for (int corner = 0; corner < meshIndices.Length; corner++)
+            {
+                uint faceId = checked((uint)mesh.PtexFaceIndices[corner / 3]);
+                (float u, float v) = ptexAtlas.Map(
+                    faceId,
+                    mesh.PtexCoordinates[corner * 2],
+                    mesh.PtexCoordinates[(corner * 2) + 1]);
+                int textureCoordinate = ptexAsSecondary ? strideFloats - 2 : 6;
+                int destination = checked((corner * strideFloats) + textureCoordinate);
+                vertices[destination] = u;
+                vertices[destination + 1] = v;
+            }
+        }
+
         return new SilkMeshGeometry(
             vertices,
-            indices,
+            emittedIndices,
             layout,
             hasUv ? uvPrimvar : "",
             hasTangents,
             !displacementAmounts.IsEmpty,
-            maximumDisplacement);
+            maximumDisplacement,
+            hasSecondary && !ptexAsSecondary ? secondaryUvPrimvar : "",
+            triangleLocal || ptexAtlas is { IsFallback: false },
+            ptexAsSecondary);
+    }
+
+    internal static (float[] Vertices, uint[] Indices) ExpandTriangleCorners(
+        ReadOnlySpan<float> sourceVertices,
+        ReadOnlySpan<uint> sourceIndices,
+        int strideFloats,
+        ReadOnlySpan<int> unreferencedPoints = default)
+    {
+        if (strideFloats <= 0 || sourceVertices.Length % strideFloats != 0)
+        {
+            throw new InvalidDataException("The source vertex stream does not match its stride.");
+        }
+        float[] vertices = new float[checked((sourceIndices.Length + unreferencedPoints.Length) * strideFloats)];
+        uint[] indices = new uint[sourceIndices.Length];
+        for (int corner = 0; corner < sourceIndices.Length; corner++)
+        {
+            if (sourceIndices[corner] >= sourceVertices.Length / strideFloats)
+            {
+                throw new InvalidDataException($"Triangle corner {corner} references an absent source vertex.");
+            }
+            int source = checked((int)sourceIndices[corner] * strideFloats);
+            int destination = checked(corner * strideFloats);
+            sourceVertices.Slice(source, strideFloats).CopyTo(vertices.AsSpan(destination, strideFloats));
+            indices[corner] = checked((uint)corner);
+        }
+        for (int point = 0; point < unreferencedPoints.Length; point++)
+        {
+            int source = checked(unreferencedPoints[point] * strideFloats);
+            int destination = checked((sourceIndices.Length + point) * strideFloats);
+            sourceVertices.Slice(source, strideFloats).CopyTo(vertices.AsSpan(destination, strideFloats));
+        }
+        return (vertices, indices);
     }
 
     private static void AccumulateTangent(
@@ -231,25 +370,31 @@ internal static class SilkMeshGeometryBuilder
         ReadOnlySpan<float> points,
         SilkVertexAttributeData uv,
         double[] tangents,
+        double[] bitangents,
         int a,
         int b,
-        int c)
+        int c,
+        int targetA,
+        int targetB,
+        int targetC)
     {
         int pa = a * 3;
         int pb = b * 3;
         int pc = c * 3;
-        double edge1X = points[pb] - points[pa];
-        double edge1Y = points[pb + 1] - points[pa + 1];
-        double edge1Z = points[pb + 2] - points[pa + 2];
-        double edge2X = points[pc] - points[pa];
-        double edge2Y = points[pc + 1] - points[pa + 1];
-        double edge2Z = points[pc + 2] - points[pa + 2];
-        double du1 = uv.GetComponent(b, 0) - uv.GetComponent(a, 0);
-        double dv1 = (uv.ComponentCount > 1 ? uv.GetComponent(b, 1) : 0) -
-            (uv.ComponentCount > 1 ? uv.GetComponent(a, 1) : 0);
-        double du2 = uv.GetComponent(c, 0) - uv.GetComponent(a, 0);
-        double dv2 = (uv.ComponentCount > 1 ? uv.GetComponent(c, 1) : 0) -
-            (uv.ComponentCount > 1 ? uv.GetComponent(a, 1) : 0);
+        double edge1X = (double)points[pb] - points[pa];
+        double edge1Y = (double)points[pb + 1] - points[pa + 1];
+        double edge1Z = (double)points[pb + 2] - points[pa + 2];
+        double edge2X = (double)points[pc] - points[pa];
+        double edge2Y = (double)points[pc + 1] - points[pa + 1];
+        double edge2Z = (double)points[pc + 2] - points[pa + 2];
+        double du1 = (double)uv.GetComponent(b, 0) - uv.GetComponent(a, 0);
+        double dv1 = uv.ComponentCount > 1
+            ? (double)uv.GetComponent(b, 1) - uv.GetComponent(a, 1)
+            : 0;
+        double du2 = (double)uv.GetComponent(c, 0) - uv.GetComponent(a, 0);
+        double dv2 = uv.ComponentCount > 1
+            ? (double)uv.GetComponent(c, 1) - uv.GetComponent(a, 1)
+            : 0;
         double determinant = (du1 * dv2) - (du2 * dv1);
         if (!double.IsFinite(determinant) || Math.Abs(determinant) <= 1e-12)
         {
@@ -259,13 +404,20 @@ internal static class SilkMeshGeometryBuilder
         double tx = ((edge1X * dv2) - (edge2X * dv1)) * r;
         double ty = ((edge1Y * dv2) - (edge2Y * dv1)) * r;
         double tz = ((edge1Z * dv2) - (edge2Z * dv1)) * r;
-        if (!double.IsFinite(tx) || !double.IsFinite(ty) || !double.IsFinite(tz))
+        double bx = ((edge2X * du1) - (edge1X * du2)) * r;
+        double by = ((edge2Y * du1) - (edge1Y * du2)) * r;
+        double bz = ((edge2Z * du1) - (edge1Z * du2)) * r;
+        if (!double.IsFinite(tx) || !double.IsFinite(ty) || !double.IsFinite(tz) ||
+            !double.IsFinite(bx) || !double.IsFinite(by) || !double.IsFinite(bz))
         {
             throw InvalidMesh(mesh, "computed tangent is not finite");
         }
-        Accumulate(tangents, pa, tx, ty, tz);
-        Accumulate(tangents, pb, tx, ty, tz);
-        Accumulate(tangents, pc, tx, ty, tz);
+        Accumulate(tangents, targetA * 3, tx, ty, tz);
+        Accumulate(tangents, targetB * 3, tx, ty, tz);
+        Accumulate(tangents, targetC * 3, tx, ty, tz);
+        Accumulate(bitangents, targetA * 3, bx, by, bz);
+        Accumulate(bitangents, targetB * 3, bx, by, bz);
+        Accumulate(bitangents, targetC * 3, bx, by, bz);
     }
 
     private static int ValidateIndex(
@@ -294,6 +446,104 @@ internal static class SilkMeshGeometryBuilder
         normals[offset] += x;
         normals[offset + 1] += y;
         normals[offset + 2] += z;
+    }
+
+    private static void BuildPolygonNormals(
+        SilkMeshData mesh, ReadOnlySpan<float> points, ReadOnlySpan<uint> indices, double[] normals)
+    {
+        int pointCount = points.Length / 3;
+        ReadOnlySpan<int> identities = mesh.NormalIdentityArray;
+        ReadOnlySpan<int> corners = mesh.NormalCornerArray;
+        if (identities.Length != pointCount || corners.Length % 3 != 0 ||
+            mesh.NormalExtraPointArray.Length % 3 != 0)
+        {
+            throw InvalidMesh(mesh, "normal correspondence counts do not match the emitted topology");
+        }
+        float[]? allNormalPoints = null;
+        if (mesh.NormalExtraPointArray.Length != 0)
+        {
+            allNormalPoints = new float[checked(points.Length + mesh.NormalExtraPointArray.Length)];
+            points.CopyTo(allNormalPoints);
+            mesh.NormalExtraPointArray.CopyTo(allNormalPoints, points.Length);
+        }
+        ReadOnlySpan<float> normalPoints = allNormalPoints is null ? points : allNormalPoints;
+        int normalPointCount = normalPoints.Length / 3;
+        var groups = new Dictionary<(int Identity, float X, float Y, float Z), int>(pointCount);
+        var representatives = new int[pointCount];
+        var hasPolygonCorner = new bool[pointCount];
+        for (int point = 0; point < pointCount; point++)
+        {
+            int offset = point * 3;
+            var key = (identities[point], points[offset], points[offset + 1], points[offset + 2]);
+            if (identities[point] < 0)
+            {
+                throw InvalidMesh(mesh, "normal identity is negative");
+            }
+            if (!groups.TryGetValue(key, out int representative))
+            {
+                representative = point;
+                groups.Add(key, representative);
+            }
+            representatives[point] = representative;
+        }
+        for (int corner = 0; corner < corners.Length; corner += 3)
+        {
+            int previous = corners[corner];
+            int current = corners[corner + 1];
+            int next = corners[corner + 2];
+            if ((uint)previous >= normalPointCount || (uint)current >= normalPointCount ||
+                (uint)next >= normalPointCount)
+            {
+                throw InvalidMesh(mesh, "normal corner references a missing point");
+            }
+            if (current >= pointCount)
+            {
+                continue;
+            }
+            int representative = representatives[current];
+            hasPolygonCorner[representative] = true;
+            AccumulateCorner(normalPoints, normals, representative, current, next, previous);
+        }
+        // A simulated triangle copy can separate from the polygon corner that
+        // originally represented it. Its new position has its own local normal.
+        for (int triangle = 0; triangle < indices.Length; triangle += 3)
+        {
+            for (int corner = 0; corner < 3; corner++)
+            {
+                int current = checked((int)indices[triangle + corner]);
+                int representative = representatives[current];
+                if (!hasPolygonCorner[representative])
+                {
+                    AccumulateCorner(points, normals, representative, current,
+                        checked((int)indices[triangle + ((corner + 1) % 3)]),
+                        checked((int)indices[triangle + ((corner + 2) % 3)]));
+                }
+            }
+        }
+        for (int point = 0; point < pointCount; point++)
+        {
+            int representative = representatives[point] * 3;
+            if (representative != point * 3)
+            {
+                normals.AsSpan(representative, 3).CopyTo(normals.AsSpan(point * 3, 3));
+            }
+        }
+    }
+
+    private static void AccumulateCorner(
+        ReadOnlySpan<float> points, double[] normals, int target, int current, int next, int previous)
+    {
+        int a = current * 3;
+        int b = next * 3;
+        int c = previous * 3;
+        double bx = (double)points[b] - points[a];
+        double by = (double)points[b + 1] - points[a + 1];
+        double bz = (double)points[b + 2] - points[a + 2];
+        double cx = (double)points[c] - points[a];
+        double cy = (double)points[c + 1] - points[a + 1];
+        double cz = (double)points[c + 2] - points[a + 2];
+        Accumulate(normals, target * 3,
+            (by * cz) - (bz * cy), (bz * cx) - (bx * cz), (bx * cy) - (by * cx));
     }
 
     private static InvalidDataException InvalidMesh(SilkMeshData mesh, string detail) =>

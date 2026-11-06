@@ -140,6 +140,10 @@ def map_parameter(declaration: str) -> tuple[str, str]:
     if native_type == "openusd_vec3f*":
         return ("OpenUsdNativeVec3f*" if native_name in {"values", "offsets", "normal_offsets"}
                 else "out OpenUsdNativeVec3f"), managed_name
+    if native_type == "const openusd_vec4f*":
+        return "OpenUsdNativeVec4f*", managed_name
+    if native_type == "openusd_vec4f*":
+        return "OpenUsdNativeVec4f*", managed_name
     if native_type == "openusd_vec3f":
         return "OpenUsdNativeVec3f", managed_name
     if native_type == "const openusd_matrix4d*":
@@ -169,6 +173,8 @@ def map_parameter(declaration: str) -> tuple[str, str]:
         return "ref OpenUsdNativeBounds3d", managed_name
     if native_type == "openusd_oriented_bounds3d*":
         return "ref OpenUsdNativeOrientedBounds3d", managed_name
+    if native_type == "openusd_stage_linear_units*":
+        return "out OpenUsdNativeStageLinearUnits", managed_name
     if native_type == "openusd_prim_classification*":
         return "ref OpenUsdNativePrimClassification", managed_name
     if native_type == "openusd_geom_camera_state*":

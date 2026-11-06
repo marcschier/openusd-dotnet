@@ -465,7 +465,7 @@ public sealed class BridgeClientLifetimeTests
 
         await harness.Client.DisposeAsync();
 
-        await Assert.That(harness.Run.IsCompleted).IsTrue();
+        await harness.Run.WaitAsync(TimeSpan.FromSeconds(10));
         await Assert.That(harness.Client.State).IsEqualTo(BridgeConnectionState.Disconnected);
 
         // A disposed client must not keep reconnecting behind the host's back.

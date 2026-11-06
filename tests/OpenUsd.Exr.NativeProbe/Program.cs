@@ -1,6 +1,7 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -8,8 +9,6 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using OpenUsd.Interop;
 using OpenUsd.Rendering;
-
-[assembly: SupportedOSPlatform("windows")]
 
 internal static unsafe partial class Program
 {
@@ -80,18 +79,53 @@ internal static unsafe partial class Program
 
     private static void ModuleIdentity(string name, string expectedSha256)
     {
-        nint module = GetModuleHandleW(name);
-        Require(module != 0, "Expected package native module was not loaded.");
-        Span<char> pathBuffer = stackalloc char[1024];
-        uint length;
-        fixed (char* pointer = pathBuffer)
+        string? modulePath = null;
+        if (OperatingSystem.IsWindows())
         {
-            length = GetModuleFileNameW(module, pointer, (uint)pathBuffer.Length);
+            nint module = GetModuleHandle(name);
+            if (module != 0)
+            {
+                char[] buffer = new char[32768];
+                fixed (char* fileName = buffer)
+                {
+                    uint length = GetModuleFileName(module, fileName, (uint)buffer.Length);
+                    Require(length > 0 && length < buffer.Length,
+                        $"Could not resolve the loaded native module '{name}' to a full path.");
+                    modulePath = new string(buffer, 0, (int)length);
+                }
+            }
         }
-        Require(length > 0 && length < (uint)pathBuffer.Length, "Module path is unavailable.");
-        string path = Path.GetFullPath(new string(pathBuffer[..(int)length]));
+        else if (OperatingSystem.IsMacOS())
+        {
+            uint count = GetImageCount();
+            for (uint index = 0; index < count; index++)
+            {
+                string? candidate = Marshal.PtrToStringUTF8(GetImageName(index));
+                if (Path.GetFileName(candidate) == name)
+                {
+                    modulePath = candidate;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            using Process process = Process.GetCurrentProcess();
+            foreach (ProcessModule module in process.Modules)
+            {
+                if (Path.GetFileName(module.FileName) == name)
+                {
+                    modulePath = module.FileName;
+                    break;
+                }
+            }
+        }
+        Require(modulePath is not null, "Expected package native module was not loaded.");
+        string path = Path.GetFullPath(modulePath!);
         string app = Path.GetFullPath(AppContext.BaseDirectory);
-        Require(path.StartsWith(app, StringComparison.OrdinalIgnoreCase), "Native dependency escaped the package app.");
+        Require(Path.GetDirectoryName(path)!.Equals(Path.TrimEndingDirectorySeparator(app),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal),
+            "Native dependency escaped the package app.");
         using FileStream file = File.OpenRead(path);
         string hash = Convert.ToHexString(SHA256.HashData(file));
         Require(hash == expectedSha256, "Native package/install identity mismatch.");
@@ -134,7 +168,10 @@ internal static unsafe partial class Program
         Require(length is > 0 and <= 1_048_576, "Cancellation lost the partial-output bound.");
         if (disposeOwner)
         {
-            Require(GetHandleInformation(handle, out _) == 0, "Owner disposal did not drain the borrowed handle.");
+            bool closed = OperatingSystem.IsWindows()
+                ? GetHandleInformation(handle, out _) == 0
+                : GetDescriptorFlags(checked((int)handle), 1) == -1;
+            Require(stream.SafeFileHandle.IsClosed && closed, "Owner disposal did not drain the borrowed handle.");
         }
         else
         {
@@ -197,7 +234,8 @@ internal static unsafe partial class Program
         string path = Path.Combine(result.OutputDirectory, frame.HdrColorFileName!);
         Verify(path, pixels);
         Require(frame.HdrColorBytes == new FileInfo(path).Length &&
-            frame.HdrColorSha256 == Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant(),
+            string.Equals(frame.HdrColorSha256, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
+                StringComparison.OrdinalIgnoreCase),
             "EXR job hash/extent mismatch.");
         Require(result.TotalBytes == Directory.GetFiles(result.OutputDirectory).Sum(
             static file => new FileInfo(file).Length), "Combined EXR job quota accounting mismatch.");
@@ -225,7 +263,7 @@ internal static unsafe partial class Program
     {
         try
         {
-            Require(args.Length == 2, "Expected data and SDK SHA256 identities.");
+            Require(args.Length == 4, "Expected data and SDK SHA256 identities and library names.");
             Require(ExrRgba16FloatWriter.IsSupported && !RuntimeFeature.IsDynamicCodeSupported &&
                 !RuntimeFeature.IsDynamicCodeCompiled, "Actual supported-host NativeAOT execution is required.");
             uint abi = OpenUsdNativeRuntime.AbiVersion;
@@ -305,8 +343,8 @@ internal static unsafe partial class Program
                 Require(png.ToArray().AsSpan(0, 8).SequenceEqual<byte>([137, 80, 78, 71, 13, 10, 26, 10]),
                     "Existing Core/PNG behavior regressed.");
             }
-            ModuleIdentity("openusd_dotnet.dll", args[0]);
-            ModuleIdentity("usd_ms.dll", args[1]);
+            ModuleIdentity(args[2], args[0]);
+            ModuleIdentity(args[3], args[1]);
             DiskJobOutput(root, pixels);
             Console.WriteLine($"PUBLIC_EXR_INDEPENDENT_HALF_BITS=passed; rows=both; exactBytes={exact}");
             Console.WriteLine("PUBLIC_EXR_QUOTA_CANCEL_OWNERSHIP=passed");
@@ -321,12 +359,26 @@ internal static unsafe partial class Program
         }
     }
 
-    [LibraryImport("kernel32", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial nint GetModuleHandleW(string name);
-
-    [LibraryImport("kernel32")]
-    private static partial uint GetModuleFileNameW(nint module, char* buffer, uint length);
-
+    [SupportedOSPlatform("windows")]
     [LibraryImport("kernel32", SetLastError = true)]
     private static partial int GetHandleInformation(nint handle, out uint flags);
+
+    [SupportedOSPlatform("windows")]
+    [LibraryImport("kernel32", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint GetModuleHandle(string moduleName);
+
+    [SupportedOSPlatform("windows")]
+    [LibraryImport("kernel32", EntryPoint = "GetModuleFileNameW", SetLastError = true)]
+    private static partial uint GetModuleFileName(nint module, char* fileName, uint size);
+
+    [LibraryImport("libc", EntryPoint = "fcntl", SetLastError = true)]
+    private static partial int GetDescriptorFlags(int descriptor, int command);
+
+    [SupportedOSPlatform("macos")]
+    [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "_dyld_image_count")]
+    private static partial uint GetImageCount();
+
+    [SupportedOSPlatform("macos")]
+    [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "_dyld_get_image_name")]
+    private static partial nint GetImageName(uint index);
 }

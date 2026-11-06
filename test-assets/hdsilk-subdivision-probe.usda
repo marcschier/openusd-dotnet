@@ -285,6 +285,18 @@ def Xform "World"
         )
     }
 
+    def Mesh "SubdivNoneAuthoredNormalQuad"
+    {
+        uniform bool doubleSided = 1
+        uniform token subdivisionScheme = "none"
+        point3f[] points = [(2, 2, 0), (4, 2, 0), (4, 4, 0), (2, 4, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        normal3f[] normals = [(0, 1, 0)] (
+            interpolation = "constant"
+        )
+    }
+
     # Animated control points over static topology. Scrubbing must move the
     # refined positions without rebuilding the refiner.
     def Mesh "SubdivAnimatedCube"

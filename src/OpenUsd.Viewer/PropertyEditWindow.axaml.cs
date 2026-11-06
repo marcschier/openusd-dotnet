@@ -27,6 +27,20 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         ViewerAuthoredEditController editor, string primPath,
         IReadOnlyList<ViewerAttributeSnapshot> attributes, double timeCode, string? selectedName = null,
         IViewerAssetFilePicker? assetFilePicker = null)
+        : this(editor, primPath, attributes, timeCode, selectedName, assetFilePicker, null)
+    {
+    }
+
+    internal PropertyEditWindow(
+        ViewerAuthoredEditController editor, string primPath, ViewerRelationshipSnapshot binding)
+        : this(editor, primPath, [], 0, null, null, binding)
+    {
+    }
+
+    private PropertyEditWindow(
+        ViewerAuthoredEditController editor, string primPath,
+        IReadOnlyList<ViewerAttributeSnapshot> attributes, double timeCode, string? selectedName,
+        IViewerAssetFilePicker? assetFilePicker, ViewerRelationshipSnapshot? binding)
     {
         ArgumentNullException.ThrowIfNull(editor);
         ArgumentException.ThrowIfNullOrWhiteSpace(primPath);
@@ -40,16 +54,19 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         _assetFilePicker = assetFilePicker ?? ViewerAssetFilePicker.Default;
         _primPath = primPath;
         _timeCode = timeCode;
+        _binding = binding;
         _attributes = [.. attributes
             .Where(static attribute => ViewerPropertyEditParser.Supports(attribute.TypeName))
             .OrderByDescending(static attribute => attribute.HasAuthoredValue)];
-        if (_attributes.Length == 0)
+        if (_attributes.Length == 0 && binding is null)
         {
             throw new NotSupportedException(
                 "This prim has no supported scalar, vector, quaternion, matrix or asset review properties.");
         }
         InitializeComponent();
         ViewerWindowTheme.Attach(this);
+        ViewerTextBoxScrolling.ContainCaretRequests(PropertyValue);
+        PropertyValue.GotFocus += (_, _) => PropertyValue.BringIntoView();
         PropertyPrimPath.Text = primPath;
         PropertySelector.ItemsSource = _attributes.Select(static attribute =>
             $"{attribute.Name} ({attribute.TypeName})").ToArray();
@@ -60,12 +77,18 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
             "Default opinion", $"Sample at {timeCode.ToString("R", CultureInfo.InvariantCulture)}"
         };
         PropertyFieldSelector.SelectedIndex = 0;
+        if (binding is not null)
+        {
+            ConfigureMaterialBinding();
+        }
         PropertySelector.SelectionChanged += (_, _) => Start(CaptureAsync);
         PropertyFieldSelector.SelectionChanged += (_, _) => Start(CaptureAsync);
         RefreshPropertyButton.Click += (_, _) => Start(CaptureAsync);
         SetPropertyButton.Click += (_, _) => Start(() => ApplyAsync(UsdLayerEditOperation.Set));
         ClearPropertyButton.Click += (_, _) => Start(() => ApplyAsync(UsdLayerEditOperation.Clear));
         BlockPropertyButton.Click += (_, _) => Start(() => ApplyAsync(UsdLayerEditOperation.Block));
+        PropertyValue.KeyDown += SetOnEnter;
+        PropertyBooleanValue.IsCheckedChanged += (_, _) => UpdateAvailability();
         ChoosePropertyAssetButton.Click += (_, _) => Start(ChooseAssetAsync);
         ClosePropertyButton.Click += (_, _) => Close();
         Opened += async (_, _) =>
@@ -74,9 +97,11 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
             await _operation;
             if (!_closing && IsActive)
             {
-                if (_capture is not null)
+                if (_capture is not null || _bindingCapture is not null)
                 {
-                    PropertyValue.Focus();
+                    Control input = _capture is { TypeName: "bool" } ? PropertyBooleanValue :
+                        _componentInputs.Count != 0 ? _componentInputs[0] : PropertyValue;
+                    input.Focus();
                 }
                 else
                 {
@@ -123,8 +148,13 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
 
     private async Task RunAsync(Func<Task> operation)
     {
+        Control? operationFocus = IsKeyboardFocusWithin ? FocusManager?.GetFocusedElement() as Control : null;
         _busy = true;
         UpdateAvailability();
+        if (operationFocus is not null)
+        {
+            ClosePropertyButton.Focus();
+        }
         try
         {
             await operation();
@@ -137,18 +167,37 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
             NotSupportedException or ArgumentException or InvalidOperationException)
         {
             _capture = null;
+            _bindingCapture = null;
             PropertyEditStatus.Text = $"Review edit unavailable: {exception.Message} Refresh to retry.";
         }
         finally
         {
+            bool restoreFocus = ClosePropertyButton.IsKeyboardFocusWithin && (IsActive || IsKeyboardFocusWithin);
             _busy = false;
             UpdateAvailability();
+            if (restoreFocus && !_closing)
+            {
+                if (operationFocus is { IsEnabled: true, IsVisible: true })
+                {
+                    operationFocus.Focus();
+                }
+                else
+                {
+                    RefreshPropertyButton.Focus();
+                }
+            }
         }
     }
 
     private async Task CaptureAsync()
     {
         _capture = null;
+        _bindingCapture = null;
+        if (_binding is not null)
+        {
+            await CaptureMaterialBindingAsync();
+            return;
+        }
         if (PropertySelector.SelectedIndex < 0 || PropertySelector.SelectedIndex >= _attributes.Length ||
             PropertyFieldSelector.SelectedIndex is not (0 or 1))
         {
@@ -171,14 +220,37 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
 
     private async Task ApplyAsync(UsdLayerEditOperation operation)
     {
+        if (_binding is not null)
+        {
+            await ApplyMaterialBindingAsync(operation);
+            return;
+        }
         ViewerPropertyEditCapture property = _capture ??
             throw new InvalidOperationException("Refresh the target opinion before editing.");
         UsdLayerEditAddress address = property.Capture.Snapshot.Addresses[0];
         UsdLayerEdit edit;
         if (operation == UsdLayerEditOperation.Set)
         {
-            if (!ViewerPropertyEditParser.TryParse(
-                property.TypeName, PropertyValue.Text ?? string.Empty, out UsdLayerEditValue? value, out string error))
+            UsdLayerEditValue? value;
+            if (property.TypeName == "bool")
+            {
+                if (PropertyBooleanValue.IsChecked is not bool boolean)
+                {
+                    PropertyEditStatus.Text = "Choose true or false before Set. Use Clear to remove this field.";
+                    return;
+                }
+                value = UsdLayerEditValue.FromBoolean(boolean);
+            }
+            else if (_componentInputs.Count != 0)
+            {
+                if (!TryReadComponentValue(out value, out string error))
+                {
+                    PropertyEditStatus.Text = error;
+                    return;
+                }
+            }
+            else if (!ViewerPropertyEditParser.TryParse(
+                property.TypeName, PropertyValue.Text ?? string.Empty, out value, out string error))
             {
                 PropertyEditStatus.Text = error;
                 return;
@@ -245,6 +317,8 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         UsdLayerAuthoredOpinion opinion = capture.Capture.Snapshot.Opinions[0];
         PropertyInputHint.Text = capture.TypeName switch
         {
+            "bool" => "Checked is true; unchecked is false. Indeterminate has no draft value. " +
+                "Only Set authors a value; use Clear or Block for those operations.",
             "asset" => "Enter the authored path, or choose a file for an absolute path. Set authors the change.",
             "float2" or "texCoord2f" => "Two components: (x, y). Values are not clamped.",
             "float4" or "color4f" => "Four components: (x, y, z, w). Values are not clamped.",
@@ -258,6 +332,19 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         PropertyTargetState.Text = $"Review target: {capture.Capture.LayerIdentifier}\n" +
             $"Revision {capture.Capture.Snapshot.Revision}; {opinion.Address.Field}: {value}";
         PropertyValue.Text = ViewerPropertyEditParser.Format(opinion.Value);
+        PropertyBooleanValue.IsChecked = capture.TypeName == "bool" &&
+            opinion.Value.Kind == UsdLayerEditValueKind.Boolean ? opinion.Value.AsBoolean() : null;
+        ShowComponentCapture(capture.TypeName, opinion.Value);
+    }
+
+    private void SetOnEnter(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || e.KeyModifiers != KeyModifiers.None)
+        {
+            return;
+        }
+        e.Handled = true;
+        Start(() => ApplyAsync(UsdLayerEditOperation.Set));
     }
 
     private void UpdateAvailability()
@@ -266,9 +353,18 @@ internal sealed partial class PropertyEditWindow : Window, IAsyncDisposable
         PropertySelector.IsEnabled = ready;
         PropertyFieldSelector.IsEnabled = ready;
         PropertyValue.IsEnabled = ready;
+        bool boolean = _capture is { TypeName: "bool" };
+        bool components = _capture is not null && _componentInputs.Count != 0;
+        PropertyValue.IsVisible = !boolean && !components;
+        PropertyBooleanValue.IsVisible = boolean;
+        PropertyBooleanValue.IsEnabled = ready && boolean;
+        PropertyComponentValues.IsVisible = components;
+        PropertyComponentValues.IsEnabled = ready && components;
         RefreshPropertyButton.IsEnabled = ready;
-        SetPropertyButton.IsEnabled = ready && _capture is not null;
-        ClearPropertyButton.IsEnabled = ready && _capture is not null;
+        SetPropertyButton.IsEnabled = ready && (_capture is not null || _bindingCapture is not null) &&
+            (!boolean || PropertyBooleanValue.IsChecked.HasValue) &&
+            (!components || TryReadComponentValue(out _, out _));
+        ClearPropertyButton.IsEnabled = ready && (_capture is not null || _bindingCapture is not null);
         BlockPropertyButton.IsEnabled = ready && _capture is not null;
         ChoosePropertyAssetButton.IsVisible = _capture is { TypeName: "asset" };
         ChoosePropertyAssetButton.IsEnabled = ready && _capture is { TypeName: "asset" };

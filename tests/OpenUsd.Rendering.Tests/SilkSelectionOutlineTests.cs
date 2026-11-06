@@ -467,6 +467,84 @@ public sealed class SilkSelectionOutlineTests
         await Assert.That(device.LastMaskIndexCount).IsEqualTo(1u);
     }
 
+    [Test]
+    [Arguments(SelectionElementKind.Face, 1, new uint[] { 3, 4, 5 })]
+    [Arguments(SelectionElementKind.Edge, 2, new uint[] { 4, 5 })]
+    [Arguments(SelectionElementKind.Point, 3, new uint[] { 5 })]
+    [Arguments(SelectionElementKind.Point, 0, new uint[] { 0, 3 })]
+    public async Task DerivedCornersSelectTheRenderedComponentCopies(
+        SelectionElementKind kind,
+        int element,
+        uint[] expectedIndices)
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using TestTexture color = CreateColorTarget(device, 8, 6);
+        using TestTexture depth = CreateDepthTarget(device, 8, 6);
+        ApplySubprimScene(renderer, 8, 6, 1, triangleLocal: true);
+
+        renderer.UpdateSelection(new SelectionState(
+        [
+            new SelectionItem(
+                "/Quad",
+                instancerPath: null,
+                instanceIndex: null,
+                elementIndex: element,
+                elementKind: kind)
+        ]));
+        _ = renderer.Render(color, depth);
+
+        await Assert.That(device.LastMaskIndices.SequenceEqual(expectedIndices)).IsTrue()
+            .Because($"Expected [{string.Join(", ", expectedIndices)}], " +
+                $"got [{string.Join(", ", device.LastMaskIndices)}].");
+    }
+
+    [Test]
+    public async Task DerivedCornersRetainAnUnreferencedAuthoredPointForSelection()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using TestTexture color = CreateColorTarget(device, 8, 6);
+        using TestTexture depth = CreateDepthTarget(device, 8, 6);
+        ApplySubprimScene(renderer, 8, 6, 1, triangleLocal: true, orphan: true);
+        renderer.UpdateSelection(new SelectionState(
+        [
+            new SelectionItem(
+                "/Quad",
+                instancerPath: null,
+                instanceIndex: null,
+                elementIndex: 4,
+                elementKind: SelectionElementKind.Point)
+        ]));
+
+        _ = renderer.Render(color, depth);
+
+        await Assert.That(device.LastMaskIndices.SequenceEqual(new uint[] { 6 })).IsTrue();
+    }
+
+    [Test]
+    public async Task DerivedCornersSelectBothCopiesOfASharedEdge()
+    {
+        using var device = new TestGraphicsDevice();
+        using var renderer = new SilkMeshRenderer(device);
+        using TestTexture color = CreateColorTarget(device, 8, 6);
+        using TestTexture depth = CreateDepthTarget(device, 8, 6);
+        ApplySubprimScene(renderer, 8, 6, 1, triangleLocal: true, sharedEdge: true);
+        renderer.UpdateSelection(new SelectionState(
+        [
+            new SelectionItem(
+                "/Quad",
+                instancerPath: null,
+                instanceIndex: null,
+                elementIndex: 0,
+                elementKind: SelectionElementKind.Edge)
+        ]));
+
+        _ = renderer.Render(color, depth);
+
+        await Assert.That(device.LastMaskIndices.SequenceEqual(new uint[] { 0, 1, 3, 4 })).IsTrue();
+    }
+
     /// <summary>
     /// A component the retained mesh cannot resolve exactly produces no mask
     /// draw at all rather than a broader one.
@@ -529,10 +607,13 @@ public sealed class SilkSelectionOutlineTests
         SilkMeshRenderer renderer,
         uint width,
         uint height,
-        ulong pageRevision)
+        ulong pageRevision,
+        bool triangleLocal = false,
+        bool orphan = false,
+        bool sharedEdge = false)
     {
         byte[] frame = CreateFrameCommand(width, height);
-        byte[] mesh = CreateSubprimQuadCommand();
+        byte[] mesh = CreateSubprimQuadCommand(triangleLocal, orphan, sharedEdge);
         var page = new byte[frame.Length + mesh.Length];
         frame.CopyTo(page, 0);
         mesh.CopyTo(page, frame.Length);
@@ -545,27 +626,27 @@ public sealed class SilkSelectionOutlineTests
     /// edges, so a component selection has a strictly smaller scope than the
     /// prim and every subprim topology has something to mask.
     /// </summary>
-    private static byte[] CreateSubprimQuadCommand()
+    internal static byte[] CreateSubprimQuadCommand(
+        bool triangleLocal = false, bool orphan = false, bool sharedEdge = false)
     {
         byte[] path = Encoding.UTF8.GetBytes("/Quad");
-        float[] points =
-        [
-            -0.5f, -0.5f, 0,
-            0.5f, -0.5f, 0,
-            0.5f, 0.5f, 0,
-            -0.5f, 0.5f, 0
-        ];
-        uint[] indices = [0, 1, 2, 0, 2, 3];
+        float[] points = orphan
+            ? [-0.5f, -0.5f, 0, 0.5f, -0.5f, 0, 0.5f, 0.5f, 0, -0.5f, 0.5f, 0, 0, 0, 0.5f]
+            : [-0.5f, -0.5f, 0, 0.5f, -0.5f, 0, 0.5f, 0.5f, 0, -0.5f, 0.5f, 0];
+        uint[] indices = sharedEdge ? [0, 1, 2, 1, 0, 3] : [0, 1, 2, 0, 2, 3];
         uint[] subprims = [0, 1];
-        uint[] pointOrigins = [0, 1, 2, 3];
-        uint[] cornerEdges = [0, 1, 0xFFFFFFFFu, 0xFFFFFFFFu, 2, 3];
-        int size = 268 +
+        uint[] pointOrigins = orphan ? [0, 1, 2, 3, 4] : [0, 1, 2, 3];
+        uint[] cornerEdges = sharedEdge
+            ? [0, 1, 0xFFFFFFFFu, 0, 2, 3]
+            : [0, 1, 0xFFFFFFFFu, 0xFFFFFFFFu, 2, 3];
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
             (subprims.Length * sizeof(uint)) +
             (pointOrigins.Length * sizeof(uint)) +
-            (cornerEdges.Length * sizeof(uint));
+            (cornerEdges.Length * sizeof(uint)) +
+            (triangleLocal ? (3 + pointOrigins.Length) * sizeof(uint) : 0);
         var bytes = new byte[size];
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes,
@@ -586,7 +667,7 @@ public sealed class SilkSelectionOutlineTests
         BinaryPrimitives.WriteUInt32LittleEndian(
             bytes.AsSpan(48),
             (uint)path.Length);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(52), (uint)pointOrigins.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(56), 6);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(60), 2);
         for (int index = 0; index < 4; index++)
@@ -602,12 +683,12 @@ public sealed class SilkSelectionOutlineTests
                 index % 5 == 0 ? 1 : 0);
         }
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(236), 1 | 2 | 4);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(244), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(244), (uint)pointOrigins.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(248), 6);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(252), 4);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(256), 4);
-        path.CopyTo(bytes, 268);
-        int cursor = 268 + path.Length;
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(256), (uint)pointOrigins.Length);
+        path.CopyTo(bytes, 276);
+        int cursor = 276 + path.Length;
         foreach (float value in points)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(cursor), value);
@@ -632,6 +713,17 @@ public sealed class SilkSelectionOutlineTests
         {
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), value);
             cursor += sizeof(uint);
+        }
+        if (triangleLocal)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                bytes.AsSpan(cursor), 0x80000000u | (uint)pointOrigins.Length);
+            cursor += 3 * sizeof(uint);
+            foreach (uint value in pointOrigins)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(cursor), value);
+                cursor += sizeof(uint);
+            }
         }
         return bytes;
     }
@@ -702,7 +794,7 @@ public sealed class SilkSelectionOutlineTests
         byte[] path = Encoding.UTF8.GetBytes(pathValue);
         float[] points = [-0.5f, -0.5f, 0, 0, 0.5f, 0, 0.5f, -0.5f, 0];
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             path.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -746,8 +838,8 @@ public sealed class SilkSelectionOutlineTests
                 bytes.AsSpan(80 + (index * sizeof(double))),
                 index % 5 == 0 ? 1 : 0);
         }
-        path.CopyTo(bytes, 268);
-        int pointOffset = 268 + path.Length;
+        path.CopyTo(bytes, 276);
+        int pointOffset = 276 + path.Length;
         for (int index = 0; index < points.Length; index++)
         {
             BinaryPrimitives.WriteSingleLittleEndian(
@@ -799,6 +891,7 @@ public sealed class SilkSelectionOutlineTests
 
         /// <summary>The index count of the most recent mask draw.</summary>
         internal uint LastMaskIndexCount { get; set; }
+        internal uint[] LastMaskIndices { get; set; } = [];
 
         /// <summary>The topology the most recent mask pipeline bind selected.</summary>
         internal SilkSelectionMaskPrimitiveTopology LastMaskTopology { get; set; }
@@ -947,6 +1040,7 @@ public sealed class SilkSelectionOutlineTests
         private RenderScope _scope;
         private TestTexture? _maskTarget;
         private TestTexture? _visibleTarget;
+        private TestBuffer? _indexBuffer;
 
         internal TestCommandList(TestGraphicsDevice device)
         {
@@ -958,6 +1052,7 @@ public sealed class SilkSelectionOutlineTests
             _scope = RenderScope.None;
             _maskTarget = null;
             _visibleTarget = null;
+            _indexBuffer = null;
         }
 
         public void UploadTexture(
@@ -1004,6 +1099,7 @@ public sealed class SilkSelectionOutlineTests
 
         public void SetIndexBuffer(ISilkGraphicsBuffer buffer)
         {
+            _indexBuffer = (TestBuffer)buffer;
         }
 
         public void SetUniformBuffer(
@@ -1033,6 +1129,7 @@ public sealed class SilkSelectionOutlineTests
             {
                 _device.MaskDrawCount++;
                 _device.LastMaskIndexCount = indexCount;
+                _device.LastMaskIndices = _indexBuffer!.ReadIndices(indexCount);
                 if (_maskTarget is not null)
                 {
                     _maskTarget.Data[0] = byte.MaxValue;
@@ -1135,6 +1232,21 @@ public sealed class SilkSelectionOutlineTests
         : SilkGraphicsBufferBase(size, usage)
     {
         private readonly byte[] _data = new byte[checked((int)size)];
+
+        internal uint[] ReadIndices(uint count)
+        {
+            if ((nuint)count * sizeof(uint) != Size)
+            {
+                return [];
+            }
+            var result = new uint[checked((int)count)];
+            for (int index = 0; index < result.Length; index++)
+            {
+                result[index] = BinaryPrimitives.ReadUInt32LittleEndian(
+                    _data.AsSpan(index * sizeof(uint)));
+            }
+            return result;
+        }
 
         public override void Write(ReadOnlySpan<byte> data, nuint offset = 0)
         {

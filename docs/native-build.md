@@ -479,6 +479,13 @@ Fetch and verify sources:
 ./eng/fetch-native.ps1 -Rid win-x64
 ```
 
+Source downloads verify the pinned SHA256 before promoting a `.partial` file into
+the cache. A prematurely ended HTTP response (`ResponseEnded`) retries at most
+three attempts, with two seconds between attempts and a 300-second request timeout.
+Failed attempts remove their partial files. HTTP errors and hash mismatches do not
+retry; replacing a changed cache entry still requires explicit `-Force` and a
+successful hash check.
+
 Build from a Visual Studio developer shell:
 
 ```shell

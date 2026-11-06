@@ -15,16 +15,20 @@
 #include <pxr/usd/usd/primRange.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usdGeom/bboxCache.h>
+#include <pxr/usd/usdGeom/gprim.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/metrics.h>
 #include <pxr/usd/usdGeom/pointInstancer.h>
+#include <pxr/usd/usdGeom/subset.h>
 #include <pxr/usd/usdGeom/tokens.h>
+#include <pxr/usd/usdGeom/xformCache.h>
 #include <pxr/usd/usdLux/lightAPI.h>
 #include <pxr/usd/usdPhysics/collisionAPI.h>
 #include <pxr/usd/usdPhysics/meshCollisionAPI.h>
 #include <pxr/usd/usdPhysics/metrics.h>
 #include <pxr/usd/usdPhysics/rigidBodyAPI.h>
 #include <pxr/usd/usdShade/material.h>
+#include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/usd/usdShade/shader.h>
 #include <pxr/usd/usdUtils/dependencies.h>
 
@@ -440,6 +444,462 @@ Audit Inspect(const UsdStageRefPtr& stage)
     return result;
 }
 
+struct MaterialCensus
+{
+    Audit data;
+    JsArray placements;
+    std::map<std::string, uint64_t> material_uses;
+    std::map<std::string, uint64_t> eligible_material_uses;
+    std::set<SdfPath> material_definitions;
+    std::set<SdfPath> shader_definitions;
+    UsdShadeMaterialBindingAPI::BindingsCache bindings;
+    UsdShadeMaterialBindingAPI::CollectionQueryCache collections;
+    size_t maximum_records;
+
+    explicit MaterialCensus(size_t maximum = MaximumRecords) : maximum_records(maximum)
+    {
+        data.counts.clear();
+    }
+
+    void AddBinding(const UsdPrim& geometry, const UsdPrim& binding_prim,
+        const TfToken& purpose, bool visible, bool eligible, const TfToken& subset_family_type)
+    {
+        if (placements.size() >= maximum_records)
+        {
+            throw std::runtime_error("Material binding census exceeded its placement-record bound.");
+        }
+        UsdRelationship relationship;
+        const UsdShadeMaterial material = UsdShadeMaterialBindingAPI(binding_prim).ComputeBoundMaterial(
+            &bindings, &collections, UsdShadeTokens->full, &relationship);
+        const SdfPath target = relationship
+            ? UsdShadeMaterialBindingAPI::GetResolvedTargetPathFromBindingRel(relationship) : SdfPath();
+        const UsdPrim definition = geometry.IsInstanceProxy() ? geometry.GetPrimInPrototype() : geometry;
+        const UsdPrim material_definition = material && material.GetPrim().IsInstanceProxy()
+            ? material.GetPrim().GetPrimInPrototype() : material.GetPrim();
+        const std::string material_path = material_definition
+            ? material_definition.GetPath().GetString() : std::string();
+        const bool subset = geometry != binding_prim;
+        const char* status = material ? "bound" : target.IsEmpty() ? "unbound" : "invalid-target";
+        if (!material && !target.IsEmpty())
+        {
+            data.errors.emplace_back(data.Text(
+                "Material binding target is absent or not a Material: " + target.GetString() +
+                " for " + binding_prim.GetPath().GetString()));
+        }
+        if (material)
+        {
+            ++material_uses[material_path];
+            if (eligible)
+            {
+                ++eligible_material_uses[material_path];
+            }
+            if (material_definitions.insert(material_definition.GetPath()).second)
+            {
+                JsArray terminals;
+                for (const TfToken& context : {TfToken("mdl"), TfToken("mtlx"), TfToken()})
+                {
+                    TfToken source_name;
+                    const UsdShadeShader shader = UsdShadeMaterial(material_definition).ComputeSurfaceSource(
+                        TfTokenVector{context}, &source_name);
+                    const UsdPrim source_prim = shader.GetPrim();
+                    const UsdPrim shader_definition = source_prim && source_prim.IsInstanceProxy()
+                        ? source_prim.GetPrimInPrototype() : source_prim;
+                    terminals.emplace_back(JsObject{
+                        {"requestedContext", data.Text(context.GetString())},
+                        {"shader", data.Text(shader_definition
+                            ? shader_definition.GetPath().GetString() : std::string())},
+                        {"output", data.Text(source_name.GetString())}
+                    });
+                    if (shader_definition && shader_definitions.insert(shader_definition.GetPath()).second)
+                    {
+                        InspectShader(shader_definition, data);
+                    }
+                }
+                data.Add(data.materials, {
+                    {"path", data.Text(material_path)},
+                    {"surfaceSources", JsValue(std::move(terminals))}
+                });
+            }
+        }
+        ++data.counts[subset ? "subsetBindingRecords" : "geometryBindingRecords"];
+        if (eligible && !material)
+        {
+            ++data.counts[subset ? "eligibleSubsetBindingsWithoutMaterial" : "eligibleGeometryBindingsWithoutMaterial"];
+        }
+        placements.emplace_back(JsObject{
+            {"path", data.Text(geometry.GetPath().GetString())},
+            {"definition", data.Text(definition.GetPath().GetString())},
+            {"type", data.Text(geometry.GetTypeName().GetString())},
+            {"instanceProxy", JsValue(geometry.IsInstanceProxy())},
+            {"purpose", data.Text(purpose.GetString())},
+            {"authoredVisible", JsValue(visible)},
+            {"purposeIncluded", JsValue(purpose == UsdGeomTokens->default_ ||
+                purpose == UsdGeomTokens->render || purpose == UsdGeomTokens->proxy)},
+            {"renderEligible", JsValue(eligible)},
+            {"bindingPrim", data.Text(binding_prim.GetPath().GetString())},
+            {"isSubset", JsValue(subset)},
+            {"subsetFamilyType", data.Text(subset_family_type.GetString())},
+            {"status", data.Text(status)},
+            {"bindingRelationship", data.Text(relationship.GetPath().GetString())},
+            {"bindingTarget", data.Text(target.GetString())},
+            {"material", data.Text(material ? material.GetPath().GetString() : std::string())},
+            {"materialDefinition", data.Text(material_path)}
+        });
+    }
+};
+
+template<class Visitor>
+void VisitGeometryPlacements(
+    const UsdStageRefPtr& stage, Audit& data, Visitor&& visit,
+    UsdTimeCode time = UsdTimeCode::Default())
+{
+    for (const UsdPrim& prim : stage->TraverseAll())
+    {
+        if (++data.counts["hierarchyPrims"] > MaximumPrims)
+        {
+            throw std::runtime_error("Geometry census exceeded its hierarchy-prim bound.");
+        }
+        data.counts["inactivePrims"] += prim.IsActive() ? 0 : 1;
+        if (prim.IsActive() && prim.HasPayload() && !prim.IsLoaded())
+        {
+            ++data.counts["unloadedPayloads"];
+            data.errors.emplace_back(data.Text("Unloaded active payload: " + prim.GetPath().GetString()));
+        }
+    }
+    for (const UsdPrim& prim : UsdPrimRange::Stage(stage, UsdTraverseInstanceProxies()))
+    {
+        if (++data.counts["expandedPrims"] > MaximumPrims)
+        {
+            throw std::runtime_error("Geometry census exceeded its expanded-prim bound.");
+        }
+        if (UsdGeomPointInstancer(prim))
+        {
+            ++data.counts["pointInstancersWithoutInstanceExpansion"];
+        }
+        if (!UsdGeomGprim(prim))
+        {
+            continue;
+        }
+        const UsdGeomImageable imageable(prim);
+        const bool visible = imageable.ComputeVisibility(time) != UsdGeomTokens->invisible;
+        const TfToken purpose = imageable.ComputePurpose();
+        const bool eligible = visible && (purpose == UsdGeomTokens->default_ ||
+            purpose == UsdGeomTokens->render || purpose == UsdGeomTokens->proxy);
+        ++data.counts["geometryPlacements"];
+        data.counts["instanceProxyGeometryPlacements"] += prim.IsInstanceProxy() ? 1 : 0;
+        data.counts["authoredVisibleGeometryPlacements"] += visible ? 1 : 0;
+        data.counts["eligibleGeometryPlacements"] += eligible ? 1 : 0;
+        visit(prim, purpose, visible, eligible);
+    }
+    for (const PcpErrorBasePtr& error : stage->GetCompositionErrors())
+    {
+        data.errors.emplace_back(data.Text(error->ToString()));
+    }
+}
+
+MaterialCensus InspectMaterialBindings(const UsdStageRefPtr& stage, size_t maximum_records = MaximumRecords)
+{
+    MaterialCensus result(maximum_records);
+    VisitGeometryPlacements(stage, result.data,
+        [&](const UsdPrim& prim, const TfToken& purpose, bool visible, bool eligible)
+    {
+        result.AddBinding(prim, prim, purpose, visible, eligible, TfToken());
+        UsdShadeMaterialBindingAPI api(prim);
+        for (const UsdGeomSubset& subset : api.GetMaterialBindSubsets())
+        {
+            result.AddBinding(prim, subset.GetPrim(), purpose, visible, eligible,
+                api.GetMaterialBindSubsetsFamilyType());
+        }
+    });
+    return result;
+}
+
+struct PlacementCensus
+{
+    Audit data;
+    JsArray placements;
+};
+
+PlacementCensus InspectPlacementTransforms(const UsdStageRefPtr& stage)
+{
+    PlacementCensus result;
+    result.data.counts.clear();
+    const UsdTimeCode time(0.0);
+    UsdGeomXformCache transforms(time);
+    VisitGeometryPlacements(stage, result.data,
+        [&](const UsdPrim& prim, const TfToken& purpose, bool visible, bool eligible)
+    {
+        if (result.placements.size() >= MaximumRecords)
+        {
+            throw std::runtime_error("Placement census exceeded its record bound.");
+        }
+        const GfMatrix4d world = transforms.GetLocalToWorldTransform(prim);
+        JsArray matrix;
+        matrix.reserve(16);
+        for (size_t index = 0; index < 16; ++index)
+        {
+            const double value = world.GetArray()[index];
+            if (!std::isfinite(value))
+            {
+                throw std::runtime_error("Placement census found a non-finite world transform.");
+            }
+            matrix.emplace_back(value);
+        }
+        result.placements.emplace_back(JsObject{
+            {"path", result.data.Text(prim.GetPath().GetString())},
+            {"type", result.data.Text(prim.GetTypeName().GetString())},
+            {"instanceProxy", JsValue(prim.IsInstanceProxy())},
+            {"purpose", result.data.Text(purpose.GetString())},
+            {"authoredVisible", JsValue(visible)},
+            {"renderEligible", JsValue(eligible)},
+            {"isSubset", JsValue(false)},
+            {"worldTransform", JsValue(std::move(matrix))}
+        });
+    }, time);
+    return result;
+}
+
+void PlacementCensusSelfTest()
+{
+    const auto stage = UsdStage::CreateInMemory();
+    if (!stage->GetRootLayer()->ImportFromString(R"USD(#usda 1.0
+class Xform "Asset" {
+    def Mesh "Mesh" {
+        matrix4d xformOp:transform = ((0,1,0,0),(-1,0,0,0),(0,0,1,0),(1,0,0,1))
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+    }
+}
+def Xform "World" {
+    double3 xformOp:scale = (2,3,4)
+    uniform token[] xformOpOrder = ["xformOp:scale"]
+    def Xform "A" (instanceable = true; prepend references = </Asset>) {
+        double3 xformOp:translate = (20,0,0)
+        double3 xformOp:translate.timeSamples = { 0: (5,0,0), 1: (9,0,0) }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Xform "B" (instanceable = true; prepend references = </Asset>) {
+        double3 xformOp:translate = (8,0,0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Xform "Hidden" (instanceable = true; prepend references = </Asset>) {
+        token visibility = "inherited"
+        token visibility.timeSamples = { 0: "invisible", 1: "inherited" }
+    }
+}
+)USD"))
+    {
+        throw std::runtime_error("Placement census fixture could not be composed.");
+    }
+    PlacementCensus result = InspectPlacementTransforms(stage);
+    if (!result.data.errors.empty() || result.placements.size() != 3 ||
+        result.data.counts["eligibleGeometryPlacements"] != 2 ||
+        result.data.counts["instanceProxyGeometryPlacements"] != 3)
+    {
+        throw std::runtime_error("Placement census lost native instances or time-zero visibility.");
+    }
+    std::set<std::string> paths;
+    for (const JsValue& value : result.placements)
+    {
+        const auto& row = value.GetJsObject();
+        const auto& path = row.at("path").GetString();
+        paths.insert(path);
+        const auto& matrix = row.at("worldTransform").GetJsArray();
+        const double x = path == "/World/A/Mesh" ? 12.0 : path == "/World/B/Mesh" ? 18.0 : 2.0;
+        const double expected[16] = {0,3,0,0,-2,0,0,0,0,0,4,0,x,0,0,1};
+        if (matrix.size() != 16 || row.at("renderEligible").GetBool() != (path != "/World/Hidden/Mesh"))
+        {
+            throw std::runtime_error("Placement census matrix or inherited visibility is invalid.");
+        }
+        for (size_t index = 0; index < 16; ++index)
+        {
+            if (matrix[index].GetReal() != expected[index])
+            {
+                throw std::runtime_error("Placement census lost row-vector composition or numeric time zero.");
+            }
+        }
+    }
+    if (paths != std::set<std::string>{"/World/A/Mesh", "/World/B/Mesh", "/World/Hidden/Mesh"})
+    {
+        throw std::runtime_error("Placement census changed the authored source identity set.");
+    }
+}
+
+void MaterialCensusSelfTest()
+{
+    auto layer = SdfLayer::CreateAnonymous(".usda");
+    if (!layer->ImportFromString(R"USD(#usda 1.0
+class Xform "Asset" {
+    def Mesh "Mesh" {
+        point3f[] points = None
+        int[] faceVertexCounts = None
+        int[] faceVertexIndices = None
+    }
+}
+class Xform "InternalAsset" {
+    def Cube "Geometry" (prepend apiSchemas = ["MaterialBindingAPI"]) {
+        rel material:binding = </InternalAsset/Material>
+    }
+    def Material "Material" {
+        token outputs:mdl:surface.connect = </InternalAsset/Material/Shader.outputs:out>
+        def Shader "Shader" {
+            uniform token info:implementationSource = "sourceAsset"
+            uniform asset info:mdl:sourceAsset = @fixture.mdl@
+            uniform token info:mdl:sourceAsset:subIdentifier = "Fixture"
+            float inputs:roughness = 0.4
+            token outputs:out
+        }
+    }
+}
+def Material "Base" {
+    token outputs:surface.connect = </Base/Surface.outputs:surface>
+    def Shader "Surface" {
+        uniform token info:id = "UsdPreviewSurface"
+        color3f inputs:diffuseColor = (1, 0, 0)
+        token outputs:surface
+    }
+}
+def Material "Full" {}
+def Material "Preview" {}
+def Material "Subset" {}
+def Material "Collection" {}
+def Material "Unused" {}
+def Xform "World" (prepend apiSchemas = ["MaterialBindingAPI"]) {
+    rel material:binding = </Base>
+    def Xform "A" (
+        prepend inherits = </Asset>
+        instanceable = true
+    ) {}
+    def Xform "B" (
+        prepend inherits = </Asset>
+        instanceable = true
+    ) {
+        token visibility = "invisible"
+    }
+    def Xform "C" (
+        prepend inherits = </InternalAsset>
+        instanceable = true
+    ) {}
+    def Xform "D" (
+        prepend inherits = </InternalAsset>
+        instanceable = true
+    ) {}
+    def Xform "Guide" {
+        uniform token purpose = "guide"
+        def Cube "Geometry" {}
+    }
+    def Xform "Proxy" {
+        uniform token purpose = "proxy"
+        def Cube "Geometry" {}
+    }
+    def Mesh "Specific" (prepend apiSchemas = ["MaterialBindingAPI"]) {
+        rel material:binding:full = </Full>
+        rel material:binding:preview = </Preview>
+        uniform token subsetFamily:materialBind:familyType = "partition"
+        def GeomSubset "Faces" (prepend apiSchemas = ["MaterialBindingAPI"]) {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = None
+            rel material:binding:full = </Subset>
+        }
+        def GeomSubset "NotMaterial" (prepend apiSchemas = ["MaterialBindingAPI"]) {
+            uniform token elementType = "face"
+            uniform token familyName = "notMaterial"
+            rel material:binding = </Unused>
+        }
+    }
+    def Xform "Strong" (prepend apiSchemas = ["MaterialBindingAPI"]) {
+        rel material:binding = </Base> (bindMaterialAs = "strongerThanDescendants")
+        def Cube "Geometry" (prepend apiSchemas = ["MaterialBindingAPI"]) {
+            rel material:binding = </Full>
+        }
+    }
+    def Xform "Collections" (
+        prepend apiSchemas = ["MaterialBindingAPI", "CollectionAPI:chosen"]
+    ) {
+        rel collection:chosen:includes = </World/Collections/Geometry>
+        rel material:binding:collection:chosen = [</World/Collections.collection:chosen>, </Collection>]
+        def Cube "Geometry" {}
+    }
+    def Cube "Inactive" (active = false) {}
+}
+def Cube "Unbound" {}
+)USD"))
+    {
+        throw std::runtime_error("The material census fixture did not parse.");
+    }
+    const auto stage = UsdStage::Open(layer);
+    std::string before;
+    layer->ExportToString(&before);
+    MaterialCensus result = InspectMaterialBindings(stage);
+    std::map<std::string, JsObject> records;
+    for (const JsValue& value : result.placements)
+    {
+        const auto& object = value.GetJsObject();
+        records.emplace(object.at("bindingPrim").GetString(), object);
+    }
+    const auto require = [](bool condition, const char* message) {
+        if (!condition) { throw std::runtime_error(message); }
+    };
+    require(result.data.errors.empty() && records.size() == 11 &&
+        result.data.counts["geometryPlacements"] == 10 &&
+        result.data.counts["eligibleGeometryPlacements"] == 8 &&
+        result.data.counts["instanceProxyGeometryPlacements"] == 4 &&
+        result.data.counts["eligibleGeometryBindingsWithoutMaterial"] == 1 &&
+        result.data.materials.size() == 5 && result.data.shaders.size() == 2,
+        "Material census lost placement, eligibility, deduplication or unbound accounting.");
+    require(records.at("/World/A/Mesh").at("instanceProxy").GetBool() &&
+        records.at("/World/A/Mesh").at("definition") == records.at("/World/B/Mesh").at("definition") &&
+        !records.at("/World/B/Mesh").at("authoredVisible").GetBool() &&
+        records.at("/World/B/Mesh").at("purposeIncluded").GetBool() &&
+        !records.at("/World/B/Mesh").at("renderEligible").GetBool() &&
+        !records.at("/World/Guide/Geometry").at("purposeIncluded").GetBool() &&
+        records.at("/World/Proxy/Geometry").at("renderEligible").GetBool(),
+        "Material census lost instance placement or inherited visibility/purpose.");
+    require(records.at("/World/C/Geometry").at("material").GetString() == "/World/C/Material" &&
+        records.at("/World/D/Geometry").at("material").GetString() == "/World/D/Material" &&
+        records.at("/World/C/Geometry").at("materialDefinition") ==
+            records.at("/World/D/Geometry").at("materialDefinition"),
+        "Material census confused instanced material placements with their shared definition.");
+    size_t mdl_sources = 0;
+    for (const JsValue& shader : result.data.shaders)
+    {
+        const JsObject& value = shader.GetJsObject();
+        if (value.at("mdlSubidentifier").GetString() == "Fixture")
+        {
+            require(value.at("hasMdlSource").GetBool() &&
+                value.at("mdlAsset").GetString() == "fixture.mdl" &&
+                value.at("inputs").GetJsArray().size() == 1,
+                "Material census dropped the bound MDL shader identity or authored values.");
+            ++mdl_sources;
+        }
+    }
+    require(mdl_sources == 1, "Material census did not deduplicate the instanced MDL definition.");
+    require(records.at("/World/Specific").at("material").GetString() == "/Full" &&
+        records.at("/World/Specific/Faces").at("material").GetString() == "/Subset" &&
+        records.at("/World/Specific/Faces").at("subsetFamilyType").GetString() == "partition" &&
+        records.at("/World/Strong/Geometry").at("material").GetString() == "/Base" &&
+        records.at("/World/Collections/Geometry").at("material").GetString() == "/Collection" &&
+        records.at("/Unbound").at("status").GetString() == "unbound",
+        "Material census changed full-purpose fallback, subset, strength or collection resolution.");
+    std::string after;
+    layer->ExportToString(&after);
+    require(before == after, "Material census changed the source layer.");
+    bool refused = false;
+    try { (void)InspectMaterialBindings(stage, 10); }
+    catch (const std::runtime_error& error)
+    {
+        refused = std::string(error.what()) == "Material binding census exceeded its placement-record bound.";
+    }
+    require(refused, "Material census silently truncated a one-record-over report.");
+    require(InspectMaterialBindings(stage, 11).placements.size() == 11,
+        "Material census refused the exact placement-record limit.");
+    stage->GetPrimAtPath(SdfPath("/World/Specific")).GetRelationship(TfToken("material:binding:full"))
+        .SetTargets({SdfPath("/Absent")});
+    MaterialCensus invalid = InspectMaterialBindings(stage);
+    require(invalid.data.errors.size() == 1, "Material census hid a missing binding target.");
+    std::cout << "WAREHOUSE_MATERIAL_CENSUS_SELF_TEST=passed\n";
+}
+
 void SelfTest()
 {
     auto layer = SdfLayer::CreateAnonymous(".usda");
@@ -778,6 +1238,72 @@ int main(int argc, char** argv)
             LocalizationSelfTest();
             return 0;
         }
+        if (argc == 2 && std::string(argv[1]) == "--material-census-self-test")
+        {
+            MaterialCensusSelfTest();
+            return 0;
+        }
+        if (argc == 2 && std::string(argv[1]) == "--placement-census-self-test")
+        {
+            PlacementCensusSelfTest();
+            return 0;
+        }
+        if (argc == 4 && (std::string(argv[1]) == "--material-census" ||
+            std::string(argv[1]) == "--placement-census"))
+        {
+            PlugRegistry::GetInstance().RegisterPlugins(argv[2]);
+            TfErrorMark mark;
+            const auto stage = UsdStage::Open(argv[3], UsdStage::LoadAll);
+            if (!stage) { throw std::runtime_error("The material census stage could not be opened."); }
+            if (std::string(argv[1]) == "--placement-census")
+            {
+                PlacementCensus census = InspectPlacementTransforms(stage);
+                for (const auto& error : mark)
+                {
+                    census.data.errors.emplace_back(census.data.Text(error.GetCommentary()));
+                }
+                mark.Clear();
+                const bool complete = census.data.errors.empty();
+                JsWriteToStream(JsValue(JsObject{
+                    {"schemaVersion", JsValue(2)},
+                    {"timeCode", JsValue(0.0)},
+                    {"complete", JsValue(complete)},
+                    {"scope", JsValue("Time-zero default/render/proxy placement identities and USD world transforms.")},
+                    {"limitations", JsValue("No topology/vertex arrays, point-instancer expansion, materials or rendered pixels.")},
+                    {"root", census.data.Text(stage->GetRootLayer()->GetRealPath())},
+                    {"counts", Counts(census.data.counts)},
+                    {"placements", JsValue(std::move(census.placements))},
+                    {"errors", JsValue(std::move(census.data.errors))}
+                }), std::cout);
+                std::cout << '\n';
+                return complete ? 0 : 1;
+            }
+            MaterialCensus census = InspectMaterialBindings(stage);
+            for (const auto& error : mark)
+            {
+                census.data.errors.emplace_back(census.data.Text(error.GetCommentary()));
+            }
+            mark.Clear();
+            const bool complete = census.data.errors.empty();
+            JsWriteToStream(JsValue(JsObject{
+                {"schemaVersion", JsValue(1)},
+                {"complete", JsValue(complete)},
+                {"scope", JsValue("Default-time full-purpose material bindings including instance proxies; "
+                    "inherited authored visibility and default/render/proxy eligibility, not camera visibility.")},
+                {"limitations", JsValue("No geometry/topology arrays, subset element coverage, "
+                    "point-instancer expansion, dependency closure, shading equivalence or rendered pixels.")},
+                {"root", census.data.Text(stage->GetRootLayer()->GetRealPath())},
+                {"counts", Counts(census.data.counts)},
+                {"materialBindingUses", Counts(census.material_uses)},
+                {"eligibleMaterialBindingUses", Counts(census.eligible_material_uses)},
+                {"placements", JsValue(std::move(census.placements))},
+                {"materialDefinitions", JsValue(std::move(census.data.materials))},
+                {"shaderDefinitions", JsValue(std::move(census.data.shaders))},
+                {"errors", JsValue(std::move(census.data.errors))}
+            }), std::cout);
+            std::cout << '\n';
+            return complete ? 0 : 1;
+        }
         if (argc == 6 && std::string(argv[1]) == "--localize")
         {
             PlugRegistry::GetInstance().RegisterPlugins(argv[2]);
@@ -787,7 +1313,9 @@ int main(int argc, char** argv)
         if (argc != 3)
         {
             throw std::runtime_error(
-                "Usage: probe <plugins> <root-usd> | --localize <plugins> <source-root> <new-cache> <profile>");
+                "Usage: probe <plugins> <root-usd> | --material-census <plugins> <root-usd> | "
+                "--placement-census <plugins> <root-usd> | "
+                "--localize <plugins> <source-root> <new-cache> <profile>");
         }
         const auto start = std::chrono::steady_clock::now();
         PlugRegistry::GetInstance().RegisterPlugins(argv[1]);

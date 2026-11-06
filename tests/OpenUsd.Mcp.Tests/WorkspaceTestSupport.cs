@@ -113,8 +113,12 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend, IWor
     internal ulong StageRevision { get; set; }
 
     internal Func<IReadOnlyList<double>, RenderProductJobPlan>? PrepareProduct { get; set; }
+    internal Func<IReadOnlyList<double>, IReadOnlyList<CameraState>>? PreparePreviewCameras { get; set; }
+    internal int LastPreviewWidth { get; private set; }
+    internal int LastPreviewHeight { get; private set; }
     internal string? LastProductPath { get; private set; }
     internal string? LastSettingsPath { get; private set; }
+    internal RenderProductOverrides? LastProductOverrides { get; private set; }
 
     public ValueTask<RenderProductJobPlan> PrepareRenderProductAsync(
         IReadOnlyList<double> timeCodes, string? settingsPath, string? productPath,
@@ -124,6 +128,7 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend, IWor
         Events.Add("prepare-product");
         LastProductPath = productPath;
         LastSettingsPath = settingsPath;
+        LastProductOverrides = rasterOverrides;
         if (expectedStageRevision != StageRevision)
         {
             throw new InvalidOperationException("The test stage revision changed.");
@@ -251,7 +256,10 @@ internal sealed class RecordingWorkspaceBackend : IWorkspaceSessionBackend, IWor
     {
         cancellationToken.ThrowIfCancellationRequested();
         Events.Add("create-preview-cameras");
+        LastPreviewWidth = width;
+        LastPreviewHeight = height;
         return ValueTask.FromResult<IReadOnlyList<CameraState>>(
+            PreparePreviewCameras?.Invoke(timeCodes) ??
             Enumerable.Repeat(CameraState.Default, timeCodes.Count).ToArray());
     }
 

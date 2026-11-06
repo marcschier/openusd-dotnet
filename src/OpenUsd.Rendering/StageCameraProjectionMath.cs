@@ -61,7 +61,7 @@ internal static class StageCameraProjectionMath
                 ToFiniteFloat((window.Top + window.Bottom) / windowHeight),
                 ToFiniteFloat(-((far + near) / depthRange)),
                 -1f,
-                0f, 0f, ToFiniteFloat(-(2d * near * far / depthRange)), 0f);
+                0f, 0f, ToFiniteFloat(-(2d * near * (far / depthRange))), 0f);
         }
 
         return new Matrix4x4(

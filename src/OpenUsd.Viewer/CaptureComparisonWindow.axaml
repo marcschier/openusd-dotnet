@@ -16,54 +16,72 @@
   <Window.Styles>
     <StyleInclude Source="avares://OpenUsd.Viewer/ViewerStyles.axaml" />
   </Window.Styles>
-  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="12">
-    <TextBlock
-        Text="Compare saved PNG or BMP captures. This does not render, edit a stage, or change its colour settings."
-        Classes="viewer-secondary"
-        TextWrapping="Wrap" />
-    <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="12">
-      <StackPanel Spacing="8">
-        <Button x:Name="ChooseBeforeButton" Content="Choose before (A)..." />
+  <Grid Margin="{DynamicResource ViewerDialogPadding}" RowDefinitions="*,Auto,Auto" RowSpacing="12">
+    <ScrollViewer x:Name="ComparisonBodyScroll" HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+      <Grid Height="{Binding Viewport.Height, ElementName=ComparisonBodyScroll}" MinHeight="400"
+            RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
         <TextBlock
-            x:Name="BeforeName"
-            Text="No before image"
-            AutomationProperties.Name="Before capture"
-            TextTrimming="CharacterEllipsis" />
-      </StackPanel>
-      <StackPanel Grid.Column="1" Spacing="8">
-        <Button x:Name="ChooseAfterButton" Content="Choose after (B)..." />
-        <TextBlock
-            x:Name="AfterName"
-            Text="No after image"
-            AutomationProperties.Name="After capture"
-            TextTrimming="CharacterEllipsis" />
-      </StackPanel>
-    </Grid>
-    <Grid x:Name="ComparisonImages" Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="12">
-      <Border
-          x:Name="BeforePane"
-          Background="{DynamicResource ViewerSurfaceCanvasBrush}"
-          BorderBrush="{DynamicResource ViewerBorderBrush}"
-          BorderThickness="1">
-        <Image x:Name="BeforeImage" Stretch="Uniform" AutomationProperties.Name="Before capture image" />
-      </Border>
-      <Border
-          x:Name="AfterPane"
-          Grid.Column="1"
-          Background="{DynamicResource ViewerSurfaceCanvasBrush}"
-          BorderBrush="{DynamicResource ViewerBorderBrush}"
-          BorderThickness="1">
-        <Image x:Name="AfterImage" Stretch="Uniform" AutomationProperties.Name="After capture image" />
-      </Border>
-    </Grid>
-    <TextBlock
-        x:Name="ComparisonStatus"
-        Grid.Row="3"
-        Text="Choose RGBA PNGs or uncompressed 24/32-bit BMPs; up to 64 MiB, 8192 pixels per side and 16 megapixels each."
-        Classes="viewer-caption"
-        TextWrapping="Wrap"
-        AutomationProperties.Name="Capture comparison status" />
-    <Grid Grid.Row="4" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
+            Text="Compare saved PNG or BMP captures. This does not render, edit a stage, or change its colour settings."
+            Classes="viewer-secondary"
+            TextWrapping="Wrap" />
+        <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="12">
+          <StackPanel Spacing="8">
+            <Button x:Name="ChooseBeforeButton" Content="Choose before (A)..." />
+            <TextBlock
+                x:Name="BeforeName"
+                Text="No before image"
+                AutomationProperties.Name="Before capture"
+                TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="8">
+            <Button x:Name="ChooseAfterButton" Content="Choose after (B)..." />
+            <TextBlock
+                x:Name="AfterName"
+                Text="No after image"
+                AutomationProperties.Name="After capture"
+                TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Grid>
+        <Grid x:Name="ComparisonImages" Grid.Row="2" MinHeight="128" ColumnDefinitions="*,*" ColumnSpacing="12">
+          <Border
+              x:Name="BeforePane"
+              Background="{DynamicResource ViewerSurfaceCanvasBrush}"
+              BorderBrush="{DynamicResource ViewerBorderBrush}"
+              BorderThickness="1">
+            <Image x:Name="BeforeImage" Stretch="Uniform" AutomationProperties.Name="Before capture image" />
+          </Border>
+          <Border
+              x:Name="AfterPane"
+              Grid.Column="1"
+              Background="{DynamicResource ViewerSurfaceCanvasBrush}"
+              BorderBrush="{DynamicResource ViewerBorderBrush}"
+              BorderThickness="1">
+            <Image x:Name="AfterImage" Stretch="Uniform" AutomationProperties.Name="After capture image" />
+          </Border>
+        </Grid>
+        <Expander x:Name="ComparisonNotesExpander" Grid.Row="3"
+                  Header="Review notes (plain text; saved with this capture pair)"
+                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+          <TextBox x:Name="ComparisonNotes" Height="68" MaxLength="2048" AcceptsReturn="True"
+                   TextWrapping="Wrap" IsEnabled="False"
+                   PlaceholderText="Up to 2048 UTF-16 code units. Notes are not scene annotations or metadata."
+                   AutomationProperties.Name="Capture comparison review notes" />
+        </Expander>
+      </Grid>
+    </ScrollViewer>
+    <ScrollViewer x:Name="ComparisonStatusScroll" Grid.Row="1" MaxHeight="80" Focusable="True"
+                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                  AutomationProperties.Name="Capture comparison status and refusal details">
+      <TextBlock
+          x:Name="ComparisonStatus"
+          Text="Choose RGBA PNGs or uncompressed 24/32-bit BMPs; up to 64 MiB, 8192 pixels per side and 16 megapixels each."
+          Classes="viewer-caption"
+          TextWrapping="Wrap"
+          AutomationProperties.Name="Capture comparison status" />
+    </ScrollViewer>
+    <Grid Grid.Row="2" RowDefinitions="Auto,Auto" RowSpacing="8"
+          ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
       <ComboBox
           x:Name="ComparisonMode"
           AutomationProperties.Name="Comparison display mode"
@@ -73,8 +91,11 @@
         <ComboBoxItem Content="Before (A)" />
         <ComboBoxItem Content="After (B)" />
       </ComboBox>
+      <Button x:Name="OpenPresentationButton" Grid.Row="1" Content="Open comparison..." />
+      <Button x:Name="SavePresentationButton" Grid.Row="1" Grid.Column="1"
+              Content="Save comparison..." IsEnabled="False" />
       <Button x:Name="CompareAgainButton" Grid.Column="2" Content="Compare" IsEnabled="False" />
-      <Button x:Name="CancelComparisonButton" Grid.Column="3" Content="Cancel loading" IsEnabled="False" />
+      <Button x:Name="CancelComparisonButton" Grid.Column="3" Content="Cancel" IsEnabled="False" />
       <Button x:Name="CloseComparisonButton" Grid.Column="4" Content="Close" />
     </Grid>
   </Grid>

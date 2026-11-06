@@ -13,17 +13,18 @@ public interface ISilkCpuTextureAdmissionDevice
     void ConfigureCpuTextureBudget(SilkCpuTextureBudget budget);
 }
 
-/// <summary>A shared logical ceiling for owned decoded pixels and material/transfer-copy buffers.</summary>
+/// <summary>A shared logical ceiling for owned texture-preparation buffers.</summary>
 /// <remarks>
 /// Admission precedes allocation and tracks ownership, not garbage-collector residency.
-/// Includes prefilter working arrays, shared environment pixels and cached displacement height texels.
+/// Includes encoded Ptex snapshots, decoded pixels, prefilter/OCIO lattice working arrays,
+/// shared environment/display pixels, displacement height texels and material/transfer copies.
 /// Native codec scratch, per-point displacement amounts and source geometry are separate domains.
 /// </remarks>
 public sealed class SilkCpuTextureBudget
 {
     private readonly SilkByteReservationPool _pool;
 
-    /// <summary>Creates a positive immutable managed-pixel byte ceiling.</summary>
+    /// <summary>Creates a positive immutable managed-texture byte ceiling.</summary>
     public SilkCpuTextureBudget(ulong maximumBytes)
     {
         ArgumentOutOfRangeException.ThrowIfZero(maximumBytes);
@@ -32,10 +33,10 @@ public sealed class SilkCpuTextureBudget
             new SilkCpuTextureBudgetExceededException(requested, reserved, maximum));
     }
 
-    /// <summary>Gets the maximum simultaneously owned logical pixel bytes.</summary>
+    /// <summary>Gets the maximum simultaneously owned logical texture-preparation bytes.</summary>
     public ulong MaximumBytes { get; }
 
-    /// <summary>Gets a consistent immutable snapshot of logical pixel-buffer ownership.</summary>
+    /// <summary>Gets a consistent immutable snapshot of logical texture-buffer ownership.</summary>
     public SilkGpuBufferUsage Usage
     {
         get
@@ -94,7 +95,7 @@ public sealed class SilkCpuTextureBudget
     }
 }
 
-/// <summary>Reports managed texture preparation refused before a pixel-buffer allocation.</summary>
+/// <summary>Reports managed texture preparation refused before a buffer allocation.</summary>
 public sealed class SilkCpuTextureBudgetExceededException : InvalidOperationException
 {
     internal SilkCpuTextureBudgetExceededException(ulong requested, ulong reserved, ulong maximum)
@@ -106,7 +107,7 @@ public sealed class SilkCpuTextureBudgetExceededException : InvalidOperationExce
         MaximumBytes = maximum;
     }
 
-    /// <summary>Gets the refused managed pixel-buffer payload size.</summary>
+    /// <summary>Gets the refused managed texture-buffer payload size.</summary>
     public ulong RequestedBytes { get; }
     /// <summary>Gets the reservations held when allocation was refused.</summary>
     public ulong ReservedBytes { get; }

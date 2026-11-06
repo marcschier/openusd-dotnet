@@ -36,6 +36,12 @@ Compiler sources include the reviewed empty-default switch exits and zero-padded
 recorded in eng/shaderc-source-patches.lock.json. These preserve behavior and upstream copyright/license
 texts; their exact component revisions, pre/post and patch hashes are recorded in build provenance and SBOM.
 
+The OpenUsd.Rendering.Silk package declares a NuGet dependency on Silk.NET.SPIRV.Cross.Native, which
+carries the Khronos SPIRV-Cross library (Apache-2.0) packaged by the .NET Foundation Silk.NET project (MIT).
+The D3D12 runtime material compiler loads it. Consumers of OpenUsd.Rendering.Silk restore the library
+from NuGet rather than receiving it inside that package. The self-contained Viewer publish restores the same
+dependency transitively. The release SBOM records the pinned package version.
+
 The quarantined cesium-native build is separate from the core runtime and is built from CesiumGS
 cesium-native v0.65.0, licensed under Apache-2.0. Its published runtime packages contain the separate
 C ABI shim and are qualified by package-only consumer execution. Its transitive vcpkg dependency set

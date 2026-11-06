@@ -14,6 +14,6 @@ public static class PngRgba8Decoder
             throw new InvalidDataException("The encoded PNG exceeds its byte budget.");
         }
         PngRgba8Image image = PngRgba8Reader.Decode(png.ToArray());
-        return new ImageRgba8(image.Width, image.Height, image.Pixels);
+        return new ImageRgba8(image);
     }
 }

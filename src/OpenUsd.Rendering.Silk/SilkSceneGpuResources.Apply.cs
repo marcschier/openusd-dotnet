@@ -6,8 +6,16 @@ public sealed partial class SilkSceneGpuResources
 {
     private PreparedMeshUpdate? _preparing;
 
+    internal SilkMeshGpuResource GetPreparedMesh(ulong id) =>
+        _preparing?.GetMesh(id) ?? _meshes[id];
+
+    internal ISilkGraphicsBuffer GetPreparedVertices(SilkMeshGpuGeometryResource geometry) =>
+        _preparing?.GetVertices(geometry) ?? geometry.VertexBuffer;
+
     internal PreparedMeshUpdate? Prepare(
-        SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures = true)
+        SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures = true,
+        bool prepareUniformCapacity = false, bool reloadDependencies = true,
+        bool useSceneMaterials = true)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(scene);
@@ -16,8 +24,9 @@ public sealed partial class SilkSceneGpuResources
             throw new InvalidOperationException("A GPU scene update is already being prepared.");
         }
         if (delta.MeshUpserts == 0 && delta.MeshRemovals == 0 && delta.MaterialChanges == 0 &&
+            !HasStalePtexGeometry &&
             !(prepareMaterialTextures && RequiresTexturePreparation && HasChangedMaterialTextureDependencies()) &&
-            !RequiresEnvironmentPreparation(scene) &&
+            !(reloadDependencies && RequiresEnvironmentPreparation(scene)) &&
             !(RequiresSurfacePreparation && _surfaceLinkRevision != scene.LightLinks.Revision))
         {
             return null;
@@ -26,7 +35,9 @@ public sealed partial class SilkSceneGpuResources
         _preparing = prepared;
         try
         {
-            prepared.Prepare(scene, delta, prepareMaterialTextures);
+            prepared.Prepare(
+                scene, delta, prepareMaterialTextures, prepareUniformCapacity, reloadDependencies,
+                useSceneMaterials);
             return prepared;
         }
         catch (Exception preparationFailure)
@@ -48,13 +59,18 @@ public sealed partial class SilkSceneGpuResources
     {
         private readonly SilkSceneGpuResources _owner;
         private readonly Dictionary<ulong, SilkMeshGpuResource> _replacements = [];
-        private readonly List<(SilkMeshGpuResource Resource, SilkMeshData Mesh)> _metadata = [];
+        private readonly List<(SilkMeshGpuResource Resource, SilkMeshData Mesh, SilkMeshData Previous)> _metadata = [];
         private readonly Dictionary<ulong, SilkMeshGpuResource> _retired = [];
         private readonly Dictionary<DisplacedPrimKey, DisplacementVerdict?> _verdicts = [];
         private readonly Dictionary<SilkMeshGpuDeformation, SilkMeshGpuDeformation.PreparedPose> _poses = [];
+        private readonly Dictionary<SilkMeshGpuGeometryResource, SilkMeshGpuGeometryResource.PreparedDeformedVertices>
+            _vertices = [];
+        private ulong _dispatchGeneration;
         private readonly Dictionary<string, RenderDiagnostic> _diagnostics;
         private readonly DisplacementImageCheckpoint _images;
         private readonly bool _deformationDisabled;
+        private readonly ulong _revision;
+        private bool _activated;
         private PreparedTextureUpdate? _textures;
         private PreparedEnvironmentUpdate? _environment;
         private PreparedSurfaceUpdate? _surfaces;
@@ -66,20 +82,40 @@ public sealed partial class SilkSceneGpuResources
             _owner = owner;
             _diagnostics = new(owner._diagnostics, StringComparer.Ordinal);
             _deformationDisabled = owner._deformationDisabled;
+            _revision = owner.Revision;
             _images = new(owner);
         }
 
-        internal void Prepare(SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures)
+        internal void Prepare(
+            SilkSceneState scene, SilkSceneDelta delta, bool prepareMaterialTextures, bool prepareUniformCapacity,
+            bool reloadDependencies, bool useSceneMaterials)
         {
-            if (_owner.RequiresEnvironmentPreparation(scene))
+            bool stalePtexOnly = _owner.HasStalePtexGeometry &&
+                delta.MeshUpserts == 0 &&
+                delta.MeshRemovals == 0 &&
+                delta.MaterialChanges == 0 &&
+                !(prepareMaterialTextures && _owner.RequiresTexturePreparation &&
+                    _owner.HasChangedMaterialTextureDependencies()) &&
+                !(reloadDependencies && _owner.RequiresEnvironmentPreparation(scene)) &&
+                !(_owner.RequiresSurfacePreparation &&
+                    _owner._surfaceLinkRevision != scene.LightLinks.Revision);
+            if (reloadDependencies && _owner.RequiresEnvironmentPreparation(scene))
             {
                 _environment = new PreparedEnvironmentUpdate(_owner);
                 _environment.Prepare(scene);
             }
-            if (prepareMaterialTextures && _owner.RequiresTexturePreparation)
+            if (prepareMaterialTextures && _owner.RequiresTexturePreparation && !stalePtexOnly)
             {
                 _textures = new PreparedTextureUpdate(_owner);
                 _textures.Prepare(scene, delta);
+            }
+            else if (delta.MaterialChanges != 0 || stalePtexOnly)
+            {
+                _textures = new PreparedTextureUpdate(_owner);
+                if (delta.MaterialChanges != 0)
+                {
+                    _textures.InvalidateChangedMaterials(delta);
+                }
             }
             var changedMaterials = new HashSet<string>(delta.ChangedMaterialPaths.ToArray(), StringComparer.Ordinal);
             var removed = new HashSet<ulong>(delta.RemovedMeshIds.ToArray());
@@ -113,6 +149,15 @@ public sealed partial class SilkSceneGpuResources
                     }
                 }
             }
+            foreach ((ulong id, SilkMeshGpuResource resource) in _owner._meshes)
+            {
+                if (resource.Geometry.Key.PtexSamplingIdentity != 0 &&
+                    resource.PtexTextureRetryRevision != _owner.TextureRetryRevision &&
+                    scene.Meshes.TryGetValue(id, out SilkMeshData? mesh))
+                {
+                    desired[id] = mesh;
+                }
+            }
             _replacements.EnsureCapacity(desired.Count);
             _metadata.EnsureCapacity(desired.Count);
             _retired.EnsureCapacity(checked(_retired.Count + desired.Count));
@@ -129,9 +174,11 @@ public sealed partial class SilkSceneGpuResources
             {
                 if (_owner._meshes.TryGetValue(id, out SilkMeshGpuResource? existing) &&
                     !removed.Contains(id) && !changedMaterials.Contains(mesh.MaterialPath) &&
+                    (existing.Geometry.Key.PtexSamplingIdentity == 0 ||
+                        existing.PtexTextureRetryRevision == _owner.TextureRetryRevision) &&
                     existing.HasSameGeometry(mesh))
                 {
-                    _metadata.Add((existing, mesh));
+                    _metadata.Add((existing, mesh, existing.Mesh));
                     continue;
                 }
                 SilkMeshGpuResource replacement = _owner.CreateMesh(scene, mesh);
@@ -154,8 +201,48 @@ public sealed partial class SilkSceneGpuResources
             if (_owner.RequiresSurfacePreparation)
             {
                 _surfaces = new PreparedSurfaceUpdate(_owner);
-                _surfaces.Prepare(scene, delta);
+                _surfaces.Prepare(scene, delta, prepareUniformCapacity, useSceneMaterials);
             }
+            if (prepareUniformCapacity && SilkMeshGpuGeometryResource.UsesInstanceAdmission(_owner._device))
+            {
+                PrepareDeformationDispatch();
+            }
+        }
+
+        private void PrepareDeformationDispatch()
+        {
+            var geometries = new HashSet<SilkMeshGpuGeometryResource>();
+            foreach (SilkMeshGpuResource resource in _replacements.Values)
+            {
+                if (resource.Geometry.Deformation is { } deformation &&
+                    (deformation.NeedsDispatch || _poses.ContainsKey(deformation)))
+                {
+                    geometries.Add(resource.Geometry);
+                }
+            }
+            if (geometries.Count == 0)
+            {
+                return;
+            }
+            _dispatchGeneration = SilkDeviceGeneration.Read(_owner._device);
+            _vertices.EnsureCapacity(geometries.Count);
+            using ISilkGraphicsCommandList commands = _owner._device.CreateCommandList();
+            foreach (SilkMeshGpuGeometryResource geometry in geometries)
+            {
+                var vertices = new SilkMeshGpuGeometryResource.PreparedDeformedVertices(geometry, _owner._device);
+                _vertices.Add(geometry, vertices);
+                if (_poses.TryGetValue(geometry.Deformation!, out SilkMeshGpuDeformation.PreparedPose? pose))
+                {
+                    pose.Record(commands, vertices.Buffer);
+                }
+                else
+                {
+                    geometry.Deformation!.Record(commands, vertices.Buffer);
+                }
+            }
+            using ISilkGraphicsSubmission submission = _owner._device.Submit(commands);
+            submission.Wait();
+            _owner._deformationDispatches += checked((ulong)geometries.Count);
         }
 
         internal void SetVerdict(DisplacedPrimKey key, DisplacementVerdict? verdict) => _verdicts[key] = verdict;
@@ -177,6 +264,38 @@ public sealed partial class SilkSceneGpuResources
             }
         }
 
+        internal void Activate()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_activated)
+            {
+                return;
+            }
+            foreach (SilkMeshGpuDeformation.PreparedPose pose in _poses.Values)
+            {
+                pose.Activate();
+            }
+            foreach (SilkMeshGpuGeometryResource.PreparedDeformedVertices vertices in _vertices.Values)
+            {
+                vertices.Activate(_dispatchGeneration);
+            }
+            foreach (ulong id in _retired.Keys)
+            {
+                _owner._meshes.Remove(id);
+            }
+            foreach ((ulong id, SilkMeshGpuResource resource) in _replacements)
+            {
+                _owner._meshes[id] = resource;
+            }
+            foreach ((SilkMeshGpuResource resource, SilkMeshData mesh, _) in _metadata)
+            {
+                resource.UpdateMesh(mesh);
+            }
+            _owner.Revision++;
+            _activated = true;
+            _surfaces?.Activate();
+        }
+
         internal void Commit()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -184,22 +303,18 @@ public sealed partial class SilkSceneGpuResources
             {
                 throw new InvalidOperationException("The GPU update was already committed.");
             }
+            Activate();
             foreach (SilkMeshGpuDeformation.PreparedPose pose in _poses.Values)
             {
                 pose.Commit();
             }
-            foreach ((ulong id, SilkMeshGpuResource resource) in _retired)
+            foreach (SilkMeshGpuGeometryResource.PreparedDeformedVertices vertices in _vertices.Values)
             {
-                _owner._meshes.Remove(id);
+                vertices.Commit(_dispatchGeneration);
+            }
+            foreach (SilkMeshGpuResource resource in _retired.Values)
+            {
                 _owner.ForgetDisplacementVerdict(resource.Mesh);
-            }
-            foreach ((ulong id, SilkMeshGpuResource resource) in _replacements)
-            {
-                _owner._meshes[id] = resource;
-            }
-            foreach ((SilkMeshGpuResource resource, SilkMeshData mesh) in _metadata)
-            {
-                resource.UpdateMesh(mesh);
             }
             foreach ((DisplacedPrimKey key, DisplacementVerdict? verdict) in _verdicts)
             {
@@ -218,7 +333,6 @@ public sealed partial class SilkSceneGpuResources
                 }
                 _owner._displacementVerdictRevision++;
             }
-            _owner.Revision++;
             _textures?.Commit();
             _environment?.Commit();
             _surfaces?.Commit();
@@ -229,6 +343,10 @@ public sealed partial class SilkSceneGpuResources
 
         internal bool TexturesPrepared => _textures is not null;
         internal bool SurfacesPrepared => _surfaces is not null;
+        internal SilkMeshGpuResource GetMesh(ulong id) =>
+            _replacements.TryGetValue(id, out SilkMeshGpuResource? mesh) ? mesh : _owner._meshes[id];
+        internal ISilkGraphicsBuffer GetVertices(SilkMeshGpuGeometryResource geometry) =>
+            _vertices.TryGetValue(geometry, out var vertices) ? vertices.Buffer : geometry.VertexBuffer;
 
         public void Dispose()
         {
@@ -238,6 +356,33 @@ public sealed partial class SilkSceneGpuResources
             }
             _owner._preparing = null;
             List<Exception>? failures = null;
+            if (!_committed && _activated)
+            {
+                foreach (ulong id in _replacements.Keys)
+                {
+                    _owner._meshes.Remove(id);
+                }
+                foreach ((ulong id, SilkMeshGpuResource resource) in _retired)
+                {
+                    _owner._meshes[id] = resource;
+                }
+                foreach ((SilkMeshGpuResource resource, _, SilkMeshData previous) in _metadata)
+                {
+                    resource.UpdateMesh(previous);
+                }
+                _owner.Revision = _revision;
+            }
+            foreach (SilkMeshGpuGeometryResource.PreparedDeformedVertices vertices in _vertices.Values)
+            {
+                try
+                {
+                    vertices.Dispose();
+                }
+                catch (Exception error)
+                {
+                    (failures ??= []).Add(error);
+                }
+            }
             foreach (SilkMeshGpuResource resource in (_committed ? _retired : _replacements).Values)
             {
                 try

@@ -31,6 +31,7 @@ public sealed class StdioProtocolTests
                     {
                         ["OPENUSD_MCP_SOURCE_ROOT"] = files.SourceRoot,
                         ["OPENUSD_MCP_OUTPUT_ROOT"] = files.OutputRoot,
+                        ["DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE"] = null,
                     },
                     StandardErrorLines = line => standardError.Enqueue(line),
                 });
@@ -58,7 +59,9 @@ public sealed class StdioProtocolTests
                 },
                 cancellationToken: cancellation.Token);
 
-            await Assert.That(tools.Count).IsEqualTo(16);
+            await Assert.That(tools.Count).IsEqualTo(18);
+            await Assert.That(tools.Any(static tool => tool.Name == "render_physics_sequence")).IsTrue();
+            await Assert.That(tools.Any(static tool => tool.Name == "list_sequence_jobs")).IsTrue();
             await Assert.That(resources).IsEmpty();
             await Assert.That(templates).Count().IsEqualTo(1);
             await Assert.That(noSession.IsError).IsTrue();
@@ -69,6 +72,14 @@ public sealed class StdioProtocolTests
                     .GetProperty("code")
                     .GetString())
                 .IsEqualTo("no_session");
+            CallToolResult history = await client.CallToolAsync(
+                "list_sequence_jobs",
+                new Dictionary<string, object?>(),
+                cancellationToken: cancellation.Token);
+            await Assert.That(history.IsError).IsNotEqualTo(true)
+                .Because(string.Join(Environment.NewLine, standardError));
+            await Assert.That(history.StructuredContent.HasValue).IsTrue();
+            await Assert.That(history.StructuredContent!.Value.GetProperty("jobs").GetArrayLength()).IsEqualTo(0);
         }
         await Assert.That(standardError).IsNotEmpty()
             .Because(

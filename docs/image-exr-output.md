@@ -1,12 +1,12 @@
 # Bounded raw RGBA16Float EXR output
 
-> Unreleased source API requiring the matching Data ABI 24 Core runtime.
-> Published `0.14.0-alpha` native assets cannot serve this API.
+> Unreleased source API requiring the matching Data ABI 26 Core runtime.
+> Published `0.16.6-alpha` native assets predate this encoder and do not advertise its required capability.
 
 `OpenUsd.Rendering.ExrRgba16FloatWriter` writes one exact, packed RGBA binary16
 little-endian plane to a caller-owned `FileStream`. The standard dependency path is
 `OpenUsd.Rendering` → `OpenUsd` → `OpenUsd.Interop`, with the matched
-`OpenUsd.Runtime.Core.win-x64` native assets. No renderer backend or Hydra translation
+`OpenUsd.Runtime.Core` assets for the current host. No renderer backend or Hydra translation
 logic is part of the encoder.
 
 ```csharp
@@ -28,9 +28,9 @@ Success synchronizes both the native cursor and `FileStream.Position` to EOF.
 
 ## Exact contract
 
-* Data ABI **24**, required capability **`OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT`**,
-  bit **32**, full current required mask **`0x1FFFFFFFF`**.
-* The capability describes a **guarded API**, not portable file-descriptor support.
+* Introduced in Data ABI **24**, required capability **`OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT`**,
+  bit **32**. The current source uses Data ABI **26** with full required mask **`0x1FFFFFFFFF`**.
+* The capability describes a **guarded API**, not support for arbitrary handles or descriptors.
   Old ABI23, a missing capability, and a missing export must be rejected. It is not
   valid to advertise this required export under ABI23.
 * `openusd_image_encode_exr_rgba16f_v1` uses a dedicated numeric encode-status domain,
@@ -63,9 +63,20 @@ conversion**. Metadata is recorded in project string attributes
 `openusd:colorPolicy` and `openusd:alphaPolicy`; third-party compositors need not
 honor those custom attributes. No chromaticities attribute is silently added.
 
-The initial API is viewport/raster output: explicit origin `(0,0)`, complete equal
-data/display windows, and square pixels. Crops, overscan, arbitrary authored render
-windows/aspect/primaries and float32 input are unsupported, not reinterpreted.
+The public writer API is viewport/raster output: explicit origin `(0,0)`, complete equal
+data/display windows, and square pixels. Authored render-product jobs need more than
+that, because a product's crop, overscan and pixel aspect are part of its raster. They
+use an internal overload with the `EXPLICIT_WINDOWS` policy of the same encoder:
+
+- The display window is the product's full raster, with origin `(0,0)`.
+- The data window is the product's crop or overscan region. Its bottom-left product
+  origin is converted to EXR's downward Y axis, so overscan produces negative or
+  beyond-display coordinates rather than a clamped image.
+- The `pixelAspectRatio` attribute stores the product's effective pixel aspect as a float.
+
+A pixel aspect outside 1/65536..65536, or a window corner beyond ±1,073,741,823, is
+refused before the job stages output. Neither is clamped. Arbitrary authored primaries
+and float32 input remain unsupported, not reinterpreted.
 
 ## Platform matrix
 
@@ -73,19 +84,27 @@ windows/aspect/primaries and float32 input are unsupported, not reinterpreted.
 |---|---|---|---|
 | Windows x64 regular-file profile | Available | Supported | Native, package-only NativeAOT, Hio and SwiftShader |
 | Other Windows handle profiles | Available | Refused before output mutation | Native and managed probes |
-| Other hosts/architectures | Portable declaration | `UNSUPPORTED` without file I/O | No non-Windows execution claimed |
+| Linux/macOS x64/ARM64 | Available | Implemented | Hosted native and package proof pending |
+| Other hosts/architectures | Portable declaration | `UNSUPPORTED` without file I/O | No execution asserted |
 
-The implemented profile requires a regular, synchronous, buffered, writable empty HANDLE.
+The Windows profile requires a regular, synchronous, buffered, writable empty HANDLE.
 Asynchronous, append-only, read-only, unbuffered, directory, pipe and device handles are refused.
-Other hosts, including Linux/macOS/ARM64/32-bit, do not access request/input/handle storage;
-the managed writer throws early `PlatformNotSupportedException`. The unavailable-profile
-source branch was compiled and executed on Windows only, not on those other platforms.
+The POSIX profile accepts a borrowed nonnegative `int` descriptor, including fd zero.
+It requires an empty writable regular file positioned at zero and refuses `O_APPEND`,
+`O_NONBLOCK` and `O_DIRECT` where available. Interrupted seek/write syscalls retry;
+a short write records a sticky I/O failure. The encoder does not reopen paths, so
+an authorized descriptor remains usable after its symlink is removed or its target
+is renamed. The caller still owns exclusive I/O and closes the descriptor after drain.
 
-Do not reuse the Windows zero/invalid-HANDLE rule for POSIX descriptors: fd zero can
-be valid. No POSIX descriptor implementation was added. Native configuration only
-resolves/links the OpenEXR output/NTDLL dependencies when the compiler targets the
-implemented Windows x64 profile; other platforms are not made to fail merely because
-this profile is unavailable.
+The existing `windows_file_handle` parameter and `win32_error` result field retain
+their names and widths for ABI compatibility. POSIX callers pass a zero-extended
+descriptor and receive `errno` in the historical error field. Windows retains its
+HANDLE representation and Win32 errors. Unsupported hosts do not access request,
+input or handle storage; the managed writer rejects them before native loading.
+
+Native configuration resolves OpenEXR for both implemented profiles and links NTDLL
+only on Windows. The source-owned standalone codec probe also builds without the
+OpenUSD SDK; it exercises the same encoder source, not a second codec implementation.
 
 ## Ownership, cancellation and errors
 
@@ -105,9 +124,9 @@ interruptible by this cooperative mechanism.
 Dedicated statuses map to typed managed outcomes: invalid input → argument error,
 unsupported profile → not-supported error, quota → `RenderOutputQuotaExceededException`,
 cancellation → `OperationCanceledException`, native I/O/codec/allocation failure →
-`IOException`. Native I/O retains the numeric Win32 cause in a `Win32Exception`
-inner exception. No diagnostic string is parsed. Native allocation failure is not
-misrepresented as a CLR allocation failure.
+`IOException`. Native I/O retains the numeric OS cause in a `Win32Exception`
+inner exception (`NativeErrorCode` is `errno` on POSIX). No diagnostic string is parsed.
+Native allocation failure is not misrepresented as a CLR allocation failure.
 
 ## What is and is not bounded
 
@@ -136,10 +155,12 @@ See [rendering](rendering.md#bounded-disk-image-jobs) and [MCP](mcp.md#render_se
 
 ## Dependency/provenance scope
 
-The existing OpenEXR 3.1.11 codec is used; no codec source is copied and no new codec
-is installed. `OpenEXR-3_1`, Iex, IlmThread, Imath and zlib are part of the declared
+The locked OpenEXR 3.5.2 codec is used; no codec source is copied and no new codec
+is installed. OpenEXR, Iex, IlmThread, Imath and compression dependencies are part of the declared
 Core package closure. NTDLL is a Windows **system** dependency and is not
-redistributed. The EXR addition retained the storage-admission SDK and left
+redistributed. Core packing checks the Linux/macOS OpenEXR, OpenEXRCore, Iex,
+IlmThread and Imath library paths and refuses missing codec assets before creating
+a package. The EXR addition retained the storage-admission SDK and left
 Storm 9, child 8 and hdSilk session/page 5/23 unchanged. Authored-product execution
 separately advances the current hdSilk session interface to 6; page ABI remains 23.
 Native-child AOV capture subsequently advances the child interface to 9 without changing this encoder.
@@ -167,3 +188,26 @@ checks both row orders and raw metadata, and exercises exact byte ceilings,
 cancellation, handle ownership, same-stream reset/retry and shared EXR job publication.
 The proof does not
 certify native codec heap limits or support on unexecuted platforms.
+
+## Required hosted execution
+
+After rebuilding the source-matching shim and verifying SDK commit/patch provenance,
+run `ctest --test-dir native/build/shim/<rid> -C Release --no-tests=error
+--output-on-failure -R "^openusd_image_exr_"` on `linux-x64` and `osx-arm64`.
+The seven probes cover exact half bits and windows, invalid requests/descriptors,
+before/at/after byte ceilings, every cancellation boundary, sticky injected faults,
+reset/retry, fd zero and authorized symlink/rename lifetimes.
+
+Set `OPENUSD_EXR_EXECUTION_REQUIRED=1`, configure the matching package execution
+inputs, rebuild `OpenUsd.Package.Tests` and run `eng/run-managed-tests.ps1` with
+`-Project tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj -Framework net10.0
+-TestArguments @('--treenode-filter',
+'/*/*/RuntimePackageTests/CorePackagesExecuteBoundedExrFromCleanNativeAotFeed')`.
+The test packs the current RID, publishes a Core-only NativeAOT consumer and checks
+loaded-module paths and hashes before accepting the independent decoder result.
+Run `RenderDiskJobExrTests` and `RenderProductJobPlanTests` with the same required
+switch and a source-matching native runtime to qualify shared output publication.
+
+Local source builds and managed admission tests do not qualify POSIX execution.
+When the required host-memory admission refuses a native child, retain its refusal
+receipt and run these selectors on a hosted runner; do not lower the guard.

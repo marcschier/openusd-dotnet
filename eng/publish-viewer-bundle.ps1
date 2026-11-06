@@ -131,6 +131,17 @@ function Assert-NoNativeInstallReference
     }
 }
 
+function Remove-ExternalCompilerRuntimeAssets
+{
+    foreach ($file in Get-ChildItem -LiteralPath $layoutRoot -Recurse -File -Force)
+    {
+        if ($file.Name -imatch '^(?:lib)?spirv[-_]?cross(?:\.dll|\.dylib|\.so(?:\.[0-9]+)*)$')
+        {
+            Remove-Item -LiteralPath $file.FullName -Force
+        }
+    }
+}
+
 $version = Get-Version
 Remove-Item $layoutRoot, $objRoot, $artifactRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $layoutRoot, $objRoot, $artifactRoot | Out-Null
@@ -138,6 +149,14 @@ New-Item -ItemType Directory -Force -Path $layoutRoot, $objRoot, $artifactRoot |
 $generatedProject = Join-Path $objRoot 'OpenUsd.Viewer.Distribution.App.csproj'
 $program = Join-Path $objRoot 'Program.cs'
 $nugetConfig = Join-Path $objRoot 'nuget.config'
+$externalCompilerReference = if ($NoArchive)
+{
+    ''
+}
+else
+{
+    '    <PackageReference Include="Silk.NET.SPIRV.Cross.Native" ExcludeAssets="native" />'
+}
 
 @"
 // Copyright (c) marcschier. Licensed under the MIT License.
@@ -174,6 +193,7 @@ internal static class Program
     <PackageReference Include="Avalonia.Fonts.Inter" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Avalonia.Wayland" />
+$externalCompilerReference
   </ItemGroup>
 </Project>
 "@ | Set-Content $generatedProject
@@ -227,6 +247,11 @@ if ($LASTEXITCODE -ne 0)
     throw "Viewer package-only publish failed for $Rid."
 }
 
+if (-not $NoArchive)
+{
+    Remove-ExternalCompilerRuntimeAssets
+}
+
 foreach ($requiredPath in @(
     (Join-Path $layoutRoot 'plugin/usd/plugInfo.json'),
     (Join-Path $layoutRoot 'plugin/usd/hdStorm/resources/plugInfo.json')))
@@ -238,6 +263,12 @@ foreach ($requiredPath in @(
 }
 
 Assert-NoNativeInstallReference
+
+if (-not $NoArchive)
+{
+    & (Join-Path $PSScriptRoot 'assert-viewer-compiler-redistribution.ps1') `
+        -BundleRoot $layoutRoot
+}
 
 & (Join-Path $PSScriptRoot 'sign-viewer-bundle.ps1') `
     -Rid $Rid `

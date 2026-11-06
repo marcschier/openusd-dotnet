@@ -99,7 +99,7 @@ internal sealed class UsdPhysicsFramePublisher
     /// that is mid-way through pinning a buffer conservatively blocks the claim instead of racing
     /// the worker into a half-written frame.
     /// </remarks>
-    internal UsdPhysicsFrame? TryClaimWriteBuffer()
+    internal UsdPhysicsFrame? TryClaimWriteBuffer(bool countDroppedPublication = true)
     {
         UsdPhysicsFrame? published = Volatile.Read(ref _published);
         for (int index = 0; index < _frames.Length; index++)
@@ -115,8 +115,30 @@ internal sealed class UsdPhysicsFramePublisher
             }
         }
 
-        Interlocked.Increment(ref _droppedPublications);
+        if (countDroppedPublication)
+        {
+            Interlocked.Increment(ref _droppedPublications);
+        }
         return null;
+    }
+
+    internal bool TryClaimLeasedWriteBuffer(out UsdPhysicsFrame? frame, out UsdPhysicsFrameLease lease)
+    {
+        frame = TryClaimWriteBuffer(countDroppedPublication: false);
+        if (frame is null)
+        {
+            lease = default;
+            return false;
+        }
+        Interlocked.Increment(ref frame.References);
+        if (_leases.TryRent(frame, out lease))
+        {
+            return true;
+        }
+        Release(frame);
+        Abandon(frame);
+        frame = null;
+        return false;
     }
 
     /// <summary>Publishes a previously claimed buffer and releases the buffer it replaces.</summary>

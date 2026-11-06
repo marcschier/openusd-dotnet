@@ -14,6 +14,7 @@
 #include <array>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -143,6 +144,103 @@ Diagnostic(const openusd_mdl_distilled_material* result)
         return std::string();
     }
     return std::string(result->diagnostic.data, result->diagnostic.size);
+}
+
+bool
+CheckUnmappedScalarTextureInfluence(const Adapter& adapter, openusd_mdl_adapter* instance)
+{
+    const std::string module = "OmniPBR.mdl";
+    const std::string material = "OmniPBR";
+    const std::string path = "/World/Looks/ConstantOnly";
+    const std::array<std::string, 6> names = {
+        "reflection_roughness_constant", "metallic_constant",
+        "reflection_roughness_texture_influence", "metallic_texture_influence",
+        "unmapped_control", "enable_ORM_texture"};
+    std::array<openusd_mdl_parameter, 7> parameters{};
+    for (size_t index = 0; index < names.size(); ++index)
+    {
+        parameters[index].name = View(names[index]);
+        parameters[index].kind = OPENUSD_MDL_VALUE_FLOAT;
+        parameters[index].component_count = 1;
+    }
+    parameters[0].value[0] = 0.23F;
+    parameters[1].value[0] = 0.81F;
+    parameters[4].value[0] = 1.0F;
+    openusd_mdl_material_request request{};
+    request.struct_size = static_cast<uint32_t>(sizeof(request));
+    request.module_uri = View(module);
+    request.material_name = View(material);
+    request.material_path = View(path);
+    request.parameters = parameters.data();
+    bool passed = true;
+    struct InfluenceCase { float roughness; float metallic; uint32_t kind; };
+    const InfluenceCase cases[] = {
+        {0.0F, 0.0F, OPENUSD_MDL_VALUE_FLOAT}, {-0.0F, -0.0F, OPENUSD_MDL_VALUE_FLOAT},
+        {std::numeric_limits<float>::denorm_min(), std::numeric_limits<float>::denorm_min(),
+            OPENUSD_MDL_VALUE_FLOAT},
+        {0.35F, 0.35F, OPENUSD_MDL_VALUE_FLOAT}, {1.0F, 1.0F, OPENUSD_MDL_VALUE_FLOAT},
+        {-0.1F, -0.1F, OPENUSD_MDL_VALUE_FLOAT}, {1.1F, 1.1F, OPENUSD_MDL_VALUE_FLOAT},
+        {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), OPENUSD_MDL_VALUE_FLOAT},
+        {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), OPENUSD_MDL_VALUE_FLOAT},
+        {0.0F, 0.0F, OPENUSD_MDL_VALUE_FLOAT3},
+        {0.0F, 0.35F, OPENUSD_MDL_VALUE_FLOAT}, {0.35F, 0.0F, OPENUSD_MDL_VALUE_FLOAT}};
+    struct TextureCase { bool ormEnabled; const char* malformedTexture; };
+    const TextureCase textures[] = {
+        {false, nullptr}, {true, nullptr},
+        {false, "reflectionroughness_texture"}, {false, "metallic_texture"}, {true, "ORM_texture"}};
+    unsigned int executed = 0;
+    for (const auto& test : cases)
+    {
+        for (const auto& texture : textures)
+        {
+            parameters[5].kind = OPENUSD_MDL_VALUE_BOOL;
+            parameters[5].integer_value = texture.ormEnabled ? 1 : 0;
+            const std::string malformedTexture = texture.malformedTexture ? texture.malformedTexture : "";
+            parameters[6].name = View(malformedTexture);
+            parameters[6].kind = OPENUSD_MDL_VALUE_FLOAT;
+            request.parameter_count = malformedTexture.empty() ? 6u : 7u;
+            parameters[2].value[0] = test.roughness;
+            parameters[3].value[0] = test.metallic;
+            parameters[2].kind = parameters[3].kind = test.kind;
+            const openusd_mdl_distilled_material* result = nullptr;
+            const uint32_t status = adapter.distill(instance, &request, &result);
+            bool matches = status == OPENUSD_MDL_STATUS_OK && result != nullptr;
+            if (matches)
+            {
+                const auto* roughness = FindScalar(result, OPENUSD_MDL_SURFACE_ROUGHNESS);
+                const auto* metallic = FindScalar(result, OPENUSD_MDL_SURFACE_METALLIC);
+                const bool roughnessReported = test.roughness != 0.0F || test.kind != OPENUSD_MDL_VALUE_FLOAT;
+                const bool metallicReported = test.metallic != 0.0F || test.kind != OPENUSD_MDL_VALUE_FLOAT;
+                matches = result->texture_count == 0 && result->scalar_count == 2 &&
+                    roughness && roughness->component_count == 1 && roughness->value[0] == 0.23F &&
+                    roughness->origin == OPENUSD_MDL_ORIGIN_AUTHORED &&
+                    metallic && metallic->component_count == 1 && metallic->value[0] == 0.81F &&
+                    metallic->origin == OPENUSD_MDL_ORIGIN_AUTHORED &&
+                    Reported(result, names[2].c_str()) == roughnessReported &&
+                    Reported(result, names[3].c_str()) == metallicReported &&
+                    Reported(result, names[4].c_str()) &&
+                    (malformedTexture.empty() || Reported(result, malformedTexture.c_str())) &&
+                    result->unsupported_parameter_count ==
+                        1u + (roughnessReported ? 1u : 0u) + (metallicReported ? 1u : 0u) +
+                        (malformedTexture.empty() ? 0u : 1u);
+            }
+            if (!matches)
+            {
+                std::cerr << "CheckUnmappedScalarTextureInfluence failed for roughness " << test.roughness
+                          << ", metallic " << test.metallic
+                          << ", kind " << test.kind << ", ORM " << texture.ormEnabled
+                          << ", malformed texture " << malformedTexture << ": " << Diagnostic(result) << '\n';
+                passed = false;
+            }
+            if (result) { adapter.releaseResult(instance, result); }
+            ++executed;
+        }
+    }
+    if (passed)
+    {
+        std::cout << "PASS CheckUnmappedScalarTextureInfluence (" << executed << " cases)\n";
+    }
+    return passed;
 }
 }
 
@@ -305,6 +403,74 @@ main(int argc, char** argv)
         {
             adapter.releaseResult(instance, result);
         }
+    }
+
+    {
+        const std::string names[] = {"diffuse_color_constant", "diffuse_tint", "diffuse_texture"};
+        const std::string module = "OmniPBR.mdl";
+        const std::string material = "OmniPBR";
+        const std::string path = "/World/Looks/Tinted";
+        const std::string asset = "/not-decoded-by-the-authored-adapter.png";
+        openusd_mdl_parameter parameters[3]{};
+        for (size_t index = 0; index < 2; ++index)
+        {
+            parameters[index].name = View(names[index]);
+            parameters[index].kind = OPENUSD_MDL_VALUE_FLOAT3;
+            parameters[index].component_count = 3;
+        }
+        parameters[0].value[0] = 0.72F;
+        parameters[0].value[1] = 0.28F;
+        parameters[0].value[2] = 0.12F;
+        parameters[1].value[0] = 0.5F;
+        parameters[1].value[1] = 0.25F;
+        parameters[1].value[2] = 1.5F;
+        parameters[2].name = View(names[2]);
+        parameters[2].kind = OPENUSD_MDL_VALUE_ASSET;
+        parameters[2].text = View(asset);
+        for (uint32_t parameter_count : {2u, 3u})
+        {
+            parameters[1].value[2] = parameter_count == 2 ? 1.5F : 0.75F;
+            openusd_mdl_material_request request{};
+            request.struct_size = static_cast<uint32_t>(sizeof(request));
+            request.module_uri = View(module);
+            request.material_name = View(material);
+            request.material_path = View(path);
+            request.parameters = parameters;
+            request.parameter_count = parameter_count;
+            const openusd_mdl_distilled_material* result = nullptr;
+            const uint32_t status = adapter.distill(instance, &request, &result);
+            if (status != OPENUSD_MDL_STATUS_OK || result == nullptr)
+            {
+                fail("Authored tint distillation failed: " + Diagnostic(result));
+            }
+            else
+            {
+                const auto* diffuse = FindScalar(result, OPENUSD_MDL_SURFACE_DIFFUSE_COLOR);
+                if (!diffuse || !NearlyEqual(diffuse->value[0], 0.36F) ||
+                    !NearlyEqual(diffuse->value[1], 0.07F) ||
+                    !NearlyEqual(diffuse->value[2], parameter_count == 2 ? 0.18F : 0.09F) ||
+                    diffuse->origin != OPENUSD_MDL_ORIGIN_AUTHORED || Reported(result, "diffuse_tint"))
+                {
+                    fail("Authored diffuse tint did not multiply the constant exactly.");
+                }
+                if (parameter_count == 3 &&
+                    (result->texture_count != 1 ||
+                    !NearlyEqual(result->textures[0].scale[0], 0.5F) ||
+                    !NearlyEqual(result->textures[0].scale[1], 0.25F) ||
+                    !NearlyEqual(result->textures[0].scale[2], 0.75F) ||
+                    result->textures[0].scale[3] != 1.0F ||
+                    result->textures[0].bias[0] != 0.0F))
+                {
+                    fail("Authored diffuse tint did not preserve RGB scale and alpha.");
+                }
+            }
+            if (result != nullptr) { adapter.releaseResult(instance, result); }
+        }
+    }
+
+    if (!CheckUnmappedScalarTextureInfluence(adapter, instance))
+    {
+        fail("Inactive scalar texture influences changed constants or lost diagnostic precision.");
     }
 
     if (!sdkBacked || searchPath.empty())

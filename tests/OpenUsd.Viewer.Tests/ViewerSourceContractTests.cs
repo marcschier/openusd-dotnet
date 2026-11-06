@@ -446,7 +446,8 @@ public sealed class ViewerSourceContractTests
         await Assert.That(diagnostics).Contains("\"<source-tree>\"");
         await Assert.That(diagnostics).Contains("\"<user-profile>\"");
         await Assert.That(settings).Contains("MaximumFileBytes = 16 * 1024");
-        await Assert.That(settings).Contains("File.Move(temporaryPath, StorePath, overwrite: true)");
+        await Assert.That(settings).Contains("MoveIntoPlaceAsync(temporaryPath, StorePath, cancellationToken)");
+        await Assert.That(settings).Contains("File.Move(temporaryPath, destinationPath, overwrite: true)");
         await Assert.That(settings).DoesNotContain("JsonSerializer");
         await Assert.That(models).Contains("UsdGeomImageable.TryWrap(");
         await Assert.That(models).Contains("prim.IsPrototype()");
@@ -675,7 +676,7 @@ public sealed class ViewerSourceContractTests
     }
 
     [Test]
-    public async Task MandatoryStormChildRunnersRequireAbiEightProvenance()
+    public async Task MandatoryStormChildRunnersRequireAbiNineProvenance()
     {
         string root = FindRepositoryRoot();
         string windowsRunner = await File.ReadAllTextAsync(Path.Combine(
@@ -710,10 +711,10 @@ public sealed class ViewerSourceContractTests
         await Assert.That(linuxRunner).Contains(
             "if get(value, \"stormChildAbiVersion\") != 9:");
         await Assert.That(linuxRunner).Contains(
-            "Viewer evidence Storm child ABI must be 8.");
+            "Viewer evidence Storm child ABI must be 9.");
         await Assert.That(linuxRunner).Contains(captureApi);
         await Assert.That(linuxRunner).Contains(
-            "Storm Viewer pixels did not use the ABI 9 capture label.");
+            "Storm Viewer pixels did not use the ABI 9 capture label or its paired shell capture.");
         await Assert.That(linuxRunner).DoesNotContain("ABI7");
         await Assert.That(linuxRunner).DoesNotContain("ABI 7");
         await Assert.That(linuxRunner).DoesNotContain(

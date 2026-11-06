@@ -188,6 +188,7 @@ OpenUsd.Editing.UsdReviewSourceBinding.SourceRootPath.get -> string!
 static OpenUsd.Editing.UsdReviewDocument.Inspect(System.ReadOnlySpan<byte> bytes) -> OpenUsd.Editing.UsdReviewDocumentInfo!
 static OpenUsd.Editing.UsdReviewDocument.Read(System.ReadOnlySpan<byte> bytes, string! expectedSourcePath) -> OpenUsd.Editing.UsdReviewDocument!
 static OpenUsd.Editing.UsdReviewDocumentExtensions.AcknowledgeSaved(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdReviewDocument! captured) -> bool
+static OpenUsd.Editing.UsdReviewDocumentExtensions.AdoptIntoReview(this OpenUsd.UsdStage! stage) -> OpenUsd.Editing.UsdReviewSourceBinding!
 static OpenUsd.Editing.UsdReviewDocumentExtensions.CaptureReviewDocument(this OpenUsd.UsdLayer! layer, OpenUsd.Editing.UsdReviewSourceBinding! source, string! targetDocumentPath) -> OpenUsd.Editing.UsdReviewDocument!
 static OpenUsd.Editing.UsdReviewDocumentExtensions.CaptureReviewSourceBinding(this OpenUsd.UsdStage! stage) -> OpenUsd.Editing.UsdReviewSourceBinding!
 static OpenUsd.Editing.UsdReviewDocumentExtensions.ImportReviewDocument(this OpenUsd.UsdStage! stage, OpenUsd.Editing.UsdReviewDocument! document, OpenUsd.Editing.UsdReviewSourceBinding! source) -> OpenUsd.Editing.UsdReviewDocumentImportResult!
@@ -1187,6 +1188,10 @@ OpenUsd.UsdPrim.SetVec3f(string! attributeName, OpenUsd.UsdVec3f value) -> void
 OpenUsd.UsdPrim.SetVec3f(string! attributeName, OpenUsd.UsdVec3f value, double timeCode) -> void
 OpenUsd.UsdPrim.SetVec3fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec3f> values) -> void
 OpenUsd.UsdPrim.SetVec3fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec3f> values, double timeCode) -> void
+OpenUsd.UsdPrim.GetVec4fArray(string! attributeName) -> OpenUsd.UsdVec4f[]!
+OpenUsd.UsdPrim.GetVec4fArray(string! attributeName, double timeCode) -> OpenUsd.UsdVec4f[]!
+OpenUsd.UsdPrim.SetVec4fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec4f> values) -> void
+OpenUsd.UsdPrim.SetVec4fArray(string! attributeName, System.ReadOnlySpan<OpenUsd.UsdVec4f> values, double timeCode) -> void
 OpenUsd.UsdPrim.SetVisibility(string! visibility) -> void
 OpenUsd.UsdPrim.TypeName.get -> string!
 OpenUsd.UsdPrim.Unload() -> void
@@ -2725,3 +2730,26 @@ static OpenUsd.UsdStage.Open(string! path, OpenUsd.UsdResolverContext! context) 
 ~override OpenUsd.UsdResolvedAsset.ToString() -> string
 ~override OpenUsd.UsdResolverContextString.Equals(object obj) -> bool
 ~override OpenUsd.UsdResolverContextString.ToString() -> string
+OpenUsd.UsdStage.GetLinearUnits() -> OpenUsd.UsdStageLinearUnits
+OpenUsd.UsdStageUpAxis
+OpenUsd.UsdStageUpAxis.Y = 1 -> OpenUsd.UsdStageUpAxis
+OpenUsd.UsdStageUpAxis.Z = 2 -> OpenUsd.UsdStageUpAxis
+OpenUsd.UsdStageLinearUnits
+OpenUsd.UsdStageLinearUnits.UsdStageLinearUnits() -> void
+OpenUsd.UsdStageLinearUnits.UsdStageLinearUnits(double MetersPerUnit, bool IsMetersPerUnitAuthored, OpenUsd.UsdStageUpAxis UpAxis, bool IsUpAxisAuthored) -> void
+OpenUsd.UsdStageLinearUnits.Deconstruct(out double MetersPerUnit, out bool IsMetersPerUnitAuthored, out OpenUsd.UsdStageUpAxis UpAxis, out bool IsUpAxisAuthored) -> void
+OpenUsd.UsdStageLinearUnits.Equals(OpenUsd.UsdStageLinearUnits other) -> bool
+OpenUsd.UsdStageLinearUnits.MetersPerUnit.get -> double
+OpenUsd.UsdStageLinearUnits.MetersPerUnit.init -> void
+OpenUsd.UsdStageLinearUnits.IsMetersPerUnitAuthored.get -> bool
+OpenUsd.UsdStageLinearUnits.IsMetersPerUnitAuthored.init -> void
+OpenUsd.UsdStageLinearUnits.UpAxis.get -> OpenUsd.UsdStageUpAxis
+OpenUsd.UsdStageLinearUnits.UpAxis.init -> void
+OpenUsd.UsdStageLinearUnits.IsUpAxisAuthored.get -> bool
+OpenUsd.UsdStageLinearUnits.IsUpAxisAuthored.init -> void
+const OpenUsd.UsdStageLinearUnits.FallbackMetersPerUnit = 0.01 -> double
+override OpenUsd.UsdStageLinearUnits.GetHashCode() -> int
+static OpenUsd.UsdStageLinearUnits.operator !=(OpenUsd.UsdStageLinearUnits left, OpenUsd.UsdStageLinearUnits right) -> bool
+static OpenUsd.UsdStageLinearUnits.operator ==(OpenUsd.UsdStageLinearUnits left, OpenUsd.UsdStageLinearUnits right) -> bool
+~override OpenUsd.UsdStageLinearUnits.Equals(object obj) -> bool
+~override OpenUsd.UsdStageLinearUnits.ToString() -> string

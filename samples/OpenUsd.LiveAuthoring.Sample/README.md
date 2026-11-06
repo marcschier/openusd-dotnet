@@ -15,7 +15,7 @@ production renderer, persistent authoring tool, OPC UA client, or Pump implement
 
 ## Prerequisites and matching native runtime
 
-- .NET SDK 10.0.401.
+- .NET SDK 10.0.403.
 - The matching Core runtime and USD plugin tree.
 - No Imaging runtime; the fake consumer does not render pixels.
 - A platform NativeAOT toolchain only when publishing.

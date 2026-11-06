@@ -1,12 +1,19 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
 using OpenUsd.Rendering;
+using OpenUsd.Rendering.Physics;
 
 namespace OpenUsd.Mcp;
 
 internal interface IRenderDiskCaptureProcessor
 {
     RenderDiskJobResult ProcessDiskJob(RenderDiskJobRequest request, CancellationToken cancellationToken);
+}
+
+internal interface IPhysicsDiskCaptureProcessor
+{
+    RenderDiskJobResult ProcessPhysicsDiskJob(RenderDiskJobRequest request, WorkspacePhysicsRecording recording,
+        PhysicsRenderRecordingContext context, int stepsPerFrame, CancellationToken cancellationToken);
 }
 
 internal interface IPreviewDepthFrameSource
@@ -30,10 +37,52 @@ internal interface IPreviewProductFrameSource
         CancellationToken cancellationToken);
 }
 
-public sealed partial class PreviewCaptureProcessor : IRenderDiskCaptureProcessor
+public sealed partial class PreviewCaptureProcessor : IRenderDiskCaptureProcessor, IPhysicsDiskCaptureProcessor
 {
     public RenderDiskJobResult ProcessDiskJob(
         RenderDiskJobRequest request, CancellationToken cancellationToken = default)
+    {
+        IPreviewFrameSource frameSource = PrepareDiskFrameSource(request, cancellationToken);
+        if (request.ProductPlan is null && request.IncludeDeviceDepth && !request.IncludeHdrColor &&
+            frameSource is not IPreviewDepthFrameSource)
+        {
+            throw new NotSupportedException("The configured preview source cannot capture device depth.");
+        }
+        if (request.ProductPlan is null && request.IncludeHdrColor && frameSource is not IPreviewHdrFrameSource)
+        {
+            throw new NotSupportedException("The configured preview source cannot capture pre-display HDR color.");
+        }
+        return RenderDiskJob.Execute(request,
+            new DiskFrameSource(
+                frameSource, request.IncludeDeviceDepth, request.IncludeHdrColor,
+                request.Limits.MaximumFrameBytes, request.ProductPlan),
+            cancellationToken);
+    }
+
+    public RenderDiskJobResult ProcessPhysicsDiskJob(
+        RenderDiskJobRequest request, WorkspacePhysicsRecording recording, PhysicsRenderRecordingContext context,
+        int stepsPerFrame, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(recording);
+        ArgumentNullException.ThrowIfNull(context);
+        if (PrepareDiskFrameSource(request, cancellationToken) is not IPhysicsRenderRecordingSource source)
+        {
+            throw new NotSupportedException("The configured preview source cannot acknowledge exact physics captures.");
+        }
+        try
+        {
+            return PhysicsRenderRecording.Execute(request, recording.Transport, recording.Bindings,
+                recording.Capacities, source, context, stepsPerFrame, cancellationToken);
+        }
+        catch
+        {
+            _state = PreviewCaptureProcessorState.ResetPending;
+            throw;
+        }
+    }
+
+    private IPreviewFrameSource PrepareDiskFrameSource(
+        RenderDiskJobRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ObjectDisposedException.ThrowIf(
@@ -62,20 +111,7 @@ public sealed partial class PreviewCaptureProcessor : IRenderDiskCaptureProcesso
         IPreviewFrameSource frameSource = _frameSource
             ??= _frameSourceFactory.Create(preview, cancellationToken)
                 ?? throw new InvalidOperationException("The preview frame source factory returned null.");
-        if (request.ProductPlan is null && request.IncludeDeviceDepth && !request.IncludeHdrColor &&
-            frameSource is not IPreviewDepthFrameSource)
-        {
-            throw new NotSupportedException("The configured preview source cannot capture device depth.");
-        }
-        if (request.ProductPlan is null && request.IncludeHdrColor && frameSource is not IPreviewHdrFrameSource)
-        {
-            throw new NotSupportedException("The configured preview source cannot capture pre-display HDR color.");
-        }
-        return RenderDiskJob.Execute(request,
-            new DiskFrameSource(
-                frameSource, request.IncludeDeviceDepth, request.IncludeHdrColor,
-                request.Limits.MaximumFrameBytes, request.ProductPlan),
-            cancellationToken);
+        return frameSource;
     }
 
     private sealed class DiskFrameSource(
@@ -84,6 +120,7 @@ public sealed partial class PreviewCaptureProcessor : IRenderDiskCaptureProcesso
     {
         public void ValidateProduct(RenderProductJobPlan plan, CancellationToken cancellationToken)
         {
+            ArgumentNullException.ThrowIfNull(plan);
             if (!ReferenceEquals(plan, productPlan) || source is not IPreviewProductFrameSource productSource)
             {
                 throw new NotSupportedException(
@@ -117,7 +154,8 @@ public sealed partial class PreviewCaptureProcessor : IRenderDiskCaptureProcesso
             return new RenderJobImage(image.Width, image.Height, image.Pixels, Rgba8RowOrder.TopDown)
             {
                 Diagnostics = source is IPreviewDiagnosticSource diagnostics
-                    ? diagnostics.Diagnostics : RenderDiagnosticsState.Empty
+                    ? diagnostics.Diagnostics : RenderDiagnosticsState.Empty,
+                Backend = (source as IPreviewBackendSource)?.Backend
             };
         }
     }

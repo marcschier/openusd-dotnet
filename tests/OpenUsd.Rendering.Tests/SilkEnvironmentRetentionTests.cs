@@ -31,6 +31,63 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class SilkEnvironmentRetentionTests
 {
     [Test]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2201",
+        Justification = "Fault injection avoids exhausting shared-host memory.")]
+    public async Task DecodeAllocationFailureRejectsTheEnvironmentUpdateWithoutPublishingFallback()
+    {
+        using var device = new EnvironmentDevice();
+        var budget = new SilkCpuTextureBudget(16_777_216);
+        budget.ConfigureDevice(device);
+        bool refuse = false;
+        int attempts = 0;
+        using var resources = new SilkSceneGpuResources(device,
+            (_, _) => throw new InvalidOperationException("Unbounded decoding must not run."),
+            imageDescriber: _ => new SilkImageDescription(8, 4, SilkTextureFormat.Rgba32Float),
+            environmentStampReader: _ => new SilkEnvironmentAssetStamp(1, 1),
+            cpuTextureBudget: budget,
+            ownedImageDecoder: (_, _, owner) =>
+            {
+                attempts++;
+                if (refuse)
+                {
+                    throw new OutOfMemoryException("Injected decoded pixel allocation failure.");
+                }
+                IDisposable reservation = owner.Reserve(512);
+                SilkDecodedImage image = Constant(8, 4, 1);
+                image.OwnReservation(reservation);
+                return image;
+            });
+        var scene = new SilkSceneState();
+        void apply(OpenUsdSilkPage page)
+        {
+            using SilkSceneState.PreparedPage cpu = scene.PreparePage(page);
+            using SilkSceneGpuResources.PreparedMeshUpdate? gpu = resources.Prepare(scene, cpu.Delta);
+            gpu?.Commit();
+            cpu.Commit();
+        }
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, Upsert(DomePath, TexturePath), 1);
+        apply(first);
+        SilkEnvironmentFrameBinding binding = resources.EnvironmentBinding;
+        ulong reserved = budget.Usage.ReservedBytes;
+        int originalAttempts = attempts;
+        using var update = new OpenUsdSilkPage(
+            SilkCommandParser.PageAbiVersion, 2, Upsert(DomePath, SecondTexturePath), 1);
+        refuse = true;
+        await Assert.That(() => apply(update)).Throws<OutOfMemoryException>();
+        await Assert.That(attempts).IsEqualTo(originalAttempts + 1);
+        await Assert.That(scene.Revision).IsEqualTo(1ul);
+        await Assert.That(resources.EnvironmentBinding).IsEqualTo(binding);
+        await Assert.That(resources.EnvironmentLitDomes).IsEquivalentTo([DomePath]);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(reserved);
+        refuse = false;
+        apply(update);
+        await Assert.That(scene.Revision).IsEqualTo(2ul);
+        await Assert.That(attempts).IsEqualTo(originalAttempts + 2);
+        resources.Dispose();
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
     [Arguments(false, 15_104ul, 2_304ul)]
     [Arguments(true, 25_600ul, 4_608ul)]
     public async Task PrefilterAccountsForWorkspaceOutputAndGroupScratchBeforeAllocation(
@@ -155,7 +212,7 @@ public sealed class SilkEnvironmentRetentionTests
                 return image;
             });
         var scene = new SilkSceneState();
-        using var page = new OpenUsdSilkPage(24, 1,
+        using var page = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1,
             [.. Upsert(DomePath, TexturePath), .. Upsert(SecondDomePath, SecondTexturePath)], 2);
         void apply()
         {
@@ -233,7 +290,7 @@ public sealed class SilkEnvironmentRetentionTests
             cpu.Commit();
             resources.CompleteApply(scene, cpu.Delta, gpu?.TexturesPrepared == true);
         }
-        using var first = new OpenUsdSilkPage(24, 1, Upsert(DomePath, TexturePath), 1);
+        using var first = new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 1, Upsert(DomePath, TexturePath), 1);
         apply(first);
         using var originalCommands = new EnvironmentCommandList();
         resources.BindEnvironment(originalCommands);
@@ -246,8 +303,8 @@ public sealed class SilkEnvironmentRetentionTests
         ulong revision = scene.EnvironmentRevision;
         bool retireOnly = refusal == "retirement-mesh";
         using var update = retireOnly
-            ? new OpenUsdSilkPage(24, 2, [.. Remove(DomePath), .. LinkedMesh()], 2)
-            : new OpenUsdSilkPage(24, 2,
+            ? new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2, [.. Remove(DomePath), .. LinkedMesh()], 2)
+            : new OpenUsdSilkPage(SilkCommandParser.PageAbiVersion, 2,
                 [.. Remove(DomePath), .. Upsert(SecondDomePath, SecondTexturePath), .. LinkedMesh()], 3);
         IDisposable? pressure = refusal == "texture"
             ? budget.Reserve(new SilkTextureDescriptor(
@@ -1054,7 +1111,7 @@ public sealed class SilkEnvironmentRetentionTests
         byte[] pathBytes = System.Text.Encoding.UTF8.GetBytes(MeshPath);
         float[] points = [0, 0, 0, 1, 0, 0, 0, 1, 0];
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (points.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -1088,8 +1145,8 @@ public sealed class SilkEnvironmentRetentionTests
                 bytes.AsSpan(80 + (element * 8)),
                 element % 5 == 0 ? 1 : 0);
         }
-        pathBytes.CopyTo(bytes, 268);
-        int offset = 268 + pathBytes.Length;
+        pathBytes.CopyTo(bytes, 276);
+        int offset = 276 + pathBytes.Length;
         foreach (float value in points)
         {
             BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset), value);
@@ -1700,6 +1757,13 @@ public sealed class SilkEnvironmentRetentionTests
             .. BitConverter.GetBytes(0u),
             .. pathBytes,
             .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(0u),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(1f),
+            .. BitConverter.GetBytes(0f),
+            .. BitConverter.GetBytes(0f),
             .. BitConverter.GetBytes(0u),
             .. BitConverter.GetBytes(1f),
             .. BitConverter.GetBytes(0f),
@@ -2794,9 +2858,9 @@ public sealed class SilkEnvironmentRetentionTests
                 scene, scene.MeshesByPath[(paths[index], 0)], RenderHeadlight.Deterministic);
             await AssertRetentionSurface(buffers[index], masks[index]);
             await Assert.That(resources.Statistics.BufferAllocationBytes - previous.BufferAllocationBytes)
-                .IsEqualTo(index == 3 ? 0UL : 240UL);
+                .IsEqualTo(index == 3 ? 0UL : 304UL);
             await Assert.That(resources.Statistics.BufferWriteBytes - previous.BufferWriteBytes)
-                .IsEqualTo(index == 3 ? 0UL : 240UL);
+                .IsEqualTo(index == 3 ? 0UL : 304UL);
         }
 
         await Assert.That(buffers[3]).IsSameReferenceAs(buffers[0]);
@@ -2810,9 +2874,9 @@ public sealed class SilkEnvironmentRetentionTests
         }
         await Assert.That(resources.SurfaceBufferCount).IsEqualTo(5);
         await Assert.That(resources.Statistics.BufferAllocationBytes - before.BufferAllocationBytes)
-            .IsEqualTo(5UL * 240);
+            .IsEqualTo(5UL * 304);
         await Assert.That(resources.Statistics.BufferWriteBytes - before.BufferWriteBytes)
-            .IsEqualTo(5UL * 240);
+            .IsEqualTo(5UL * 304);
         await Assert.That(resources.Statistics.GeometryBuilds).IsEqualTo(before.GeometryBuilds);
         await Assert.That(resources.Statistics.VertexUploads).IsEqualTo(before.VertexUploads);
         await Assert.That(resources.Statistics.IndexUploads).IsEqualTo(before.IndexUploads);
@@ -2853,7 +2917,7 @@ public sealed class SilkEnvironmentRetentionTests
         SilkSceneGpuStatistics geometry = resources.Statistics;
         ulong geometryRevision = scene.GeometryRevision;
         ulong resourceRevision = resources.Revision;
-        await Assert.That(frameBuffer.Size).IsEqualTo((nuint)15296);
+        await Assert.That(frameBuffer.Size).IsEqualTo((nuint)19264);
         await Assert.That(geometry.GeometryBuilds).IsEqualTo(1UL);
         await Assert.That(geometry.VertexUploads).IsEqualTo(1UL);
         await Assert.That(geometry.IndexUploads).IsEqualTo(1UL);
@@ -2877,11 +2941,11 @@ public sealed class SilkEnvironmentRetentionTests
         RetentionFloats(edited, entry127 + 160, 2, 0.25f, 0.875f, 2);
         byte[] editedExpected = (byte[])baselineBytes.Clone();
         RetentionFloats(editedExpected, 224 + (127 * 16), 9, -7, 5, 3);
-        RetentionFloats(editedExpected, 2272 + (127 * 16), -1, 0, 0, 2);
+        RetentionFloats(editedExpected, 2272 + (127 * 16), -4, 0, 0, 2);
         RetentionFloats(editedExpected, 4320 + (127 * 16), 0.25f, 0.5f, 0.75f, 12);
         RetentionFloats(editedExpected, 6368 + (127 * 16), 0.25f, 0.875f, 1, 0);
-        RetentionFloats(editedExpected, 8416 + (127 * 16), 0, 1, 0, 6);
-        RetentionFloats(editedExpected, 10464 + (127 * 16), 0, 0, -1, 7);
+        RetentionFloats(editedExpected, 8416 + (127 * 16), 0, 2, 0, 6);
+        RetentionFloats(editedExpected, 10464 + (127 * 16), 0, 0, -3, 7);
 
         byte[] removed = (byte[])edited.Clone();
         BinaryPrimitives.WriteUInt32LittleEndian(removed.AsSpan(536), 127u);
@@ -2913,7 +2977,7 @@ public sealed class SilkEnvironmentRetentionTests
         byte[] noAuthored = RetentionFrame(0);
         byte[] noAuthoredExpected = (byte[])reorderedExpected.Clone();
         RetentionFloats(noAuthoredExpected, 220, 0);
-        RetentionFloats(noAuthoredExpected, 15020, 0);
+        RetentionFloats(noAuthoredExpected, 16940, 0);
         for (int light = 0; light < 128; light++)
         {
             RetentionFloats(noAuthoredExpected, 224 + (light * 16), 0, 0, 0, 0);
@@ -2926,7 +2990,7 @@ public sealed class SilkEnvironmentRetentionTests
         byte[] authoredDark = (byte[])noAuthored.Clone();
         BinaryPrimitives.WriteUInt32LittleEndian(authoredDark.AsSpan(540), 0x1u);
         byte[] authoredDarkExpected = (byte[])noAuthoredExpected.Clone();
-        RetentionFloats(authoredDarkExpected, 15020, 1);
+        RetentionFloats(authoredDarkExpected, 16940, 1);
         var allMasks = new SilkLightLinkMasks(UInt128.MaxValue, UInt128.MaxValue, 255);
 
         (string Name, byte[] Frame, byte[]? Links, byte[] Expected, SilkLightLinkMasks Masks, bool Changed)[] edits =
@@ -2955,10 +3019,24 @@ public sealed class SilkEnvironmentRetentionTests
             ISilkGraphicsBuffer next = resources.RequireFrameBuffer(
                 scene, RenderOutputTransform.Identity, 0);
             await Assert.That(next).IsSameReferenceAs(frameBuffer);
-            await Assert.That(RetentionReadback(next).SequenceEqual(edit.Expected))
-                .IsTrue().Because($"the {edit.Name} transition must change exactly its frame bytes");
+            byte[] actual = RetentionReadback(next);
+            await Assert.That(actual.Length).IsEqualTo(edit.Expected.Length)
+                .Because($"the {edit.Name} transition must preserve the frame byte count");
+            int mismatch = -1;
+            for (int index = 0; index < actual.Length; index++)
+            {
+                if (actual[index] != edit.Expected[index])
+                {
+                    mismatch = index;
+                    break;
+                }
+            }
+            await Assert.That(mismatch).IsEqualTo(-1)
+                .Because($"the {edit.Name} transition must change exactly its frame bytes; " +
+                    $"first mismatch at {mismatch}" +
+                    (mismatch < 0 ? string.Empty : $" ({actual[mismatch]} != {edit.Expected[mismatch]})"));
             await Assert.That(resources.Statistics.BufferWriteBytes - beforeWrite.BufferWriteBytes)
-                .IsEqualTo(edit.Changed ? 15296UL : 0UL);
+                .IsEqualTo(edit.Changed ? 19264UL : 0UL);
             await Assert.That(resources.Statistics.BufferAllocationBytes)
                 .IsEqualTo(beforeWrite.BufferAllocationBytes);
             await Assert.That(scene.Frame.Revision)
@@ -2997,7 +3075,7 @@ public sealed class SilkEnvironmentRetentionTests
         }
         await Assert.That(scene.Frame.Lights[127].Type).IsEqualTo(0u);
         await Assert.That(scene.Frame.LightCount).IsEqualTo(0u);
-        await Assert.That(RetentionVector(RetentionReadback(frameBuffer), 15008).W).IsEqualTo(1f);
+        await Assert.That(RetentionVector(RetentionReadback(frameBuffer), 16928).W).IsEqualTo(1f);
     }
 
     [Test]
@@ -3097,7 +3175,9 @@ public sealed class SilkEnvironmentRetentionTests
     }
 
     [Test]
-    public async Task ConsecutiveSurfaceBindingsObserveEveryMaskWord()
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task ConsecutiveSurfaceBindingsObserveEveryMaskWord(bool useSceneMaterials)
     {
         using var device = new EnvironmentDevice();
         using var renderer = new SilkMeshRenderer(device);
@@ -3134,7 +3214,7 @@ public sealed class SilkEnvironmentRetentionTests
             "BindSurfaceBufferIfChanged",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("The per-draw surface binding seam changed.");
-        object?[] arguments = [commands, null, null];
+        object?[] arguments = [commands, null, null, useSceneMaterials];
         (int Mesh, int BindCount)[] sequence =
         [
             (0, 1), (1, 1), (2, 2), (2, 2), (3, 3), (4, 4), (0, 5),
@@ -3172,7 +3252,7 @@ public sealed class SilkEnvironmentRetentionTests
     private static async Task AssertRetentionSurface(ISilkGraphicsBuffer buffer, SilkLightLinkMasks masks)
     {
         byte[] bytes = RetentionReadback(buffer);
-        await Assert.That(buffer.Size).IsEqualTo((nuint)240);
+        await Assert.That(buffer.Size).IsEqualTo((nuint)304);
         await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(208)))
             .IsEqualTo(masks.LightMask);
         await Assert.That(BinaryPrimitives.ReadUInt128LittleEndian(bytes.AsSpan(224)))

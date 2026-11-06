@@ -7,7 +7,15 @@ using OpenUsd.Rendering.Silk.Vulkan;
 
 namespace OpenUsd.Mcp;
 
-public sealed record PreviewGraphicsDeviceOptions(bool UseWarpOnWindows = true);
+public sealed record PreviewGraphicsDeviceOptions(bool UseWarpOnWindows = true)
+{
+    /// <summary>Gets whether Windows previews require supported GPU-local upload heaps.</summary>
+    /// <remarks>
+    /// Requires UseWarpOnWindows=false. Custom factories must enforce or refuse this option;
+    /// the legacy delegate-based factory constructor refuses it rather than ignoring it.
+    /// </remarks>
+    public bool D3D12GpuUploadHeaps { get; init; }
+}
 
 public interface IPreviewGraphicsDeviceFactory
 {
@@ -16,13 +24,15 @@ public interface IPreviewGraphicsDeviceFactory
 
 public sealed class PreviewGraphicsDeviceFactory : IPreviewGraphicsDeviceFactory
 {
-    private readonly Func<bool, ISilkGraphicsDevice> _createD3D12;
+    private readonly Func<PreviewGraphicsDeviceOptions, ISilkGraphicsDevice> _createD3D12;
     private readonly Func<ISilkGraphicsDevice> _createVulkan;
     private readonly Func<ISilkGraphicsDevice> _createMetal;
 
     public PreviewGraphicsDeviceFactory()
-        : this(CreateD3D12, CreateVulkan, CreateMetal)
     {
+        _createD3D12 = CreateD3D12;
+        _createVulkan = CreateVulkan;
+        _createMetal = CreateMetal;
     }
 
     public PreviewGraphicsDeviceFactory(
@@ -30,7 +40,10 @@ public sealed class PreviewGraphicsDeviceFactory : IPreviewGraphicsDeviceFactory
         Func<ISilkGraphicsDevice> createVulkan,
         Func<ISilkGraphicsDevice> createMetal)
     {
-        _createD3D12 = createD3D12 ?? throw new ArgumentNullException(nameof(createD3D12));
+        ArgumentNullException.ThrowIfNull(createD3D12);
+        _createD3D12 = options => options.D3D12GpuUploadHeaps
+            ? throw new NotSupportedException("The legacy injected D3D12 factory cannot enforce GPU-upload heaps.")
+            : createD3D12(options.UseWarpOnWindows);
         _createVulkan = createVulkan ?? throw new ArgumentNullException(nameof(createVulkan));
         _createMetal = createMetal ?? throw new ArgumentNullException(nameof(createMetal));
     }
@@ -38,9 +51,13 @@ public sealed class PreviewGraphicsDeviceFactory : IPreviewGraphicsDeviceFactory
     public ISilkGraphicsDevice Create(PreviewGraphicsDeviceOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        if (options.D3D12GpuUploadHeaps && (!OperatingSystem.IsWindows() || options.UseWarpOnWindows))
+        {
+            throw new NotSupportedException("GPU-upload heaps require Windows D3D12 hardware, not WARP.");
+        }
         if (OperatingSystem.IsWindows())
         {
-            return _createD3D12(options.UseWarpOnWindows);
+            return _createD3D12(options);
         }
 
         if (OperatingSystem.IsLinux())
@@ -57,17 +74,17 @@ public sealed class PreviewGraphicsDeviceFactory : IPreviewGraphicsDeviceFactory
             "Preview capture supports D3D12 on Windows, Vulkan on Linux, and Metal on macOS.");
     }
 
-    private static ISilkGraphicsDevice CreateD3D12(bool useWarp)
+    private static D3D12SilkGraphicsDevice CreateD3D12(PreviewGraphicsDeviceOptions options)
     {
         if (!OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException();
         }
 
-        return D3D12SilkGraphicsDevice.Create(useWarp);
+        return D3D12SilkGraphicsDevice.Create(options.UseWarpOnWindows, options.D3D12GpuUploadHeaps);
     }
 
-    private static ISilkGraphicsDevice CreateVulkan()
+    private static VulkanSilkGraphicsDevice CreateVulkan()
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -77,7 +94,7 @@ public sealed class PreviewGraphicsDeviceFactory : IPreviewGraphicsDeviceFactory
         return VulkanSilkGraphicsDevice.Create();
     }
 
-    private static ISilkGraphicsDevice CreateMetal()
+    private static MetalSilkGraphicsDevice CreateMetal()
     {
         if (!OperatingSystem.IsMacOS())
         {

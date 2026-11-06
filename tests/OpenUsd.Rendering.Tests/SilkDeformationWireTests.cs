@@ -30,7 +30,7 @@ namespace OpenUsd.Rendering.Tests;
 /// </remarks>
 public sealed class SilkDeformationWireTests
 {
-    private const int MeshFixedSize = 268;
+    private const int MeshFixedSize = 276;
 
     [Test]
     public async Task DeformationRoundTripsEveryStreamAtItsOwnOffset()

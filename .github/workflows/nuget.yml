@@ -19,6 +19,8 @@ name: nuget
 #      recovered from the feed even though release packing produced them.
 #   5. Exchanges the workflow's OIDC token for a short-lived nuget.org key via
 #      NuGet/login and pushes to nuget.org (idempotent).
+#   6. Retrieves every public package and symbol, compares its contents and
+#      extraction attributes to the tagged release artifact, and retains the result.
 #
 # One-time setup on nuget.org (https://www.nuget.org/account/trustedpublishing):
 #   Add policy -> Repository Owner: marcschier, Repository: openusd-dotnet,
@@ -137,6 +139,11 @@ jobs:
             echo "Auto-selected latest published version: ${TARGET}"
           fi
 
+          if [[ ! "${TARGET}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "::error::An exact supported NuGet version is required."
+            exit 1
+          fi
+
           if [ -n "${INPUT_RELEASE_RUN_ID}" ]; then
             release_run_id="${INPUT_RELEASE_RUN_ID}"
             echo "Using requested release workflow run: ${release_run_id}"
@@ -153,6 +160,11 @@ jobs:
               exit 1
             fi
             echo "Using release workflow run: ${release_run_id}"
+          fi
+
+          if [[ ! "${release_run_id}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::A positive release workflow run ID is required."
+            exit 1
           fi
 
           downloaded=0
@@ -330,6 +342,85 @@ jobs:
           $staged = @(Get-ChildItem artifacts -Filter '*.snupkg')
           Write-Host "Staged $($staged.Count) symbol package(s) beside the nupkg files."
 
+      - name: Check existing nuget.org packages
+        shell: bash
+        env:
+          PROMOTION_VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p public-existing
+          version="${PROMOTION_VERSION,,}"
+          for file in artifacts/*.nupkg artifacts/*.snupkg; do
+            name="$(basename "$file")"
+            extension="${name##*.}"
+            id="$(basename "$file" ".${version}.${extension}")"
+            output="public-existing/${name}"
+            if [ "$extension" = "snupkg" ]; then
+              url="https://globalcdn.nuget.org/symbol-packages/${name}"
+            else
+              url="https://api.nuget.org/v3-flatcontainer/${id}/${version}/${name}"
+            fi
+            if ! status="$(curl -sSL --connect-timeout 15 --max-time 120 \
+                --retry 3 --retry-delay 2 --output "$output" --write-out '%{http_code}' "$url")"; then
+              echo "::error::Could not check the existing public package ${id}."
+              exit 1
+            fi
+            case "$status" in
+              200) echo "Downloaded existing public package ${id}." ;;
+              404) rm -- "$output"; echo "No existing public package ${id}." ;;
+              *) echo "::error::Public package check returned HTTP ${status} for ${id}."; exit 1 ;;
+            esac
+          done
+
+      - name: Verify promotion bytes and tagged source
+        id: verify_inputs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTION_VERSION: ${{ steps.resolve.outputs.version }}
+          RELEASE_RUN_ID: ${{ steps.resolve.outputs.release-run-id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $run = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:RELEASE_RUN_ID"
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'Could not read the selected release workflow run.'
+          }
+          $run | Set-Content 'release-artifacts/release-run.json'
+          $commit = & gh api "repos/$env:GITHUB_REPOSITORY/commits/v$env:PROMOTION_VERSION" --jq '.sha'
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'Could not resolve the selected release tag to a commit.'
+          }
+          $published = @(& ./eng/pack-packages.ps1 -ListPublished)
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'Could not read the published package inventory.'
+          }
+          $symbols = @(& ./eng/pack-packages.ps1 -ListSymbolPublished)
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'Could not read the symbol package inventory.'
+          }
+          [ordered]@{ packages = $published; symbols = $symbols } |
+            ConvertTo-Json -Depth 3 | Set-Content 'release-artifacts/promotion-inventory.json'
+          python ./eng/verify-nuget-promotion.py `
+            --packages artifacts `
+            --release-packages release-artifacts/nupkg `
+            --evidence release-artifacts/release-gate/release-gate.json `
+            --release-run release-artifacts/release-run.json `
+            --inventory release-artifacts/promotion-inventory.json `
+            --version $env:PROMOTION_VERSION `
+            --run-id $env:RELEASE_RUN_ID `
+            --repository $env:GITHUB_REPOSITORY `
+            --tag-commit $commit `
+            --public-packages public-existing `
+            --allow-partial-public
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'NuGet promotion input verification failed.'
+          }
+
       # NuGet login happens right before the push so the short-lived token is fresh.
       - name: NuGet login (OIDC trusted publishing)
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -340,27 +431,100 @@ jobs:
 
       - name: Push to nuget.org
         if: ${{ github.event.inputs.dry_run != 'true' }}
+        id: push
         run: |
           dotnet nuget push "artifacts/*.nupkg" \
             --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
+      - name: Verify published nuget.org packages and symbols
+        if: >-
+          ${{ !cancelled() && github.event.inputs.dry_run != 'true' &&
+              steps.verify_inputs.outcome == 'success' &&
+              (steps.push.outcome == 'success' || steps.push.outcome == 'failure') }}
+        id: verify_public
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTION_VERSION: ${{ steps.resolve.outputs.version }}
+          RELEASE_RUN_ID: ${{ steps.resolve.outputs.release-run-id }}
+          PUSH_RESULT: ${{ steps.push.outcome }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commit = & gh api "repos/$env:GITHUB_REPOSITORY/commits/v$env:PROMOTION_VERSION" --jq '.sha'
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'Could not resolve the selected release tag to a commit.'
+          }
+          $retry = @()
+          if ($env:PUSH_RESULT -eq 'failure')
+          {
+            $retry = @('--public-attempts', '1')
+          }
+          $report = & python ./eng/verify-nuget-promotion.py `
+            --packages artifacts `
+            --release-packages release-artifacts/nupkg `
+            --evidence release-artifacts/release-gate/release-gate.json `
+            --release-run release-artifacts/release-run.json `
+            --inventory release-artifacts/promotion-inventory.json `
+            --version $env:PROMOTION_VERSION `
+            --run-id $env:RELEASE_RUN_ID `
+            --repository $env:GITHUB_REPOSITORY `
+            --tag-commit $commit `
+            --public-packages public-published `
+            --wait-for-public `
+            --public-progress release-artifacts/public-verification-progress.json `
+            @retry
+          if ($LASTEXITCODE -ne 0)
+          {
+            throw 'The complete nuget.org package and symbol set was not verified.'
+          }
+          $report | Tee-Object -FilePath 'release-artifacts/public-verification.json'
+
+      - name: Retain public package verification
+        if: >-
+          ${{ !cancelled() && github.event.inputs.dry_run != 'true' &&
+              steps.verify_inputs.outcome == 'success' &&
+              (steps.push.outcome == 'success' || steps.push.outcome == 'failure') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nuget-public-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            release-artifacts/public-verification.json
+            release-artifacts/public-verification-progress.json
+            release-artifacts/promotion-inventory.json
+            release-artifacts/release-run.json
+            release-artifacts/release-gate/release-gate.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Dry-run result
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
-          echo "Validated GitHub-feed nupkg downloads and release-artifact snupkg staging."
+          echo "Validated package/symbol bytes against the successful tagged release."
           echo "Skipping NuGet/login and dotnet nuget push because dry_run=true."
 
       - name: Summary
         if: always()
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          PACKAGE_COUNT: ${{ steps.resolve.outputs.count }}
+          RELEASE_RUN_ID: ${{ steps.resolve.outputs.release-run-id }}
+          INPUT_RESULT: ${{ steps.verify_inputs.outcome }}
+          PUSH_RESULT: ${{ steps.push.outcome }}
+          PUBLIC_RESULT: ${{ steps.verify_public.outcome }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
           {
             echo "### nuget.org promotion"
             echo ""
-            echo "- Version: \`${{ steps.resolve.outputs.version }}\`"
-            echo "- Packages promoted: \`${{ steps.resolve.outputs.count }}\`"
-            echo "- Release artifact run: `${{ steps.resolve.outputs.release-run-id }}`"
+            echo "- Version: \`${VERSION:-not resolved}\`"
+            echo "- GitHub-feed packages resolved: \`${PACKAGE_COUNT:-not available}\`"
+            echo "- Release artifact run: \`${RELEASE_RUN_ID:-not resolved}\`"
             echo "- Source: GitHub Packages nupkg bytes plus release-artifact snupkg symbols"
-            echo "- Dry run: \`${{ github.event.inputs.dry_run }}\`"
+            echo "- Input verification: \`${INPUT_RESULT:-not run}\`"
+            echo "- Upload: \`${PUSH_RESULT:-not run}\`"
+            echo "- Public package and symbol verification: \`${PUBLIC_RESULT:-not run}\`"
+            echo "- Dry run: \`${DRY_RUN}\`"
           } >> "$GITHUB_STEP_SUMMARY"

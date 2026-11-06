@@ -94,7 +94,10 @@ public sealed class SilkEnvironmentData
     /// </summary>
     public bool HasDomeIndex => DomeIndex != SilkEnvironmentUpsertCommand.NoDomeIndex;
 
-    /// <summary>Gets the authored <c>inputs:color</c>.</summary>
+    /// <summary>
+    /// Gets the authored <c>inputs:color</c>, already multiplied by the dome's
+    /// black-body tint when it enables a finite <c>colorTemperature</c>.
+    /// </summary>
     public Vector3 Color { get; }
 
     /// <summary>Gets the authored <c>inputs:intensity</c>.</summary>
@@ -170,9 +173,11 @@ public sealed class SilkEnvironmentData
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>enableColorTemperature</c> scales the authored colour by a black-body
-    /// tint hdSilk did not put on the wire, so the emission this renderer would
-    /// bake is not the emission the dome describes. A non-<c>scene</c>
+    /// hdSilk resolves a finite <c>colorTemperature</c> into
+    /// <see cref="Color"/> itself, so the flag now arrives only for a dome whose
+    /// enabled temperature is not finite, or from an older producer that left
+    /// the tint off the wire. Either way the emission this renderer would bake is
+    /// not the emission the dome describes. A non-<c>scene</c>
     /// <c>poleAxis</c> re-parameterizes the sphere, so the light-to-world rotation
     /// the bake applies is not the orientation the dome describes. Both are
     /// claims the directional response makes and cannot honour, so a dome that

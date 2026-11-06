@@ -349,6 +349,72 @@ public sealed class ViewerSettingsStoreTests
         }
     }
 
+    [Test]
+    public async Task SaveRetriesWhileAnotherReaderBrieflyHoldsTheSettingsFile()
+    {
+        string root = CreateTestRoot();
+        try
+        {
+            using var store = new ViewerSettingsStore(root);
+            await store.SaveAsync(ViewerSettings.Default);
+            ViewerSettings revision = ViewerSettings.Default with { WindowWidth = 1234 };
+
+            Task save;
+            using (new FileStream(store.StorePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                save = store.SaveAsync(revision);
+                await Task.Delay(100);
+            }
+            await save;
+            ViewerSettingsLoadResult loaded = await store.LoadAsync();
+
+            await Assert.That(loaded.Settings).IsEqualTo(revision);
+            await Assert.That(Directory.GetFiles(root, "*.tmp")).IsEmpty();
+        }
+        finally
+        {
+            DeleteTestRoot(root);
+        }
+    }
+
+    [Test]
+    public async Task SaveFailsWithoutTemporaryFilesWhenTheSettingsFileStaysLocked()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("Only Windows sharing modes block replacing a file another reader holds open.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        string root = CreateTestRoot();
+        try
+        {
+            using var store = new ViewerSettingsStore(root);
+            await store.SaveAsync(ViewerSettings.Default);
+
+            using (new FileStream(store.StorePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                Exception? failure = null;
+                try
+                {
+                    await store.SaveAsync(ViewerSettings.Default with { WindowWidth = 1234 });
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    failure = exception;
+                }
+                await Assert.That(failure).IsNotNull();
+            }
+            ViewerSettingsLoadResult loaded = await store.LoadAsync();
+
+            await Assert.That(loaded.Settings).IsEqualTo(ViewerSettings.Default);
+            await Assert.That(Directory.GetFiles(root, "*.tmp")).IsEmpty();
+        }
+        finally
+        {
+            DeleteTestRoot(root);
+        }
+    }
+
     private static string CreateTestRoot()
     {
         string root = Path.Combine(

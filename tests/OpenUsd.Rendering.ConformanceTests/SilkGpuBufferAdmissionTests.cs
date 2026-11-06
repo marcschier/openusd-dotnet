@@ -10,6 +10,31 @@ public sealed class SilkGpuBufferAdmissionTests
     [Test]
     [Arguments(SilkGraphicsBackend.D3D12)]
     [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task InstancePageCapacityRefusalKeepsPublishedPixelsUntilRetry(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(1_048_576);
+        budget.ConfigureDevice(device);
+        await SilkNestedInstanceLinkConformance.InstanceCapacityRefusalKeepsPublishedPixels(device, budget);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
+    public async Task AdmittedInstanceCandidatesPreserveNestedMaskSplitsAndRetirementPixels(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        var budget = new SilkGpuBufferBudget(1_048_576);
+        budget.ConfigureDevice(device);
+        await SilkNestedInstanceLinkConformance.ComposedInstancesResolveTheirOwnMasks(device);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(SilkGraphicsBackend.D3D12)]
+    [Arguments(SilkGraphicsBackend.Vulkan)]
     public async Task BackendBuffersObeyExactSharedPayloadCapacity(SilkGraphicsBackend backend)
     {
         using ISilkGraphicsDevice first = SilkDepthCaptureConformance.CreateDevice(backend);

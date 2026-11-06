@@ -52,6 +52,9 @@ public enum UsdPhysicsExtractionPageTraits : uint
 
     /// <summary>At least one object came from an instance proxy.</summary>
     HasInstances = 1u << 8,
+
+    /// <summary>Geometry is retained only for the requested window, not for every object.</summary>
+    PartialGeometry = 1u << 9,
 }
 
 /// <summary>Identifies what one extracted object is.</summary>
@@ -267,6 +270,12 @@ public enum UsdPhysicsExtractionObjectTraits : uint
 
     /// <summary>The object is the default simulation scene.</summary>
     DefaultScene = 1u << 18,
+
+    /// <summary>The prim has physics opinions without a canonical interpretation.</summary>
+    UnmappedOpinions = 1u << 19,
+
+    /// <summary>Prepared convex points are local metres rather than authored stage units.</summary>
+    PreparedPointsMetres = 1u << 20,
 }
 
 /// <summary>Identifies the collision geometry an extracted collider resolved to.</summary>

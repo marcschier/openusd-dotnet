@@ -176,17 +176,14 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     {
         ObjectDisposedException.ThrowIf(_device == null || _queue == null, this);
         buffer.ThrowIfDisposed();
-        WaitIdle();
-
-        ID3D12Resource* readback = null;
-        ID3D12CommandAllocator* allocator = null;
-        ID3D12GraphicsCommandList* commands = null;
-        ID3D12Fence* fence = null;
-        IDisposable? reservation = null;
-        bool submitted = false;
+        var retirement = new D3D12SilkReadbackRetirement(this);
         try
         {
-            reservation = ReserveStagingAllocation(checked((ulong)buffer.Size));
+            retirement.SetSourceLease(buffer.AcquireLease());
+            RegisterDependentObject();
+            retirement.SetDependentRegistered();
+            WaitIdle();
+            retirement.SetReservation(ReserveStagingAllocation(checked((ulong)buffer.Size)));
             var heap = new HeapProperties(HeapType.Readback);
             var description = new ResourceDesc(
                 ResourceDimension.Buffer,
@@ -200,57 +197,76 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 TextureLayout.LayoutRowMajor,
                 ResourceFlags.None);
             Guid resourceId = ID3D12Resource.Guid;
-            SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
+            ID3D12Resource* readback = null;
+            int result = _device->CreateCommittedResource(
                 &heap,
                 HeapFlags.None,
                 &description,
                 ResourceStates.CopyDest,
                 null,
                 &resourceId,
-                (void**)&readback));
+                (void**)&readback);
+            retirement.SetReadback(readback);
+            SilkMarshal.ThrowHResult(result);
 
             Guid allocatorId = ID3D12CommandAllocator.Guid;
-            SilkMarshal.ThrowHResult(_device->CreateCommandAllocator(
+            ID3D12CommandAllocator* allocator = null;
+            result = _device->CreateCommandAllocator(
                 CommandListType.Direct,
                 &allocatorId,
-                (void**)&allocator));
+                (void**)&allocator);
+            retirement.SetAllocator(allocator);
+            SilkMarshal.ThrowHResult(result);
             Guid commandListId = ID3D12GraphicsCommandList.Guid;
-            SilkMarshal.ThrowHResult(_device->CreateCommandList(
+            ID3D12GraphicsCommandList* commands = null;
+            result = _device->CreateCommandList(
                 0,
                 CommandListType.Direct,
                 allocator,
                 null,
                 &commandListId,
-                (void**)&commands));
-            Transition(
-                commands,
-                buffer.Resource,
-                buffer.State,
-                ResourceStates.CopySource);
+                (void**)&commands);
+            retirement.SetCommands(commands);
+            SilkMarshal.ThrowHResult(result);
+            bool uploadHeap = buffer.Usage.HasFlag(SilkBufferUsage.Upload);
+            if (!uploadHeap)
+            {
+                Transition(commands, buffer.Resource, buffer.State, ResourceStates.CopySource);
+            }
             commands->CopyBufferRegion(
                 readback,
                 0,
                 buffer.Resource,
-                0,
+                buffer.ResourceOffset,
                 buffer.Size);
-            Transition(
-                commands,
-                buffer.Resource,
-                ResourceStates.CopySource,
-                buffer.State);
+            if (!uploadHeap)
+            {
+                Transition(commands, buffer.Resource, ResourceStates.CopySource, buffer.State);
+            }
             SilkMarshal.ThrowHResult(commands->Close());
 
             Guid fenceId = ID3D12Fence.Guid;
-            SilkMarshal.ThrowHResult(_device->CreateFence(
+            ID3D12Fence* fence = null;
+            result = _device->CreateFence(
                 0,
                 FenceFlags.None,
                 &fenceId,
-                (void**)&fence));
+                (void**)&fence);
+            retirement.SetFence(fence);
+            SilkMarshal.ThrowHResult(result);
             ID3D12CommandList* commandList = (ID3D12CommandList*)commands;
             _queue->ExecuteCommandLists(1, &commandList);
-            submitted = true;
-            SilkMarshal.ThrowHResult(_queue->Signal(fence, 1));
-            WaitForFence(fence, 1);
+            retirement.MarkSubmitted();
+            int signalled = SignalReadbackFence(fence);
+            if (signalled < 0 &&
+                (IsTerminalDeviceRemovalReason(signalled) || HasTerminalDeviceRemoval()))
+            {
+                ObserveNativeDeviceRemoval();
+                retirement.MarkCompleted();
+            }
+            SilkMarshal.ThrowHResult(signalled);
+            WaitForReadbackFence(fence, 1);
+            retirement.MarkCompleted();
 
             var readRange = new global::Silk.NET.Direct3D12.Range(0, buffer.Size);
             void* mapped = null;
@@ -264,18 +280,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 readback->Unmap(0, null);
             }
         }
-        finally
+        catch (Exception failure)
         {
-            if (submitted && fence != null && !IsFenceCompleted(fence, 1))
-            {
-                WaitForFence(fence, 1);
-            }
-            Release(ref fence);
-            Release(ref commands);
-            Release(ref allocator);
-            Release(ref readback);
-            reservation?.Dispose();
+            retirement.DisposeAfterFailure(failure);
+            throw;
         }
+        retirement.Dispose();
     }
 }
 
@@ -304,7 +314,8 @@ internal sealed class D3D12SilkComputeShaderProgram(
     IDisposable[] resourceLeases)
     : SilkGraphicsResourceBase, ISilkComputeShaderProgram
 {
-    private IDisposable[]? _resourceLeases = resourceLeases;
+    private IDisposable?[]? _resourceLeases = resourceLeases;
+    private bool _releasingLeases;
 
     internal D3D12SilkGraphicsDevice Device { get; } = device;
 
@@ -318,16 +329,12 @@ internal sealed class D3D12SilkComputeShaderProgram(
 
     protected override void ReleaseNative()
     {
-        IDisposable[]? leases = Interlocked.Exchange(ref _resourceLeases, null);
-        if (leases is not null)
-        {
-            foreach (IDisposable lease in leases)
-            {
-                lease.Dispose();
-            }
-        }
+        RetireOwnedLeases(ref _resourceLeases, ref _releasingLeases);
         Device.ReleaseDependentObject();
     }
+
+    internal static void RetireOwnedLeases(ref IDisposable?[]? leases, ref bool releasing) =>
+        SilkOwnedResourceLeases.Dispose(ref leases, ref releasing);
 }
 
 [SupportedOSPlatform("windows")]
@@ -359,7 +366,7 @@ internal sealed unsafe class D3D12SilkComputePipeline(
     {
         D3D12SilkGraphicsDevice.Release(ref _pipeline);
         D3D12SilkGraphicsDevice.Release(ref _rootSignature);
-        Interlocked.Exchange(ref _programLease, null)?.Dispose();
+        SilkOwnedResourceLeases.Dispose(ref _programLease);
         Device.ReleaseDependentObject();
     }
 }

@@ -316,6 +316,23 @@
       }
     },
     {
+      "name": "texCoord1",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 1,
+        "systemValue": false
+      },
+      "location": 3,
+      "type": {
+        "kind": "vector",
+        "elementCount": 2,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
       "name": "instanceId",
       "semantic": {
         "name": "SV_INSTANCEID",
@@ -440,6 +457,23 @@
         "systemValue": false
       },
       "location": 5,
+      "type": {
+        "kind": "vector",
+        "elementCount": 2,
+        "elementType": {
+          "kind": "scalar",
+          "scalarType": "float32"
+        }
+      }
+    },
+    {
+      "name": "texCoord1",
+      "semantic": {
+        "name": "TEXCOORD",
+        "index": 5,
+        "systemValue": false
+      },
+      "location": 6,
       "type": {
         "kind": "vector",
         "elementCount": 2,

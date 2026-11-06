@@ -11,6 +11,36 @@ namespace OpenUsd.Rendering.ConformanceTests;
 public sealed class VulkanSelectionOutlineTests
 {
     [Test]
+    public async Task SelectionBindingsOwnTheirLayoutWithoutAnyLastCreatedPipeline()
+    {
+        if (!IsSupportedPlatform())
+        {
+            Skip.Test("This test is only applicable on Windows or Linux.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+        using VulkanSilkGraphicsDevice device = CreateSwiftShader();
+        using ISilkGraphicsTexture mask = device.CreateTexture2D(SilkTextureDescriptor.SelectionMask(16, 16));
+        using ISilkGraphicsTexture depth = CreateDepthTarget(device, 16, 16);
+        using ISilkGraphicsSampler sampler = device.CreateSampler(SilkSamplerDescriptor.NearestClamp);
+        using ISilkGraphicsBuffer parameters = device.CreateBuffer(
+            SilkSelectionOutlineUniformWriter.ByteSize, SilkBufferUsage.Uniform | SilkBufferUsage.Upload);
+        var descriptor = new SilkSelectionOutlineBindingDescriptor(mask, depth, sampler, parameters);
+        VulkanSilkSelectionOutlineDiagnostics before = device.SelectionOutlineDiagnostics;
+        for (int index = 0; index < 16; index++)
+        {
+            using ISilkSelectionOutlineBinding binding = device.CreateSelectionOutlineBinding(descriptor);
+            VulkanSilkSelectionOutlineDiagnostics live = device.SelectionOutlineDiagnostics;
+            await Assert.That(live.BindingLayoutCreations - live.BindingLayoutDestructions).IsEqualTo(1L);
+        }
+        VulkanSilkSelectionOutlineDiagnostics after = device.SelectionOutlineDiagnostics;
+        await Assert.That(after.BindingLayoutCreations - before.BindingLayoutCreations).IsEqualTo(16L);
+        await Assert.That(after.BindingLayoutDestructions - before.BindingLayoutDestructions).IsEqualTo(16L);
+        await Assert.That(after.LiveDependentObjects).IsEqualTo(before.LiveDependentObjects);
+        await Assert.That(after.MaskPipelineCreations).IsEqualTo(before.MaskPipelineCreations);
+        await Assert.That(after.OutlinePipelineCreations).IsEqualTo(before.OutlinePipelineCreations);
+    }
+
+    [Test]
     public async Task SwiftShaderManualMaskAndOutlineWritePixels()
     {
         if (!IsSupportedPlatform())
@@ -87,6 +117,7 @@ public sealed class VulkanSelectionOutlineTests
         byte[] outlinePixels = ReadPixels(color);
         await Assert.That(CountWhitePixels(maskPixels)).IsGreaterThan(0);
         await Assert.That(CountOutlinePixels(outlinePixels)).IsGreaterThan(0);
+        await Assert.That(OutlinePixelsFollowMask(maskPixels, outlinePixels, (int)size)).IsTrue();
     }
 
     /// <summary>
@@ -468,6 +499,50 @@ public sealed class VulkanSelectionOutlineTests
             }
         }
         return count;
+    }
+
+    private static bool OutlinePixelsFollowMask(
+        ReadOnlySpan<byte> mask,
+        ReadOnlySpan<byte> outline,
+        int size)
+    {
+        for (int row = 0; row < size; row++)
+        {
+            for (int column = 0; column < size; column++)
+            {
+                int offset = ((row * size) + column) * 4;
+                if (outline[offset] <= 150 ||
+                    outline[offset] <= outline[offset + 1] + 25 ||
+                    outline[offset + 1] <= outline[offset + 2])
+                {
+                    continue;
+                }
+                if (mask[offset] > 200)
+                {
+                    return false;
+                }
+                bool neighbor = false;
+                for (int dy = -2; dy <= 2 && !neighbor; dy++)
+                {
+                    for (int dx = -2; dx <= 2; dx++)
+                    {
+                        int y = row + dy;
+                        int x = column + dx;
+                        if ((uint)x < (uint)size && (uint)y < (uint)size &&
+                            (dx * dx) + (dy * dy) <= 4 && mask[((y * size) + x) * 4] > 200)
+                        {
+                            neighbor = true;
+                            break;
+                        }
+                    }
+                }
+                if (!neighbor)
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static int CountWhitePixels(ReadOnlySpan<byte> pixels)

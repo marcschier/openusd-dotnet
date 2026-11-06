@@ -136,6 +136,51 @@ public sealed class SilkPhysicsDeformations
     /// <summary>Gets a value indicating whether a batch is retained for re-application.</summary>
     public bool HasBatch => _bindings is not null;
 
+    internal PreparedApply? PrepareApply() => HasBatch ? new PreparedApply(this) : null;
+
+    internal sealed class PreparedApply(SilkPhysicsDeformations owner) : IDisposable
+    {
+        private readonly ulong[] _applied = [.. owner._applied];
+        private readonly ulong[] _previous = [.. owner._previousApplied];
+        private readonly ulong[] _changed = [.. owner._changed];
+        private readonly ulong _revision = owner.Revision;
+        private bool _committed;
+        private bool _disposed;
+
+        internal SilkSceneDelta Apply(SilkSceneState scene, SilkSceneDelta authored)
+        {
+            _ = owner.Reapply(scene);
+            if (owner._changed.Count == 0)
+            {
+                return authored;
+            }
+            var upserts = new HashSet<ulong>(authored.UpsertedMeshIds.ToArray());
+            upserts.UnionWith(owner._changed);
+            return new SilkSceneDelta(upserts.ToArray(), authored.RemovedMeshIds, authored.ChangedMaterialPaths);
+        }
+
+        internal void Commit() => _committed = true;
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            if (!_committed)
+            {
+                owner._applied.Clear();
+                owner._applied.UnionWith(_applied);
+                owner._previousApplied.Clear();
+                owner._previousApplied.UnionWith(_previous);
+                owner._changed.Clear();
+                owner._changed.AddRange(_changed);
+                owner.Revision = _revision;
+            }
+        }
+    }
+
     /// <summary>Reports whether this backend can draw one deformable domain.</summary>
     /// <param name="domain">The domain the caller wants to draw.</param>
     /// <returns><see langword="true"/> when hdSilk can upload the domain's geometry.</returns>

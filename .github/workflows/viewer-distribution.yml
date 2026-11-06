@@ -15,6 +15,7 @@ on:
     branches: [ master, main ]
     paths: &viewer-distribution-paths
       - '.github/workflows/viewer-distribution.yml'
+      - 'eng/report-validated-checkout.ps1'
       - 'eng/publish-viewer-bundle.ps1'
       - 'eng/viewer-input-readiness.ps1'
       - 'eng/sign-viewer-bundle.ps1'
@@ -93,30 +94,17 @@ jobs:
                 github.event.workflow_run.head_branch || github.head_ref || github.ref_name }}
           CHECKOUT_FALLBACK_SHA: >-
             ${{ github.event_name == 'workflow_run' &&
-                github.event.workflow_run.head_sha || github.sha }}
+                github.event.workflow_run.head_sha ||
+                github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          VALIDATED_PULL_REQUEST_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          $validated = (git rev-parse HEAD).Trim()
-          $branch = $env:VALIDATED_BRANCH
-          # A tag release sets ref_name to the tag, so origin/<ref> does not
-          # resolve. Plain `git rev-parse` echoes the argument and exits 128,
-          # which the pwsh shell propagates and fails the step -- that is how
-          # release run 31250563169 lost all three package jobs.
-          $branchHead = git rev-parse --verify --quiet "refs/remotes/origin/$branch"
-          if ($LASTEXITCODE -ne 0 -or -not $branchHead) {
-            $branchHead = $env:CHECKOUT_FALLBACK_SHA
-          }
-          $global:LASTEXITCODE = 0
-          $branchHead = "$branchHead".Trim()
-          Write-Host "::notice::WORKFLOW_CHECKOUT_VALIDATION: viewer-distribution.yml pack job is validating commit $validated from '$branch'; current branch head is $branchHead."
-          if ($validated -ne $branchHead) {
-            Write-Host "::warning::WORKFLOW_CHECKOUT_STALE: viewer-distribution.yml pack job is validating $validated, not current '$branch' head $branchHead. For workflow_run, this is the native artifact pipeline commit and can lag behind the branch head."
-          }
+          ./eng/report-validated-checkout.ps1 -Label 'viewer-distribution.yml pack job'
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
-            8.0.x
-            9.0.x
-            10.0.401
+            8.0.426
+            9.0.319
+            10.0.403
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
@@ -392,20 +380,23 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           . ./eng/viewer-input-readiness.ps1
+          $directory = 'artifacts/viewer-input-readiness'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
           $api = "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           $run = gh api $api | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the Viewer workflow-run identity.' }
+          $run | ConvertTo-Json -Depth 20 | Set-Content "$directory/workflow-run.json"
           if ($LASTEXITCODE -ne 0 -or $run.id -ne [long]$env:GITHUB_RUN_ID -or
               $run.head_sha -cne $env:WORKFLOW_HEAD_SHA)
           {
             throw 'Viewer input readiness workflow-run/source identity differs.'
           }
-          $jobs = gh api "$api/jobs?per_page=100" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer pack-job evidence.' }
-          $artifacts = gh api "$api/artifacts?per_page=100" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw 'Could not read actual Viewer input-artifact evidence.' }
+          $metadata = Get-ViewerInputMetadata -RunApi $api
+          $jobs = $metadata.jobs
+          $artifacts = $metadata.artifacts
+          $jobs | ConvertTo-Json -Depth 20 | Set-Content "$directory/jobs.json"
+          $artifacts | ConvertTo-Json -Depth 20 | Set-Content "$directory/artifacts.json"
           $result = Get-ViewerInputReadiness -WorkflowRun $run -JobsResponse $jobs -ArtifactsResponse $artifacts
-          $directory = 'artifacts/viewer-input-readiness'
-          New-Item -ItemType Directory -Force -Path $directory | Out-Null
           $result | ConvertTo-Json -Depth 6 | Set-Content "$directory/readiness.json"
           "ready=$($result.ready.ToString().ToLowerInvariant())" | Out-File $env:GITHUB_OUTPUT -Append
           if (-not $result.ready)
@@ -455,27 +446,14 @@ jobs:
                 github.event.workflow_run.head_branch || github.head_ref || github.ref_name }}
           CHECKOUT_FALLBACK_SHA: >-
             ${{ github.event_name == 'workflow_run' &&
-                github.event.workflow_run.head_sha || github.sha }}
+                github.event.workflow_run.head_sha ||
+                github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          VALIDATED_PULL_REQUEST_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          $validated = (git rev-parse HEAD).Trim()
-          $branch = $env:VALIDATED_BRANCH
-          # A tag release sets ref_name to the tag, so origin/<ref> does not
-          # resolve. Plain `git rev-parse` echoes the argument and exits 128,
-          # which the pwsh shell propagates and fails the step -- that is how
-          # release run 31250563169 lost all three package jobs.
-          $branchHead = git rev-parse --verify --quiet "refs/remotes/origin/$branch"
-          if ($LASTEXITCODE -ne 0 -or -not $branchHead) {
-            $branchHead = $env:CHECKOUT_FALLBACK_SHA
-          }
-          $global:LASTEXITCODE = 0
-          $branchHead = "$branchHead".Trim()
-          Write-Host "::notice::WORKFLOW_CHECKOUT_VALIDATION: viewer-distribution.yml smoke job is validating commit $validated from '$branch'; current branch head is $branchHead."
-          if ($validated -ne $branchHead) {
-            Write-Host "::warning::WORKFLOW_CHECKOUT_STALE: viewer-distribution.yml smoke job is validating $validated, not current '$branch' head $branchHead. For workflow_run, this is the native artifact pipeline commit and can lag behind the branch head."
-          }
+          ./eng/report-validated-checkout.ps1 -Label 'viewer-distribution.yml smoke job'
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10.0.401
+          dotnet-version: 10.0.403
       - name: Install Linux viewer smoke prerequisites
         if: matrix.rid == 'linux-x64'
         shell: bash

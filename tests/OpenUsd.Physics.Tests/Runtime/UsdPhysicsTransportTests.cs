@@ -2,7 +2,7 @@
 
 namespace OpenUsd.Physics.Tests;
 
-public sealed class UsdPhysicsTransportTests
+public sealed partial class UsdPhysicsTransportTests
 {
     private const double TimeCodesPerSecond = 24.0;
     private const double EndTimeCode = 24.0;

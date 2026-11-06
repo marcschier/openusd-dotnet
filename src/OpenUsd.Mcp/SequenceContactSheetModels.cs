@@ -9,7 +9,7 @@ namespace OpenUsd.Mcp;
 internal sealed class ReadSequenceSheetRequest
 {
     [JsonPropertyName("jobId"), Required, MaxLength(OpenUsdMcpLimits.MaximumIdentifierLength)]
-    [Description("Completed render_sequence or render_product job ID in this process.")]
+    [Description("Completed render_sequence, render_product or render_physics_sequence job ID in this process.")]
     public required string JobId { get; init; }
 
     [JsonPropertyName("frameIndices"), MaxLength(16)]
@@ -31,7 +31,32 @@ internal sealed record McpSequenceSheetTileDto(
     [property: Description("Left edge of the tile cell in the top-down sheet.")] int X,
     [property: Description("Top edge of the tile cell.")] int Y,
     [property: Description("Cell width, including transparent letterboxing.")] int Width,
-    [property: Description("Cell height, including transparent letterboxing.")] int Height);
+    [property: Description("Cell height, including transparent letterboxing.")] int Height)
+{
+    [Description("Original recorded physics publication; null for frames without simulation.")]
+    public McpSimulationFrameDto? Simulation { get; init; }
+
+    [Description(
+        "Original submitted camera request for this source frame, not a camera for the resized sheet cell " +
+        "or effective backend state. Null means no request metadata supplied.")]
+    public McpCameraRequestDto? CameraRequest { get; init; }
+
+    [Description(
+        "Original source-frame display and render settings, not settings for the resized sheet cell, " +
+        "effective backend state or a complete request identity. Null means no request metadata supplied.")]
+    public McpRenderRequestDto? RenderRequest { get; init; }
+
+    [Description(
+        "Original prepared source product raster, not resized sheet-cell geometry " +
+        "or verified effective backend state. " +
+        "Null for non-product jobs or producers that supply no raster metadata.")]
+    public McpProductRasterDto? ProductRaster { get; init; }
+
+    [Description(
+        "Original sampled product camera inputs for this source frame, not resized sheet-cell or backend settings. " +
+        "Null for non-product jobs or producers that supply no camera samples.")]
+    public McpProductCameraDto? ProductCamera { get; init; }
+}
 
 internal sealed record McpSequenceSheetResultDto(
     [property: Description("Original job session.")] string SessionId,
@@ -45,6 +70,9 @@ internal sealed record McpSequenceSheetResultDto(
     [property: JsonIgnore] IReadOnlyList<ArtifactResourceDescriptor> ArtifactResources)
     : IOpenUsdMcpOutput, IOpenUsdMcpArtifactOutput
 {
+    [Description("Original completed authored-product binding; null for ordinary viewport sequences.")]
+    public McpAuthoredProductDto? AuthoredProduct { get; init; }
+
     [Description("Bounded contact-sheet completion summary.")]
     public string Summary =>
         $"Contact sheet of {Tiles.Count} completed frames from job {JobId}; no scene was rendered.";

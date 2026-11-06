@@ -268,7 +268,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                         normalPointer,
                         texCoordPointer,
                         tangentPointer),
-                    0,
+                    attribute.Semantic == SilkVertexSemantic.SecondaryTexCoord ? 1u : 0u,
                     GetFormat(attribute.Format),
                     0,
                     attribute.Offset,
@@ -367,7 +367,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         {
             SilkVertexSemantic.Position => position,
             SilkVertexSemantic.Normal => normal,
-            SilkVertexSemantic.TexCoord => texCoord,
+            SilkVertexSemantic.TexCoord or SilkVertexSemantic.SecondaryTexCoord => texCoord,
             SilkVertexSemantic.Tangent => tangent,
             _ => throw new ArgumentOutOfRangeException(nameof(semantic))
         };
@@ -425,7 +425,8 @@ internal sealed class D3D12SilkGraphicsShaderProgram(
     IDisposable[] resourceLeases)
     : SilkGraphicsResourceBase, ISilkGraphicsShaderProgram
 {
-    private IDisposable[]? _resourceLeases = resourceLeases;
+    private IDisposable?[]? _resourceLeases = resourceLeases;
+    private bool _releasingLeases;
 
     internal D3D12SilkGraphicsDevice Device { get; } = device;
 
@@ -441,16 +442,12 @@ internal sealed class D3D12SilkGraphicsShaderProgram(
 
     protected override void ReleaseNative()
     {
-        IDisposable[]? leases = Interlocked.Exchange(ref _resourceLeases, null);
-        if (leases is not null)
-        {
-            foreach (IDisposable lease in leases)
-            {
-                lease.Dispose();
-            }
-        }
+        RetireOwnedLeases(ref _resourceLeases, ref _releasingLeases);
         Device.ReleaseDependentObject();
     }
+
+    internal static void RetireOwnedLeases(ref IDisposable?[]? leases, ref bool releasing) =>
+        SilkOwnedResourceLeases.Dispose(ref leases, ref releasing);
 }
 
 [SupportedOSPlatform("windows")]
@@ -492,7 +489,7 @@ internal sealed unsafe class D3D12SilkGraphicsPipeline(
     {
         D3D12SilkGraphicsDevice.Release(ref _pipeline);
         D3D12SilkGraphicsDevice.Release(ref _rootSignature);
-        Interlocked.Exchange(ref _programLease, null)?.Dispose();
+        SilkOwnedResourceLeases.Dispose(ref _programLease);
         Device.ReleaseDependentObject();
     }
 }

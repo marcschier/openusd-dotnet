@@ -14,6 +14,7 @@
 #include "openusd_hdsilk.h"
 
 #include "hdsilk_test_hooks.h"
+#include "normal_correspondence_page.h"
 
 #include <algorithm>
 #include <array>
@@ -40,6 +41,7 @@ constexpr char UnsupportedFaceVaryingQuadPath[] =
 constexpr char BilinearCubePath[] = "/World/SubdivBilinearCube";
 constexpr char LoopTetrahedronPath[] = "/World/SubdivLoopTetrahedron";
 constexpr char NoneQuadPath[] = "/World/SubdivNoneQuad";
+constexpr char NoneAuthoredNormalQuadPath[] = "/World/SubdivNoneAuthoredNormalQuad";
 constexpr char AnimatedCubePath[] = "/World/SubdivAnimatedCube";
 
 // The MESH_UPSERT layout this probe parses is pinned by reconciliation rather
@@ -68,6 +70,8 @@ struct ParsedMesh
     uint32_t pointCount = 0;
     uint32_t indexCount = 0;
     uint32_t triangleCount = 0;
+    bool hasNormalCorrespondence = false;
+    bool triangleLocalNormalFallback = false;
     std::vector<float> points;
     std::vector<uint32_t> indices;
     std::vector<uint32_t> subprims;
@@ -113,7 +117,7 @@ bool ParseMeshUpsert(
     uint32_t deformationByteCount = 0;
     uint32_t pointOriginCount = 0;
     uint32_t cornerEdgeCount = 0;
-    constexpr size_t pathOffset = 268;
+    constexpr size_t pathOffset = 276;
     if (!ReadValue(data, size, offset + 28, &topologyKind) ||
         !ReadValue(data, size, offset + 32, &topologyRevision) ||
         !ReadValue(data, size, offset + 48, &pathSize) ||
@@ -232,7 +236,10 @@ bool ParseMeshUpsert(
     cursor += static_cast<size_t>(pointOriginCount) * sizeof(uint32_t);
     cursor += static_cast<size_t>(cornerEdgeCount) * sizeof(uint32_t);
 
-    if (cursor != offset + byteSize)
+    mesh.hasNormalCorrespondence = cursor < offset + byteSize;
+    if (!HdSilkTestReadNormalCorrespondence(
+            data, offset + byteSize, &cursor, pointCount, &mesh.triangleLocalNormalFallback) ||
+        cursor != offset + byteSize)
     {
         return Fail("MESH_UPSERT byte size did not match its payload");
     }
@@ -437,6 +444,36 @@ bool RequireTriangleCount(
     return true;
 }
 
+bool VerifyNormalFallbackModes(const ParsedPage& page)
+{
+    struct ExpectedMode
+    {
+        const char* path;
+        bool triangleLocal;
+        bool authoredNormals;
+    };
+    const ExpectedMode cases[] = {
+        {CubePath, false, false},
+        {LoopTetrahedronPath, false, false},
+        {FaceVaryingNormalQuadPath, false, true},
+        {BilinearCubePath, true, false},
+        {NoneQuadPath, true, false},
+        {NoneAuthoredNormalQuadPath, true, true}};
+    for (const ExpectedMode& expected : cases)
+    {
+        const ParsedMesh* mesh = FindMesh(page, expected.path);
+        if (mesh == nullptr ||
+            !mesh->hasNormalCorrespondence ||
+            mesh->triangleLocalNormalFallback != expected.triangleLocal ||
+            (FindAttribute(*mesh, "normals") != nullptr) != expected.authoredNormals)
+        {
+            return Fail(std::string(expected.path) +
+                " published the wrong normal fallback mode or authored normals");
+        }
+    }
+    return true;
+}
+
 /// Complexity Low must publish exactly the historical coarse triangulation:
 /// the control cage triangulated by HdMeshUtil, with no refinement anywhere.
 bool VerifyLowIsUnrefined(const ParsedPage& page)
@@ -453,6 +490,7 @@ bool VerifyLowIsUnrefined(const ParsedPage& page)
         RequireCounts(page, UniformCubePath, 12, 36) &&
         RequireCounts(page, LoopTetrahedronPath, 4, 4) &&
         RequireCounts(page, NoneQuadPath, 2, 4) &&
+        RequireCounts(page, NoneAuthoredNormalQuadPath, 2, 4) &&
         RequireCounts(page, UvQuadPath, 2, 6) &&
         RequireCounts(page, FaceVaryingNormalQuadPath, 2, 4) &&
         // The malformed face-varying index array is flattened by USD before it
@@ -991,6 +1029,7 @@ int main(int argc, char** argv)
     const bool passed =
         Sync(session, OPENUSD_SILK_COMPLEXITY_LOW, 1.0, &low, &error) &&
         VerifyLowIsUnrefined(low) &&
+        VerifyNormalFallbackModes(low) &&
         CaptureDiagnosticCount(&diagnosticsBeforeMedium) &&
         Sync(session, OPENUSD_SILK_COMPLEXITY_MEDIUM, 1.0, &medium, &error) &&
         CaptureDiagnosticCount(&diagnosticsAfterMedium) &&
@@ -1000,6 +1039,7 @@ int main(int argc, char** argv)
         VerifySubsetMapping(medium) &&
         VerifyFaceVaryingAndVertexPrimvars(medium) &&
         VerifyFaceVaryingNormalsAreRenormalized(medium) &&
+        VerifyNormalFallbackModes(medium) &&
         VerifyUnsupportedFaceVaryingRefusesRefinement(
             low,
             medium,

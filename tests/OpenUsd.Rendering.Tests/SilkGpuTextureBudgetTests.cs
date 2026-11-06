@@ -10,6 +10,175 @@ public sealed class SilkGpuTextureBudgetTests
         5, 3, SilkTextureFormat.Rgba8Unorm, SilkTextureUsage.Sampled, 3);
 
     [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task ConcurrentDisposalReturnsWhileOneNativeReleaseOwnsTheTextureAndItsCredit(
+        bool leased, bool failRelease)
+    {
+        var budget = new SilkGpuTextureBudget(72);
+        var device = new Device();
+        device.ConfigureTextureBudget(budget);
+        using Texture texture = device.Create(Mips);
+        IDisposable? lease = leased ? texture.Borrow() : null;
+        if (leased)
+        { texture.Dispose(); }
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        texture.OnRelease = () =>
+        {
+            entered.TrySetResult();
+            if (!release.Wait(TimeSpan.FromSeconds(10)))
+            { throw new TimeoutException("Native release was not released."); }
+            if (failRelease)
+            { throw new InvalidOperationException("Injected concurrent texture release failure."); }
+        };
+        Task completion = Task.Run(() =>
+        {
+            if (leased)
+            { lease!.Dispose(); }
+            else
+            { texture.Dispose(); }
+        });
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            texture.Dispose();
+            lease?.Dispose();
+            await Assert.That(() => texture.Borrow()).Throws<ObjectDisposedException>();
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(72ul);
+            await Assert.That(() => device.Create(Mips)).Throws<SilkGpuTextureBudgetExceededException>();
+        }
+        finally
+        {
+            release.Set();
+            if (failRelease)
+            { _ = await Assert.ThrowsAsync<InvalidOperationException>(() => completion); }
+            else
+            { await completion; }
+        }
+        if (failRelease)
+        {
+            await Assert.That(texture.Releases).IsEqualTo(0);
+            await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(72ul);
+            texture.OnRelease = null;
+            if (leased)
+            { lease!.Dispose(); }
+            else
+            { texture.Dispose(); }
+        }
+        texture.Dispose();
+        lease?.Dispose();
+        await Assert.That(texture.ReleaseAttempts).IsEqualTo(failRelease ? 2 : 1);
+        await Assert.That(texture.Releases).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task FailedFinalLeaseReleaseCanRetryThroughEitherOwnerWithoutReturningCreditEarly(bool retryTexture)
+    {
+        var budget = new SilkGpuTextureBudget(72);
+        var device = new Device();
+        device.ConfigureTextureBudget(budget);
+        using Texture texture = device.Create(Mips);
+        IDisposable first = texture.Borrow(), last = texture.Borrow();
+        texture.Dispose();
+        first.Dispose();
+        first.Dispose();
+        texture.FailRelease = true;
+        await Assert.That(last.Dispose).Throws<InvalidOperationException>();
+        await Assert.That(texture.Releases).IsEqualTo(0);
+        await Assert.That(texture.ReleaseAttempts).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(72ul);
+        await Assert.That(() => texture.Borrow()).Throws<ObjectDisposedException>();
+        await Assert.That(() => device.Create(Mips)).Throws<SilkGpuTextureBudgetExceededException>();
+        texture.FailRelease = false;
+        if (retryTexture)
+        { texture.Dispose(); }
+        else
+        { last.Dispose(); }
+        last.Dispose();
+        last.Dispose();
+        texture.Dispose();
+        await Assert.That(texture.Releases).IsEqualTo(1);
+        await Assert.That(texture.ReleaseAttempts).IsEqualTo(2);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        await Assert.That(budget.Usage.ReservationCount).IsEqualTo(0ul);
+        using Texture replacement = device.Create(Mips);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(72ul);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ReservationFailureRetriesOnlyTheReservationAfterNativeReleaseSucceeds(bool leased)
+    {
+        using var texture = new Texture(Mips);
+        var reservation = new ReleaseReservation { Refuse = true };
+        texture.OwnTextureReservation(reservation);
+        IDisposable? lease = leased ? texture.Borrow() : null;
+        if (leased)
+        {
+            texture.Dispose();
+            await Assert.That(lease!.Dispose).Throws<InvalidOperationException>();
+        }
+        else
+        {
+            await Assert.That(texture.Dispose).Throws<InvalidOperationException>();
+        }
+        await Assert.That(texture.Releases).IsEqualTo(1);
+        await Assert.That(texture.ReleaseAttempts).IsEqualTo(1);
+        await Assert.That(reservation.Attempts).IsEqualTo(1);
+        await Assert.That(() => texture.Borrow()).Throws<ObjectDisposedException>();
+        reservation.Refuse = false;
+        if (leased)
+        { lease!.Dispose(); }
+        else
+        { texture.Dispose(); }
+        texture.Dispose();
+        lease?.Dispose();
+        await Assert.That(texture.Releases).IsEqualTo(1);
+        await Assert.That(texture.ReleaseAttempts).IsEqualTo(1);
+        await Assert.That(reservation.Attempts).IsEqualTo(2);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task NativeReleaseReentryDoesNotDuplicateReleaseOrReturnCreditEarly(bool leased)
+    {
+        var budget = new SilkGpuTextureBudget(72);
+        var device = new Device();
+        device.ConfigureTextureBudget(budget);
+        using Texture texture = device.Create(Mips);
+        IDisposable? lease = leased ? texture.Borrow() : null;
+        int reentries = 0;
+        ulong held = 0;
+        texture.OnRelease = () =>
+        {
+            reentries++;
+            if (leased)
+            { lease!.Dispose(); }
+            else
+            { texture.Dispose(); }
+            held = budget.Usage.ReservedBytes;
+        };
+        texture.Dispose();
+        lease?.Dispose();
+        await Assert.That(reentries).IsEqualTo(1);
+        await Assert.That(held).IsEqualTo(72ul);
+        await Assert.That(texture.Releases).IsEqualTo(1);
+        await Assert.That(texture.ReleaseAttempts).IsEqualTo(1);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        lease?.Dispose();
+        texture.Dispose();
+        await Assert.That(texture.ReleaseAttempts).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task EveryMipCountsAndOneByteBelowCapacityRefusesBeforeNativeCreation()
     {
         var rejected = new Device();
@@ -141,6 +310,15 @@ public sealed class SilkGpuTextureBudgetTests
         await Assert.That(texture.Dispose).Throws<InvalidOperationException>();
         await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(72ul);
         await Assert.That(budget.Usage.ReservationCount).IsEqualTo(1ul);
+        await Assert.That(() => texture.Borrow()).Throws<ObjectDisposedException>();
+        texture.FailRelease = false;
+        texture.Dispose();
+        texture.Dispose();
+        await Assert.That(texture.Releases).IsEqualTo(1);
+        await Assert.That(texture.ReleaseAttempts).IsEqualTo(2);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(0ul);
+        using Texture replacement = device.Create(Mips);
+        await Assert.That(budget.Usage.ReservedBytes).IsEqualTo(72ul);
     }
 
     [Test]
@@ -234,17 +412,33 @@ public sealed class SilkGpuTextureBudgetTests
     private sealed class Texture(SilkTextureDescriptor descriptor) : SilkGraphicsTextureBase(descriptor)
     {
         internal int Releases { get; private set; }
+        internal int ReleaseAttempts { get; private set; }
         internal bool FailRelease { get; set; }
+        internal Action? OnRelease { get; set; }
         internal IDisposable Borrow() => AcquireSubmissionLease();
         public override void ReadbackForTesting(Span<byte> destination) => throw new NotSupportedException();
         public override void ReadbackForTesting(Span<float> destination) => throw new NotSupportedException();
         protected override void ReleaseNative()
         {
+            ReleaseAttempts++;
             if (FailRelease)
             {
                 throw new InvalidOperationException("Injected native texture release failure.");
             }
+            OnRelease?.Invoke();
             Releases++;
+        }
+    }
+
+    private sealed class ReleaseReservation : IDisposable
+    {
+        internal bool Refuse { get; set; }
+        internal int Attempts { get; private set; }
+        public void Dispose()
+        {
+            Attempts++;
+            if (Refuse)
+            { throw new InvalidOperationException("Injected texture reservation release failure."); }
         }
     }
 }

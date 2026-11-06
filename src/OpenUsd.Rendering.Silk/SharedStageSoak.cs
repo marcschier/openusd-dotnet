@@ -828,7 +828,7 @@ internal static class SharedStageSoak
         using SilkSceneGpuResources? gpuResources = graphicsDevice is null
             ? null
             : new SilkSceneGpuResources(graphicsDevice);
-        var sync = new SilkSyncMonitor(session, gpuResources);
+        using var sync = new SilkSyncMonitor(session, gpuResources);
         SilkSyncSnapshot initialSync = sync.SyncOnce();
         if (initialSync.LastMeshUpserts < 2 || initialSync.Meshes < 2)
         {
@@ -1893,7 +1893,7 @@ internal static class SharedStageSoak
         ulong[] LastUpsertedMeshIds,
         ulong[] LastRemovedMeshIds);
 
-    private sealed class SilkSyncMonitor
+    private sealed class SilkSyncMonitor : IDisposable
     {
         private readonly object _gate = new();
         private readonly SilkSceneState _scene = new();
@@ -1925,6 +1925,14 @@ internal static class SharedStageSoak
         {
             _session = session;
             _gpuResources = gpuResources;
+        }
+
+        public void Dispose()
+        {
+            lock (_gate)
+            {
+                _scene.Dispose();
+            }
         }
 
         internal SilkSyncSnapshot SyncOnce()

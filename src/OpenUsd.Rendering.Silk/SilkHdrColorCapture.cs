@@ -80,6 +80,12 @@ public sealed class SilkHdrColorCaptureOptions
     /// The managed pixel-array budget, charged uniformly at 20 bytes per pixel:
     /// 8 for HDR, 4 for RGBA8, 4 for optional depth, and 4 for the managed RGBA8
     /// selection-upload copy. The charge is unchanged when depth or selection is disabled.
+    /// <see cref="IncludePrimId"/>, <see cref="IncludeInstanceId"/> or <see cref="IncludeElementId"/>
+    /// adds 8 bytes per pixel: 4 for the shared RGBA8 pick-token readback and 4 for the first
+    /// int32 output raster. Each further requested pick plane adds 4 more bytes per pixel for its
+    /// own int32 output raster.
+    /// Setting <see cref="IncludeNormal"/> adds 28 bytes per pixel: 16 for the RGBA32Float
+    /// normal readback and 12 for the float32 RGB output.
     /// </param>
     public SilkHdrColorCaptureOptions(
         bool includeDeviceDepth = false,
@@ -95,6 +101,54 @@ public sealed class SilkHdrColorCaptureOptions
 
     /// <summary>Gets whether the actual normalized D32 depth plane is returned.</summary>
     public bool IncludeDeviceDepth { get; }
+
+    /// <summary>
+    /// Gets or initializes whether the visible prim identity plane is returned in
+    /// <see cref="SilkFrameCaptureResult.PrimId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The identity plane is drawn by the prim-level pick pass over the whole viewport,
+    /// so it requires a pick-capable graphics device; other devices refuse the capture
+    /// with <see cref="NotSupportedException"/>. It adds 8 bytes per pixel to the
+    /// managed readback charge.
+    /// </remarks>
+    public bool IncludePrimId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the visible instance index plane is returned in
+    /// <see cref="SilkFrameCaptureResult.InstanceId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The plane is derived from the same prim-level pick pass and token readback as
+    /// <see cref="IncludePrimId"/>; requesting both runs one pass. It requires a
+    /// pick-capable graphics device and adds 8 bytes per pixel to the managed readback
+    /// charge, or 4 bytes per pixel when <see cref="IncludePrimId"/> is also set.
+    /// </remarks>
+    public bool IncludeInstanceId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the visible authored face index plane is returned in
+    /// <see cref="SilkFrameCaptureResult.ElementId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The plane is derived from the same pick pass and token readback as
+    /// <see cref="IncludePrimId"/> and <see cref="IncludeInstanceId"/>; requesting any
+    /// combination runs one pass. It requires a pick-capable graphics device and adds
+    /// 8 bytes per pixel to the managed readback charge, or 4 bytes per pixel when another
+    /// pick plane is also set.
+    /// </remarks>
+    public bool IncludeElementId { get; init; }
+
+    /// <summary>
+    /// Gets or initializes whether the world-space normal plane is returned in
+    /// <see cref="SilkFrameCaptureResult.Normal"/>.
+    /// </summary>
+    /// <remarks>
+    /// The plane is drawn by a dedicated normal pass over the whole viewport of the
+    /// built-in <see cref="SilkMeshRenderer"/>, and adds 28 bytes per pixel to the
+    /// managed readback charge.
+    /// </remarks>
+    public bool IncludeNormal { get; init; }
 
     /// <summary>Gets the maximum raster pixel count.</summary>
     public int MaximumPixelCount => Limits.MaximumPixelCount;

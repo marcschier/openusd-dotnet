@@ -251,6 +251,7 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
     private int _submissionLeaseCount;
     private bool _disposeRequested;
     private bool _nativeReleased;
+    private bool _releaseInProgress;
     private IDisposable? _textureReservation;
 
     internal void OwnTextureReservation(IDisposable? reservation)
@@ -272,8 +273,40 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
 
     private void ReleaseNativeAndReservation()
     {
-        ReleaseNative();
-        Interlocked.Exchange(ref _textureReservation, null)?.Dispose();
+        try
+        {
+            if (!_nativeReleased)
+            {
+                ReleaseNative();
+                lock (_lifetimeGate)
+                {
+                    _nativeReleased = true;
+                }
+            }
+            _textureReservation?.Dispose();
+            lock (_lifetimeGate)
+            {
+                _textureReservation = null;
+            }
+        }
+        finally
+        {
+            lock (_lifetimeGate)
+            {
+                _releaseInProgress = false;
+            }
+        }
+    }
+
+    private bool BeginRelease()
+    {
+        if (!_disposeRequested || _submissionLeaseCount != 0 || _releaseInProgress ||
+            (_nativeReleased && _textureReservation is null))
+        {
+            return false;
+        }
+        _releaseInProgress = true;
+        return true;
     }
 
     /// <summary>Initializes a texture wrapper.</summary>
@@ -325,17 +358,8 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
         bool releaseNative;
         lock (_lifetimeGate)
         {
-            if (_disposeRequested)
-            {
-                return;
-            }
-
             _disposeRequested = true;
-            releaseNative = _submissionLeaseCount == 0;
-            if (releaseNative)
-            {
-                _nativeReleased = true;
-            }
+            releaseNative = BeginRelease();
         }
 
         if (releaseNative)
@@ -392,9 +416,10 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
         int componentCount = Format switch
         {
             SilkTextureFormat.D32Float or SilkTextureFormat.R32Float => 1,
+            SilkTextureFormat.Rg32Float => 2,
             SilkTextureFormat.Rgba32Float => 4,
             _ => throw new InvalidOperationException(
-                "Float readback requires D32Float, R32Float, or Rgba32Float.")
+                "Float readback requires D32Float, R32Float, Rg32Float, or Rgba32Float.")
         };
         int requiredLength = checked((int)(Width * Height * componentCount));
         if (destinationLength != requiredLength)
@@ -406,37 +431,45 @@ public abstract class SilkGraphicsTextureBase : ISilkGraphicsTexture
         return requiredLength;
     }
 
-    private void ReleaseSubmissionLease()
+    private void ReleaseSubmissionLease(SubmissionLease lease)
     {
         bool releaseNative;
         lock (_lifetimeGate)
         {
-            _submissionLeaseCount--;
-            releaseNative =
-                _disposeRequested &&
-                _submissionLeaseCount == 0 &&
-                !_nativeReleased;
-            if (releaseNative)
+            if (lease.Texture is null)
             {
-                _nativeReleased = true;
+                return;
+            }
+            if (!lease.CountReleased)
+            {
+                _submissionLeaseCount--;
+                lease.CountReleased = true;
+            }
+            releaseNative = BeginRelease();
+            if (!releaseNative && !_releaseInProgress)
+            {
+                lease.Texture = null;
             }
         }
 
         if (releaseNative)
         {
             ReleaseNativeAndReservation();
+            lock (_lifetimeGate)
+            {
+                lease.Texture = null;
+            }
         }
     }
 
     private sealed class SubmissionLease(SilkGraphicsTextureBase texture) : IDisposable
     {
-        private SilkGraphicsTextureBase? _texture = texture;
+        internal SilkGraphicsTextureBase? Texture = texture;
+        internal bool CountReleased;
 
         public void Dispose()
         {
-            SilkGraphicsTextureBase? texture =
-                Interlocked.Exchange(ref _texture, null);
-            texture?.ReleaseSubmissionLease();
+            Volatile.Read(ref Texture)?.ReleaseSubmissionLease(this);
         }
     }
 }
@@ -787,7 +820,10 @@ public enum SilkGraphicsCommandKind
     UploadTexture3D,
 
     /// <summary>Begins a depth-only shadow-caster scope with no color attachment.</summary>
-    BeginShadowRendering
+    BeginShadowRendering,
+
+    /// <summary>Copies a complete color or depth render target without conversion.</summary>
+    CopyRenderTarget
 }
 
 /// <summary>The depth attachment of one depth-only shadow-caster pass.</summary>
@@ -832,6 +868,48 @@ public interface ISilkShadowGraphicsCommandList
     /// it for sampling by the colour pass that follows.
     /// </summary>
     void BeginShadowRendering(SilkShadowRenderingDescriptor descriptor);
+}
+
+/// <summary>Optional exact GPU copies used to publish completed offscreen targets.</summary>
+public interface ISilkTextureCopyGraphicsCommandList
+{
+    /// <summary>Copies one complete two-dimensional render target without filtering or format conversion.</summary>
+    /// <remarks>
+    /// Both targets must belong to this device, have matching dimensions and formats, and contain one mip level.
+    /// Color targets require ColorRenderTarget usage; depth targets require DepthRenderTarget usage.
+    /// Aliasing, sampled-only textures and copies inside a rendering scope are rejected.
+    /// No host pixel copy or staging allocation is performed. Both targets must remain undisposed until submission,
+    /// which retains their native ownership until completion.
+    /// </remarks>
+    void CopyRenderTarget(ISilkGraphicsTexture source, ISilkGraphicsTexture destination);
+}
+
+internal static class SilkRenderTargetCopy
+{
+    internal static void Validate(ISilkGraphicsTexture source, ISilkGraphicsTexture destination)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        if (ReferenceEquals(source, destination))
+        {
+            throw new ArgumentException("A render target cannot be copied onto itself.", nameof(destination));
+        }
+        if (source.Width != destination.Width || source.Height != destination.Height ||
+            source.Format != destination.Format || source.MipLevelCount != 1 || destination.MipLevelCount != 1)
+        {
+            throw new ArgumentException("Render target copies require matching single-level textures.",
+                nameof(destination));
+        }
+        SilkTextureUsage required = source.Format == SilkTextureFormat.D32Float
+            ? SilkTextureUsage.DepthRenderTarget : SilkTextureUsage.ColorRenderTarget;
+        if ((required == SilkTextureUsage.ColorRenderTarget &&
+             !SilkTextureFormats.IsColorRenderTarget(source.Format)) ||
+            (source.Usage & required) == 0 || (destination.Usage & required) == 0)
+        {
+            throw new ArgumentException("Both textures must be compatible color or depth render targets.",
+                nameof(destination));
+        }
+    }
 }
 
 /// <summary>
@@ -960,6 +1038,11 @@ public readonly record struct SilkGraphicsCapabilities(
     public float MaxSamplerAnisotropy { get; init; } = 1f;
 
     /// <summary>
+    /// Gets the maximum width or height of a two-dimensional texture, or zero when unreported.
+    /// </summary>
+    public uint MaxTextureDimension2D { get; init; }
+
+    /// <summary>
     /// Gets whether the device can record a depth-only pass with no colour
     /// attachment, which is what a raster shadow map is rendered with.
     /// </summary>
@@ -1012,7 +1095,13 @@ public enum SilkTextureFormat
     Rgba16Float,
 
     /// <summary>Four 32-bit floating-point color channels.</summary>
-    Rgba32Float
+    Rgba32Float,
+
+    /// <summary>One normalized eight-bit sampled channel.</summary>
+    R8Unorm,
+
+    /// <summary>Two 32-bit floating-point sampled channels.</summary>
+    Rg32Float
 }
 
 /// <summary>
@@ -1108,7 +1197,8 @@ public readonly record struct SilkTextureDescriptor(
             SilkTextureFormat.Rgba16Float or
             SilkTextureFormat.Rgba32Float => SilkTextureUsage.ColorRenderTarget,
             SilkTextureFormat.D32Float => SilkTextureUsage.DepthRenderTarget,
-            SilkTextureFormat.R32Float => SilkTextureUsage.Sampled,
+            SilkTextureFormat.R32Float or SilkTextureFormat.Rg32Float or
+                SilkTextureFormat.R8Unorm => SilkTextureUsage.Sampled,
             _ => throw new ArgumentOutOfRangeException(nameof(format))
         };
 
@@ -1193,9 +1283,11 @@ internal static class SilkTextureFormats
     internal static uint GetBytesPerPixel(SilkTextureFormat format) =>
         format switch
         {
+            SilkTextureFormat.R8Unorm => 1,
             SilkTextureFormat.Rgba8Unorm or
             SilkTextureFormat.D32Float or
             SilkTextureFormat.R32Float => 4,
+            SilkTextureFormat.Rg32Float => 8,
             SilkTextureFormat.Rgba16Float => 8,
             SilkTextureFormat.Rgba32Float => 16,
             _ => throw new ArgumentOutOfRangeException(nameof(format))
@@ -1226,7 +1318,10 @@ public enum SilkSamplerAddressMode
     Repeat,
 
     /// <summary>Mirrors texture coordinates across integer boundaries.</summary>
-    MirrorRepeat
+    MirrorRepeat,
+
+    /// <summary>Returns transparent black for coordinates outside the texture.</summary>
+    ClampToBorder
 }
 
 /// <summary>

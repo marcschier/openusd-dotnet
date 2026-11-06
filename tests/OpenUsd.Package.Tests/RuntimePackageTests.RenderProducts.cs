@@ -19,8 +19,24 @@ internal static class PackageAuthoredProductExecution
 {
     internal static void Run(ISilkGraphicsDevice device, string pluginPath)
     {
-        string path = Path.Combine(AppContext.BaseDirectory, "authored-product.usda");
-        File.WriteAllText(path, Scene);
+        var depthFirst = RunOrder(device, pluginPath, depthFirst: true);
+        var colorFirst = RunOrder(device, pluginPath, depthFirst: false);
+        AssertMatches(depthFirst.Full, colorFirst.Full, depthFirst: false);
+        AssertMatches(depthFirst.Preview, colorFirst.Preview, depthFirst: false);
+        Console.WriteLine("AUTHORED_PRODUCT_VARIABLE_ORDERS=true");
+    }
+
+    private static (RenderDiskJobResult Full, RenderDiskJobResult Preview) RunOrder(
+        ISilkGraphicsDevice device, string pluginPath, bool depthFirst)
+    {
+        string root = Path.Combine(AppContext.BaseDirectory,
+            depthFirst ? "authored-product-depth-first" : "authored-product-color-first");
+        Directory.CreateDirectory(root);
+        string path = Path.Combine(root, "authored-product.usda");
+        string scene = depthFirst ? Scene : Scene.Replace(
+            "rel orderedVars = [</Depth>, </Color>]",
+            "rel orderedVars = [</Color>, </Depth>]", StringComparison.Ordinal);
+        File.WriteAllText(path, scene);
         UsdStageScheduler scheduler = UsdStageScheduler.Open(path);
         try
         {
@@ -32,7 +48,8 @@ internal static class PackageAuthoredProductExecution
             var adapter = new FrameSource(session, capturer, scheduler, revision);
             RenderProductJobPlan fullPlan = Prepare("/Full");
             RenderDiskJobResult full = RenderDiskJob.Execute(fullPlan.CreateJob(
-                Path.Combine(AppContext.BaseDirectory, "authored-product-full")), adapter);
+                Path.Combine(root, "authored-product-full")), adapter);
+            AssertBindings(full, depthFirst);
             byte[] first = ReadHdr(full, 0);
             AssertPixel(first, 4, 4, "005400000000003C");
             AssertPixel(first, 12, 4, "005400000000003C");
@@ -42,8 +59,9 @@ internal static class PackageAuthoredProductExecution
             AssertPixel(second, 4, 4, "000000000000003C");
             AssertPixel(second, 12, 4, "005400000000003C");
             if (full.Frames.Count != 2 || full.Frames[1].State.Time.TimeCode != 2 ||
-                fullPlan.Outputs[0].Plane != RenderProductPlane.DeviceDepth ||
-                fullPlan.Outputs[1].Plane != RenderProductPlane.HdrColor ||
+                fullPlan.Outputs.Count != 2 ||
+                fullPlan.Outputs[depthFirst ? 0 : 1].Plane != RenderProductPlane.DeviceDepth ||
+                fullPlan.Outputs[depthFirst ? 1 : 0].Plane != RenderProductPlane.HdrColor ||
                 full.Frames[0].DepthBytes != 16 * 16 * 4)
             {
                 throw new InvalidOperationException("Product time, variable order or depth output changed.");
@@ -56,8 +74,6 @@ internal static class PackageAuthoredProductExecution
                 if (product.GetProperty("productNameUsedAsWriteAuthority").GetBoolean() ||
                     product.GetProperty("materialBindingPurpose").GetString() != "full" ||
                     product.GetProperty("callerSourceStageRevision").GetUInt64() != revision ||
-                    frame.GetProperty("productOutputs")[0].GetProperty("sourceName").GetString() != "depth" ||
-                    frame.GetProperty("productOutputs")[1].GetProperty("dataType").GetString() != "half4" ||
                     frame.GetProperty("productRaster").GetProperty("fullWidth").GetInt32() != 16)
                 {
                     throw new InvalidOperationException("The authored product manifest lost its requested semantics.");
@@ -66,7 +82,8 @@ internal static class PackageAuthoredProductExecution
             Console.WriteLine("AUTHORED_PRODUCT_JOB=true");
 
             RenderDiskJobResult preview = RenderDiskJob.Execute(Prepare("/Preview").CreateJob(
-                Path.Combine(AppContext.BaseDirectory, "authored-product-preview")), adapter);
+                Path.Combine(root, "authored-product-preview")), adapter);
+            AssertBindings(preview, depthFirst);
             byte[] previewPixels = ReadHdr(preview, 0);
             AssertPixel(previewPixels, 4, 4, "000000540000003C");
             AssertPixel(previewPixels, 12, 4, "000000000000003C");
@@ -83,18 +100,41 @@ internal static class PackageAuthoredProductExecution
             AssertPixel(legacyPixels, 4, 12, "000000000054003C");
             AssertPixel(legacyPixels, 12, 12, "000000000000003C");
             RenderDiskJobResult restored = RenderDiskJob.Execute(fullPlan.CreateJob(
-                Path.Combine(AppContext.BaseDirectory, "authored-product-restored")), adapter);
-            if (!ReadHdr(restored, 0).AsSpan().SequenceEqual(first))
-            {
-                throw new InvalidOperationException("Returning from legacy capture did not restore the exact product.");
-            }
+                Path.Combine(root, "authored-product-restored")), adapter);
+            AssertMatches(full, restored, depthFirst);
             Console.WriteLine("AUTHORED_PRODUCT_LEGACY_RESET=true");
-            if (GetRevision(scheduler) != revision || File.ReadAllText(path) != Scene ||
+            if (OperatingSystem.IsWindows())
+            {
+                RenderDiskJobResult exrFull = RenderDiskJob.Execute(fullPlan.CreateJob(
+                    Path.Combine(root, "authored-product-full-exr"),
+                    RenderHdrColorFormat.Exr), adapter);
+                AssertMatches(full, exrFull, depthFirst, RenderHdrColorFormat.Exr);
+                RenderDiskJobResult exrPreview = RenderDiskJob.Execute(Prepare("/Preview").CreateJob(
+                    Path.Combine(root, "authored-product-preview-exr"),
+                    RenderHdrColorFormat.Exr), adapter);
+                AssertMatches(preview, exrPreview, depthFirst, RenderHdrColorFormat.Exr);
+                SilkFrameCaptureResult legacyAgain = capturer.CaptureWithHdrColor(session, 16, 16,
+                    RenderSettings.PresentationDefault, timeCode: 0, camera: fullPlan.Frames[0].Camera);
+                if (!(legacyAgain.HdrColor ??
+                    throw new InvalidOperationException("Legacy reset omitted HDR."))
+                    .Rgba16Float.Span.SequenceEqual(legacyPixels))
+                {
+                    throw new InvalidOperationException("EXR preview did not restore the legacy capture.");
+                }
+                RenderDiskJobResult exrRestored = RenderDiskJob.Execute(fullPlan.CreateJob(
+                    Path.Combine(root, "authored-product-restored-exr"),
+                    RenderHdrColorFormat.Exr), adapter);
+                AssertMatches(full, exrRestored, depthFirst, RenderHdrColorFormat.Exr);
+                Console.WriteLine("AUTHORED_PRODUCT_EXR=true");
+            }
+            if (GetRevision(scheduler) != revision || File.ReadAllText(path) != scene ||
+                File.Exists(Path.Combine(root, "authored-name-must-not-write.exr")) ||
                 File.Exists(Path.Combine(AppContext.BaseDirectory, "authored-name-must-not-write.exr")))
             {
                 throw new InvalidOperationException("Rendering changed the source or used the authored output name.");
             }
             Console.WriteLine("AUTHORED_PRODUCT_SOURCE_UNCHANGED=true");
+            return (full, preview);
 
             RenderProductJobPlan Prepare(string settings) => RenderProductJobPlan.PrepareAsync(
                 scheduler, new StageIdentity(path), new double[] { 0, 2 },
@@ -115,12 +155,119 @@ internal static class PackageAuthoredProductExecution
         RenderDiskFrameResult frame = result.Frames[index];
         byte[] bytes = File.ReadAllBytes(Path.Combine(result.OutputDirectory,
             frame.HdrColorFileName ?? throw new InvalidOperationException("Product HDR file is absent.")));
-        if (bytes.Length != 16 * 16 * 8 || !string.Equals(
+        if (bytes.LongLength != frame.HdrColorBytes || !string.Equals(
             Convert.ToHexString(SHA256.HashData(bytes)), frame.HdrColorSha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Product HDR bytes or hash changed after publication.");
         }
-        return bytes;
+        byte[] pixels = frame.HdrColorFormat switch
+        {
+            RenderHdrColorFormat.RawRgba16Float => bytes,
+            RenderHdrColorFormat.Exr => ExrScanlineOracle.Read(bytes, 16, 16),
+            _ => throw new InvalidOperationException("Product HDR container is unsupported.")
+        };
+        if (pixels.Length != 16 * 16 * 8)
+        {
+            throw new InvalidOperationException("Product HDR pixel extent changed.");
+        }
+        return pixels;
+    }
+
+    private static void AssertMatches(
+        RenderDiskJobResult raw, RenderDiskJobResult actual, bool depthFirst,
+        RenderHdrColorFormat expectedFormat = RenderHdrColorFormat.RawRgba16Float)
+    {
+        if (actual.Frames.Count != 2 || actual.Frames.Count != raw.Frames.Count)
+        {
+            throw new InvalidOperationException("Product frame count changed.");
+        }
+        AssertBindings(actual, depthFirst);
+        for (int index = 0; index < actual.Frames.Count; index++)
+        {
+            RenderDiskFrameResult frame = actual.Frames[index];
+            if (frame.HdrColorFormat != expectedFormat ||
+                frame.State.Time.TimeCode != raw.Frames[index].State.Time.TimeCode ||
+                !ReadHdr(actual, index).AsSpan().SequenceEqual(ReadHdr(raw, index)))
+            {
+                throw new InvalidOperationException("Product time or decoded half bits changed.");
+            }
+            byte[] depth = File.ReadAllBytes(Path.Combine(actual.OutputDirectory,
+                frame.DepthFileName ?? throw new InvalidOperationException("Product depth is absent.")));
+            byte[] rawDepth = File.ReadAllBytes(Path.Combine(raw.OutputDirectory,
+                raw.Frames[index].DepthFileName ??
+                    throw new InvalidOperationException("Raw product depth is absent.")));
+            if (!depth.AsSpan().SequenceEqual(rawDepth))
+            {
+                throw new InvalidOperationException("Product replay changed the raw depth plane.");
+            }
+        }
+    }
+
+    private static void AssertBindings(RenderDiskJobResult result, bool depthFirst)
+    {
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllBytes(
+            Path.Combine(result.OutputDirectory, "manifest.json")));
+        JsonElement frames = manifest.RootElement.GetProperty("frames");
+        if (frames.GetArrayLength() != 2 || result.Frames.Count != 2)
+        {
+            throw new InvalidOperationException("Product manifest frame count changed.");
+        }
+        for (int index = 0; index < result.Frames.Count; index++)
+        {
+            RenderDiskFrameResult frame = result.Frames[index];
+            if (frame.State.Time.TimeCode != index * 2)
+            {
+                throw new InvalidOperationException("Product frame time changed.");
+            }
+            _ = ReadHdr(result, index);
+            byte[] depth = File.ReadAllBytes(Path.Combine(result.OutputDirectory,
+                frame.DepthFileName ?? throw new InvalidOperationException("Product depth is absent.")));
+            if (depth.Length != 16 * 16 * 4 || depth.LongLength != frame.DepthBytes ||
+                !string.Equals(
+                    Convert.ToHexString(SHA256.HashData(depth)), frame.DepthSha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Product depth extent or accounting changed.");
+            }
+            JsonElement bindings = frames[index].GetProperty("productOutputs");
+            if (bindings.GetArrayLength() != 2)
+            {
+                throw new InvalidOperationException("Product variable count changed.");
+            }
+            for (int bindingIndex = 0; bindingIndex < 2; bindingIndex++)
+            {
+                bool isDepth = depthFirst == (bindingIndex == 0);
+                JsonElement binding = bindings[bindingIndex];
+                JsonElement plane = frames[index].GetProperty(isDepth ? "deviceDepth" : "hdrColor");
+                string format = isDepth ? "float32-little-endian" :
+                    frame.HdrColorFormat == RenderHdrColorFormat.Exr
+                        ? "openexr-rgba16float" : "rgba16float-little-endian";
+                if (binding.GetProperty("variablePath").GetString() != (isDepth ? "/Depth" : "/Color") ||
+                    binding.GetProperty("sourceName").GetString() != (isDepth ? "depth" : "color") ||
+                    binding.GetProperty("sourceType").GetString() != "raw" ||
+                    binding.GetProperty("dataType").GetString() != (isDepth ? "float" : "half4") ||
+                    binding.GetProperty("file").GetString() !=
+                        (isDepth ? frame.DepthFileName : frame.HdrColorFileName) ||
+                    binding.GetProperty("format").GetString() != format ||
+                    plane.GetProperty("format").GetString() != format ||
+                    plane.GetProperty("file").GetString() != binding.GetProperty("file").GetString() ||
+                    plane.GetProperty("bytes").GetInt64() != binding.GetProperty("bytes").GetInt64() ||
+                    plane.GetProperty("sha256").GetString() != binding.GetProperty("sha256").GetString() ||
+                    plane.GetProperty("rowOrder").GetString() != binding.GetProperty("rowOrder").GetString() ||
+                    plane.GetProperty("convention").GetString() != binding.GetProperty("convention").GetString() ||
+                    binding.GetProperty("bytes").GetInt64() !=
+                        (isDepth ? frame.DepthBytes : frame.HdrColorBytes) ||
+                    binding.GetProperty("sha256").GetString() !=
+                        (isDepth ? frame.DepthSha256 : frame.HdrColorSha256) ||
+                    binding.GetProperty("rowOrder").GetString() != "top-down" ||
+                    binding.GetProperty("convention").GetString() != (isDepth
+                        ? "normalized-device-depth-zero-to-one"
+                        : "renderer-working-composited-camera-exposed-before-display"))
+                {
+                    throw new InvalidOperationException("Product bindings lost their stored-plane identity.");
+                }
+            }
+        }
     }
 
     private static void AssertPixel(byte[] pixels, int x, int y, string expected)

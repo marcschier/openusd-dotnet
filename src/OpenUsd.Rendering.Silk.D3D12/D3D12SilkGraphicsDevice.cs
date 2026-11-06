@@ -30,6 +30,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     private ID3D12Fence* _fence;
     private readonly object _retainedResourcesGate = new();
     private readonly List<D3D12RetainedResources> _retainedResources = [];
+    private readonly SilkPendingSubmissionRetirements _pendingSubmissions = new();
     private ulong _fenceValue;
     private ID3D12DeviceTeardownHook? _teardownHookForTesting;
     private Func<Exception>? _fenceWaitFailureForTesting;
@@ -44,8 +45,18 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     private D3D12DescriptorIndexedTextureTables? _materialDescriptorTables;
     private long _deviceLossGeneration = 1;
     private int _nextOffscreenSubmitDeviceLossForTesting;
+    private int _nextOffscreenSignalFailureForTesting;
+    private int _nextOffscreenDrainDeferredForTesting;
+    private Exception? _nextReadbackFenceFailureForTesting;
+    private int _nextReadbackDrainDeferredForTesting;
+    private int _nextReadbackSignalFailureForTesting;
     private bool _apiDisposed;
     private bool _dxgiDisposed;
+    private int _disposeActive;
+    private bool _disposeCommitted;
+    private bool _retainedRetirementPending;
+    private Exception? _terminalDisposeWaitFailure;
+    private int _terminalDisposeRemovalReason;
 
     /// <inheritdoc/>
     public ulong DeviceLossGeneration =>
@@ -79,6 +90,44 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     internal bool TryConsumeOffscreenSubmitDeviceLossForTesting() =>
         Interlocked.Exchange(ref _nextOffscreenSubmitDeviceLossForTesting, 0) != 0;
 
+    internal void InjectNextOffscreenSignalFailureForTesting() =>
+        Interlocked.Exchange(ref _nextOffscreenSignalFailureForTesting, 1);
+
+    internal bool TryConsumeOffscreenSignalFailureForTesting() =>
+        Interlocked.Exchange(ref _nextOffscreenSignalFailureForTesting, 0) != 0;
+
+    internal void DeferNextOffscreenDrainForTesting() =>
+        Interlocked.Exchange(ref _nextOffscreenDrainDeferredForTesting, 1);
+
+    private bool TryDrainOffscreenSubmittedWork()
+    {
+        bool drained = TryDrainSubmittedWork();
+        // The real queue is drained before the test simulates an inconclusive result.
+        return Interlocked.Exchange(ref _nextOffscreenDrainDeferredForTesting, 0) == 0 &&
+            drained;
+    }
+
+    internal void FailNextReadbackFenceForTesting(Exception failure) =>
+        Interlocked.Exchange(ref _nextReadbackFenceFailureForTesting, failure);
+
+    internal void DeferNextReadbackDrainForTesting() =>
+        Interlocked.Exchange(ref _nextReadbackDrainDeferredForTesting, 1);
+
+    internal void FailNextReadbackSignalForTesting() =>
+        Interlocked.Exchange(ref _nextReadbackSignalFailureForTesting, 1);
+
+    private int SignalReadbackFence(ID3D12Fence* fence) =>
+        Interlocked.Exchange(ref _nextReadbackSignalFailureForTesting, 0) != 0
+            ? unchecked((int)0x80004005)
+            : _queue->Signal(fence, 1);
+
+    internal bool TryDrainReadbackSubmittedWork()
+    {
+        bool drained = TryDrainSubmittedWork();
+        return Interlocked.Exchange(ref _nextReadbackDrainDeferredForTesting, 0) == 0 &&
+            drained;
+    }
+
     private D3D12SilkGraphicsDevice(
         global::Silk.NET.Direct3D12.D3D12 api,
         DXGI dxgi,
@@ -88,7 +137,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         ID3D12CommandQueue* queue,
         ID3D12Fence* fence,
         string adapterName,
-        bool software)
+        bool software,
+        bool useGpuUploadHeaps)
     {
         _api = api;
         _dxgi = dxgi;
@@ -97,6 +147,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         _device = device;
         _queue = queue;
         _fence = fence;
+        UsesGpuUploadHeaps = useGpuUploadHeaps;
         string? descriptorIndexedTextureTablesDiagnostic = null;
         if (SupportsD3D12DescriptorIndexedTextureTables(
             device,
@@ -122,6 +173,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             // Direct3D 11 and 12 both require every feature-level 11_0+ device -- including
             // WARP -- to support up to 16x anisotropic filtering (D3D12_REQ_MAXANISOTROPY).
             MaxSamplerAnisotropy = 16f,
+            MaxTextureDimension2D = 16384,
             // A pipeline state with zero render targets and OMSetRenderTargets with
             // a depth view alone are core Direct3D 12, so every device this backend
             // creates can record the depth-only shadow pass.
@@ -135,11 +187,23 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     /// <inheritdoc/>
     public SilkGraphicsCapabilities Capabilities { get; }
 
+    /// <summary>Gets whether CPU-writable upload buffers use GPU-local upload heaps.</summary>
+    /// <remarks>Texture staging and GPU-only storage buffers retain their existing heap policies.</remarks>
+    public bool UsesGpuUploadHeaps { get; }
+
     internal D3D12DescriptorIndexedTextureTables? MaterialDescriptorTables =>
         _materialDescriptorTables;
 
     /// <summary>Creates a D3D12 device. WARP is deterministic and suitable for CI.</summary>
-    public static D3D12SilkGraphicsDevice Create(bool useWarp = true)
+    public static D3D12SilkGraphicsDevice Create(bool useWarp = true) => Create(useWarp, useGpuUploadHeaps: false);
+
+    /// <summary>Creates a device with an explicit optional GPU-local upload-buffer policy.</summary>
+    /// <remarks>
+    /// GPU-upload heaps require a hardware adapter reporting D3D12 Options16 support.
+    /// Unsupported devices fail explicitly rather than silently choosing system upload memory.
+    /// Logical buffer admission is unchanged; this option does not guarantee physical VRAM headroom.
+    /// </remarks>
+    public static D3D12SilkGraphicsDevice Create(bool useWarp, bool useGpuUploadHeaps)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -180,6 +244,27 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 &deviceId,
                 (void**)&device));
 
+            if (useGpuUploadHeaps)
+            {
+                if (software)
+                {
+                    throw new NotSupportedException("GPU-local upload heaps require a hardware D3D12 adapter.");
+                }
+                var options = new FeatureDataD3D12Options16();
+                int status = device->CheckFeatureSupport(
+                    global::Silk.NET.Direct3D12.Feature.D3D12Options16,
+                    &options, (uint)sizeof(FeatureDataD3D12Options16));
+                if (status == unchecked((int)0x80070057))
+                {
+                    throw new NotSupportedException("The D3D12 runtime does not expose GPU-upload-heap support.");
+                }
+                SilkMarshal.ThrowHResult(status);
+                if (!options.GPUUploadHeapSupported)
+                {
+                    throw new NotSupportedException("The D3D12 adapter does not support GPU-upload heaps.");
+                }
+            }
+
             var queueDescription = new CommandQueueDesc
             {
                 Type = CommandListType.Direct,
@@ -209,7 +294,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
                 queue,
                 fence,
                 adapterName,
-                software);
+                software,
+                useGpuUploadHeaps);
         }
         catch
         {
@@ -259,7 +345,8 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         bool upload = usage.HasFlag(SilkBufferUsage.Upload);
         RegisterDependentObject();
 
-        var heapProperties = new HeapProperties(storage && !upload ? HeapType.Default : HeapType.Upload);
+        var heapProperties = new HeapProperties(storage && !upload ? HeapType.Default :
+            upload && UsesGpuUploadHeaps ? HeapType.GpuUpload : HeapType.Upload);
         var description = new ResourceDesc(
             ResourceDimension.Buffer,
             0,
@@ -275,26 +362,32 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
             ? ResourceStates.UnorderedAccess
             : ResourceStates.GenericRead;
         ID3D12Resource* resource = null;
+        UniformAllocation? uniform = null;
         IDisposable? reservation = null;
         bool success = false;
         try
         {
             reservation = ReserveBufferAllocation(size);
-            Guid resourceId = ID3D12Resource.Guid;
-            SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
-                &heapProperties,
-                HeapFlags.None,
-                &description,
-                initialState,
-                null,
-                &resourceId,
-                (void**)&resource));
+            if ((usage == (SilkBufferUsage.Uniform | SilkBufferUsage.Upload) ||
+                usage == (SilkBufferUsage.Uniform | SilkBufferUsage.Storage | SilkBufferUsage.Upload)) &&
+                size <= 4096)
+            {
+                uniform = AllocateUniform(size);
+            }
+            else
+            {
+                Guid resourceId = ID3D12Resource.Guid;
+                SilkMarshal.ThrowHResult(_device->CreateCommittedResource(
+                    &heapProperties, HeapFlags.None, &description, initialState,
+                    null, &resourceId, (void**)&resource));
+            }
             var buffer = new D3D12SilkGraphicsBuffer(
                 this,
-                resource,
+                uniform is null ? resource : uniform.Resource,
                 size,
                 usage,
-                initialState);
+                initialState,
+                uniform);
             buffer.OwnBufferReservation(reservation);
             success = true;
             return buffer;
@@ -303,6 +396,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         {
             if (!success)
             {
+                uniform?.Dispose();
                 Release(ref resource);
                 ReleaseDependentObject();
                 reservation?.Dispose();
@@ -313,6 +407,34 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     /// <inheritdoc/>
     public void WaitIdle()
     {
+        ThrowIfDeviceRetiring();
+        SilkPendingSubmissionRetirement[] pending = _pendingSubmissions.Snapshot();
+        try
+        {
+            WaitIdleCore();
+        }
+        catch (Exception failure)
+        {
+            if (HasTerminalDeviceRemoval())
+            {
+                try
+                {
+                    SilkPendingSubmissionRetirements.Retire(pending);
+                }
+                catch (Exception cleanup)
+                {
+                    throw new AggregateException(
+                        "D3D12 device wait and pending submission retirement failed.",
+                        failure, cleanup);
+                }
+            }
+            throw;
+        }
+        SilkPendingSubmissionRetirements.Retire(pending);
+    }
+
+    private void WaitIdleCore()
+    {
         ObjectDisposedException.ThrowIf(_queue == null || _fence == null, this);
         ulong value = ++_fenceValue;
         SilkMarshal.ThrowHResult(_queue->Signal(_fence, value));
@@ -322,57 +444,113 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
     /// <inheritdoc/>
     public void Dispose()
     {
-        if (!TryBeginDispose())
-        {
-            return;
-        }
-
-        Exception? waitFailure = null;
-        int removalReason = 0;
+        if (Interlocked.CompareExchange(ref _disposeActive, 1, 0) != 0)
+        { return; }
         try
         {
-            if (_teardownHookForTesting is null)
+            if (!_retainedRetirementPending)
             {
-                WaitIdle();
+                Exception? pendingWaitFailure = null;
+                int pendingRemovalReason = 0;
+                if (_pendingSubmissions.Snapshot().Length != 0)
+                {
+                    try
+                    {
+                        WaitIdle();
+                    }
+                    catch (Exception failure)
+                    {
+                        int reason = GetDeviceRemovedReasonForTeardown();
+                        if (!IsTerminalDeviceRemovalReason(reason) ||
+                            _pendingSubmissions.Snapshot().Length != 0)
+                        {
+                            throw;
+                        }
+                        pendingWaitFailure = failure;
+                        pendingRemovalReason = reason;
+                    }
+                }
+                if (!TryBeginDispose())
+                { return; }
+                if (pendingWaitFailure is not null)
+                {
+                    _terminalDisposeWaitFailure = pendingWaitFailure;
+                    _terminalDisposeRemovalReason = pendingRemovalReason;
+                }
+                else
+                {
+                    try
+                    {
+                        if (_teardownHookForTesting is null)
+                        { WaitIdleCore(); }
+                        else
+                        { _teardownHookForTesting.WaitIdle(); }
+                    }
+                    catch (Exception exception)
+                    {
+                        int removalReason = GetDeviceRemovedReasonForTeardown();
+                        if (!IsTerminalDeviceRemovalReason(removalReason))
+                        {
+                            CancelLifetimeDispose();
+                            throw;
+                        }
+                        _terminalDisposeWaitFailure = exception;
+                        _terminalDisposeRemovalReason = removalReason;
+                    }
+                }
+                Volatile.Write(ref _disposeCommitted, true);
+                _retainedRetirementPending = true;
             }
-            else
+
+            try
+            { ReleaseRetainedResources(); }
+            catch (Exception cleanupFailure)
             {
-                _teardownHookForTesting.WaitIdle();
-            }
-        }
-        catch (Exception exception)
-        {
-            waitFailure = exception;
-            removalReason = GetDeviceRemovedReasonForTeardown();
-            if (!IsTerminalDeviceRemovalReason(removalReason))
-            {
-                CancelLifetimeDispose();
+                if (_terminalDisposeWaitFailure is { } originalWaitFailure)
+                {
+                    throw new AggregateException(
+                        new D3D12DeviceRemovalTeardownException(
+                            _terminalDisposeRemovalReason, originalWaitFailure, nativeTeardownAttempted: false),
+                        cleanupFailure);
+                }
                 throw;
             }
-        }
 
-        Exception? cleanupFailure = ReleaseAllNativeResources();
-        CompleteLifetimeDispose();
-        if (waitFailure is not null)
-        {
-            var removalException = new D3D12DeviceRemovalTeardownException(
-                removalReason,
-                waitFailure);
-            if (cleanupFailure is not null)
+            Exception? nativeCleanupFailure = ReleaseAllNativeResources();
+            CompleteLifetimeDispose();
+            _retainedRetirementPending = false;
+            Exception? waitFailure = _terminalDisposeWaitFailure;
+            _terminalDisposeWaitFailure = null;
+            if (waitFailure is not null)
             {
-                throw new AggregateException(removalException, cleanupFailure);
+                var removalException = new D3D12DeviceRemovalTeardownException(
+                    _terminalDisposeRemovalReason, waitFailure);
+                if (nativeCleanupFailure is not null)
+                {
+                    throw new AggregateException(removalException, nativeCleanupFailure);
+                }
+                throw removalException;
             }
-            throw removalException;
+            if (nativeCleanupFailure is not null)
+            {
+                ExceptionDispatchInfo.Capture(nativeCleanupFailure).Throw();
+            }
         }
-        if (cleanupFailure is not null)
-        {
-            ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
-        }
+        finally { Volatile.Write(ref _disposeActive, 0); }
     }
+
+    private void ThrowIfDeviceRetiring() =>
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeCommitted), this);
 
     internal void RegisterDependentObject() => RegisterDependentLifetime();
 
     internal void ReleaseDependentObject() => ReleaseDependentLifetime();
+
+    internal void RetainPendingSubmission(SilkPendingSubmissionRetirement submission) =>
+        _pendingSubmissions.Retain(submission);
+
+    internal void RemovePendingSubmission(SilkPendingSubmissionRetirement submission) =>
+        _pendingSubmissions.Remove(submission);
 
     private bool TryBeginDispose() => TryBeginLifetimeDispose(
         "Cannot dispose the D3D12 device while buffers, textures, or submissions are alive; " +
@@ -400,6 +578,15 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         }
     }
 
+    private void WaitForReadbackFence(ID3D12Fence* fence, ulong value)
+    {
+        WaitForFence(fence, value);
+        if (Interlocked.Exchange(ref _nextReadbackFenceFailureForTesting, null) is { } failure)
+        {
+            throw failure;
+        }
+    }
+
     /// <summary>
     /// Makes every fence wait fail, the way a removed device makes them fail,
     /// until the failure is cleared with <see langword="null"/>.
@@ -420,7 +607,7 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
 
     internal bool IsDeviceRemoved()
     {
-        bool removed = _device != null && _device->GetDeviceRemovedReason() < 0;
+        bool removed = _device != null && HasTerminalDeviceRemoval();
         if (removed)
         {
             ObserveNativeDeviceRemoval();
@@ -428,14 +615,17 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         return removed;
     }
 
+    internal bool HasTerminalDeviceRemoval() =>
+        IsTerminalDeviceRemovalReason(GetDeviceRemovedReasonForTeardown());
+
     internal void SetTeardownHookForTesting(ID3D12DeviceTeardownHook? hook) =>
         _teardownHookForTesting = hook;
 
-    internal void AddRetainedRecordForTeardownTesting()
+    internal void AddRetainedRecordForTeardownTesting(IDisposable? reservation = null)
     {
         lock (_retainedResourcesGate)
         {
-            _retainedResources.Add(new D3D12RetainedResources([], 0, 0, 0));
+            _retainedResources.Add(new D3D12RetainedResources([], 0, 0, 0, reservation));
         }
     }
 
@@ -497,24 +687,6 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         }
     }
 
-    internal void RetainSubmittedReadback(
-        ID3D12Resource* readback,
-        ID3D12CommandAllocator* allocator,
-        ID3D12GraphicsCommandList* commands,
-        ID3D12Fence* fence,
-        IDisposable? reservation = null)
-    {
-        lock (_retainedResourcesGate)
-        {
-            _retainedResources.Add(new D3D12RetainedResources(
-                [(nint)readback],
-                (nint)allocator,
-                (nint)commands,
-                (nint)fence,
-                reservation));
-        }
-    }
-
     internal void RetainSubmittedPresentationCopy(
         ID3D12Resource* source,
         ID3D12Resource* destination,
@@ -572,12 +744,12 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         reason is
             unchecked((int)0x887A0005) or
             unchecked((int)0x887A0006) or
-            unchecked((int)0x887A0007);
+            unchecked((int)0x887A0007) or
+            unchecked((int)0x887A0020); // DXGI_ERROR_DRIVER_INTERNAL_ERROR
 
     private Exception? ReleaseAllNativeResources()
     {
         List<Exception>? failures = null;
-        CaptureCleanupFailure(ReleaseRetainedResources, ref failures);
         CaptureCleanupFailure(ReleaseDescriptorIndexedTextureTables, ref failures);
         CaptureCleanupFailure(ReleaseFence, ref failures);
         CaptureCleanupFailure(ReleaseQueue, ref failures);
@@ -615,22 +787,20 @@ public sealed unsafe partial class D3D12SilkGraphicsDevice
         List<Exception>? failures = null;
         lock (_retainedResourcesGate)
         {
-            foreach (D3D12RetainedResources resources in _retainedResources)
+            for (int index = 0; index < _retainedResources.Count;)
             {
                 try
                 {
-                    resources.Release();
+                    _retainedResources[index].Release();
+                    _retainedResources.RemoveAt(index);
+                    _retainedRecordReleaseCount++;
                 }
                 catch (Exception exception)
                 {
                     (failures ??= []).Add(exception);
-                }
-                finally
-                {
-                    _retainedRecordReleaseCount++;
+                    index++;
                 }
             }
-            _retainedResources.Clear();
         }
         if (failures is [Exception failure])
         {
@@ -771,10 +941,14 @@ internal readonly record struct D3D12DeviceTeardownReleaseCounts(
 
 internal sealed class D3D12DeviceRemovalTeardownException : InvalidOperationException
 {
-    internal D3D12DeviceRemovalTeardownException(int removalReason, Exception waitFailure)
+    internal D3D12DeviceRemovalTeardownException(
+        int removalReason, Exception waitFailure, bool nativeTeardownAttempted = true)
         : base(
             $"D3D12 device teardown confirmed terminal removal reason " +
-            $"0x{removalReason:X8}; native resources were released.",
+            $"0x{removalReason:X8}; " +
+            (nativeTeardownAttempted
+                ? "native teardown was attempted."
+                : "retained records must retire before native teardown."),
             waitFailure)
     {
         RemovalReason = removalReason;
@@ -792,6 +966,7 @@ internal sealed unsafe class D3D12RetainedResources(
     nint fence,
     IDisposable? reservation = null)
 {
+    private readonly object _gate = resources;
     private nint[]? _resources = resources;
     private nint _allocator = allocator;
     private nint _commands = commands;
@@ -800,20 +975,19 @@ internal sealed unsafe class D3D12RetainedResources(
 
     internal void Release()
     {
-        Release(ref _fence);
-        Release(ref _commands);
-        Release(ref _allocator);
-        nint[]? resources = Interlocked.Exchange(ref _resources, null);
-        if (resources is null)
+        lock (_gate)
         {
-            return;
+            Release(ref _fence);
+            Release(ref _commands);
+            Release(ref _allocator);
+            if (_resources is { } pending)
+            {
+                for (int index = 0; index < pending.Length; index++)
+                { Release(ref pending[index]); }
+                _resources = null;
+            }
+            SilkOwnedResourceLeases.Dispose(ref _reservation);
         }
-        foreach (nint resource in resources)
-        {
-            nint value = resource;
-            Release(ref value);
-        }
-        Interlocked.Exchange(ref _reservation, null)?.Dispose();
     }
 
     private static void Release(ref nint value)
@@ -827,26 +1001,25 @@ internal sealed unsafe class D3D12RetainedResources(
 }
 
 [SupportedOSPlatform("windows")]
-internal sealed unsafe class D3D12StagingResource(ID3D12Resource* resource, IDisposable? reservation) : IDisposable
+internal sealed unsafe class D3D12StagingResource : SilkGraphicsResourceBase
 {
-    private nint _resource = (nint)resource;
-    internal ID3D12Resource* Resource => (ID3D12Resource*)_resource;
+    private ID3D12Resource* _resource;
+    internal ID3D12Resource* Resource => _resource;
 
-    public void Dispose()
+    internal D3D12StagingResource(ID3D12Resource* resource, IDisposable? reservation)
     {
-        nint pointer = Interlocked.Exchange(ref _resource, 0);
-        if (pointer != 0)
-        {
-            _ = ((ID3D12Resource*)pointer)->Release();
-            reservation?.Dispose();
-        }
+        _resource = resource;
+        OwnBufferReservation(reservation);
     }
+
+    protected override void ReleaseNative() => D3D12SilkGraphicsDevice.Release(ref _resource);
 }
 
 [SupportedOSPlatform("windows")]
 internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
 {
     private readonly D3D12SilkGraphicsDevice _device;
+    private readonly D3D12SilkGraphicsDevice.UniformAllocation? _uniform;
     private ID3D12Resource* _resource;
 
     internal D3D12SilkGraphicsBuffer(
@@ -854,11 +1027,13 @@ internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
         ID3D12Resource* resource,
         nuint size,
         SilkBufferUsage usage,
-        ResourceStates state)
+        ResourceStates state,
+        D3D12SilkGraphicsDevice.UniformAllocation? uniform = null)
         : base(size, usage)
     {
         _device = device;
         _resource = resource;
+        _uniform = uniform;
         State = state;
     }
 
@@ -880,7 +1055,7 @@ internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
             {
                 System.Buffer.MemoryCopy(
                     source,
-                    (byte*)mapped + checked((nint)offset),
+                    (byte*)mapped + checked((nint)(ResourceOffset + offset)),
                     checked((long)(Size - offset)),
                     data.Length);
             }
@@ -889,8 +1064,8 @@ internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
         finally
         {
             var writtenRange = new global::Silk.NET.Direct3D12.Range(
-                offset,
-                offset + length);
+                ResourceOffset + offset,
+                ResourceOffset + offset + length);
             _resource->Unmap(0, &writtenRange);
         }
     }
@@ -903,12 +1078,21 @@ internal sealed unsafe class D3D12SilkGraphicsBuffer : SilkGraphicsBufferBase
 
     protected override void ReleaseNative()
     {
-        _ = _resource->Release();
+        if (_uniform is null)
+        {
+            _ = _resource->Release();
+        }
+        else
+        {
+            _uniform.Dispose();
+        }
         _resource = null;
         _device.ReleaseDependentObject();
     }
 
     internal ID3D12Resource* Resource => _resource;
+    internal nuint ResourceOffset => _uniform?.Offset ?? 0;
+    internal ulong GpuVirtualAddress => _resource->GetGPUVirtualAddress() + (ulong)ResourceOffset;
 
     internal D3D12SilkGraphicsDevice Device => _device;
 

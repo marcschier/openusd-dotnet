@@ -302,7 +302,7 @@ public sealed class SilkDeformationGpuUploadTests
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(MeshPath);
         uint[] indices = [0, 1, 2];
-        int size = 268 +
+        int size = 276 +
             pathBytes.Length +
             (AuthoredPoints.Length * sizeof(float)) +
             (indices.Length * sizeof(uint)) +
@@ -339,7 +339,7 @@ public sealed class SilkDeformationGpuUploadTests
                 i % 5 == 0 ? 1 : 0);
         }
 
-        int cursor = 268;
+        int cursor = 276;
         pathBytes.CopyTo(bytes.AsSpan(cursor));
         cursor += pathBytes.Length;
         foreach (float value in AuthoredPoints)

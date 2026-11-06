@@ -492,6 +492,7 @@ public sealed class NativeAbiVersionTests
             "openusd_stage_get_float_array",
             "openusd_stage_get_vec2f_array",
             "openusd_stage_get_vec3f_array",
+            "openusd_stage_get_vec4f_array",
             "openusd_stage_get_color3f_array",
             "openusd_stage_get_bool_array",
             "openusd_geom_mesh_get_points",
@@ -527,7 +528,7 @@ public sealed class NativeAbiVersionTests
             Regex.Count(
                 implementation,
                 @"\breturn WithAbiWritableBuffer\(",
-                RegexOptions.CultureInvariant)).IsEqualTo(18);
+                RegexOptions.CultureInvariant)).IsEqualTo(19);
         await Assert.That(
             Regex.Count(
                 implementation,

@@ -225,7 +225,7 @@ public sealed class SilkCrossBackendParityTests
     /// Builds one instance record of a prototype: the path stays authoritative, the instance
     /// index distinguishes the record, and a non-zero instancer id identifies the owner.
     /// </summary>
-    private static byte[] CreateInstanceCommand(
+    internal static byte[] CreateInstanceCommand(
         ulong id,
         string path,
         int instanceIndex,
@@ -264,8 +264,8 @@ public sealed class SilkCrossBackendParityTests
 
         int pathLength = BinaryPrimitives.ReadInt32LittleEndian(command.AsSpan(48));
         var lightweight = new byte[
-            268 + pathLength + instancerPath.Length + 8 + instancerPath.Length];
-        command.AsSpan(0, 268).CopyTo(lightweight);
+            276 + pathLength + instancerPath.Length + 8 + instancerPath.Length];
+        command.AsSpan(0, 276).CopyTo(lightweight);
         BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(4), (uint)lightweight.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(52), 0);
         BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(56), 0);
@@ -278,10 +278,10 @@ public sealed class SilkCrossBackendParityTests
             lightweight.AsSpan(260),
             (uint)instancerPath.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(lightweight.AsSpan(264), 1);
-        command.AsSpan(268, pathLength).CopyTo(lightweight.AsSpan(268));
-        instancerPath.CopyTo(lightweight, 268 + pathLength);
+        command.AsSpan(276, pathLength).CopyTo(lightweight.AsSpan(276));
+        instancerPath.CopyTo(lightweight, 276 + pathLength);
         WriteInstancerContextEntry(
-            lightweight.AsSpan(268 + pathLength + instancerPath.Length),
+            lightweight.AsSpan(276 + pathLength + instancerPath.Length),
             instancerPath,
             instanceIndex);
         return lightweight;

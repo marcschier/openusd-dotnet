@@ -13,6 +13,7 @@ struct vertexMain_uv_normal_Result_0
     float2 texCoord_0 [[user(TEXCOORD)]];
     float4 tangent_0 [[user(TANGENT)]];
     float4 worldTangent_0 [[user(TEXCOORD_4)]];
+    float2 texCoord1_0 [[user(TEXCOORD_5)]];
 };
 
 struct vertexInput_0
@@ -20,7 +21,8 @@ struct vertexInput_0
     float3 position_1 [[attribute(0)]];
     float3 normal_1 [[attribute(1)]];
     float2 texCoord_1 [[attribute(2)]];
-    float4 tangent_1 [[attribute(3)]];
+    float2 texCoord1_1 [[attribute(3)]];
+    float4 tangent_1 [[attribute(4)]];
 };
 
 struct _MatrixStorage_float4x4natural_0
@@ -57,6 +59,7 @@ struct VertexOutput_0
     float2 texCoord_2;
     float4 tangent_2;
     float4 worldTangent_1;
+    float2 texCoord1_2;
 };
 
 [[vertex]] vertexMain_uv_normal_Result_0 vertexMain_uv_normal(vertexInput_0 _S1 [[stage_in]], uint instanceId_0 [[instance_id]], uint base_instance_0 [[base_instance]], InstanceParameters_natural_0 device* instanceParameters_1 [[buffer(6)]], uint32_t device* frameParameters_1 [[buffer(8)]])
@@ -122,6 +125,7 @@ struct VertexOutput_0
     float3 basisZ_0 = float3(objectToWorld_0[int(0)][int(2)], objectToWorld_0[int(1)][int(2)], objectToWorld_0[int(2)][int(2)]);
     (&output_0)->worldNormal_1 = cross(basisY_0, basisZ_0) * float3(_S1.normal_1.x)  + cross(basisZ_0, basisX_0) * float3(_S1.normal_1.y)  + cross(basisX_0, basisY_0) * float3(_S1.normal_1.z) ;
     (&output_0)->texCoord_2 = _S1.texCoord_1;
+    (&output_0)->texCoord1_2 = _S1.texCoord1_1;
     (&output_0)->tangent_2 = _S1.tangent_1;
     (&output_0)->worldTangent_1 = float4(basisX_0 * float3(_S1.tangent_1.x)  + basisY_0 * float3(_S1.tangent_1.y)  + basisZ_0 * float3(_S1.tangent_1.z) , _S1.tangent_1.w);
     thread vertexMain_uv_normal_Result_0 _S42;
@@ -134,5 +138,6 @@ struct VertexOutput_0
     (&_S42)->texCoord_0 = output_0.texCoord_2;
     (&_S42)->tangent_0 = output_0.tangent_2;
     (&_S42)->worldTangent_0 = output_0.worldTangent_1;
+    (&_S42)->texCoord1_0 = output_0.texCoord1_2;
     return _S42;
 }

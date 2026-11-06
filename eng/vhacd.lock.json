@@ -1,0 +1,21 @@
+{
+  "$schemaVersion": 1,
+  "name": "V-HACD",
+  "version": "4.1.0",
+  "commit": "22ec20a7f8ea221ab600df869369b9c6a258cb10",
+  "repository": "https://github.com/kmammou/v-hacd",
+  "license": "BSD-3-Clause",
+  "scope": "CPU collider preparation, statically linked into openusd_physx; threading disabled",
+  "files": [
+    {
+      "name": "VHACD.h",
+      "url": "https://raw.githubusercontent.com/kmammou/v-hacd/22ec20a7f8ea221ab600df869369b9c6a258cb10/include/VHACD.h",
+      "sha256": "02314C575909D656DC67D6E3C38CEFC49C4403E8CA1DCB0AB4B05800CEE61E1C"
+    },
+    {
+      "name": "LICENSE",
+      "url": "https://raw.githubusercontent.com/kmammou/v-hacd/22ec20a7f8ea221ab600df869369b9c6a258cb10/LICENSE",
+      "sha256": "245C933225F5BD28A10336137B26F1F86551B6B1D29F804253EB5E1D73744C2E"
+    }
+  ]
+}

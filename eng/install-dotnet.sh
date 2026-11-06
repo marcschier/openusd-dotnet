@@ -4,8 +4,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_DIR="$REPO_ROOT/.dotnet"
-VERSION="10.0.401"
-ERROR_MESSAGE="Required .NET SDK 10.0.401 not found. Run ./eng/install-dotnet.ps1 or ./eng/install-dotnet.sh."
+VERSION="10.0.403"
+ERROR_MESSAGE="Required .NET SDK 10.0.403 not found. Run ./eng/install-dotnet.ps1 or ./eng/install-dotnet.sh."
 INSTALL_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/dotnet-install.XXXXXX")"
 GLOBAL_JSON_TMP=""
 

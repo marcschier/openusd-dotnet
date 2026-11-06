@@ -758,6 +758,16 @@ internal static partial class Program
                     return 23;
                 }
 
+                UsdStageLinearUnits linearUnits = coreStage.GetLinearUnits();
+                if (linearUnits.MetersPerUnit != UsdStageLinearUnits.FallbackMetersPerUnit ||
+                    linearUnits.IsMetersPerUnitAuthored ||
+                    linearUnits.IsUpAxisAuthored ||
+                    linearUnits.UpAxis is not (UsdStageUpAxis.Y or UsdStageUpAxis.Z))
+                {
+                    Console.Error.WriteLine("Unauthored stage linear units did not report UsdGeom fallbacks.");
+                    return 38;
+                }
+
                 coreStage.ClearDefaultPrim();
                 coreStage.Save();
             }
@@ -1111,6 +1121,8 @@ internal static partial class Program
                 new(1, 1),
                 new(0, 1)
             ];
+            UsdVec4f[] planes = [new(0, 0, -1, 5), new(1, 0, 0, 0.5f)];
+            UsdVec4f[] sampledPlanes = [new(0, 1, 0, -2)];
             float[] largeWeights = Enumerable.Range(0, 65_536)
                 .Select(static value => value * 0.5f)
                 .ToArray();
@@ -1125,6 +1137,8 @@ internal static partial class Program
                 mesh.SetVec3fArray("points", sampledPoints, timeCode: 10);
                 mesh.SetVec2fArray("custom:uvs", uvs);
                 mesh.SetVec2fArray("custom:emptyUvs", []);
+                mesh.SetVec4fArray("custom:planes", planes);
+                mesh.SetVec4fArray("custom:planes", sampledPlanes, timeCode: 10);
                 mesh.SetFloatArray("custom:weights", largeWeights);
                 mesh.SetMatrix4d("xformOp:transform", transform);
 
@@ -1133,6 +1147,8 @@ internal static partial class Program
                     !mesh.GetVec3fArray("points", 10).SequenceEqual(sampledPoints) ||
                     !mesh.GetVec2fArray("custom:uvs").SequenceEqual(uvs) ||
                     mesh.GetVec2fArray("custom:emptyUvs").Length != 0 ||
+                    !mesh.GetVec4fArray("custom:planes").SequenceEqual(planes) ||
+                    !mesh.GetVec4fArray("custom:planes", 10).SequenceEqual(sampledPlanes) ||
                     !mesh.GetFloatArray("custom:weights").SequenceEqual(largeWeights) ||
                     mesh.GetMatrix4d("xformOp:transform") != transform ||
                     transform.ExtractTranslation() != new UsdVec3d(10, 20, 30) ||
@@ -1185,6 +1201,7 @@ internal static partial class Program
                     !mesh.GetVec3fArray("points").SequenceEqual(points) ||
                     !mesh.GetVec3fArray("points", 10).SequenceEqual(sampledPoints) ||
                     !mesh.GetVec2fArray("custom:uvs").SequenceEqual(uvs) ||
+                    !mesh.GetVec4fArray("custom:planes", 10).SequenceEqual(sampledPlanes) ||
                     mesh.GetFloatArray("custom:weights").Length != largeWeights.Length ||
                     mesh.GetMatrix4d("xformOp:transform") != transform)
                 {

@@ -232,6 +232,10 @@ public sealed class SilkGraphicsTextureTests
         SilkSamplerDescriptor.LinearClamp.Validate();
         SilkSamplerDescriptor.NearestClamp.Validate();
         SilkSamplerDescriptor.NearestRepeat.Validate();
+        (SilkSamplerDescriptor.LinearClamp with
+        {
+            AddressU = SilkSamplerAddressMode.ClampToBorder
+        }).Validate();
         var invalid = SilkSamplerDescriptor.LinearClamp with
         {
             AddressW = (SilkSamplerAddressMode)42

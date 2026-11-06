@@ -55,6 +55,9 @@ struct HdSilkInstanceSample
     /// on its own -- which is exactly why `context` exists beside it.
     int64_t index = 0;
 
+    // USD picking uses per-prototype array ordinals, not authored instance indices.
+    int64_t sourcePickIndex = 0;
+
     /// The complete ordered instancing chain this sample belongs to, outermost
     /// level first and innermost last.
     ///

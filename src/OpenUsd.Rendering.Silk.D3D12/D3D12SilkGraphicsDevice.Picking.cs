@@ -491,6 +491,7 @@ internal sealed unsafe class D3D12SilkPickReadbackBuffer(
     private ulong _nextFenceValue;
     private ulong _activeFenceValue;
     private bool _inUse;
+    private bool _failed;
 
     internal D3D12SilkGraphicsDevice Device { get; } = device;
 
@@ -517,6 +518,11 @@ internal sealed unsafe class D3D12SilkPickReadbackBuffer(
             {
                 throw new InvalidOperationException(
                     "The D3D12 pick readback is still in flight.");
+            }
+            if (_failed)
+            {
+                throw new InvalidOperationException(
+                    "The D3D12 pick readback failed before completion.");
             }
             new ReadOnlySpan<byte>(_mapped, ByteSize).CopyTo(destination);
         }
@@ -570,6 +576,7 @@ internal sealed unsafe class D3D12SilkPickReadbackBuffer(
             ValidateActiveSubmission(fenceValue);
             _activeFenceValue = 0;
             _inUse = false;
+            _failed = false;
         }
     }
 
@@ -580,6 +587,7 @@ internal sealed unsafe class D3D12SilkPickReadbackBuffer(
             ValidateActiveSubmission(fenceValue);
             _activeFenceValue = 0;
             _inUse = false;
+            _failed = true;
         }
     }
 
@@ -757,13 +765,24 @@ internal sealed unsafe class D3D12SilkPickSubmission(
     D3D12SilkPickReadbackBuffer readback,
     ulong fenceValue,
     IDisposable[] leases,
-    D3D12StagingResource[] uploadResources)
-    : ISilkGraphicsSubmission
+    D3D12StagingResource[] uploadResources,
+    nint[] descriptorHeaps)
+    : SilkPendingSubmissionRetirement, ISilkGraphicsSubmission
 {
     private readonly object _gate = new();
-    private IDisposable[]? _leases = leases;
-    private D3D12StagingResource[]? _uploadResources = uploadResources;
+    private IDisposable?[]? _leases = leases;
+    private D3D12StagingResource?[]? _uploadResources = uploadResources;
+    private nint[]? _descriptorHeaps = descriptorHeaps;
+    private bool _releasingLeases;
+    private bool _releasingUploads;
+    private SilkResourceReleaseSteps _retirement;
+    private Action<int>? _releaseStep;
+    private bool _abandon;
     private bool _completed;
+    private bool _disposeRequested;
+    private bool _retired;
+    private bool _completionObserved;
+    private bool _deviceLossObserved;
     private bool _disposed;
 
     public bool IsCompleted
@@ -773,17 +792,31 @@ internal sealed unsafe class D3D12SilkPickSubmission(
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
+                ThrowIfDeviceLossObserved();
                 if (_completed)
                 {
                     return true;
                 }
-                if (device.ArePickCompletionsHeldForTesting ||
-                    !readback.IsSubmissionCompleted(fenceValue))
+                try
                 {
-                    return false;
+                    if (!_completionObserved && _retirement.Completed == 0)
+                    {
+                        if (device.ArePickCompletionsHeldForTesting ||
+                            !readback.IsSubmissionCompleted(fenceValue))
+                        {
+                            return false;
+                        }
+                        _completionObserved = true;
+                    }
+                    Complete();
+                    return true;
                 }
-                Complete();
-                return true;
+                catch
+                {
+                    _deviceLossObserved |= !_completionObserved && device.HasTerminalDeviceRemoval();
+                    device.RetainPendingSubmission(this);
+                    throw;
+                }
             }
         }
     }
@@ -793,24 +826,43 @@ internal sealed unsafe class D3D12SilkPickSubmission(
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            ThrowIfDeviceLossObserved();
             if (_completed)
             {
                 return;
             }
             try
             {
-                readback.WaitForSubmission(fenceValue);
+                if (!_completionObserved && _retirement.Completed == 0)
+                {
+                    try
+                    {
+                        readback.WaitForSubmission(fenceValue);
+                        _completionObserved = true;
+                    }
+                    catch (Exception waitFailure)
+                    {
+                        if (device.HasTerminalDeviceRemoval())
+                        {
+                            _deviceLossObserved = true;
+                            try
+                            { Abandon(); }
+                            catch (Exception retirementFailure)
+                            {
+                                throw new AggregateException(
+                                    "D3D12 pick wait and retirement failed.", waitFailure, retirementFailure);
+                            }
+                        }
+                        throw;
+                    }
+                }
+                Complete();
             }
             catch
             {
-                // The work will not complete, so the readback slot and the
-                // leases it held are abandoned rather than kept: holding them
-                // makes the device undisposable and starves the pick ring of the
-                // slot forever, on top of the failure the caller already sees.
-                Abandon();
+                device.RetainPendingSubmission(this);
                 throw;
             }
-            Complete();
         }
     }
 
@@ -818,62 +870,136 @@ internal sealed unsafe class D3D12SilkPickSubmission(
     {
         lock (_gate)
         {
-            if (_disposed)
+            if (_disposed || _retirement.IsReleasing)
             {
                 return;
             }
-            if (!_completed)
+            _disposeRequested = true;
+            if (_retired)
             {
-                try
+                _disposed = true;
+                return;
+            }
+            try
+            {
+                if (!_completed)
                 {
-                    readback.WaitForSubmission(fenceValue);
+                    if (!_completionObserved && _retirement.Completed == 0)
+                    {
+                        try
+                        {
+                            readback.WaitForSubmission(fenceValue);
+                            _completionObserved = true;
+                        }
+                        catch (Exception waitFailure)
+                        {
+                            if (device.HasTerminalDeviceRemoval())
+                            {
+                                _deviceLossObserved = true;
+                                _abandon = true;
+                                try
+                                {
+                                    Complete();
+                                    CompleteRetirement();
+                                }
+                                catch (Exception retirementFailure)
+                                {
+                                    throw new AggregateException(
+                                        "D3D12 pick wait and disposal failed.",
+                                        waitFailure, retirementFailure);
+                                }
+                            }
+                            throw;
+                        }
+                    }
                     Complete();
                 }
-                catch (Exception)
-                {
-                    // Disposal runs while whatever the failed wait threw is still
-                    // unwinding, so rethrowing here would replace the reason the
-                    // caller failed with a second observation of the same one.
-                    Abandon();
-                }
+                CompleteRetirement();
             }
-            _disposed = true;
+            catch
+            {
+                if (!_retired)
+                {
+                    device.RetainPendingSubmission(this);
+                }
+                throw;
+            }
         }
+    }
+
+    internal override void RetireAfterDeviceIdle()
+    {
+        lock (_gate)
+        {
+            if (!_retired)
+            {
+                _deviceLossObserved |= !_completionObserved && device.HasTerminalDeviceRemoval();
+                _completionObserved |= !_deviceLossObserved;
+                if (!_completed)
+                {
+                    if (_retirement.Completed == 0 && _deviceLossObserved)
+                    {
+                        _abandon = true;
+                    }
+                    Complete();
+                }
+                CompleteRetirement();
+            }
+        }
+    }
+
+    private void CompleteRetirement()
+    {
         device.ReleaseDependentObject();
+        _retired = true;
+        _disposed = _disposeRequested;
+        device.RemovePendingSubmission(this);
+    }
+
+    private void ThrowIfDeviceLossObserved()
+    {
+        if (_deviceLossObserved)
+        {
+            throw new InvalidOperationException("The D3D12 device was removed before the pick completed.");
+        }
     }
 
     private void Complete()
     {
-        readback.CompleteSubmission(fenceValue);
-        ReleaseRetainedResources();
+        RetireOwnedSteps(ref _retirement, _releaseStep ??= ReleaseStep);
+        _completed = true;
     }
 
     private void Abandon()
     {
-        readback.AbandonSubmission(fenceValue);
-        ReleaseRetainedResources();
+        if (_retirement.Completed == 0)
+        { _abandon = true; }
+        Complete();
     }
 
-    private void ReleaseRetainedResources()
+    internal static void RetireOwnedSteps(ref SilkResourceReleaseSteps steps, Action<int> release) =>
+        steps.Release(2, release);
+
+    internal static void RetireOwnedResources(
+        ref IDisposable?[]? leases, ref bool releasingLeases,
+        ref D3D12StagingResource?[]? uploads, ref bool releasingUploads,
+        ref nint[]? descriptorHeaps) =>
+        D3D12SilkGraphicsSubmission.RetireOwnedResources(
+            ref leases, ref releasingLeases, ref uploads, ref releasingUploads, ref descriptorHeaps);
+
+    private void ReleaseStep(int step)
     {
-        _completed = true;
-        IDisposable[]? activeLeases = Interlocked.Exchange(ref _leases, null);
-        if (activeLeases is not null)
+        if (step == 0)
         {
-            foreach (IDisposable lease in activeLeases)
-            {
-                lease.Dispose();
-            }
-        }
-        D3D12StagingResource[]? resources = Interlocked.Exchange(ref _uploadResources, null);
-        if (resources is null)
-        {
+            if (_abandon)
+            { readback.AbandonSubmission(fenceValue); }
+            else
+            { readback.CompleteSubmission(fenceValue); }
             return;
         }
-        foreach (D3D12StagingResource resource in resources)
-        {
-            resource.Dispose();
-        }
+        RetireOwnedResources(
+            ref _leases, ref _releasingLeases, ref _uploadResources, ref _releasingUploads,
+            ref _descriptorHeaps);
     }
 }
 

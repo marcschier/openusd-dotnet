@@ -20,14 +20,19 @@
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/tf/token.h"
 #include "pxr/base/vt/array.h"
+#include "pxr/base/vt/value.h"
+#include "pxr/imaging/hd/enums.h"
 #include "pxr/imaging/hd/meshTopology.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+class HdPrimvarSchema;
 
 /// The highest uniform refinement level hdSilk will evaluate. Uniform
 /// Catmull-Clark quadruples the face count per level, so a bound is what keeps
@@ -101,6 +106,171 @@ struct HdSilkSubdivisionChannel
     std::string unsupportedReason;
 };
 
+struct HdSilkPtexTriangle
+{
+    uint32_t faceIndex = 0;
+    std::array<float, 6> cornerCoordinates{};
+};
+
+enum class HdSilkPtexMappingStatus : uint32_t
+{
+    Mapped = 0,
+    RefinerUnavailable = 1,
+    InvalidBuffers = 2,
+    FaceIndexOverflow = 3,
+    UnsupportedTopology = 4,
+    TriangleMismatch = 5,
+    ExceedsBounds = 6,
+    InvalidPoints = 7,
+    InvalidFaceOffsets = 8,
+    TextureFaceOutOfRange = 9,
+};
+
+enum class HdSilkPtexOffsetInterpolation : uint32_t
+{
+    None = 0,
+    Constant = 1,
+    Uniform = 2,
+};
+
+enum class HdSilkPtexMissingElementSize : uint32_t
+{
+    Reject = 0,
+    KnownDefaultOne = 1,
+};
+
+struct HdSilkPtexFaceOffsets
+{
+    HdSilkPtexOffsetInterpolation interpolation = HdSilkPtexOffsetInterpolation::None;
+    const int32_t* values = nullptr;
+    size_t valueCount = 0;
+    const int32_t* indices = nullptr;
+    size_t indexCount = 0;
+};
+
+/// Applies integer ptexFaceOffset values to default mappings. Constant values
+/// apply to every triangle; uniform values select the authored source face.
+/// Indexed values use one index per constant or authored face respectively.
+///
+/// The caller owns a separate output buffer with room for mappingCount entries.
+/// It must not overlap any input. The output is unchanged on failure, and every
+/// resulting face ID must be below textureFaceCount. Instance interpolation,
+/// other numeric types and arbitrary face-index remapping are not handled.
+HdSilkPtexMappingStatus HdSilkWritePtexFaceOffsets(
+    const HdSilkPtexTriangle* mappings,
+    size_t mappingCount,
+    const uint32_t* sourceFaces,
+    size_t sourceFaceCount,
+    size_t authoredFaceCount,
+    HdSilkPtexFaceOffsets offsets,
+    size_t textureFaceCount,
+    HdSilkPtexTriangle* output,
+    size_t outputCapacity);
+
+/// Resolves an authored Hydra integer primvar into the same face-offset
+/// mapping. A null indices pointer means unindexed; a non-null pointer means
+/// indexed even when the array is empty. The value and indices remain owned
+/// by the caller and must not overlap the output. Output is unchanged on
+/// refusal. Only constant or uniform integer values with a confirmed element
+/// size of one are accepted. Scalar uniform values require one authored face.
+HdSilkPtexMappingStatus HdSilkWritePtexFaceOffsetPrimvar(
+    const HdSilkPtexTriangle* mappings,
+    size_t mappingCount,
+    const uint32_t* sourceFaces,
+    size_t sourceFaceCount,
+    size_t authoredFaceCount,
+    HdInterpolation interpolation,
+    int elementSize,
+    const VtValue& value,
+    const VtIntArray* indices,
+    size_t textureFaceCount,
+    HdSilkPtexTriangle* output,
+    size_t outputCapacity);
+
+/// Resolves an offset primvar from a Hydra scene-index data source. The caller
+/// may use KnownDefaultOne only for a producer that guarantees the default.
+/// An explicit element size other than one is refused. Values and indices are
+/// sampled at the given shutter offset.
+/// The caller must not alias output with the schema's data-source objects.
+HdSilkPtexMappingStatus HdSilkWritePtexFaceOffsetDataSource(
+    const HdSilkPtexTriangle* mappings,
+    size_t mappingCount,
+    const uint32_t* sourceFaces,
+    size_t sourceFaceCount,
+    size_t authoredFaceCount,
+    const HdPrimvarSchema& primvar,
+    HdSilkPtexMissingElementSize missingElementSize,
+    float shutterOffset,
+    size_t textureFaceCount,
+    HdSilkPtexTriangle* output,
+    size_t outputCapacity);
+
+struct HdSilkPtexCoarseTriQuadPlan
+{
+    size_t inputPointCount = 0;
+    size_t outputPointCount = 0;
+    size_t triangleCount = 0;
+    size_t scratchCount = 0;
+};
+
+/// Plans the storage needed to split each visible non-quad control face into
+/// Ptex subfaces and then triangulate the resulting quads. Only Catmull-Clark
+/// and bilinear topology is supported. Holes contribute to Ptex face numbering
+/// but not to the generated points or triangles.
+///
+/// The returned counts do not reserve memory. The caller must admit the point,
+/// triangle-index, source-face, Ptex-coordinate, and scratch buffers before
+/// calling HdSilkWriteDefaultCoarsePtexTriQuads(). The plan must not overlap
+/// the topology arrays and is unchanged when planning fails.
+HdSilkPtexMappingStatus HdSilkPlanDefaultCoarsePtexTriQuads(
+    const HdMeshTopology& topology,
+    size_t sourcePointCount,
+    HdSilkPtexCoarseTriQuadPlan* plan);
+
+/// Writes the planned control-cage points and triangle topology, one authored
+/// source-face index and one default Ptex mapping per triangle. Original
+/// referenced points precede the generated edge and face-centre points.
+///
+/// All buffers are caller-owned, must have the planned capacity, and must not
+/// overlap each other or the inputs. On any failure none may be published.
+/// Face-varying primvars and authored Ptex remapping are not expanded here.
+/// The helper validates per-face indices and holes, not full mesh connectivity.
+HdSilkPtexMappingStatus HdSilkWriteDefaultCoarsePtexTriQuads(
+    const HdMeshTopology& topology,
+    const VtVec3fArray& sourcePoints,
+    GfVec3f* points,
+    size_t pointCapacity,
+    uint32_t* triangleIndices,
+    size_t indexCapacity,
+    uint32_t* triangleSubprims,
+    size_t subprimCapacity,
+    HdSilkPtexTriangle* mappings,
+    size_t mappingCapacity,
+    uint32_t* scratch,
+    size_t scratchCapacity);
+
+/// Scratch entries required to map an unrefined control cage. Returns zero when
+/// the count cannot be represented or the cage has no faces.
+size_t HdSilkCoarsePtexScratchCount(const HdMeshTopology& topology);
+
+/// Maps the triangles emitted by HdMeshUtil for an unrefined control cage.
+/// Catmull-Clark and bilinear quads and Loop triangles are supported; a
+/// rendered non-quad Catmull-Clark or bilinear face requires a separate
+/// subface tessellation and is refused. Holes still contribute face IDs.
+///
+/// The caller owns the output and scratch storage, sized to triangleSubprims
+/// and HdSilkCoarsePtexScratchCount() respectively. Neither may overlap the
+/// other or the input arrays. Both must be discarded on any non-Mapped result.
+/// Authored face remapping and the polygonal "none" scheme are not handled.
+HdSilkPtexMappingStatus HdSilkWriteDefaultCoarsePtexTriangles(
+    const HdMeshTopology& topology,
+    const VtArray<uint32_t>& triangleIndices,
+    const VtArray<uint32_t>& triangleSubprims,
+    HdSilkPtexTriangle* triangles,
+    size_t triangleCapacity,
+    uint32_t* scratch,
+    size_t scratchCapacity);
+
 /// The refined topology of one mesh, plus the refiner needed to interpolate its
 /// primvars. Rebuilt only when the control cage, its tags, its face-varying
 /// topologies, or the requested level change.
@@ -151,8 +321,31 @@ public:
         return _triangleSubprims;
     }
 
+    // Triples of triangle-corner ordinals around final-level polygon corners.
+    const VtArray<uint32_t>& GetNormalCorners() const { return _normalCorners; }
+    const VtArray<uint32_t>& GetHoleNormalCorners() const { return _holeNormalCorners; }
+
     size_t GetCoarseVertexCount() const { return _coarseVertexCount; }
     size_t GetRefinedVertexCount() const { return _refinedVertexCount; }
+
+    /// Scratch entries required by WriteDefaultPtexTriangles(). The caller
+    /// owns and admits this storage and the triangle output before calling.
+    size_t GetPtexScratchCount() const;
+
+    /// Writes the default OpenSubdiv Ptex face ID and three local coordinates
+    /// for each emitted triangle. Face IDs stay integer-valued; they are not
+    /// authored coarse face indices on non-quad Catmull-Clark cages.
+    ///
+    /// The output has GetTriangleSubprims().size() entries. The scratch buffer
+    /// has GetPtexScratchCount() entries. The buffers must not overlap. Neither
+    /// buffer is allocated here.
+    /// On any status other than Mapped, buffer contents must not be published.
+    /// Authored Ptex face remapping and unrefined meshes are not handled here.
+    HdSilkPtexMappingStatus WriteDefaultPtexTriangles(
+        HdSilkPtexTriangle* triangles,
+        size_t triangleCapacity,
+        uint32_t* scratch,
+        size_t scratchCapacity) const;
 
     /// The index of the face-varying channel bound under "name", or -1.
     int FindChannel(const TfToken& name) const;
@@ -209,6 +402,8 @@ public:
 
 private:
     struct _Impl;
+    VtArray<uint32_t> _normalCorners;
+    VtArray<uint32_t> _holeNormalCorners;
 
     /// Interpolates "coarse" through every level into a flat buffer holding all
     /// levels, then copies the last level out. Shared by the vertex and varying
@@ -230,6 +425,7 @@ private:
 
 /// A stable one-line reason for a status, for diagnostics and probes.
 const char* HdSilkSubdivisionStatusName(HdSilkSubdivisionStatus status);
+const char* HdSilkPtexMappingStatusName(HdSilkPtexMappingStatus status);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 

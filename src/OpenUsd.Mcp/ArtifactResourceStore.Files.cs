@@ -50,9 +50,11 @@ public sealed partial class ArtifactResourceStore
         try
         {
             var uris = new HashSet<Uri>();
-            long additionalBytes = 0;
-            foreach (FileImportRequest request in requests)
+            var resourceUris = new Uri[requests.Length];
+            long minimumBytes = 0;
+            for (int index = 0; index < requests.Length; index++)
             {
+                FileImportRequest request = requests[index];
                 cancellationToken.ThrowIfCancellationRequested();
                 ArgumentException.ThrowIfNullOrWhiteSpace(request.MediaType);
                 ArgumentException.ThrowIfNullOrWhiteSpace(request.SourcePath);
@@ -61,8 +63,30 @@ public sealed partial class ArtifactResourceStore
                 {
                     throw new InvalidOperationException($"A file batch contains duplicate resource URI '{uri}'.");
                 }
+                resourceUris[index] = uri;
+                long requiredBytes = request.RequiredLength ?? 0;
+                if (requiredBytes > _maximumTotalBytes - minimumBytes)
+                {
+                    throw new ArtifactResourceStoreCapacityException("The file batch exceeds the resource byte limit.");
+                }
+                minimumBytes += requiredBytes;
+            }
+            lock (_gate)
+            {
+                foreach (Uri uri in resourceUris)
+                {
+                    EnsureResourceDoesNotExist(uri);
+                }
+                EnsureCapacity(requests.Length, minimumBytes);
+            }
+
+            long additionalBytes = 0;
+            for (int index = 0; index < requests.Length; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                FileImportRequest request = requests[index];
                 string sourcePath = Path.GetFullPath(request.SourcePath);
-                var file = new PendingFile(request, uri, sourcePath);
+                var file = new PendingFile(request, resourceUris[index], sourcePath);
                 pending.Add(file);
                 file.Length = file.Source.Length;
                 if (request.RequiredLength is { } length && length != file.Length)

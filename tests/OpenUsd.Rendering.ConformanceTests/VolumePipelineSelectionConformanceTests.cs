@@ -39,10 +39,7 @@ public sealed class VolumePipelineSelectionConformanceTests
         SilkMeshRendererConformance.Apply(
             renderer,
             revision: 1,
-            SilkMeshRendererConformance.CreateFrameCommand(
-                Width,
-                Height,
-                SilkMeshRendererConformance.Identity()),
+            VolumeCommandAuthoring.CreateVolumeSamplingFrameCommand(Width, Height),
             CreateVolumeMaterialCommand(includeDiffuseMap: false),
             CreateVolumeProxyMeshCommand());
 
@@ -52,6 +49,10 @@ public sealed class VolumePipelineSelectionConformanceTests
             new SilkMeshRenderOptions(new SilkColor(0, 0, 0, 1), 1));
 
         await Assert.That(result.DrawCount).IsEqualTo(1);
+        var pixels = new byte[Width * Height * 4];
+        color.ReadbackForTesting(pixels);
+        await Assert.That(Enumerable.Range(0, Width * Height).Any(index =>
+            pixels[index * 4] != 0 || pixels[index * 4 + 1] != 0 || pixels[index * 4 + 2] != 0)).IsTrue();
     }
 
     [Test]
@@ -64,10 +65,7 @@ public sealed class VolumePipelineSelectionConformanceTests
         SilkMeshRendererConformance.Apply(
             renderer,
             revision: 1,
-            SilkMeshRendererConformance.CreateFrameCommand(
-                Width,
-                Height,
-                SilkMeshRendererConformance.Identity()),
+            VolumeCommandAuthoring.CreateVolumeSamplingFrameCommand(Width, Height),
             CreateVolumeMaterialCommand(includeDiffuseMap: true),
             CreateVolumeProxyMeshCommand());
 

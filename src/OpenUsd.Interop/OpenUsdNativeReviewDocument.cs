@@ -66,6 +66,49 @@ public static unsafe partial class OpenUsdNativeRuntime
         }
     }
 
+    internal static void AcknowledgeReviewSourcePublication(OpenUsdNativeStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        EnsureCompatibleAbi();
+        using var lease = new SafeHandleLease(stage);
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        errorBytes.Clear();
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            ThrowIfFailed(
+                NativeMethods.StageReviewSourceAcknowledgePublication(lease.Handle, ref error),
+                errorBytes,
+                error);
+        }
+    }
+
+    internal static byte[] AdoptReviewStage(OpenUsdNativeStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        EnsureCompatibleAbi();
+        using var lease = new SafeHandleLease(stage);
+        nint owner = 0;
+        var view = new NativeEditBufferView();
+        Span<byte> errorBytes = stackalloc byte[ErrorBufferSize];
+        errorBytes.Clear();
+        fixed (byte* errorPointer = errorBytes)
+        {
+            var error = new NativeErrorBuffer(errorPointer, (nuint)errorBytes.Length);
+            try
+            {
+                OpenUsdNativeStatus status = NativeMethods.StageReviewAdopt(
+                    lease.Handle, out owner, ref view, ref error);
+                ThrowIfFailed(status, errorBytes, error);
+                return CopyReviewBuffer(owner, view);
+            }
+            finally
+            {
+                ReleaseReviewBuffer(owner);
+            }
+        }
+    }
+
     internal static byte[] CaptureReviewDocument(
         OpenUsdNativeLayer layer, ReadOnlySpan<byte> binding, string targetDocumentPath)
     {

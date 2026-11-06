@@ -284,7 +284,11 @@ internal sealed record ViewerPhysicsBinding(
     string PrimPath,
     int InstanceIndex,
     bool IsSimulated,
-    string Detail);
+    string Detail)
+{
+    internal UsdVec3d? ReferencePosition { get; init; }
+    internal PhysicsRenderOrientation ReferenceOrientation { get; init; }
+}
 
 /// <summary>
 /// The identity map one extraction produced, which is the only thing that turns a simulated

@@ -62,7 +62,7 @@ public sealed class MetalEnvironmentSourceContractTests
             await Assert.That(source).Contains("environmentIrradiance");
             await Assert.That(source).Contains("environmentSpecular");
             await Assert.That(source).Contains("environmentSampler");
-            await AssertFrameBlockLoads(source, 15008, 4, "environment controls");
+            await AssertFrameBlockLoads(source, 16928, 4, "environment controls");
             await Assert.That(source).Contains("environmentBrdf");
 
             // The argument indices Slang derived, compared against the table the
@@ -155,9 +155,9 @@ public sealed class MetalEnvironmentSourceContractTests
             string path = Path.Combine(root, artifact);
             string source = await File.ReadAllTextAsync(path);
 
-            await AssertFrameBlockLoads(source, 15024, 4, "dome controls");
-            await AssertFrameBlockLoads(source, 15040, 32, "eight dome ambient entries");
-            await AssertFrameBlockLoads(source, 15168, 32, "eight dome environment entries");
+            await AssertFrameBlockLoads(source, 16944, 4, "dome controls");
+            await AssertFrameBlockLoads(source, 16960, 32, "eight dome ambient entries");
+            await AssertFrameBlockLoads(source, 17088, 32, "eight dome environment entries");
             await Assert.That(source)
                 .Contains("domeAmbient")
                 .Because($"{artifact} must retain the per-dome ambient accumulation.");

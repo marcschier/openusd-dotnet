@@ -13,6 +13,7 @@
     <Project Path="src/OpenUsd.LiveAuthoring/OpenUsd.LiveAuthoring.csproj" />
     <Project Path="src/OpenUsd.Mcp/OpenUsd.Mcp.csproj" />
     <Project Path="src/OpenUsd.Physics/OpenUsd.Physics.csproj" />
+    <Project Path="src/OpenUsd.Rendering.Physics/OpenUsd.Rendering.Physics.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core/OpenUsd.Runtime.Core.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.linux-x64/OpenUsd.Runtime.Core.linux-x64.csproj" />
     <Project Path="src/OpenUsd.Runtime.Core.osx-arm64/OpenUsd.Runtime.Core.osx-arm64.csproj" />

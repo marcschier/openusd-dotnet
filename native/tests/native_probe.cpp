@@ -3888,17 +3888,23 @@ bool VerifyImageDecode(
             return std::vector<uint8_t>{};
         }
 
-        std::vector<uint8_t> pixels(required);
+        std::vector<uint8_t> pixels(required + 16u, 0xa5);
         if (openusd_decode_image_rgba8(
                 path,
                 convertSrgbToLinear,
                 &info,
                 pixels.data(),
-                pixels.size(),
+                required,
                 error) != OPENUSD_STATUS_OK)
         {
             return std::vector<uint8_t>{};
         }
+        if (!std::all_of(pixels.begin() + required, pixels.end(),
+                [](uint8_t value) { return value == 0xa5; }))
+        {
+            return std::vector<uint8_t>{};
+        }
+        pixels.resize(required);
         if (observed != nullptr)
         {
             *observed = info;
@@ -3991,6 +3997,50 @@ bool VerifyImageDecode(
     if (!hasColoredPixel || !conversionChangedPixel)
     {
         return false;
+    }
+
+    const std::array<HioFormat, 4> byteFormats{
+        HioFormatUNorm8, HioFormatUNorm8Vec2, HioFormatUNorm8Vec3, HioFormatUNorm8Vec4};
+    for (size_t components = 1; components <= 4; ++components)
+    {
+        const std::filesystem::path path = std::filesystem::path(rgbPath).parent_path() /
+            ("native-image-inplace-" + std::to_string(components) + ".png");
+        std::vector<uint8_t> source(6u * components);
+        for (size_t index = 0; index < source.size(); ++index)
+        {
+            source[index] = static_cast<uint8_t>((index * 37u + 19u) % 256u);
+        }
+        HioImageSharedPtr byteWriter = HioImage::OpenForWriting(path.string());
+        if (!byteWriter)
+        {
+            return false;
+        }
+        HioImage::StorageSpec storage;
+        storage.width = 3;
+        storage.height = 2;
+        storage.depth = 1;
+        storage.format = byteFormats[components - 1u];
+        storage.flipped = false;
+        storage.data = source.data();
+        if (!byteWriter->Write(storage))
+        {
+            return false;
+        }
+        byteWriter.reset();
+        std::vector<uint8_t> expected(24u);
+        for (size_t pixel = 0; pixel < 6u; ++pixel)
+        {
+            expected[pixel * 4u] = source[pixel * components];
+            expected[pixel * 4u + 1u] = source[pixel * components + (components >= 3 ? 1u : 0u)];
+            expected[pixel * 4u + 2u] = source[pixel * components + (components >= 3 ? 2u : 0u)];
+            expected[pixel * 4u + 3u] = components == 2 ? source[pixel * components + 1u] :
+                components == 4 ? source[pixel * components + 3u] : 255;
+        }
+        if (decode(path.string().c_str(), 0, 3, 2, nullptr) != expected)
+        {
+            std::cerr << "In-place image expansion corrupted " << components << "-channel pixels.\n";
+            return false;
+        }
     }
 
     const std::filesystem::path floatPath =
@@ -4744,7 +4794,7 @@ int main(int argc, char** argv)
         }
     }
 
-    if (openusd_get_abi_version() != 24 ||
+    if (openusd_get_abi_version() != 26 ||
         (openusd_get_capabilities() &
          (OPENUSD_CAPABILITY_STRING_LIST_V2 |
           OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
@@ -4778,7 +4828,11 @@ int main(int argc, char** argv)
           OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT_INSPECTION |
           OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT |
           OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT |
-          OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT)) !=
+          OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT |
+          OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS |
+          OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS |
+          OPENUSD_CAPABILITY_REVIEW_STAGE_ADOPTION |
+          OPENUSD_CAPABILITY_REVIEW_SOURCE_PUBLICATION)) !=
             (OPENUSD_CAPABILITY_STRING_LIST_V2 |
              OPENUSD_CAPABILITY_GUARDED_STATUS_EXPORTS |
              OPENUSD_CAPABILITY_SHADE_CONNECTED_SOURCES |
@@ -4811,7 +4865,11 @@ int main(int argc, char** argv)
              OPENUSD_CAPABILITY_PORTABLE_REVIEW_DOCUMENT_INSPECTION |
              OPENUSD_CAPABILITY_HIERARCHY_SNAPSHOT |
              OPENUSD_CAPABILITY_PRIM_PROPERTY_SNAPSHOT |
-             OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT))
+             OPENUSD_CAPABILITY_IMAGE_EXR_OUTPUT |
+             OPENUSD_CAPABILITY_ATTRIBUTE_VEC4F_ARRAYS |
+             OPENUSD_CAPABILITY_STAGE_LINEAR_UNITS |
+             OPENUSD_CAPABILITY_REVIEW_STAGE_ADOPTION |
+             OPENUSD_CAPABILITY_REVIEW_SOURCE_PUBLICATION))
     {
         std::cerr << "Unexpected ABI version.\n";
         return 3;
@@ -5082,6 +5140,23 @@ int main(int argc, char** argv)
         openusd_stage_release(stage);
         std::cerr << "Core stage timing controls did not round-trip.\n";
         return 12;
+    }
+
+    openusd_stage_linear_units linearUnits{};
+    linearUnits.reserved = 7;
+    if (openusd_stage_get_linear_units(stage, nullptr, &error) != OPENUSD_STATUS_INVALID_ARGUMENT ||
+        openusd_stage_get_linear_units(stage, &linearUnits, &error) != OPENUSD_STATUS_OK ||
+        linearUnits.meters_per_unit != 0.01 ||
+        linearUnits.meters_per_unit_authored != 0 ||
+        (linearUnits.up_axis != OPENUSD_STAGE_UP_AXIS_Y &&
+         linearUnits.up_axis != OPENUSD_STAGE_UP_AXIS_Z) ||
+        linearUnits.up_axis_authored != 0 ||
+        linearUnits.reserved != 0 ||
+        sizeof(openusd_stage_linear_units) != 24)
+    {
+        openusd_stage_release(stage);
+        std::cerr << "Fallback stage linear units were not reported.\n";
+        return 241;
     }
 
     required = 0;

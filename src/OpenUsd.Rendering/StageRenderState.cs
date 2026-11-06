@@ -65,6 +65,7 @@ public readonly record struct CameraState : IUsdDetachedResult
     /// <param name="view">The world-to-view matrix.</param>
     /// <param name="projection">The view-to-clip projection matrix.</param>
     /// <param name="clipPlanes">The view-space clipping plane equations.</param>
+    /// <remarks>Admission consumes at most nine planes, refusing the first plane beyond the ABI limit.</remarks>
     /// <exception cref="ArgumentException">
     /// Either matrix or any clip plane contains a NaN or infinity value.
     /// </exception>
@@ -90,7 +91,7 @@ public readonly record struct CameraState : IUsdDetachedResult
                 nameof(projection));
         }
 
-        ImmutableArray<Vector4> planes = clipPlanes.ToImmutableArray();
+        ImmutableArray<Vector4> planes = clipPlanes.Take(MaxClipPlanes + 1).ToImmutableArray();
         if (planes.Length > MaxClipPlanes)
         {
             throw new ArgumentOutOfRangeException(

@@ -246,9 +246,11 @@ buffers, and selection crosses the ABI once as a packed update.
 
 ### Hydra to Silk
 
-`openusd_hdsilk` session ABI 6 registers the hdSilk Hydra plugin against the exact retained stage.
-Each sync returns a native-owned immutable page. Managed code validates page ABI 24, copies the page
-bytes once, and releases the native page.
+`openusd_hdsilk` session ABI 7 registers the hdSilk Hydra plugin against the exact retained stage.
+Each sync returns a native-owned immutable page. Managed code validates page ABI 35, copies the page
+bytes once, retains any decoded volume fields before acknowledgement, and releases the native page.
+Replay snapshots and retained scene materials keep those fields alive independently; disposing the
+scene releases its material references.
 
 Session and page versions are checked before creating a managed session. The version-1 scene-ingestion
 request carries explicit purposes, a single material-binding purpose, complexity and draw mode.

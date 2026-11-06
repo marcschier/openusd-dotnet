@@ -106,7 +106,20 @@ public enum SilkDeformationGpuFallback
     /// That keeps the ordering this renderer claims, deform then displace, exact
     /// and identical to the CPU deformation oracle.
     /// </remarks>
-    MaterialDisplacement = 9
+    MaterialDisplacement = 9,
+
+    /// <summary>
+    /// The geometry carries a second surface texture-coordinate set, and the
+    /// checked kernel writes only the six- and eight-float vertex layouts.
+    /// </summary>
+    SecondaryTexCoords = 10,
+
+    /// <summary>
+    /// The renderer derived one GPU vertex per triangle corner while retaining
+    /// the authored point topology, and the per-point kernel cannot write that
+    /// expanded stream.
+    /// </summary>
+    DerivedCornerVertices = 11
 }
 
 /// <summary>
@@ -261,12 +274,54 @@ public sealed class SilkDeformationGpuPayload
         bool hasTangents,
         SilkTopologyKind topologyKind,
         out SilkDeformationGpuPayload? payload,
+        ReadOnlySpan<float> texCoords = default) =>
+        TryBuild(
+            deformation,
+            vertexStrideFloats,
+            pointCount,
+            hasTangents,
+            topologyKind,
+            false,
+            out payload,
+            texCoords);
+
+    /// <summary>
+    /// Attempts the per-point GPU path, returning a named fallback when the
+    /// renderer emitted derived triangle-corner vertices.
+    /// </summary>
+    /// <param name="deformation">The published rig, or <see langword="null"/>.</param>
+    /// <param name="vertexStrideFloats">The interleaved GPU vertex stride in floats.</param>
+    /// <param name="pointCount">The retained simulation point count.</param>
+    /// <param name="hasTangents">Whether the geometry carries tangents.</param>
+    /// <param name="topologyKind">The retained topology.</param>
+    /// <param name="derivedCornerVertices">
+    /// Whether renderer-only vertices were derived per triangle corner while
+    /// retaining the authored point topology.
+    /// </param>
+    /// <param name="payload">The built payload, or <see langword="null"/>.</param>
+    /// <param name="texCoords">
+    /// Two floats per retained point when the emitted vertex carries a texture
+    /// coordinate set, empty otherwise.
+    /// </param>
+    /// <returns>The reason the prim falls back, or None when it does not.</returns>
+    public static SilkDeformationGpuFallback TryBuild(
+        SilkMeshDeformationData? deformation,
+        uint vertexStrideFloats,
+        int pointCount,
+        bool hasTangents,
+        SilkTopologyKind topologyKind,
+        bool derivedCornerVertices,
+        out SilkDeformationGpuPayload? payload,
         ReadOnlySpan<float> texCoords = default)
     {
         payload = null;
         if (deformation is null)
         {
             return SilkDeformationGpuFallback.NoPublishedRig;
+        }
+        if (derivedCornerVertices)
+        {
+            return SilkDeformationGpuFallback.DerivedCornerVertices;
         }
         if (!deformation.HasBindNormals)
         {
@@ -275,6 +330,10 @@ public sealed class SilkDeformationGpuPayload
         if (hasTangents)
         {
             return SilkDeformationGpuFallback.RequiresTangents;
+        }
+        if (vertexStrideFloats > 8)
+        {
+            return SilkDeformationGpuFallback.SecondaryTexCoords;
         }
         if (topologyKind != SilkTopologyKind.TriangleList)
         {

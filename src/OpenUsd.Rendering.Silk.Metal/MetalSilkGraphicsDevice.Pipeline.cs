@@ -111,32 +111,21 @@ public sealed partial class MetalSilkGraphicsDevice
         RegisterDependentObject();
         try
         {
-            NSString path = MetalObjectOwnership.Retain(NSString.String(
-                Path.Combine(AppContext.BaseDirectory, "mesh.metallib")));
-            NSURL url = MetalObjectOwnership.Retain(NSURL.FileURLWithPath(path));
-            try
-            {
-                NSError error = default;
-                vertexLibrary = _device.NewLibrary(url, ref error);
-                if (vertexLibrary.NativePtr == 0)
-                {
-                    throw CreateMetalFailure(
-                        "Could not load the pinned Metal shader library.", error);
-                }
-            }
-            finally
-            {
-                url.Dispose();
-                path.Dispose();
-            }
-
+            vertexLibrary = LoadGraphicsLibrary(program.Vertex.Descriptor);
             vertexFunction = vertexLibrary.NewFunction(program.Vertex.Descriptor.EntryPoint);
-            fragmentLibrary = LoadFragmentLibrary(program.Fragment.Descriptor);
-            fragmentFunction = fragmentLibrary.NewFunction(program.Fragment.Descriptor.EntryPoint);
-            if (vertexFunction.NativePtr == 0 || fragmentFunction.NativePtr == 0)
+            if (vertexFunction.NativePtr == 0)
             {
                 throw new InvalidOperationException(
-                    "The pinned Metal shader library is missing a checked mesh entry point.");
+                    "The Metal vertex shader library is missing entry point " +
+                    $"'{program.Vertex.Descriptor.EntryPoint}'.");
+            }
+            fragmentLibrary = LoadGraphicsLibrary(program.Fragment.Descriptor);
+            fragmentFunction = fragmentLibrary.NewFunction(program.Fragment.Descriptor.EntryPoint);
+            if (fragmentFunction.NativePtr == 0)
+            {
+                throw new InvalidOperationException(
+                    "The Metal fragment shader library is missing entry point " +
+                    $"'{program.Fragment.Descriptor.EntryPoint}'.");
             }
 
             var vertexDescriptor = new MTLVertexDescriptor();
@@ -258,30 +247,35 @@ public sealed partial class MetalSilkGraphicsDevice
         }
     }
 
-    private MTLLibrary LoadFragmentLibrary(SilkShaderModuleDescriptor descriptor)
-    {
-        if (descriptor.EntryPoint == "main")
-        {
-            NSString source = MetalObjectOwnership.Retain(NSString.String(
-                System.Text.Encoding.UTF8.GetString(descriptor.Code.Span)));
-            try
-            {
-                NSError error = default;
-                MTLCompileOptions options = default;
-                MTLLibrary library = _device.NewLibrary(source, options, ref error);
-                if (library.NativePtr == 0)
-                {
-                    throw CreateMetalFailure(
-                        "Could not compile the generated Metal material fragment shader.", error);
-                }
-                return library;
-            }
-            finally
-            {
-                source.Dispose();
-            }
-        }
+    private MTLLibrary LoadGraphicsLibrary(SilkShaderModuleDescriptor descriptor) =>
+        MetalGraphicsShaderLibrary.Load(
+            descriptor, LoadPinnedGraphicsLibrary, CompileGraphicsShaderSource);
 
+    private MTLLibrary CompileGraphicsShaderSource(SilkShaderModuleDescriptor descriptor)
+    {
+        NSString source = MetalObjectOwnership.Retain(NSString.String(
+            System.Text.Encoding.UTF8.GetString(descriptor.Code.Span)));
+        try
+        {
+            NSError error = default;
+            MTLCompileOptions options = default;
+            MTLLibrary library = _device.NewLibrary(source, options, ref error);
+            if (library.NativePtr == 0)
+            {
+                string stage = descriptor.Stage == SilkShaderStage.Vertex ? "vertex" : "fragment";
+                throw CreateMetalFailure(
+                    $"Could not compile the generated Metal {stage} shader.", error);
+            }
+            return library;
+        }
+        finally
+        {
+            source.Dispose();
+        }
+    }
+
+    private MTLLibrary LoadPinnedGraphicsLibrary()
+    {
         NSString path = MetalObjectOwnership.Retain(NSString.String(
             Path.Combine(AppContext.BaseDirectory, "mesh.metallib")));
         NSURL url = MetalObjectOwnership.Retain(NSURL.FileURLWithPath(path));
@@ -371,7 +365,8 @@ internal sealed class MetalSilkGraphicsShaderProgram(
     IDisposable[] resourceLeases)
     : SilkGraphicsResourceBase, ISilkGraphicsShaderProgram
 {
-    private IDisposable[]? _resourceLeases = resourceLeases;
+    private IDisposable?[]? _resourceLeases = resourceLeases;
+    private bool _releasingLeases;
 
     internal MetalSilkGraphicsDevice Device { get; } = device;
 
@@ -387,16 +382,12 @@ internal sealed class MetalSilkGraphicsShaderProgram(
 
     protected override void ReleaseNative()
     {
-        IDisposable[]? leases = Interlocked.Exchange(ref _resourceLeases, null);
-        if (leases is not null)
-        {
-            foreach (IDisposable lease in leases)
-            {
-                lease.Dispose();
-            }
-        }
+        RetireOwnedLeases(ref _resourceLeases, ref _releasingLeases);
         Device.ReleaseDependentObject();
     }
+
+    internal static void RetireOwnedLeases(ref IDisposable?[]? leases, ref bool releasing) =>
+        SilkOwnedResourceLeases.Dispose(ref leases, ref releasing);
 }
 
 [SupportedOSPlatform("macos")]
@@ -419,6 +410,8 @@ internal sealed class MetalSilkGraphicsPipeline(
     private MTLRenderPipelineState _pipeline = pipeline;
     private MTLDepthStencilState _depthState = depthState;
     private IDisposable? _programLease = programLease;
+    private SilkResourceReleaseSteps _releaseSteps;
+    private Action<int>? _releaseStep;
 
     internal MetalSilkGraphicsDevice Device { get; } = device;
 
@@ -441,13 +434,48 @@ internal sealed class MetalSilkGraphicsPipeline(
 
     protected override void ReleaseNative()
     {
-        _depthState.Dispose();
-        _pipeline.Dispose();
-        _fragmentFunction.Dispose();
-        _vertexFunction.Dispose();
-        _fragmentLibrary.Dispose();
-        _vertexLibrary.Dispose();
-        Interlocked.Exchange(ref _programLease, null)?.Dispose();
-        Device.ReleaseDependentObject();
+        RetireOwnedNativeSteps(ref _releaseSteps, _releaseStep ??= ReleaseStep);
+    }
+
+    internal static void RetireOwnedNativeSteps(ref SilkResourceReleaseSteps steps, Action<int> release) =>
+        steps.Release(8, release);
+
+    private void ReleaseStep(int step)
+    {
+        switch (step)
+        {
+            case 0:
+                _depthState.Dispose();
+                _depthState = default;
+                break;
+            case 1:
+                _pipeline.Dispose();
+                _pipeline = default;
+                break;
+            case 2:
+                _fragmentFunction.Dispose();
+                _fragmentFunction = default;
+                break;
+            case 3:
+                _vertexFunction.Dispose();
+                _vertexFunction = default;
+                break;
+            case 4:
+                _fragmentLibrary.Dispose();
+                _fragmentLibrary = default;
+                break;
+            case 5:
+                _vertexLibrary.Dispose();
+                _vertexLibrary = default;
+                break;
+            case 6:
+                SilkOwnedResourceLeases.Dispose(ref _programLease);
+                break;
+            case 7:
+                Device.ReleaseDependentObject();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(step));
+        }
     }
 }

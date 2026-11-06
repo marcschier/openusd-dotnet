@@ -14,9 +14,9 @@ if ([string]::IsNullOrEmpty($env:OPENUSD_METAL_QUALIFICATION_ZIP))
 }
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $sdk = (& dotnet --version).Trim()
-if ($LASTEXITCODE -ne 0 -or $sdk -cne '10.0.401')
+if ($LASTEXITCODE -ne 0 -or $sdk -cne '10.0.403')
 {
-    throw 'Metal qualification requires the exact repository SDK 10.0.401.'
+    throw 'Metal qualification requires the exact repository SDK 10.0.403.'
 }
 $source = (& git -C $repoRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $source -cne $env:GITHUB_SHA)

@@ -6,8 +6,13 @@
 #include "openusd_hdsilk.h"
 
 #include "instancer.h"
+#include "nurbsSceneIndexPlugin.h"
 #include "renderDelegate.h"
 #include "sceneState.h"
+
+#ifdef OPENUSD_HDSILK_ENABLE_TEST_HOOKS
+#include "../tests/ptex_sync_test_hook.h"
+#endif
 
 #include "pxr/base/gf/vec2f.h"
 #include "pxr/base/gf/vec3f.h"
@@ -17,11 +22,15 @@
 #include "pxr/imaging/hd/changeTracker.h"
 #include "pxr/imaging/hd/extComputationUtils.h"
 #include "pxr/imaging/hd/meshUtil.h"
+#include "pxr/imaging/hd/primvarSchema.h"
+#include "pxr/imaging/hd/primvarsSchema.h"
 #include "pxr/imaging/hd/renderIndex.h"
 #include "pxr/imaging/hd/sceneDelegate.h"
+#include "pxr/imaging/hd/sceneIndex.h"
 #include "pxr/imaging/hd/types.h"
 #include "pxr/imaging/hd/tokens.h"
 #include "pxr/usd/usdGeom/mesh.h"
+#include "pxr/usd/usdGeom/primvarsAPI.h"
 #include "pxr/usd/usdGeom/tokens.h"
 #include "pxr/usd/usdSkel/bindingAPI.h"
 #include "pxr/usd/usdSkel/animMapper.h"
@@ -116,6 +125,170 @@ bool ExtractPoints(const VtValue& value, VtVec3fArray* out)
         return true;
     }
     return false;
+}
+
+HdPrimvarSchema GetTerminalPtexFaceOffsetPrimvar(
+    HdSceneDelegate* sceneDelegate,
+    const SdfPath& id)
+{
+    const HdSceneIndexBaseRefPtr terminal =
+        sceneDelegate->GetRenderIndex().GetTerminalSceneIndex();
+    if (!terminal)
+    {
+        return HdPrimvarSchema(nullptr);
+    }
+
+    const HdSceneIndexPrim prim = terminal->GetPrim(id);
+    if (prim.primType != HdPrimTypeTokens->mesh)
+    {
+        return HdPrimvarSchema(nullptr);
+    }
+    return HdPrimvarsSchema::GetFromParent(prim.dataSource)
+        .GetPrimvar(TfToken("ptexFaceOffset"));
+}
+
+bool HasMatchingUsdPtexDefaultOne(
+    const SkelEvaluationScope& scope,
+    const SdfPath& id,
+    const HdPrimvarSchema& scenePrimvar)
+{
+    if (!scope.stage || !scenePrimvar || scenePrimvar.GetElementSize())
+    {
+        return false;
+    }
+
+    const UsdPrim prim = scope.stage->GetPrimAtPath(id);
+    const UsdGeomPrimvar usdPrimvar =
+        UsdGeomPrimvarsAPI(prim).GetPrimvar(TfToken("ptexFaceOffset"));
+    if (!usdPrimvar || usdPrimvar.GetElementSize() != 1 ||
+        usdPrimvar.IsIndexed() != scenePrimvar.IsIndexed())
+    {
+        return false;
+    }
+
+    // Scene-index sample times are offsets from the current stage time.
+    constexpr float shutterOffset = 0.0F;
+    const HdTokenDataSourceHandle sceneInterpolation =
+        scenePrimvar.GetInterpolation();
+    const HdSampledDataSourceHandle sceneValue =
+        scenePrimvar.IsIndexed()
+            ? scenePrimvar.GetIndexedPrimvarValue()
+            : scenePrimvar.GetPrimvarValue();
+    VtValue usdValueAtTime;
+    if (!sceneInterpolation || !sceneValue ||
+        sceneInterpolation->GetTypedValue(shutterOffset) !=
+            usdPrimvar.GetInterpolation() ||
+        !usdPrimvar.Get(&usdValueAtTime, scope.time) ||
+        sceneValue->GetValue(shutterOffset) != usdValueAtTime)
+    {
+        return false;
+    }
+
+    if (!scenePrimvar.IsIndexed())
+    {
+        return true;
+    }
+
+    const HdIntArrayDataSourceHandle sceneIndices = scenePrimvar.GetIndices();
+    VtIntArray usdIndices;
+    return sceneIndices &&
+        usdPrimvar.GetIndices(&usdIndices, scope.time) &&
+        sceneIndices->GetTypedValue(shutterOffset) == usdIndices;
+}
+
+HdSilkPtexMappingStatus BuildPtexTriangleMappings(
+    const HdMeshTopology& topology,
+    const HdSilkMeshSubdivision& subdivision,
+    const VtArray<uint32_t>& triangleIndices,
+    const VtArray<uint32_t>& triangleSubprims,
+    const HdPrimvarSchema& faceOffset,
+    HdSilkPtexMissingElementSize missingElementSize,
+    std::vector<HdSilkPtexMeshTriangle>* mappings)
+{
+    if (mappings == nullptr)
+    {
+        return HdSilkPtexMappingStatus::InvalidBuffers;
+    }
+    if (triangleSubprims.empty())
+    {
+        mappings->clear();
+        return HdSilkPtexMappingStatus::Mapped;
+    }
+
+    std::vector<HdSilkPtexTriangle> defaults(triangleSubprims.size());
+    std::vector<uint32_t> scratch(subdivision.IsRefined()
+        ? subdivision.GetPtexScratchCount()
+        : HdSilkCoarsePtexScratchCount(topology));
+    HdSilkPtexMappingStatus status = subdivision.IsRefined()
+        ? subdivision.WriteDefaultPtexTriangles(
+            defaults.data(), defaults.size(), scratch.data(), scratch.size())
+        : HdSilkWriteDefaultCoarsePtexTriangles(
+            topology,
+            triangleIndices,
+            triangleSubprims,
+            defaults.data(),
+            defaults.size(),
+            scratch.data(),
+            scratch.size());
+    if (status != HdSilkPtexMappingStatus::Mapped)
+    {
+        mappings->clear();
+        return status;
+    }
+
+    std::vector<HdSilkPtexTriangle> authored(defaults.size());
+    status = HdSilkWritePtexFaceOffsetDataSource(
+        defaults.data(),
+        defaults.size(),
+        triangleSubprims.data(),
+        triangleSubprims.size(),
+        topology.GetFaceVertexCounts().size(),
+        faceOffset,
+        missingElementSize,
+        0.0F,
+        static_cast<size_t>(std::numeric_limits<int>::max()),
+        authored.data(),
+        authored.size());
+    if (status != HdSilkPtexMappingStatus::Mapped)
+    {
+        mappings->clear();
+        return status;
+    }
+
+    mappings->clear();
+    mappings->reserve(authored.size());
+    for (const HdSilkPtexTriangle& source : authored)
+    {
+        HdSilkPtexMeshTriangle mapping;
+        mapping.faceIndex = source.faceIndex;
+        std::copy(
+            source.cornerCoordinates.begin(),
+            source.cornerCoordinates.end(),
+            mapping.cornerCoordinates);
+        mappings->push_back(mapping);
+    }
+    return HdSilkPtexMappingStatus::Mapped;
+}
+
+bool HasCompleteFaceVertexIndices(const HdMeshTopology& topology)
+{
+    const VtIntArray& counts = topology.GetFaceVertexCounts();
+    const VtIntArray& indices = topology.GetFaceVertexIndices();
+    size_t offset = 0;
+    for (int faceVertexCount : counts)
+    {
+        if (faceVertexCount < 0)
+        {
+            return false;
+        }
+        const size_t count = static_cast<size_t>(faceVertexCount);
+        if (count > indices.size() - offset)
+        {
+            return false;
+        }
+        offset += count;
+    }
+    return true;
 }
 
 /// Flattens a primvar value into tightly packed floats, returning the component
@@ -433,6 +606,79 @@ bool ExpandUniformElements(
 ///
 /// Returns false, leaving the outputs empty, when the authored topology cannot
 /// be walked or its edge count would not fit the wire.
+VtArray<uint32_t> BuildNormalCorners(
+    const HdMeshTopology& topology,
+    const VtArray<uint32_t>& triangles,
+    const VtArray<uint32_t>& faces)
+{
+    VtArray<uint32_t> result;
+    const VtIntArray& counts = topology.GetFaceVertexCounts();
+    const VtIntArray& points = topology.GetFaceVertexIndices();
+    const bool reversed = topology.GetOrientation() == UsdGeomTokens->leftHanded;
+    size_t authoredStart = 0;
+    size_t triangle = 0;
+    result.reserve(triangles.size() * 3);
+    for (size_t face = 0; face < counts.size(); ++face)
+    {
+        const int count = counts[face];
+        if (count < 0 || authoredStart + static_cast<size_t>(count) > points.size())
+        {
+            throw std::invalid_argument("An hdSilk normal polygon has invalid corners.");
+        }
+        if (triangle < faces.size() && faces[triangle] == face && count >= 3)
+        {
+            const size_t triangleCount = static_cast<size_t>(count - 2);
+            if (triangleCount > faces.size() - triangle ||
+                triangles.size() / 3 < triangle + triangleCount)
+            {
+                throw std::invalid_argument("An hdSilk normal polygon has incomplete triangles.");
+            }
+            std::unordered_map<uint32_t, uint32_t> ordinals;
+            ordinals.reserve(static_cast<size_t>(count));
+            for (size_t faceTriangle = triangle; faceTriangle < triangle + triangleCount; ++faceTriangle)
+            {
+                if (faces[faceTriangle] != face)
+                {
+                    throw std::invalid_argument("An hdSilk normal polygon has inconsistent faces.");
+                }
+                for (size_t corner = faceTriangle * 3; corner < faceTriangle * 3 + 3; ++corner)
+                {
+                    if (corner > std::numeric_limits<uint32_t>::max())
+                    {
+                        throw std::length_error("An hdSilk normal corner exceeds its 32-bit index range.");
+                    }
+                    ordinals.emplace(triangles[corner], static_cast<uint32_t>(corner));
+                }
+            }
+            const auto ordinal = [&](int corner)
+            {
+                const int point = points[authoredStart + corner];
+                const auto found = point < 0 ? ordinals.end() : ordinals.find(static_cast<uint32_t>(point));
+                if (found == ordinals.end())
+                {
+                    throw std::invalid_argument("An hdSilk normal polygon differs from its triangulation.");
+                }
+                return found->second;
+            };
+            for (int corner = 0; corner < count; ++corner)
+            {
+                const int previous = (corner + count - 1) % count;
+                const int next = (corner + 1) % count;
+                result.push_back(ordinal(reversed ? next : previous));
+                result.push_back(ordinal(corner));
+                result.push_back(ordinal(reversed ? previous : next));
+            }
+            triangle += triangleCount;
+        }
+        authoredStart += static_cast<size_t>(count);
+    }
+    if (triangle != faces.size())
+    {
+        throw std::invalid_argument("An hdSilk normal polygon table is incomplete.");
+    }
+    return result;
+}
+
 bool BuildAuthoredEdgeTable(
     const HdMeshTopology& topology,
     const VtArray<uint32_t>& triangleIndices,
@@ -1655,6 +1901,57 @@ HdSilkMesh::_InitRepr(TfToken const& reprToken, HdDirtyBits* /*dirtyBits*/)
     }
 }
 
+// Generated NURBS patches publish their output sizes as a topology-only plan
+// primvar. Planning here never requests points, normals, topology, or vertex
+// primvars, because each of those requests evaluates the patch.
+static HdSilkMeshPreparationPlan
+PlanNurbsMeshPreparation(
+    HdSceneDelegate* sceneDelegate,
+    SdfPath const& id,
+    const HdSilkNurbsGeneratedGeometryPlan& nurbs)
+{
+    HdSilkMeshPreparationPlan plan(
+        nurbs.points, HdSilkMeshPreparationPlan::Multiply(nurbs.elements, 2));
+    for (const auto& primvar :
+        sceneDelegate->GetPrimvarDescriptors(id, HdInterpolationVertex))
+    {
+        if (primvar.name == HdTokens->points)
+        {
+            continue;
+        }
+        // Retained vertex primvars carry at most four float components.
+        plan.Attribute(
+            nurbs.points, primvar.name == HdTokens->normals ? 3u : 4u, false);
+    }
+    for (const auto& primvar :
+        sceneDelegate->GetPrimvarDescriptors(id, HdInterpolationConstant))
+    {
+        const VtValue value = sceneDelegate->Get(id, primvar.name);
+        const void* source = nullptr;
+        int elements = 0;
+        HdType type = HdTypeInvalid;
+        if (GetFloatArraySource(value, &source, &elements, &type))
+        {
+            const uint32_t components = type == HdTypeFloat ? 1u :
+                type == HdTypeFloatVec2 ? 2u : type == HdTypeFloatVec3 ? 3u : 4u;
+            plan.Attribute(static_cast<uint64_t>(elements), components, true);
+        }
+        else if (value.IsHolding<float>() || value.IsHolding<GfVec2f>() ||
+            value.IsHolding<GfVec3f>() || value.IsHolding<GfVec4f>())
+        {
+            const uint32_t components = value.IsHolding<float>() ? 1u :
+                value.IsHolding<GfVec2f>() ? 2u : value.IsHolding<GfVec3f>() ? 3u : 4u;
+            plan.Attribute(1, components, true);
+        }
+        else if (value.IsHolding<VtFloatArray>() || value.IsHolding<VtVec2fArray>() ||
+            value.IsHolding<VtVec3fArray>() || value.IsHolding<VtVec4fArray>())
+        {
+            throw std::length_error("The bounded hdSilk primvar exceeds the supported element range.");
+        }
+    }
+    return plan;
+}
+
 HdSilkMeshPreparationPlan
 HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) const
 {
@@ -1667,17 +1964,26 @@ HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) 
                 "The bounded hdSilk mesh preparation profile does not admit computed primvars.");
         }
     }
+    HdSilkNurbsGeneratedGeometryPlan nurbs;
+    if (HdSilkGetNurbsGeneratedGeometryPlan(sceneDelegate, id, &nurbs))
+    {
+        return PlanNurbsMeshPreparation(sceneDelegate, id, nurbs);
+    }
     const HdMeshTopology topology = sceneDelegate->GetMeshTopology(id);
     uint64_t triangles = 0;
+    uint64_t faceVertices = 0;
     for (int count : topology.GetFaceVertexCounts())
     {
         if (count < 0)
         {
             throw std::invalid_argument("The bounded hdSilk mesh has a negative face count.");
         }
+        faceVertices = HdSilkMeshPreparationPlan::Add(
+            faceVertices, static_cast<uint64_t>(count));
         if (count >= 3)
         {
-            triangles = HdSilkMeshPreparationPlan::Add(triangles, static_cast<uint64_t>(count - 2));
+            triangles = HdSilkMeshPreparationPlan::Add(
+                triangles, static_cast<uint64_t>(count - 2));
         }
     }
     const VtValue pointValue = sceneDelegate->Get(id, HdTokens->points);
@@ -1695,7 +2001,69 @@ HdSilkMesh::_PlanPreparation(HdSceneDelegate* sceneDelegate, SdfPath const& id) 
         throw std::invalid_argument(
             "The bounded hdSilk mesh preparation profile requires resolved float3 or double3 points.");
     }
+    if (points != 0)
+    {
+        if (!HasCompleteFaceVertexIndices(topology))
+        {
+            throw std::invalid_argument(
+                "The bounded hdSilk mesh topology has invalid face counts or fewer "
+                "indices than its face counts require.");
+        }
+        const VtIntArray& counts = topology.GetFaceVertexCounts();
+        const VtIntArray& indices = topology.GetFaceVertexIndices();
+        const VtIntArray& holes = topology.GetHoleIndices();
+        size_t offset = 0;
+        size_t holeIndex = 0;
+        for (size_t face = 0; face < counts.size(); ++face)
+        {
+            const size_t count = static_cast<size_t>(counts[face]);
+            // HdMeshUtil skips degenerate faces before advancing the hole cursor.
+            if (count >= 3 && holeIndex < holes.size() &&
+                static_cast<size_t>(holes[holeIndex]) == face)
+            {
+                ++holeIndex;
+            }
+            else if (count >= 3)
+            {
+                for (size_t corner = 0; corner < count; ++corner)
+                {
+                    const int index = indices[offset + corner];
+                    if (index < 0 || static_cast<uint64_t>(index) >= points)
+                    {
+                        throw std::invalid_argument(
+                            "The bounded hdSilk mesh topology references a missing point.");
+                    }
+                }
+            }
+            offset += count;
+        }
+    }
     HdSilkMeshPreparationPlan plan(points, triangles);
+    if (GetTerminalPtexFaceOffsetPrimvar(sceneDelegate, id))
+    {
+        uint64_t mappingTriangles = triangles;
+        const int refineLevel = std::min(
+            std::max(GetDisplayStyle(sceneDelegate).refineLevel, 0),
+            HdSilkMaxMeshRefineLevel);
+        for (int level = 0; level < refineLevel; ++level)
+        {
+            mappingTriangles = HdSilkMeshPreparationPlan::Multiply(
+                mappingTriangles, 4);
+        }
+
+        uint64_t scratchEntries = HdSilkMeshPreparationPlan::Multiply(
+            topology.GetFaceVertexCounts().size(), 3);
+        if (refineLevel > 0)
+        {
+            const uint64_t firstLevelFaces = std::max(
+                faceVertices,
+                HdSilkMeshPreparationPlan::Multiply(
+                    topology.GetFaceVertexCounts().size(), 4));
+            scratchEntries = HdSilkMeshPreparationPlan::Add(
+                topology.GetFaceVertexCounts().size(), firstLevelFaces);
+        }
+        plan.PtexMapping(mappingTriangles, scratchEntries);
+    }
     for (HdInterpolation interpolation : {HdInterpolationConstant, HdInterpolationVertex,
              HdInterpolationVarying, HdInterpolationFaceVarying, HdInterpolationUniform})
     {
@@ -1771,23 +2139,12 @@ void
 HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, HdDirtyBits* dirtyBits)
 {
     SdfPath const& id = GetId();
+    const bool generatedNurbsGeometry =
+        HdSilkHasNurbsGeneratedGeometry(sceneDelegate, id);
     const auto& preparationBudget = static_cast<HdSilkRenderParam*>(renderParam)
         ->GetSceneState().MeshPreparationBudget();
-    std::shared_ptr<HdSilkMeshPreparationLease> preparation;
-    if (preparationBudget->Enabled())
-    {
-        preparation = preparationBudget->Acquire(_PlanPreparation(sceneDelegate, id).bytes);
-        preparation->RetainPrevious(_preparationLease);
-    }
-    _preparationLease = preparation;
-
     const bool visibilityDirty =
         HdChangeTracker::IsVisibilityDirty(*dirtyBits, id);
-    if (visibilityDirty)
-    {
-        _UpdateVisibility(sceneDelegate, dirtyBits);
-    }
-
     const bool topologyDirty = HdChangeTracker::IsTopologyDirty(*dirtyBits, id);
     const bool pointsDirty =
         HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, HdTokens->points);
@@ -1810,6 +2167,40 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
     const bool cullDirty =
         (*dirtyBits & (HdChangeTracker::DirtyDoubleSided |
                       HdChangeTracker::DirtyCullStyle)) != 0;
+    const bool topologyRefreshed = topologyDirty || _topologyRevision == 0;
+    const int requestedRefineLevel = std::min(
+        std::max(GetDisplayStyle(sceneDelegate).refineLevel, 0),
+        HdSilkMaxMeshRefineLevel);
+    const bool subdivisionRefreshed =
+        topologyRefreshed || subdivTagsDirty || primvarsDirty ||
+        requestedRefineLevel != _refineLevel;
+    const bool instancerDirty =
+        HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
+        HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
+    const bool recordDirty =
+        topologyRefreshed || pointsDirty || transformDirty || visibilityDirty ||
+        displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
+        materialDirty || cullDirty || subdivisionRefreshed;
+    const size_t previousEmittedPointCount = _EmittedPoints().size();
+    const uint64_t previousTopologyRevision = _topologyRevision;
+    bool invalidTopology = false;
+
+    std::shared_ptr<HdSilkMeshPreparationLease> preparation;
+    if (preparationBudget->Enabled() && (recordDirty || !_preparationLease))
+    {
+        preparation = preparationBudget->Acquire(_PlanPreparation(sceneDelegate, id).bytes);
+        preparation->RetainPrevious(_preparationLease);
+        _preparationLease = preparation;
+    }
+    else if (!preparationBudget->Enabled())
+    {
+        _preparationLease.reset();
+    }
+
+    if (visibilityDirty)
+    {
+        _UpdateVisibility(sceneDelegate, dirtyBits);
+    }
     if (materialDirty)
     {
         // Hydra resolves the binding for us; the path is the only identity the
@@ -1818,7 +2209,6 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         _materialBindingGeneration = materialBindingGeneration;
     }
 
-    const bool topologyRefreshed = topologyDirty || _topologyRevision == 0;
     if (topologyRefreshed)
     {
         _topology = HdMeshTopology(GetMeshTopology(sceneDelegate));
@@ -1831,85 +2221,117 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         }
         ++_topologyRevision;
 
-        HdMeshUtil meshUtil(&_topology, id);
-        VtVec3iArray triangleIndices;
-        VtIntArray primitiveParams;
-        meshUtil.ComputeTriangleIndices(&triangleIndices, &primitiveParams);
-        if (primitiveParams.size() != triangleIndices.size())
+        if (!HasCompleteFaceVertexIndices(_topology))
         {
-            throw std::runtime_error(
-                "HdMeshUtil returned mismatched triangle and primitiveParams counts.");
-        }
-        if (triangleIndices.size() >
-            std::numeric_limits<size_t>::max() / 3)
-        {
-            throw std::overflow_error(
-                "The hdSilk triangle index component count overflows size_t.");
-        }
-
-        _coarseTriangleIndices.clear();
-        _coarseTriangleIndices.reserve(triangleIndices.size() * 3);
-        _coarseTriangleSubprims.clear();
-        _coarseTriangleSubprims.reserve(primitiveParams.size());
-        // Authored winding is HdMeshUtil's job, not this delegate's. USD's
-        // "orientation" makes rightHanded faces counter-clockwise seen from the
-        // front and leftHanded clockwise, and ComputeTriangleIndices already
-        // emits a leftHanded face with its corners reversed, so the triangles
-        // that arrive here are always wound counter-clockwise-front. Every
-        // backend hdSilk targets rasterizes with counter-clockwise front faces,
-        // so the wire needs no orientation flag and no correction here.
-        // Reversing them again would invert facing for exactly the prims USD
-        // already handled, which is measured by the orientation case in
-        // hdsilk_probe. The refined path preserves the same contract by handing
-        // OpenSubdiv the authored orientation instead of a pre-reversed cage.
-        for (size_t triangleIndex = 0;
-             triangleIndex < triangleIndices.size();
-             ++triangleIndex)
-        {
-            const GfVec3i& triangle = triangleIndices[triangleIndex];
-            for (int component = 0; component < 3; ++component)
-            {
-                if (triangle[component] < 0)
-                {
-                    throw std::runtime_error(
-                        "HdMeshUtil returned a negative triangle vertex index.");
-                }
-                _coarseTriangleIndices.push_back(
-                    static_cast<uint32_t>(triangle[component]));
-            }
-
-            const int faceIndex =
-                HdMeshUtil::DecodeFaceIndexFromCoarseFaceParam(
-                    primitiveParams[triangleIndex]);
-            if (faceIndex < 0)
-            {
-                throw std::runtime_error(
-                    "HdMeshUtil returned a negative authored face index.");
-            }
-            _coarseTriangleSubprims.push_back(static_cast<uint32_t>(faceIndex));
-        }
-
-        // The authored-edge table indexes the coarse triangulation, so it is
-        // rebuilt exactly when that triangulation is. A topology this delegate
-        // cannot walk publishes no table at all, which refuses exact edge
-        // picking with a reason rather than answering it with a diagonal.
-        if (!BuildAuthoredEdgeTable(
-                _topology,
-                _coarseTriangleIndices,
-                &_coarseCornerEdges,
-                &_coarseAuthoredEdgeCount))
-        {
+            invalidTopology = true;
             TF_WARN(
-                "hdSilk could not derive authored edges for mesh '%s'; exact "
-                "edge picking is unavailable for it",
+                "hdSilk skipped mesh '%s': face counts are invalid or exceed the "
+                "supplied face indices",
                 id.GetText());
+            _coarseTriangleIndices.clear();
+            _requiredPointCount = 0;
+            _coarseTriangleSubprims.clear();
+            _coarseNormalCorners.clear();
             _coarseCornerEdges.clear();
             _coarseAuthoredEdgeCount = 0;
+            _subdivision.Clear();
+            _refineLevel = requestedRefineLevel;
+            _refinedPoints.clear();
+        }
+        else
+        {
+            HdMeshUtil meshUtil(&_topology, id);
+            VtVec3iArray triangleIndices;
+            VtIntArray primitiveParams;
+            meshUtil.ComputeTriangleIndices(&triangleIndices, &primitiveParams);
+            if (primitiveParams.size() != triangleIndices.size())
+            {
+                throw std::runtime_error(
+                    "HdMeshUtil returned mismatched triangle and primitiveParams counts.");
+            }
+            if (triangleIndices.size() >
+                std::numeric_limits<size_t>::max() / 3)
+            {
+                throw std::overflow_error(
+                    "The hdSilk triangle index component count overflows size_t.");
+            }
+
+            _coarseTriangleIndices.clear();
+            _coarseTriangleIndices.reserve(triangleIndices.size() * 3);
+            _requiredPointCount = 0;
+            _coarseTriangleSubprims.clear();
+            _coarseNormalCorners.clear();
+            _coarseTriangleSubprims.reserve(primitiveParams.size());
+            // Authored winding is HdMeshUtil's job, not this delegate's. USD's
+            // "orientation" makes rightHanded faces counter-clockwise seen from the
+            // front and leftHanded clockwise, and ComputeTriangleIndices already
+            // emits a leftHanded face with its corners reversed, so the triangles
+            // that arrive here are always wound counter-clockwise-front. Every
+            // backend hdSilk targets rasterizes with counter-clockwise front faces,
+            // so the wire needs no orientation flag and no correction here.
+            // Reversing them again would invert facing for exactly the prims USD
+            // already handled, which is measured by the orientation case in
+            // hdsilk_probe. The refined path preserves the same contract by handing
+            // OpenSubdiv the authored orientation instead of a pre-reversed cage.
+            for (size_t triangleIndex = 0;
+                 triangleIndex < triangleIndices.size();
+                 ++triangleIndex)
+            {
+                const GfVec3i& triangle = triangleIndices[triangleIndex];
+                for (int component = 0; component < 3; ++component)
+                {
+                    if (triangle[component] < 0)
+                    {
+                        throw std::runtime_error(
+                            "HdMeshUtil returned a negative triangle vertex index.");
+                    }
+                    _coarseTriangleIndices.push_back(
+                        static_cast<uint32_t>(triangle[component]));
+                    _requiredPointCount =
+                        std::max(
+                            _requiredPointCount,
+                            static_cast<size_t>(triangle[component]) + 1);
+                }
+
+                const int faceIndex =
+                    HdMeshUtil::DecodeFaceIndexFromCoarseFaceParam(
+                        primitiveParams[triangleIndex]);
+                if (faceIndex < 0)
+                {
+                    throw std::runtime_error(
+                        "HdMeshUtil returned a negative authored face index.");
+                }
+                _coarseTriangleSubprims.push_back(static_cast<uint32_t>(faceIndex));
+            }
+            _coarseNormalCorners = BuildNormalCorners(
+                _topology, _coarseTriangleIndices, _coarseTriangleSubprims);
+
+            // The authored-edge table indexes the coarse triangulation, so it is
+            // rebuilt exactly when that triangulation is. A topology this delegate
+            // cannot walk publishes no table at all, which refuses exact edge
+            // picking with a reason rather than answering it with a diagonal.
+            if (!BuildAuthoredEdgeTable(
+                    _topology,
+                    _coarseTriangleIndices,
+                    &_coarseCornerEdges,
+                    &_coarseAuthoredEdgeCount))
+            {
+                TF_WARN(
+                    "hdSilk could not derive authored edges for mesh '%s'; exact "
+                    "edge picking is unavailable for it",
+                    id.GetText());
+                _coarseCornerEdges.clear();
+                _coarseAuthoredEdgeCount = 0;
+            }
         }
     }
     else if (subdivTagsDirty)
     {
         _topology.SetSubdivTags(sceneDelegate->GetSubdivTags(id));
+    }
+    if (!HasCompleteFaceVertexIndices(_topology))
+    {
+        invalidTopology = true;
     }
 
     // The session's complexity resolves into a display style refine level for
@@ -1917,13 +2339,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
     // is what decides whether this mesh is refined. Complexity Low resolves to
     // level 0, which is the historical coarse HdMeshUtil path unchanged, so an
     // unrefined session keeps publishing exactly the bytes it always did.
-    const int requestedRefineLevel = std::min(
-        std::max(GetDisplayStyle(sceneDelegate).refineLevel, 0),
-        HdSilkMaxMeshRefineLevel);
-    const bool subdivisionRefreshed =
-        topologyRefreshed || subdivTagsDirty || primvarsDirty ||
-        requestedRefineLevel != _refineLevel;
-    if (subdivisionRefreshed)
+    if (subdivisionRefreshed && !invalidTopology)
     {
         _RefreshSubdivision(sceneDelegate, id, requestedRefineLevel);
     }
@@ -1973,6 +2389,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
             deformationRefreshed = true;
         }
     }
+    const bool refreshPoints = pointsDirty || topologyRefreshed || deformationRefreshed;
     HdExtComputationPrimvarDescriptorVector dirtyComputedPrimvars;
     if (!pointsResolved)
     {
@@ -1986,7 +2403,8 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
                     static_cast<HdInterpolation>(interpolation));
             for (HdExtComputationPrimvarDescriptor const& primvar : computedPrimvars)
             {
-                if (HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, primvar.name))
+                if ((primvar.name == HdTokens->points && refreshPoints) ||
+                    HdChangeTracker::IsPrimvarDirty(*dirtyBits, id, primvar.name))
                 {
                     dirtyComputedPrimvars.emplace_back(primvar);
                 }
@@ -2015,13 +2433,19 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         }
     }
 
-    // Topology and points must stay consistent. When topology is refreshed
-    // without a matching points dirty bit the cached array can still describe
-    // the previous topology, so re-pull it rather than publish indices that
-    // overrun the point buffer.
-    if (!pointsResolved && (pointsDirty || topologyRefreshed))
+    // A topology change or a lost deformation also needs a fresh points
+    // source, even if Hydra did not mark the authored primvar dirty.
+    bool invalidPoints = false;
+    if (!pointsResolved && refreshPoints)
     {
-        ExtractPoints(sceneDelegate->Get(id, HdTokens->points), &_points);
+        invalidPoints = !ExtractPoints(sceneDelegate->Get(id, HdTokens->points), &_points);
+        if (invalidPoints)
+        {
+            _points.clear();
+            TF_WARN(
+                "hdSilk skipped mesh '%s': points must resolve to a float3 or double3 array",
+                id.GetText());
+        }
     }
     if (displayColorDirty)
     {
@@ -2040,31 +2464,51 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         }
     }
 
+    if (!_points.empty() &&
+        (_points.size() < _requiredPointCount ||
+         (_subdivision.IsRefined() && _points.size() < _subdivision.GetCoarseVertexCount())))
+    {
+        TF_WARN(
+            "hdSilk skipped mesh '%s': topology references a missing point",
+            id.GetText());
+        _points.clear();
+        _refinedPoints.clear();
+        invalidPoints = true;
+    }
+
     // Refined positions follow the control points, so an animated point array
     // re-runs interpolation against the refiner the previous frame built rather
-    // than rebuilding the refiner itself. A control cage whose point count stops
-    // matching the refiner drops back to the coarse topology instead of
-    // publishing indices that overrun the refined buffer.
+    // than rebuilding the refiner itself.
     if (_subdivision.IsRefined() &&
         (pointsDirty || topologyRefreshed || deformationRefreshed ||
          subdivisionRefreshed ||
          _refinedPoints.size() != _subdivision.GetRefinedVertexCount()))
     {
-        if (!_subdivision.RefinePoints(_points, &_refinedPoints))
+        if (_points.empty())
+        {
+            _refinedPoints.clear();
+        }
+        else if (!_subdivision.RefinePoints(_points, &_refinedPoints))
         {
             TF_WARN(
-                "hdSilk could not refine points for mesh '%s'; publishing the "
-                "control cage instead",
+                "hdSilk skipped mesh '%s': could not refine its points",
                 id.GetText());
-            _subdivision.Clear();
-            _refinedPoints = VtVec3fArray();
+            _refinedPoints.clear();
+            invalidPoints = true;
         }
     }
 
-    if (normalsDirty || primvarsDirty || topologyRefreshed ||
-        deformationRefreshed || subdivisionRefreshed)
+    // Attribute validity and the vertex layout depend on the emitted point count.
+    if (!invalidTopology && !_EmittedPoints().empty() &&
+        (normalsDirty || primvarsDirty || topologyRefreshed ||
+         deformationRefreshed || subdivisionRefreshed ||
+         previousEmittedPointCount != _EmittedPoints().size()))
     {
         const bool layoutChanged = _RefreshAttributes(sceneDelegate, id);
+        HdSilkSceneState& state = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState();
+        state.ShareMeshAttributes(&_attributes);
+        state.ShareMeshIndices(&_attributePointIndices);
+        state.ShareMeshIndices(&_attributeTriangleIndices);
 
         // Expanding the topology so a face-varying primvar can be resolved onto
         // corners, or collapsing it again when that primvar goes away, changes
@@ -2084,16 +2528,35 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         }
     }
 
+    // Unexpanded points carry one identity entry per emitted vertex, including
+    // unreferenced points. A count change therefore changes the pick topology.
+    if (!_EmittedPoints().empty() && !_attributesRequireExpandedTopology &&
+        previousEmittedPointCount != _EmittedPoints().size() &&
+        _topologyRevision == previousTopologyRevision)
+    {
+        if (_topologyRevision == std::numeric_limits<uint64_t>::max())
+        {
+            throw std::overflow_error(
+                "The hdSilk mesh topology revision is exhausted.");
+        }
+        ++_topologyRevision;
+    }
+
+    if (topologyRefreshed)
+    {
+        HdSilkSceneState& state = static_cast<HdSilkRenderParam*>(renderParam)->GetSceneState();
+        state.ShareMeshIndices(&_coarseTriangleIndices);
+        state.ShareMeshIndices(&_coarseTriangleSubprims);
+        state.ShareMeshIndices(&_coarseNormalCorners);
+        state.ShareMeshIndices(&_coarseCornerEdges);
+    }
+
     // Instancer state must be refreshed before instance transforms are read,
     // and parent instancers are synced by Rprim reference in Hydra.
     _UpdateInstancer(sceneDelegate, dirtyBits);
     HdInstancer::_SyncInstancerAndParents(
         sceneDelegate->GetRenderIndex(),
         GetInstancerId());
-
-    const bool instancerDirty =
-        HdChangeTracker::IsInstancerDirty(*dirtyBits, id) ||
-        HdChangeTracker::IsInstanceIndexDirty(*dirtyBits, id);
 
     if (!IsVisible())
     {
@@ -2105,9 +2568,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         return;
     }
 
-    if (topologyRefreshed || pointsDirty || transformDirty || visibilityDirty ||
-        displayColorDirty || normalsDirty || primvarsDirty || instancerDirty ||
-        materialDirty || cullDirty || subdivisionRefreshed)
+    if (recordDirty)
     {
         const VtVec3fArray& emittedPoints = _EmittedPoints();
         const VtArray<uint32_t>& triangleIndices = _EmittedTriangleIndices();
@@ -2119,9 +2580,12 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         // Points and basisCurves already refuse to publish empty geometry.
         if (emittedPoints.empty() || triangleIndices.empty())
         {
-            TF_WARN(
-                "hdSilk skipped mesh '%s': empty points or triangle indices",
-                id.GetText());
+            if (!invalidPoints)
+            {
+                TF_WARN(
+                    "hdSilk skipped mesh '%s': empty points or triangle indices",
+                    id.GetText());
+            }
             static_cast<HdSilkRenderParam*>(renderParam)
                 ->GetSceneState()
                 .RemoveMesh(id.GetString());
@@ -2190,8 +2654,180 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
             record.indices = triangleIndices;
         }
 
+        const VtArray<uint32_t>& normalCorners = _subdivision.IsRefined()
+            ? _subdivision.GetNormalCorners() : _coarseNormalCorners;
+        if (_attributesRequireExpandedTopology)
+        {
+            record.normalIdentities = _attributePointIndices.empty()
+                ? triangleIndices : _attributePointIndices;
+        }
+        else
+        {
+            record.normalIdentities.resize(emittedPoints.size());
+            for (size_t point = 0; point < emittedPoints.size(); ++point)
+            {
+                record.normalIdentities[point] = static_cast<uint32_t>(point);
+            }
+        }
+        record.normalCorners.reserve(normalCorners.size());
+        for (uint32_t corner : normalCorners)
+        {
+            if (corner >= record.indices.size())
+            {
+                throw std::logic_error("An hdSilk normal corner is outside the emitted topology.");
+            }
+            record.normalCorners.push_back(record.indices[corner]);
+        }
+
         record.triangleSubprims = _EmittedTriangleSubprims();
+        const bool smoothFallback = _topology.GetScheme() == UsdGeomTokens->catmullClark ||
+            _topology.GetScheme() == UsdGeomTokens->loop;
+        record.triangleLocalNormalFallback = !smoothFallback;
+        const bool hasAuthoredNormals = std::any_of(_attributes.begin(), _attributes.end(),
+            [](const HdSilkMeshAttribute& attribute)
+            {
+                return attribute.semantic == OPENUSD_SILK_ATTRIBUTE_NORMAL &&
+                    attribute.componentCount == 3;
+            });
+        if ((!_subdivision.IsRefined() ? !_topology.GetHoleIndices().empty()
+                : !_subdivision.GetHoleNormalCorners().empty()) &&
+            (smoothFallback || hasAuthoredNormals))
+        {
+            std::vector<uint32_t> canonical(emittedPoints.size(), UINT32_MAX);
+            for (size_t point = 0; point < record.normalIdentities.size(); ++point)
+            {
+                canonical[record.normalIdentities[point]] = static_cast<uint32_t>(point);
+            }
+            const auto resolveNormalPoint = [&](int source)
+            {
+                if (source < 0 || static_cast<size_t>(source) >= emittedPoints.size())
+                {
+                    throw std::invalid_argument("An hdSilk hole normal references a missing point.");
+                }
+                uint32_t& result = canonical[source];
+                if (result == UINT32_MAX)
+                {
+                    result = static_cast<uint32_t>(
+                        record.points.size() / 3 + record.normalExtraPoints.size() / 3);
+                    for (int component = 0; component < 3; ++component)
+                    {
+                        record.normalExtraPoints.push_back(emittedPoints[source][component]);
+                    }
+                }
+                return result;
+            };
+            if (_subdivision.IsRefined())
+            {
+                for (uint32_t source : _subdivision.GetHoleNormalCorners())
+                {
+                    record.normalCorners.push_back(resolveNormalPoint(static_cast<int>(source)));
+                }
+            }
+            else
+            {
+                const VtIntArray& counts = _topology.GetFaceVertexCounts();
+                const VtIntArray& sourceIndices = _topology.GetFaceVertexIndices();
+                const bool reversed = _topology.GetOrientation() == UsdGeomTokens->leftHanded;
+                size_t start = 0;
+                for (size_t face = 0; face < counts.size(); ++face)
+                {
+                    const int count = counts[face];
+                    if (std::binary_search(_topology.GetHoleIndices().begin(), _topology.GetHoleIndices().end(),
+                            static_cast<int>(face)) && count >= 3)
+                    {
+                        // Invalid points on an un-emitted hole face cannot provide normal support.
+                        bool validHolePoints = true;
+                        for (int corner = 0; corner < count; ++corner)
+                        {
+                            const int point =
+                                sourceIndices[start + static_cast<size_t>(corner)];
+                            if (point < 0 ||
+                                static_cast<size_t>(point) >= emittedPoints.size())
+                            {
+                                validHolePoints = false;
+                                break;
+                            }
+                        }
+                        if (validHolePoints)
+                        {
+                            for (int corner = 0; corner < count; ++corner)
+                            {
+                                const int previous = (corner + count - 1) % count;
+                                const int next = (corner + 1) % count;
+                                record.normalCorners.push_back(resolveNormalPoint(
+                                    sourceIndices[start + (reversed ? next : previous)]));
+                                record.normalCorners.push_back(
+                                    resolveNormalPoint(sourceIndices[start + corner]));
+                                record.normalCorners.push_back(resolveNormalPoint(
+                                    sourceIndices[start + (reversed ? previous : next)]));
+                            }
+                        }
+                    }
+                    start += static_cast<size_t>(count);
+                }
+            }
+        }
+        if (!smoothFallback && !hasAuthoredNormals)
+        {
+            // Preserve the polygon/bilinear triangle-local fallback. Authored
+            // normals still retain source correspondence for simulated updates.
+            for (size_t point = 0; point < record.normalIdentities.size(); ++point)
+            {
+                record.normalIdentities[point] = static_cast<uint32_t>(point);
+            }
+            record.normalCorners.clear();
+            for (size_t triangle = 0; triangle < record.indices.size(); triangle += 3)
+            {
+                for (size_t corner = 0; corner < 3; ++corner)
+                {
+                    record.normalCorners.push_back(record.indices[triangle + ((corner + 2) % 3)]);
+                    record.normalCorners.push_back(record.indices[triangle + corner]);
+                    record.normalCorners.push_back(record.indices[triangle + ((corner + 1) % 3)]);
+                }
+            }
+        }
         record.attributes = _attributes;
+        const HdPrimvarSchema ptexFaceOffset =
+            GetTerminalPtexFaceOffsetPrimvar(sceneDelegate, id);
+        HdSilkPtexMissingElementSize missingPtexElementSize =
+            HdSilkPtexMissingElementSize::Reject;
+        if (ptexFaceOffset && !ptexFaceOffset.GetElementSize())
+        {
+            SkelEvaluationScope scope;
+            if (TryGetSkelEvaluationScope(
+                    &sceneStateRenderParam->GetSceneState(), &scope) &&
+                HasMatchingUsdPtexDefaultOne(scope, id, ptexFaceOffset))
+            {
+                missingPtexElementSize =
+                    HdSilkPtexMissingElementSize::KnownDefaultOne;
+            }
+        }
+        if (ptexFaceOffset)
+        {
+            const HdSilkPtexMappingStatus status =
+                BuildPtexTriangleMappings(
+                    _topology,
+                    _subdivision,
+                    _EmittedTriangleIndices(),
+                    record.triangleSubprims,
+                    ptexFaceOffset,
+                    missingPtexElementSize,
+                    &record.ptexMappings);
+            record.ptexMappingStatus = static_cast<uint32_t>(status) + 1u;
+            if (status != HdSilkPtexMappingStatus::Mapped)
+            {
+                TF_DIAGNOSTIC_WARNING(
+                    "hdSilk refused Ptex mapping for mesh '%s': %s",
+                    id.GetText(),
+                    HdSilkPtexMappingStatusName(status));
+            }
+        }
+#ifdef OPENUSD_HDSILK_ENABLE_TEST_HOOKS
+        HdSilkTestObservePtexSync(
+            sceneDelegate,
+            id,
+            missingPtexElementSize == HdSilkPtexMissingElementSize::KnownDefaultOne);
+#endif
 
         // ABI v22 subprim identity. Authored face identity always travels with
         // `triangle_subprims`, including through refinement, because the
@@ -2202,127 +2838,138 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         // generated and its edges are refined edges; neither corresponds to an
         // authored component, and returning the emitted index as authored
         // identity would name a component the stage does not have.
-        record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_FACE;
-        record.subprimUnsupported = OPENUSD_SILK_SUBPRIM_UNSUPPORTED_NONE;
-        if (_subdivision.IsRefined())
+        // A sampled NURBS patch has no authored polygon faces or emitted mesh
+        // points, so none of its generated indices are USD subprim identities.
+        if (generatedNurbsGeometry)
         {
-            record.subprimUnsupported |=
-                OPENUSD_SILK_SUBPRIM_UNSUPPORTED_REFINED_SUBDIVISION;
+            record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_NONE;
+            record.subprimUnsupported =
+                OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
         }
         else
         {
-            const size_t emittedPointCount = record.points.size() / 3;
-            if (emittedPointCount >
-                static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+            record.subprimIdentity = OPENUSD_SILK_SUBPRIM_IDENTITY_FACE;
+            record.subprimUnsupported = OPENUSD_SILK_SUBPRIM_UNSUPPORTED_NONE;
+            if (_subdivision.IsRefined())
             {
-                throw std::overflow_error(
-                    "The hdSilk emitted point count overflows uint32.");
-            }
-
-            // The budget is checked from the sizes the tables WOULD have, before
-            // anything is reserved or copied. Checking after building them would
-            // make an oversized mesh pay the whole allocation the budget exists
-            // to refuse, which is exactly the cost a hostile or merely enormous
-            // stage would impose.
-            const size_t plannedCornerEdgeCount =
-                (!_coarseCornerEdges.empty() &&
-                 _coarseCornerEdges.size() == triangleIndices.size())
-                    ? _coarseCornerEdges.size()
-                    : 0;
-            if (HdSilkSubprimIdentityExceedsBudget(
-                    emittedPointCount,
-                    plannedCornerEdgeCount))
-            {
-                record.RejectSubprimIdentity(
-                    OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET);
+                record.subprimUnsupported |=
+                    OPENUSD_SILK_SUBPRIM_UNSUPPORTED_REFINED_SUBDIVISION;
             }
             else
             {
-                // A corner-derived layout shares vertices only when their
-                // authored point and every attribute agree. An unexpanded record
-                // emits the authored points themselves, so the mapping is the
-                // identity for every point the topology actually references.
-                // A face-varying mesh that duplicates one authored point across
-                // several corners still answers a point pick with the one index
-                // the stage authored.
-                //
-                // An authored point no index references is emitted -- USD lets a
-                // mesh carry stray points -- but it is never rasterized by any
-                // primitive, so it is not a pick target and must not be named as
-                // one. It publishes the sentinel instead, which also keeps
-                // authored_point_count honest: a trailing run of stray points
-                // does not inflate the authored space a consumer is handed.
-                bool pointOriginsResolved = true;
-                if (_attributesRequireExpandedTopology)
+                const size_t emittedPointCount = record.points.size() / 3;
+                if (emittedPointCount >
+                    static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
                 {
-                    const VtArray<uint32_t>& origins = _attributePointIndices.empty()
-                        ? triangleIndices : _attributePointIndices;
-                    if (origins.size() != emittedPointCount)
+                    throw std::overflow_error(
+                        "The hdSilk emitted point count overflows uint32.");
+                }
+
+                // The budget is checked from the sizes the tables WOULD have, before
+                // anything is reserved or copied. Checking after building them would
+                // make an oversized mesh pay the whole allocation the budget exists
+                // to refuse, which is exactly the cost a hostile or merely enormous
+                // stage would impose.
+                const size_t plannedCornerEdgeCount =
+                    (!_coarseCornerEdges.empty() &&
+                     _coarseCornerEdges.size() == triangleIndices.size())
+                        ? _coarseCornerEdges.size()
+                        : 0;
+                if (HdSilkSubprimIdentityExceedsBudget(
+                        emittedPointCount,
+                        plannedCornerEdgeCount))
+                {
+                    record.RejectSubprimIdentity(
+                        OPENUSD_SILK_SUBPRIM_UNSUPPORTED_BUDGET);
+                }
+                else
+                {
+                    // A corner-derived layout shares vertices only when their
+                    // authored point and every attribute agree. An unexpanded record
+                    // emits the authored points themselves, so the mapping is the
+                    // identity for every point the topology actually references.
+                    // A face-varying mesh that duplicates one authored point across
+                    // several corners still answers a point pick with the one index
+                    // the stage authored.
+                    //
+                    // An authored point no index references is emitted -- USD lets a
+                    // mesh carry stray points -- but it is never rasterized by any
+                    // primitive, so it is not a pick target and must not be named as
+                    // one. It publishes the sentinel instead, which also keeps
+                    // authored_point_count honest: a trailing run of stray points
+                    // does not inflate the authored space a consumer is handed.
+                    bool pointOriginsResolved = true;
+                    if (_attributesRequireExpandedTopology)
                     {
-                        pointOriginsResolved = false;
+                        const VtArray<uint32_t>& origins = _attributePointIndices.empty()
+                            ? triangleIndices : _attributePointIndices;
+                        if (origins.size() != emittedPointCount)
+                        {
+                            pointOriginsResolved = false;
+                        }
+                        else
+                        {
+                            record.pointOrigins = origins;
+                        }
                     }
                     else
                     {
-                        record.pointOrigins = origins;
-                    }
-                }
-                else
-                {
-                    record.pointOrigins.reserve(emittedPointCount);
-                    std::vector<bool> referenced(emittedPointCount, false);
-                    for (uint32_t index : triangleIndices)
-                    {
-                        if (index < emittedPointCount)
+                        record.pointOrigins.reserve(emittedPointCount);
+                        std::vector<bool> referenced(emittedPointCount, false);
+                        for (uint32_t index : triangleIndices)
                         {
-                            referenced[index] = true;
+                            if (index < emittedPointCount)
+                            {
+                                referenced[index] = true;
+                            }
+                        }
+                        for (uint32_t point = 0;
+                             point < static_cast<uint32_t>(emittedPointCount);
+                             ++point)
+                        {
+                            record.pointOrigins.push_back(
+                                referenced[point]
+                                    ? point
+                                    : OPENUSD_SILK_SUBPRIM_NONE);
                         }
                     }
-                    for (uint32_t point = 0;
-                         point < static_cast<uint32_t>(emittedPointCount);
-                         ++point)
+
+                    if (pointOriginsResolved)
                     {
-                        record.pointOrigins.push_back(
-                            referenced[point]
-                                ? point
-                                : OPENUSD_SILK_SUBPRIM_NONE);
+                        // The ABI defines authored_point_count as one past the
+                        // largest authored index the table names, not as the size
+                        // of the authored array: a consumer must never be handed an
+                        // authored space larger than the entries it read, and an
+                        // authored point no emitted vertex references is not named
+                        // at all.
+                        record.authoredPointCount =
+                            OneePastLargestNamed(record.pointOrigins);
+                        record.subprimIdentity |=
+                            OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
                     }
-                }
+                    else
+                    {
+                        VtArray<uint32_t>().swap(record.pointOrigins);
+                        record.subprimUnsupported |=
+                            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
+                    }
 
-                if (pointOriginsResolved)
-                {
-                    // The ABI defines authored_point_count as one past the
-                    // largest authored index the table names, not as the size
-                    // of the authored array: a consumer must never be handed an
-                    // authored space larger than the entries it read, and an
-                    // authored point no emitted vertex references is not named
-                    // at all.
-                    record.authoredPointCount =
-                        OneePastLargestNamed(record.pointOrigins);
-                    record.subprimIdentity |=
-                        OPENUSD_SILK_SUBPRIM_IDENTITY_POINT;
-                }
-                else
-                {
-                    VtArray<uint32_t>().swap(record.pointOrigins);
-                    record.subprimUnsupported |=
-                        OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
-                }
-
-                // The corner-edge table indexes the coarse triangulation, whose
-                // corner order the expanded record preserves, so it needs no
-                // remapping for expansion.
-                if (plannedCornerEdgeCount != 0)
-                {
-                    record.cornerEdges = _coarseCornerEdges;
-                    record.authoredEdgeCount =
-                        OneePastLargestNamed(record.cornerEdges);
-                    record.subprimIdentity |=
-                        OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE;
-                }
-                else
-                {
-                    record.subprimUnsupported |=
-                        OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
+                    // The corner-edge table indexes the coarse triangulation, whose
+                    // corner order the expanded record preserves, so it needs no
+                    // remapping for expansion.
+                    if (plannedCornerEdgeCount != 0)
+                    {
+                        record.cornerEdges = _coarseCornerEdges;
+                        record.authoredEdgeCount =
+                            OneePastLargestNamed(record.cornerEdges);
+                        record.subprimIdentity |=
+                            OPENUSD_SILK_SUBPRIM_IDENTITY_EDGE;
+                    }
+                    else
+                    {
+                        record.subprimUnsupported |=
+                            OPENUSD_SILK_SUBPRIM_UNSUPPORTED_GEOMETRY;
+                    }
                 }
             }
         }
@@ -2361,6 +3008,7 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
         const std::string path = record.path;
         HdSilkRenderParam* silkRenderParam =
             static_cast<HdSilkRenderParam*>(renderParam);
+        silkRenderParam->GetSceneState().ShareMeshIndices(&record.pointOrigins);
 
         std::vector<HdSilkMeshRecord> records =
             _BuildInstanceRecords(sceneDelegate, std::move(record));
@@ -2862,7 +3510,8 @@ HdSilkMesh::_BuildInstanceRecords(
     {
         const HdSilkInstanceSample& sample = samples[position];
         if (sample.index > static_cast<int64_t>(
-                std::numeric_limits<int32_t>::max()))
+                std::numeric_limits<int32_t>::max()) ||
+            sample.sourcePickIndex > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
         {
             throw std::overflow_error(
                 "The hdSilk instance index exceeds the 32-bit instance index.");
@@ -2872,6 +3521,7 @@ HdSilkMesh::_BuildInstanceRecords(
         instanceRecord.instanceId = instanceId;
         instanceRecord.instancerPath = instancerId.GetString();
         instanceRecord.instanceIndex = static_cast<int32_t>(sample.index);
+        instanceRecord.sourcePickIndex = static_cast<int32_t>(sample.sourcePickIndex);
         // The complete ordered chain rides beside the composite index. It is
         // the only description that decodes back to a scene instance once more
         // than one instancing level is involved.

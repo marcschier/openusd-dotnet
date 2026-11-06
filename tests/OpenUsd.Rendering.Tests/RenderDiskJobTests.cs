@@ -9,6 +9,269 @@ namespace OpenUsd.Rendering.Tests;
 public sealed class RenderDiskJobTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task FrameProgressFollowsClosedEncodedFilesButNeverClaimsPublication(bool cancelAfterFirst)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-frame-progress-").FullName;
+        string destination = Path.Combine(root, "sequence");
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithViewport(new ViewportDimensions(1, 1));
+        using var cancellation = new CancellationTokenSource();
+        var counts = new List<int>();
+        var pixels = new List<string>();
+        var source = new CallbackSource(_ => new RenderJobImage(
+            1, 1, new byte[] { 1, 2, 3, 255 }, Rgba8RowOrder.TopDown));
+        var request = new RenderDiskJobRequest(destination, [state, state, state])
+        {
+            FrameEncoded = (completed, total) =>
+            {
+                if (Directory.Exists(destination) || total != 3)
+                {
+                    throw new InvalidOperationException("Progress claimed an incorrect extent or published job.");
+                }
+                string staging = Directory.GetDirectories(root).Single();
+                string file = Path.Combine(staging, $"frame-{completed - 1:D6}.png");
+                using var input = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
+                byte[] encoded = new byte[checked((int)input.Length)];
+                input.ReadExactly(encoded);
+                pixels.Add(Convert.ToHexString(PngRgba8Reader.Decode(encoded).Pixels));
+                counts.Add(completed);
+                if (cancelAfterFirst)
+                {
+                    cancellation.Cancel();
+                }
+            }
+        };
+        try
+        {
+            if (cancelAfterFirst)
+            {
+                await Assert.That(() => RenderDiskJob.Execute(request, source, cancellation.Token))
+                    .Throws<OperationCanceledException>();
+                await Assert.That(counts.SequenceEqual([1])).IsTrue();
+                await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+            }
+            else
+            {
+                RenderDiskJobResult result = RenderDiskJob.Execute(request, source);
+                await Assert.That(counts.SequenceEqual([1, 2, 3])).IsTrue();
+                await Assert.That(result.Frames.Count).IsEqualTo(3);
+                await Assert.That(File.Exists(Path.Combine(destination, "manifest.json"))).IsTrue();
+            }
+            await Assert.That(pixels.All(pixel => pixel == "010203FF")).IsTrue();
+            await Assert.That(source.Calls).IsEqualTo(cancelAfterFirst ? 1 : 3);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments(-1, 0)]
+    [Arguments(-1, 2)]
+    [Arguments(999, 0)]
+    [Arguments(999, 2)]
+    public async Task UnknownDiagnosticSeverityRefusesEntireDiskJobThenRetriesWithExactManifestAndPixels(
+        int severity, int invalidFrame)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-job-severity-").FullName;
+        string sentinel = Path.Combine(root, "original.txt");
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithViewport(new ViewportDimensions(1, 1));
+        StageRenderState[] frames = Enumerable.Range(0, 3)
+            .Select(index => state.WithTime(new StageTime(index))).ToArray();
+        bool refuse = true;
+        var source = new CallbackSource(frame => new RenderJobImage(
+            1, 1, new byte[] { 1, 2, (byte)frame.Time.TimeCode, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Diagnostics = new RenderDiagnosticsState(
+            [
+                new RenderDiagnostic(refuse && frame.Time.TimeCode == invalidFrame
+                    ? (RenderDiagnosticSeverity)severity : (RenderDiagnosticSeverity)frame.Time.TimeCode,
+                    $"frame-{frame.Time.TimeCode}", "Exact renderer detail.")
+            ])
+        });
+        try
+        {
+            await File.WriteAllTextAsync(sentinel, "keep");
+            var request = new RenderDiskJobRequest(Path.Combine(root, "sequence"), frames);
+            await Assert.That(() => RenderDiskJob.Execute(request, source)).Throws<InvalidDataException>();
+            await Assert.That(source.Calls).IsEqualTo(invalidFrame + 1);
+            await Assert.That(Directory.GetFileSystemEntries(root).Single()).IsEqualTo(sentinel);
+            await Assert.That(await File.ReadAllTextAsync(sentinel)).IsEqualTo("keep");
+            refuse = false;
+            RenderDiskJobResult result = RenderDiskJob.Execute(request, source);
+            await Assert.That(source.Calls).IsEqualTo(invalidFrame + 4);
+            await Assert.That(result.Frames.Count).IsEqualTo(3);
+            await Assert.That(result.Diagnostics.Count).IsEqualTo(3);
+            using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllBytesAsync(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement entries = manifest.RootElement.GetProperty("diagnostics");
+            await Assert.That(entries.GetArrayLength()).IsEqualTo(3);
+            for (int index = 0; index < 3; index++)
+            {
+                await Assert.That(result.Diagnostics[index].Severity).IsEqualTo((RenderDiagnosticSeverity)index);
+                await Assert.That(entries[index].GetProperty("severity").GetString())
+                    .IsEqualTo(((RenderDiagnosticSeverity)index).ToString());
+                await Assert.That(entries[index].GetProperty("code").GetString()).IsEqualTo($"frame-{index}");
+                await Assert.That(entries[index].GetProperty("message").GetString())
+                    .IsEqualTo("Exact renderer detail.");
+                await Assert.That(result.Frames[index].State).IsSameReferenceAs(frames[index]);
+                PngRgba8Image image = PngRgba8Reader.Decode(await File.ReadAllBytesAsync(
+                    Path.Combine(result.OutputDirectory, result.Frames[index].FileName)));
+                await Assert.That(Convert.ToHexString(image.Pixels)).IsEqualTo($"0102{index:X2}FF");
+            }
+            await Assert.That(Directory.GetDirectories(root).Single()).IsEqualTo(result.OutputDirectory);
+            await Assert.That(await File.ReadAllTextAsync(sentinel)).IsEqualTo("keep");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task SimulationTimeMismatchCannotPublishAJob()
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-simulation-time-").FullName;
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithTime(new StageTime(3)).WithViewport(new ViewportDimensions(1, 1));
+        var source = new CallbackSource(_ => new RenderJobImage(
+            1, 1, new byte[] { 10, 20, 30, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Simulation = new RenderSimulationFrameIdentity(
+                Guid.NewGuid(), "scenario", 1, 2, 1, 0.1, 2, 0.1, 1, 0, 0)
+        });
+        try
+        {
+            await Assert.That(() => RenderDiskJob.Execute(
+                new RenderDiskJobRequest(Path.Combine(root, "sequence"), [state]), source))
+                .Throws<InvalidDataException>();
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ReportedBackendIsRecordedPerFrameAndAnUnreportedOneIsOmitted()
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-backend-job-").FullName;
+        StageRenderState first = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithViewport(new ViewportDimensions(1, 1));
+        StageRenderState second = first.WithTime(new StageTime(1));
+        var storm = new RenderBackendIdentity(RenderBackendKind.Storm, "Storm / OpenGL");
+        var source = new CallbackSource(state => new RenderJobImage(
+            1, 1, new byte[] { 10, 20, 30, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Backend = state.Time.TimeCode == 0 ? storm : null
+        });
+        try
+        {
+            RenderDiskJobResult result = RenderDiskJob.Execute(
+                new RenderDiskJobRequest(Path.Combine(root, "sequence"), [first, second]), source);
+            await Assert.That(result.Frames[0].Backend).IsEqualTo(storm);
+            await Assert.That(result.Frames[1].Backend).IsNull();
+            using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement frames = manifest.RootElement.GetProperty("frames");
+            JsonElement backend = frames[0].GetProperty("backend");
+            await Assert.That(backend.GetProperty("kind").GetString()).IsEqualTo("Storm");
+            await Assert.That(backend.GetProperty("name").GetString()).IsEqualTo("Storm / OpenGL");
+            await Assert.That(frames[1].TryGetProperty("backend", out _)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments("kind")]
+    [Arguments("control")]
+    [Arguments("length")]
+    public async Task InvalidReportedBackendCannotPublishAJob(string defect)
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-backend-invalid-").FullName;
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithViewport(new ViewportDimensions(1, 1));
+        RenderBackendIdentity backend = defect switch
+        {
+            "kind" => new((RenderBackendKind)99, "Unknown"),
+            "control" => new(RenderBackendKind.Storm, "Storm\nOpenGL"),
+            _ => new(RenderBackendKind.Storm, new string('x', 257)),
+        };
+        var source = new CallbackSource(_ => new RenderJobImage(
+            1, 1, new byte[] { 10, 20, 30, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Backend = backend
+        });
+        try
+        {
+            await Assert.That(() => RenderDiskJob.Execute(
+                new RenderDiskJobRequest(Path.Combine(root, "sequence"), [state]), source))
+                .Throws<InvalidDataException>().Because(defect);
+            await Assert.That(Directory.GetFileSystemEntries(root)).IsEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+    [Test]
+    public async Task SimulationCapturePublishesExactProvenanceInTheSameAtomicJob()
+    {
+        string root = Directory.CreateTempSubdirectory("openusd-simulation-job-").FullName;
+        var epoch = new Guid("09d3d50d-7698-49f9-831c-1906e224503b");
+        var identity = new RenderSimulationFrameIdentity(
+            epoch, "drop-prop-v1", 7, 12, 3, 0.125, 3, 1.0 / 24, 5, 2, 1, "review-123");
+        StageRenderState state = StageRenderState.Create(new StageIdentity("source.usda"))
+            .WithTime(new StageTime(3)).WithViewport(new ViewportDimensions(1, 1));
+        var source = new CallbackSource(_ => new RenderJobImage(
+            1, 1, new byte[] { 10, 20, 30, 255 }, Rgba8RowOrder.TopDown)
+        {
+            Simulation = identity
+        });
+        try
+        {
+            RenderDiskJobResult result = RenderDiskJob.Execute(
+                new RenderDiskJobRequest(Path.Combine(root, "sequence"), [state]), source);
+            using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(result.OutputDirectory, "manifest.json")));
+            JsonElement frame = manifest.RootElement.GetProperty("frames")[0];
+            await Assert.That(frame.GetProperty("format").GetString()).IsEqualTo("png-rgba8");
+            byte[] png = await File.ReadAllBytesAsync(Path.Combine(
+                result.OutputDirectory, frame.GetProperty("file").GetString()!));
+            await Assert.That(Convert.ToHexString(png.AsSpan(0, 8))).IsEqualTo("89504E470D0A1A0A");
+            await Assert.That(frame.GetProperty("bytes").GetInt64()).IsEqualTo(png.LongLength);
+            await Assert.That(frame.GetProperty("sha256").GetString()).IsEqualTo(
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(png)).ToLowerInvariant());
+            JsonElement simulation = frame.GetProperty("simulation");
+            await Assert.That(simulation.GetProperty("epoch").GetGuid()).IsEqualTo(epoch);
+            await Assert.That(simulation.GetProperty("scenarioIdentity").GetString()).IsEqualTo("drop-prop-v1");
+            await Assert.That(simulation.GetProperty("sourceRevision").GetUInt64()).IsEqualTo(7ul);
+            await Assert.That(simulation.GetProperty("publicationRevision").GetUInt64()).IsEqualTo(12ul);
+            await Assert.That(simulation.GetProperty("stepIndex").GetUInt64()).IsEqualTo(3ul);
+            await Assert.That(simulation.GetProperty("simulationSeconds").GetDouble()).IsEqualTo(0.125);
+            await Assert.That(simulation.GetProperty("timeCode").GetDouble()).IsEqualTo(3);
+            await Assert.That(simulation.GetProperty("fixedStepSeconds").GetDouble()).IsEqualTo(1.0 / 24);
+            await Assert.That(simulation.GetProperty("bindingRevision").GetUInt64()).IsEqualTo(5ul);
+            await Assert.That(simulation.GetProperty("bodyCount").GetInt32()).IsEqualTo(2);
+            await Assert.That(simulation.GetProperty("deformationCount").GetInt32()).IsEqualTo(1);
+            await Assert.That(simulation.GetProperty("reviewIdentity").GetString()).IsEqualTo("review-123");
+            await Assert.That(Directory.GetDirectories(root).Length).IsEqualTo(1);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
     [Arguments("missing")]
     [Arguments("unexpected")]
     [Arguments("dimensions")]

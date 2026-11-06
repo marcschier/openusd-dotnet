@@ -157,6 +157,28 @@ public sealed class UsdStage : IDisposable, IUsdStageBound
         set => Native.TimeCodesPerSecond = value;
     }
 
+    /// <summary>Gets the composed UsdGeom <c>metersPerUnit</c> and <c>upAxis</c> stage metadata.</summary>
+    /// <returns>The linear units, including whether each value is authored or a UsdGeom fallback.</returns>
+    /// <exception cref="NotSupportedException">
+    /// The loaded native runtime predates data ABI 26 stage linear units.
+    /// </exception>
+    public UsdStageLinearUnits GetLinearUnits()
+    {
+        OpenUsd.Interop.OpenUsdNativeStageLinearUnits units = Native.GetLinearUnits();
+        UsdStageUpAxis upAxis = units.UpAxis switch
+        {
+            OpenUsd.Interop.OpenUsdNativeStageLinearUnits.UpAxisY => UsdStageUpAxis.Y,
+            OpenUsd.Interop.OpenUsdNativeStageLinearUnits.UpAxisZ => UsdStageUpAxis.Z,
+            _ => throw new NotSupportedException(
+                $"The native runtime reported an unsupported up axis code {units.UpAxis}."),
+        };
+        return new UsdStageLinearUnits(
+            units.MetersPerUnit,
+            units.MetersPerUnitAuthored != 0,
+            upAxis,
+            units.UpAxisAuthored != 0);
+    }
+
     /// <summary>Gets stage world bounds at default time for the selected purposes.</summary>
     /// <remarks>An empty stage returns <see cref="UsdBounds3d.Empty"/>.</remarks>
     public UsdBounds3d GetWorldBounds(

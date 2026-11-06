@@ -26,8 +26,14 @@ internal static class ViewerStartupOptions
 
     internal static string Renderer { get; private set; } = "Auto";
 
+    internal static bool FullScenePhysics { get; private set; }
+
     internal static SilkPreparationLimits? PreparationLimits { get; private set; }
     internal static SilkGpuBufferBudget? GpuBufferBudget { get; private set; }
+    internal static SilkTexturePreparationBudgets? TexturePreparationBudgets { get; private set; }
+    internal static SilkTextureResidencyOptions TextureResidencyOptions { get; private set; } =
+        SilkTextureResidencyOptions.Default;
+    internal static bool D3D12GpuUploadHeaps { get; private set; }
 
     internal static bool LiveEditSmoke { get; private set; }
 
@@ -240,7 +246,8 @@ internal static class ViewerStartupOptions
             $"OPENUSD_FORCE_{kind.ToString().ToUpperInvariant()}_FAILURE"));
 
     internal static bool RequiresCompositionPlatform =>
-        PreparationLimits is not null || GpuBufferBudget is not null ||
+        PreparationLimits is not null || GpuBufferBudget is not null || TexturePreparationBudgets is not null ||
+        D3D12GpuUploadHeaps ||
         RequestedBackend is RenderBackendKind.D3D12 or
             RenderBackendKind.Vulkan or RenderBackendKind.Metal ||
         SmokeSwitchBackend is RenderBackendKind.D3D12 or
@@ -252,16 +259,44 @@ internal static class ViewerStartupOptions
         IsBackendForcedUnavailable(RenderBackendKind.Storm) ||
         IsBackendForcedInitializationFailure(RenderBackendKind.Storm);
 
-    internal static void Initialize(string[] args) => Initialize(args, null, null);
+    internal static void Initialize(string[] args) => Initialize(args, null, null, null, null);
 
     private static void Initialize(
-        string[] args, SilkPreparationLimits? preparationLimits, SilkGpuBufferBudget? gpuBufferBudget)
+        string[] args, SilkPreparationLimits? preparationLimits, SilkGpuBufferBudget? gpuBufferBudget,
+        SilkTexturePreparationBudgets? texturePreparationBudgets, bool? streamMaterialTextures,
+        bool? gpuUploadHeaps = null)
     {
         PreparationLimits = preparationLimits ?? SilkPreparationLimits.FromConfiguration(
             Environment.GetEnvironmentVariable("OPENUSD_SILK_MESH_RESERVATION_BYTES"),
-            Environment.GetEnvironmentVariable("OPENUSD_SILK_MAX_PAGE_BYTES"));
+            Environment.GetEnvironmentVariable("OPENUSD_SILK_MAX_PAGE_BYTES"),
+            SilkCommandStorageLimits.FromConfiguration(
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_STORAGE_LIVE_BYTES"),
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_STORAGE_UPDATE_BYTES"),
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_STORAGE_COMMAND_BYTES"),
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_STORAGE_TRANSFER_BYTES")));
         GpuBufferBudget = gpuBufferBudget ?? SilkGpuBufferBudget.FromConfiguration(
             Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_BUFFER_BYTES"));
+        TexturePreparationBudgets = texturePreparationBudgets ?? SilkTexturePreparationBudgets.FromConfiguration(
+            Environment.GetEnvironmentVariable("OPENUSD_SILK_CPU_TEXTURE_BYTES"),
+            Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_TEXTURE_BYTES"),
+            Environment.GetEnvironmentVariable("OPENUSD_SILK_GPU_STAGING_BYTES"));
+        TextureResidencyOptions = streamMaterialTextures.HasValue
+            ? new(SilkTextureResidencyOptions.DefaultMaxDecodedCpuBytes,
+                SilkTextureResidencyOptions.DefaultMaxGpuBytes, streamMaterialTextures.Value)
+            : SilkTextureResidencyOptions.FromConfiguration(
+                Environment.GetEnvironmentVariable("OPENUSD_SILK_STREAM_MATERIAL_TEXTURES")) ??
+                SilkTextureResidencyOptions.Default;
+        D3D12GpuUploadHeaps = gpuUploadHeaps ??
+            ReadGpuUploadHeaps(Environment.GetEnvironmentVariable("OPENUSD_D3D12_GPU_UPLOAD_HEAPS"));
+        if (D3D12GpuUploadHeaps && GpuBufferBudget is null)
+        {
+            throw new ArgumentException("GPU-upload heaps require an explicit GPU buffer budget.");
+        }
+        if (TextureResidencyOptions.StreamMaterialTextures && GpuBufferBudget is null)
+        {
+            throw new ArgumentException(
+                "Material streaming requires OPENUSD_SILK_GPU_BUFFER_BYTES or an embedding GPU buffer budget.");
+        }
         PluginPath = Environment.GetEnvironmentVariable("OPENUSD_PLUGIN_PATH");
         StagePath = Environment.GetEnvironmentVariable("OPENUSD_STAGE_PATH");
         StatusFile = Environment.GetEnvironmentVariable("OPENUSD_STATUS_FILE");
@@ -289,6 +324,7 @@ internal static class ViewerStartupOptions
             ? Environment.GetEnvironmentVariable("OPENUSD_VIEWER_STAGE_CAMERA_PATH")
             : null;
         CommandLineStageCameraPath = null;
+        FullScenePhysics = false;
         PickSmokeEvidencePath =
             Environment.GetEnvironmentVariable("OPENUSD_VIEWER_PICK_SMOKE_PATH");
         PrimPickedAsync = PickSmokeEnabled
@@ -339,6 +375,10 @@ internal static class ViewerStartupOptions
             else if (args[i] == "--renderer" && i + 1 < args.Length)
             {
                 Renderer = NormalizeRenderer(args[++i]);
+            }
+            else if (args[i] == "--full-scene-physics")
+            {
+                FullScenePhysics = true;
             }
             else if (args[i] == "--camera" && i + 1 < args.Length)
             {
@@ -434,7 +474,8 @@ internal static class ViewerStartupOptions
     internal static void Initialize(ViewerHostOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        Initialize([], options.PreparationLimits, options.GpuBufferBudget);
+        Initialize([], options.PreparationLimits, options.GpuBufferBudget, options.TexturePreparationBudgets,
+            options.StreamMaterialTextures, options.D3D12GpuUploadHeaps);
         if (!string.IsNullOrWhiteSpace(options.StagePath))
         {
             StagePath = Path.GetFullPath(options.StagePath);
@@ -448,6 +489,7 @@ internal static class ViewerStartupOptions
             Renderer = NormalizeRenderer(options.Renderer);
         }
         HostTitle = options.Title;
+        FullScenePhysics = options.FullScenePhysics;
         HostShutdownToken = options.ShutdownToken;
         HostStageCameraPath = NormalizeStageCameraPath(options.StageCameraPath);
         StageReadyAsync = options.StageReadyAsync;
@@ -610,6 +652,10 @@ internal static class ViewerStartupOptions
             $"Unsupported renderer '{value}'. Expected Auto, Storm, D3D12, Vulkan, or Metal.",
             nameof(value));
     }
+
+    private static bool ReadGpuUploadHeaps(string? value) =>
+        value is null ? false : bool.TryParse(value, out bool enabled) ? enabled :
+        throw new ArgumentException("OPENUSD_D3D12_GPU_UPLOAD_HEAPS must be true or false.");
 
     private static bool IsEnabled(string? value) =>
         string.Equals(value, "1", StringComparison.Ordinal) ||

@@ -14,6 +14,7 @@ internal static class ViewerWindowsFiles
     private const uint GenericRead = 0x80000000;
     private const uint GenericWrite = 0x40000000;
     private const uint DeleteAccess = 0x00010000;
+    private const uint ShareDelete = 0x00000004;
     private const uint ReadAttributes = 0x80;
     private const uint OpenReparsePoint = 0x00200000;
     private const uint Overlapped = 0x40000000;
@@ -57,11 +58,61 @@ internal static class ViewerWindowsFiles
         }
     }
 
+    internal static SafeFileHandle OpenDirectoryForPublication(string path)
+    {
+        SafeFileHandle handle = Open(path, 2 | ReadAttributes, 1 | 2, 3, BackupSemantics | OpenReparsePoint);
+        try
+        {
+            CheckKind(handle, directory: true);
+            RequireCanonicalPath(handle, path);
+            return handle;
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
     internal static FileStream OpenRead(string path, string? expectedPath = null)
         => OpenReadCore(path, expectedPath, deleteAccess: false);
 
     internal static FileStream OpenReadForDelete(string path, string expectedPath)
         => OpenReadCore(path, expectedPath, deleteAccess: true);
+
+    internal static FileStream OpenReadForReplacement(string path, string expectedPath)
+    {
+        SafeFileHandle handle = Open(
+            path, GenericRead, 1 | ShareDelete, 3, OpenReparsePoint | Overlapped);
+        try
+        {
+            CheckKind(handle, directory: false);
+            RequireCanonicalPath(handle, expectedPath);
+            return new FileStream(handle, FileAccess.Read, 64 * 1024, isAsync: true);
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
+    internal static FileStream OpenForReplacementOperation(string path, string expectedPath)
+    {
+        SafeFileHandle handle = Open(
+            path, GenericRead | DeleteAccess, 1 | 2 | ShareDelete, 3, OpenReparsePoint | Overlapped);
+        try
+        {
+            CheckKind(handle, directory: false);
+            RequireCanonicalPath(handle, expectedPath);
+            return new FileStream(handle, FileAccess.Read, 64 * 1024, isAsync: true);
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
 
     private static FileStream OpenReadCore(string path, string? expectedPath, bool deleteAccess)
     {
@@ -147,6 +198,82 @@ internal static class ViewerWindowsFiles
         }
     }
 
+    internal static void RenameReplacingOpenTarget(
+        string sourcePath,
+        string expectedSourcePath,
+        ViewerPhysicalFileIdentity expectedSourceIdentity,
+        SafeFileHandle parent,
+        string name)
+    {
+        ValidateRenameName(name);
+        using FileStream source = OpenForReplacementOperation(sourcePath, expectedSourcePath);
+        if (GetIdentity(source.SafeFileHandle) != expectedSourceIdentity)
+        {
+            throw new IOException("The publication source changed before its atomic rename.");
+        }
+        bool retained = false;
+        try
+        {
+            parent.DangerousAddRef(ref retained);
+            string destination = Path.Combine(GetPhysicalDirectory(parent), name);
+            if (destination.Length >= MaximumRenameCharacters)
+            {
+                throw new NotSupportedException("The physical publication path exceeds its safety bound.");
+            }
+            var info = new RenameInfo
+            {
+                Replace = 1 | 2,
+                NameBytes = checked((uint)destination.Length * 2)
+            };
+            for (int index = 0; index < destination.Length; index++)
+            {
+                info.Name[index] = destination[index];
+            }
+            if (!RenameFile(source.SafeFileHandle, 22, ref info, (uint)Marshal.SizeOf<RenameInfo>()))
+            {
+                throw Error("The source layer could not be atomically published.");
+            }
+        }
+        finally
+        {
+            if (retained)
+            {
+                parent.DangerousRelease();
+            }
+        }
+    }
+
+    internal static void DeleteOwnedPublicationFile(
+        string path, string expectedPath, ViewerPhysicalFileIdentity expectedIdentity)
+    {
+        FileStream file;
+        try
+        {
+            file = OpenForReplacementOperation(path, expectedPath);
+        }
+        catch (FileNotFoundException)
+        {
+            return;
+        }
+        using (file)
+        {
+            if (GetIdentity(file.SafeFileHandle) != expectedIdentity)
+            {
+                throw new IOException(
+                    "The owned publication path was replaced; the replacement was left untouched.");
+            }
+            DeleteOwnedStaging(file.SafeFileHandle);
+        }
+    }
+
+    internal static void CreateHardLink(string linkPath, string existingPath)
+    {
+        if (!CreateHardLinkW(linkPath, existingPath, 0))
+        {
+            throw Error("The source-layer rollback link could not be created.");
+        }
+    }
+
     internal static void DeleteOwnedStaging(SafeFileHandle handle)
     {
         byte delete = 1;
@@ -158,7 +285,15 @@ internal static class ViewerWindowsFiles
 
     private static SafeFileHandle Open(string path, uint access, uint share, uint creation, uint flags)
     {
-        SafeFileHandle handle = CreateFileW(path, access, share, 0, creation, flags, 0);
+        string nativePath = path;
+        if (path.Length >= 260 && !path.StartsWith(@"\\?\", StringComparison.Ordinal))
+        {
+            string fullPath = NormalizePath(path);
+            nativePath = fullPath.StartsWith(@"\\", StringComparison.Ordinal)
+                ? @"\\?\UNC\" + fullPath[2..]
+                : @"\\?\" + fullPath;
+        }
+        SafeFileHandle handle = CreateFileW(nativePath, access, share, 0, creation, flags, 0);
         if (!handle.IsInvalid)
         {
             return handle;
@@ -191,6 +326,14 @@ internal static class ViewerWindowsFiles
         {
             throw new IOException(
                 directory ? "A path ancestor is not a directory." : "The destination is not a file.");
+        }
+    }
+
+    private static void ValidateRenameName(string name)
+    {
+        if (name.Length is <= 0 or > MaximumLeafCharacters || name.IndexOfAny(['\\', '/', ':', '\0']) >= 0)
+        {
+            throw new ArgumentException("The publication target must have a regular bounded file name.", nameof(name));
         }
     }
 
@@ -286,4 +429,8 @@ internal static class ViewerWindowsFiles
     [DllImport("kernel32.dll", EntryPoint = "SetFileInformationByHandle", ExactSpelling = true, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetDisposition(SafeFileHandle handle, int kind, ref byte delete, uint size);
+
+    [DllImport("kernel32.dll", ExactSpelling = true, CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateHardLinkW(string fileName, string existingFileName, nint securityAttributes);
 }

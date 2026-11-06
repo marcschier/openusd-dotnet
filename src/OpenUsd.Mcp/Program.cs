@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OpenUsd.Mcp;
 
-HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+HostApplicationBuilder builder = McpHostConfiguration.CreateHostBuilder(args);
 McpHostConfiguration.ConfigureLogging(builder.Logging);
 OpenUsdMcpApplicationOptions options = McpHostConfiguration.LoadOptions();
 

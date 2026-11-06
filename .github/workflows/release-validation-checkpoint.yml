@@ -1,0 +1,1861 @@
+name: release validation checkpoint
+
+on:
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - '.github/workflows/release-validation-checkpoint.yml'
+      - 'Directory.Packages.props'
+      - 'eng/assert-volume-camera-evidence.ps1'
+      - 'eng/assert-viewer-compiler-redistribution.ps1'
+      - 'eng/diagnostics/metal-volume-math.metal'
+      - 'eng/diagnostics/metal-volume-math.swift'
+      - 'eng/managed-workflow-reports.ps1'
+      - 'eng/mesa-lavapipe-test-runtime.lock.json'
+      - 'eng/metal-volume-repro-report.ps1'
+      - 'eng/primitive-id-transport-report.ps1'
+      - 'eng/publish-viewer-bundle.ps1'
+      - 'eng/run-windows-lavapipe-primitive-probe.ps1'
+      - 'eng/select_native_diagnostic.py'
+      - 'eng/silk-cubic-shadow-report.ps1'
+      - 'eng/test-metal-volume-repro-report.ps1'
+      - 'eng/test-primitive-id-transport-report.ps1'
+      - 'eng/test-silk-cubic-shadow-report.ps1'
+      - 'eng/test-windows-lavapipe-primitive-probe.ps1'
+      - 'eng/test-viewer-compiler-redistribution.ps1'
+      - 'eng/verify-nuget-promotion.py'
+      - 'eng/verify-spirv-cross-provenance.py'
+      - 'eng/shaders/**'
+      - 'eng/tests/test_release_validation_checkpoint.py'
+      - 'eng/tests/test_select_native_diagnostic.py'
+      - 'eng/tests/test_verify_nuget_promotion.py'
+      - 'eng/tests/test_verify_spirv_cross_provenance.py'
+      - 'native/hdSilk/src/mesh.cpp'
+      - 'native/hdSilk/src/sceneState.cpp'
+      - 'native/hdSilk/tests/CMakeLists.txt'
+      - 'native/hdSilk/tests/geometry_sync_test_hook.cpp'
+      - 'native/hdSilk/tests/hdsilk_direct_lights_probe.cpp'
+      - 'native/hdSilk/tests/hdsilk_mesh_preparation_probe.cpp'
+      - 'native/hdSilk/tests/hdsilk_direct_lights_session_probe.cpp'
+      - 'native/hdSilk/tests/hdsilk_direct_lights_test_decode.h'
+      - 'native/hdSilk/include/openusd_hdsilk.h'
+      - 'native/openusd_dotnet/include/openusd_dotnet.h'
+      - 'native/include/openusd_render_camera.h'
+      - 'src/OpenUsd.Rendering.Silk/SilkGraphicsPipeline.cs'
+      - 'src/OpenUsd.Rendering.Silk/SilkMeshRenderer.cs'
+      - 'src/OpenUsd.Rendering.Silk/*Volume*.cs'
+      - 'tests/OpenUsd.Native.Tests/WorkflowStructureContractTests.cs'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdProbeVulkanDevice.cs'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraConformanceTests.cs'
+      - 'tests/OpenUsd.Rendering.ConformanceTests/VolumeCameraJointPassConformanceTests.cs'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: release-validation-checkpoint-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+
+jobs:
+  shadow-report-contract:
+    name: Shadow report contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Validate shadow and volume evidence guards
+        shell: pwsh
+        env:
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-report-contract
+        run: ./eng/test-silk-cubic-shadow-report.ps1
+
+  native-session-probe-syntax:
+    name: Native direct-light session probe syntax
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Compile the session probe without linking
+        shell: bash
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -fsyntax-only \
+            -Inative/hdSilk/tests \
+            -Inative/hdSilk/include \
+            -Inative/openusd_dotnet/include \
+            -Inative/include \
+            native/hdSilk/tests/hdsilk_direct_lights_session_probe.cpp
+
+  linux-shadow-volume-repro:
+    name: Linux shadow and volume native diagnostic
+    needs: shader-receipts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify native diagnostic selection
+        run: python3 -m unittest eng.tests.test_select_native_diagnostic
+      - name: Select a source-compatible Linux native artifact
+        id: diagnostic
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          python3 ./eng/select_native_diagnostic.py \
+            --repository "$GITHUB_REPOSITORY" --branch "$EXPECTED_BRANCH" --head "$EXPECTED_HEAD"
+      - name: Record diagnostic archive provenance
+        if: steps.diagnostic.outputs.compatible == 'true'
+        shell: bash
+        env:
+          SOURCE_HEAD: ${{ github.event.pull_request.head.sha }}
+          NATIVE_RUN: ${{ steps.diagnostic.outputs.native_run_id }}
+          NATIVE_SOURCE: ${{ steps.diagnostic.outputs.native_source }}
+          NATIVE_CHECKOUT: ${{ steps.diagnostic.outputs.native_checkout }}
+          NATIVE_TREE: ${{ steps.diagnostic.outputs.native_tree }}
+          NATIVE_STATUS: ${{ steps.diagnostic.outputs.native_status }}
+          NATIVE_CONCLUSION: ${{ steps.diagnostic.outputs.native_conclusion }}
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          if [[ ! "$SHADER_RECEIPT_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::The verified shader receipt artifact ID is missing or invalid."
+            exit 1
+          fi
+          mkdir -p artifacts/shadow-volume-repro
+          printf 'diagnosticHead=%s\nnativeRunId=%s\nnativeSource=%s\nnativeCheckout=%s\nnativeTree=%s\nnativeStatus=%s\nnativeConclusion=%s\nshaderReceiptArtifactId=%s\n' \
+            "$SOURCE_HEAD" "$NATIVE_RUN" "$NATIVE_SOURCE" "$NATIVE_CHECKOUT" "$NATIVE_TREE" "$NATIVE_STATUS" "$NATIVE_CONCLUSION" "$SHADER_RECEIPT_ARTIFACT_ID" \
+            > artifacts/shadow-volume-repro/native-source.txt
+      - name: Download source-compatible native artifact for diagnosis
+        if: steps.diagnostic.outputs.compatible == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.diagnostic.outputs.native_run_id }}
+          name: openusd-native-linux-x64
+          path: artifacts/diagnostic-native/linux-x64
+      - name: Prepare and stage the native runtime
+        if: steps.diagnostic.outputs.compatible == 'true'
+        id: native
+        shell: pwsh
+        run: |
+          ./eng/prepare-workflow-native-input.ps1 `
+            -Rid linux-x64 -Source archive -PipelineRoot artifacts/diagnostic-native/linux-x64
+          $runtime = Join-Path $env:GITHUB_WORKSPACE 'artifacts/shadow-volume-repro/runtime'
+          $bin = Join-Path $runtime 'bin'
+          $lib = Join-Path $runtime 'lib'
+          $plugins = Join-Path $runtime 'plugin/usd'
+          New-Item -ItemType Directory -Force -Path $bin, $lib, $plugins | Out-Null
+          foreach ($layout in @(
+            @{ Source = 'native/install/linux-x64/bin'; Target = $bin },
+            @{ Source = 'native/install/linux-x64/lib'; Target = $lib },
+            @{ Source = 'native/install/shim/linux-x64/bin'; Target = $bin },
+            @{ Source = 'native/install/shim/linux-x64/lib'; Target = $lib })) {
+            if (Test-Path -LiteralPath $layout.Source -PathType Container) {
+              Get-ChildItem -LiteralPath $layout.Source -File |
+                Where-Object { $_.Name -match '\.dll$|\.dylib$|\.so($|\.)' } |
+                Copy-Item -Destination $layout.Target -Force
+            }
+          }
+          foreach ($source in @(
+            'native/install/linux-x64/lib/usd',
+            'native/install/linux-x64/plugin/usd',
+            'native/install/shim/linux-x64/plugin/usd')) {
+            if (Test-Path -LiteralPath $source -PathType Container) {
+              Copy-Item (Join-Path $source '*') $plugins -Recurse -Force
+            }
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $plugins 'plugInfo.json') -PathType Leaf)) {
+            throw 'The diagnostic runtime is missing the OpenUSD plugin root.'
+          }
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: steps.diagnostic.outputs.compatible == 'true'
+        with:
+          dotnet-version: 10.0.403
+      - name: Download verified shader receipts
+        if: steps.diagnostic.outputs.compatible == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          path: .
+      - name: Verify generated shader provenance
+        if: steps.diagnostic.outputs.compatible == 'true'
+        run: |
+          python3 eng/shaders/scripts/checked_payload.py \
+            --checked-root eng/shaders/checked \
+            --lock eng/shaders/toolchain.lock.json \
+            --manifest eng/shaders/shader-manifest.json
+      - name: Build current conformance tests
+        if: steps.diagnostic.outputs.compatible == 'true'
+        id: build
+        shell: pwsh
+        run: |
+          dotnet build tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+            -c Release -f net10.0 -p:OpenUsdRequireMetalShaderLibrary=false -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install software Vulkan
+        if: steps.diagnostic.outputs.compatible == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libopengl0
+      - name: Locate lavapipe
+        if: steps.diagnostic.outputs.compatible == 'true'
+        id: vulkan
+        shell: bash
+        run: |
+          set -euo pipefail
+          icd="$(find /usr/share/vulkan/icd.d /etc/vulkan/icd.d \
+            /usr/lib/x86_64-linux-gnu/vulkan/icd.d \
+            -name 'lvp_icd*.json' 2>/dev/null | sort | head -n1 || true)"
+          if [ -z "$icd" ]; then
+            echo "::error::A lavapipe ICD is required."
+            exit 1
+          fi
+          echo "icd=$icd" >> "$GITHUB_OUTPUT"
+      - name: Reproduce moved point-shadow update
+        if: steps.diagnostic.outputs.compatible == 'true'
+        id: point
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.vulkan.outputs.icd }}
+          VK_ICD_FILENAMES: ${{ steps.vulkan.outputs.icd }}
+          OPENUSD_TEST_PLUGIN_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/plugin/usd
+          OPENUSD_PLUGIN_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/plugin/usd
+          OPENUSD_DIRECT_LIGHT_EXECUTION_REQUIRED: '1'
+          LD_LIBRARY_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/lib:${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/bin
+        run: |
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-linux-net10.0.tunit-report.json'
+          $retainedPath = 'artifacts/shadow-volume-repro/point-shadow.tunit-report.json'
+          if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+            Remove-Item -LiteralPath $reportPath
+          }
+          try {
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 1 `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/SilkPointShadowNativeConformanceTests/AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported')
+          }
+          finally {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Copy-Item -LiteralPath $reportPath -Destination $retainedPath
+            }
+          }
+          if (-not (Test-Path -LiteralPath $retainedPath -PathType Leaf)) {
+            throw 'The moved point-shadow diagnostic report is missing.'
+          }
+          $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+          $results = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkPointShadowNativeConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.displayName -ceq 'AuthoredBoundedPointShadowMatchesAnalyticPixelsWhenSupported(Vulkan)' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 1 -or $report.summary.passed -ne 1 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $results.Count -ne 1) {
+            throw 'The Vulkan moved point-shadow case did not pass exactly once without skips.'
+          }
+      - name: Reproduce native volume fixture cameras
+        if: always() && steps.diagnostic.outputs.compatible == 'true' && steps.native.outcome == 'success' && steps.build.outcome == 'success' && steps.vulkan.outcome == 'success'
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.vulkan.outputs.icd }}
+          VK_ICD_FILENAMES: ${{ steps.vulkan.outputs.icd }}
+          OPENUSD_PLUGIN_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/plugin/usd
+          LD_LIBRARY_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/lib:${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/bin
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          ./eng/run-managed-tests.ps1 -Project $project -Framework net10.0 -Configuration Release `
+            -MinimumExpectedTests 2 -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeRenderingConformanceTests/VolumeFixtureCameraPreservesClipMappingWithConventionalDepth')
+          ./eng/run-managed-tests.ps1 -Project $project -Framework net10.0 -Configuration Release `
+            -MinimumExpectedTests 2 -TestArguments @(
+              '--treenode-filter',
+              '/*/*/VolumeRenderingConformanceTests/(UniformDensityVolumeGatesOnVulkan|SampledOpenVdbDensityGatesOnVulkan)')
+      - name: Reproduce high-tint volume accumulation
+        if: always() && steps.diagnostic.outputs.compatible == 'true' && steps.native.outcome == 'success' && steps.build.outcome == 'success' && steps.vulkan.outcome == 'success'
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.vulkan.outputs.icd }}
+          VK_ICD_FILENAMES: ${{ steps.vulkan.outputs.icd }}
+          OPENUSD_PLUGIN_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/plugin/usd
+          LD_LIBRARY_PATH: ${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/lib:${{ github.workspace }}/artifacts/shadow-volume-repro/runtime/bin
+        run: |
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-linux-net10.0.tunit-report.json'
+          $retainedPath = 'artifacts/shadow-volume-repro/high-tint-volume.tunit-report.json'
+          if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+            Remove-Item -LiteralPath $reportPath
+          }
+          try {
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 17 `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation|SequentialTinyContributionsRemainVisible|SubnormalTintSurvivesExposure|ClippedTinyOpticalDepthRetainsBrightContribution|ClippedTinyOpticalDepthSurvivesOverlappingDarkField|DeepDarkVolumeAttenuatesBrightBackground|DeepVolumePreservesSignedBackgroundTransmission|VolumeCompositionPreservesFormatTransformAndAlpha)')
+          }
+          finally {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Copy-Item -LiteralPath $reportPath -Destination $retainedPath
+            }
+          }
+          if (-not (Test-Path -LiteralPath $retainedPath -PathType Leaf)) {
+            throw 'The high-tint volume diagnostic report is missing.'
+          }
+          $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+          $results = @($report.groups | Where-Object {
+            $_.className -ceq 'VolumeCameraJointPassConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 17 -or $report.summary.passed -ne 17 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $results.Count -ne 17) {
+            throw 'The Vulkan high-tint volume cases did not all pass without skips.'
+          }
+          foreach ($case in @(
+            'SingleHighTintFieldProducesFinitePixels(Vulkan)',
+            'HalfMaximumTintFieldProducesFinitePixels(Vulkan)',
+            'OpaqueHighTintFieldProducesFinitePixels(Vulkan)',
+            'ReducedExposureHighTintFieldProducesFinitePixels(Vulkan)',
+            'TwoCoincidentHighTintFieldsProduceFinitePixels(Vulkan)',
+            'EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)',
+            'TinyTintContributionSurvivesUnderflowingWeight(Vulkan)',
+            'TinyTintContributionSurvivesDominantDarkWeight(Vulkan)',
+            'TinyTintContributionRemainsVisibleAboveNormalBackground(Vulkan)',
+            'HighTintSurvivesDeepForegroundAttenuation(Vulkan)',
+            'SequentialTinyContributionsRemainVisible(Vulkan)',
+            'SubnormalTintSurvivesExposure(Vulkan)',
+            'ClippedTinyOpticalDepthRetainsBrightContribution(Vulkan)',
+            'ClippedTinyOpticalDepthSurvivesOverlappingDarkField(Vulkan)',
+            'DeepDarkVolumeAttenuatesBrightBackground(Vulkan)',
+            'DeepVolumePreservesSignedBackgroundTransmission(Vulkan)',
+            'VolumeCompositionPreservesFormatTransformAndAlpha(Vulkan)')) {
+            if (@($results | Where-Object { $_.displayName -ceq $case }).Count -ne 1) {
+              throw "The Vulkan high-tint volume case '$case' did not pass exactly once."
+            }
+          }
+      - name: Retain diagnostic test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-shadow-volume-repro-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/shadow-volume-repro/native-source.txt
+            artifacts/shadow-volume-repro/point-shadow.tunit-report.json
+            artifacts/shadow-volume-repro/high-tint-volume.tunit-report.json
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/
+          if-no-files-found: warn
+          retention-days: 14
+
+  linux-native-ctest-repro:
+    name: Linux native geometry and shadow repro
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install native prerequisites
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y
+          build-essential clang cmake ninja-build pkg-config patchelf binutils
+          libgl1-mesa-dev libgl1-mesa-dri libglu1-mesa-dev libx11-dev libxcursor-dev
+          libxi-dev libxinerama-dev libxrandr-dev libxt-dev libxtst-dev
+          libwayland-dev x11-utils xvfb xauth zlib1g-dev
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          fail-on-cache-miss: true
+          path: |
+            native/install/linux-x64
+            native/install/vulkan-sdk-1.4.363.0
+          key: >-
+            openusd-install-linux-x64-${{ hashFiles(
+              'eng/openusd.install.lock.json',
+              'eng/fetch-native.ps1',
+              'eng/build-native.ps1',
+              'eng/build-vulkan-sdk.ps1',
+              'eng/generate-native-notices.py',
+              'eng/shaderc-source-patches.lock.json',
+              'eng/patches/shaderc/spirv-tools-explicit-case-breaks.patch',
+              'eng/patches/shaderc/shaderc-zero-padded-string-copy.patch',
+              'eng/generate-sbom.py',
+              'LICENSE',
+              'NOTICE'
+            ) }}
+      - name: Verify native SDK inputs
+        shell: pwsh
+        run: ./eng/verify-sdk-build-input.ps1 -Rid linux-x64
+      - name: Build current native probes
+        shell: bash
+        env:
+          OPENUSD_ROOT: ${{ github.workspace }}/native/install/linux-x64
+          VULKAN_SDK: ${{ github.workspace }}/native/install/vulkan-sdk-1.4.363.0
+        run: |
+          set -euo pipefail
+          cd native
+          cmake --preset linux-x64
+          cmake --build --preset linux-x64 --target \
+            hdsilk_probe hdsilk_direct_lights_probe hdsilk_mesh_preparation_probe
+      - name: Repeat the failing native CTests
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$GITHUB_WORKSPACE/artifacts/linux-native-ctest-repro"
+          build="$GITHUB_WORKSPACE/native/build/shim/linux-x64"
+          mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/source-commit.txt"
+          failed=0
+          for test_name in hdsilk_geometry_non_geometry_sync hdsilk_direct_light_domes_shadows \
+            hdsilk_mesh_preparation; do
+            for attempt in 1 2; do
+              name="$test_name-$attempt"
+              rm -f -- "$build/Testing/Temporary/LastTest.log"
+              if xvfb-run -a ctest --test-dir "$build" \
+                -R "^${test_name}$" --no-tests=error --output-on-failure \
+                --output-junit "$evidence/$name.xml" 2>&1 | tee "$evidence/$name.txt"; then
+                :
+              else
+                failed=1
+              fi
+              if [[ -f "$build/Testing/Temporary/LastTest.log" ]]; then
+                cp "$build/Testing/Temporary/LastTest.log" "$evidence/$name-LastTest.log"
+              fi
+            done
+          done
+          exit "$failed"
+      - name: Upload native repro evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-native-ctest-repro-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/linux-native-ctest-repro/
+          if-no-files-found: warn
+          retention-days: 14
+
+  viewer-compiler-redistribution-guard:
+    name: Viewer compiler redistribution guard
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Test compiler redistribution guard
+        shell: pwsh
+        run: ./eng/test-viewer-compiler-redistribution.ps1
+
+  spirv-cross-source-provenance:
+    name: SPIRV-Cross source reproduction (${{ matrix.rid }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, linux-x64, osx-arm64]
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Test compiler provenance verifier
+        run: >-
+          python -m unittest -v eng.tests.test_verify_spirv_cross_provenance
+          eng.tests.test_verify_nuget_promotion eng.tests.test_release_validation_checkpoint
+      - name: Check out the actual Silk.NET binary producer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: dotnet/Silk.NET
+          ref: d01d143952ce161c151f771d02d5457d13235f0a
+          path: .provenance/silk-producer
+          persist-credentials: false
+      - name: Check out the producer's SPIRV-Cross revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: KhronosGroup/SPIRV-Cross
+          ref: d8e3e2b141b8c8a167b2e3984736a6baacff316c
+          path: .provenance/spirv-cross
+          persist-credentials: false
+      - name: Fetch the binary and package source commits
+        run: |
+          git -C .provenance/silk-producer fetch --no-tags --depth=1 origin \
+            6305f138f92df6132e566072b62a3d8f41fba9aa \
+            94605142f7b7bd6e69c9201e8e721d245c69eb7e
+      - name: Rebuild and compare the selected package asset
+        shell: bash
+        env:
+          EXPECTED_PROJECT_COMMIT: ${{ github.event.pull_request.head.sha }}
+          TARGET_RID: ${{ matrix.rid }}
+        run: |
+          set -euo pipefail
+          zig_archive="$RUNNER_TEMP/zig-x86_64-linux-0.15.2.tar.xz"
+          package="$RUNNER_TEMP/silk.net.spirv.cross.native.2.23.0.nupkg"
+          curl --fail --location --retry 3 \
+            https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz \
+            --output "$zig_archive"
+          echo "02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  $zig_archive" | sha256sum --check
+          tar -xf "$zig_archive" -C "$RUNNER_TEMP"
+          curl --fail --location --retry 3 \
+            https://api.nuget.org/v3-flatcontainer/silk.net.spirv.cross.native/2.23.0/silk.net.spirv.cross.native.2.23.0.nupkg \
+            --output "$package"
+          python ./eng/verify-spirv-cross-provenance.py \
+            --project "$GITHUB_WORKSPACE" \
+            --project-commit "$EXPECTED_PROJECT_COMMIT" \
+            --producer "$GITHUB_WORKSPACE/.provenance/silk-producer" \
+            --source "$GITHUB_WORKSPACE/.provenance/spirv-cross" \
+            --package "$package" \
+            --zig-archive "$zig_archive" \
+            --zig "$RUNNER_TEMP/zig-x86_64-linux-0.15.2/zig" \
+            --rid "$TARGET_RID" \
+            --receipt "$GITHUB_WORKSPACE/artifacts/spirv-cross-provenance/$TARGET_RID.json"
+      - name: Upload compiler provenance receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spirv-cross-provenance-${{ matrix.rid }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/spirv-cross-provenance/${{ matrix.rid }}.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  package-compiler-consumer:
+    name: Packaged D3D12 compiler consumer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      OPENUSD_TEST_WORK_ROOT: D:\temp\openusd-package-tests-${{ github.run_id }}-${{ github.run_attempt }}
+      DOTNET_CLI_HOME: D:\temp\openusd-dotnet-${{ github.run_id }}-${{ github.run_attempt }}
+      NUGET_PACKAGES: D:\temp\openusd-nuget-${{ github.run_id }}-${{ github.run_attempt }}
+      NUGET_HTTP_CACHE_PATH: D:\temp\openusd-nuget-http-${{ github.run_id }}-${{ github.run_attempt }}
+      NUGET_PLUGINS_CACHE_PATH: D:\temp\openusd-nuget-plugins-${{ github.run_id }}-${{ github.run_attempt }}
+      NUGET_SCRATCH: D:\temp\openusd-nuget-scratch-${{ github.run_id }}-${{ github.run_attempt }}
+      TEMP: D:\temp\openusd-process-${{ github.run_id }}-${{ github.run_attempt }}
+      TMP: D:\temp\openusd-process-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Prepare isolated work directories
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force `
+            $env:OPENUSD_TEST_WORK_ROOT, $env:DOTNET_CLI_HOME, $env:NUGET_PACKAGES, `
+            $env:NUGET_HTTP_CACHE_PATH, $env:NUGET_PLUGINS_CACHE_PATH, $env:NUGET_SCRATCH, `
+            $env:TEMP | Out-Null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: |
+            8.0.426
+            9.0.319
+            10.0.403
+      - name: Build package tests
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj'
+          dotnet restore $project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build $project -c Release -f net10.0 --no-restore -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify isolated compiler consumers and MCP package
+        shell: pwsh
+        run: |
+          $cases = @(
+            @{ Class = 'RuntimePackageTests'; Method = 'SilkPackageCarriesCheckedShadowAndMeshShadersForEveryFramework' },
+            @{ Class = 'RuntimePackageTests'; Method = 'SilkPackageDeclaresSpirvCrossNativeRuntimeDependencyForEveryFramework' },
+            @{ Class = 'RuntimePackageTests'; Method = 'SilkPackageGeneratedD3D12MaterialUsesPackagedSpirvCrossAndExternalDxc' },
+            @{ Class = 'McpToolPackageTests'; Method = 'McpToolPackageMetadataDocumentsExternalNativeRuntime' },
+            @{ Class = 'McpToolPackageTests'; Method = 'PackedMcpToolIsInstallableManagedOnlyPackage' }
+          )
+          $evidence = 'artifacts/package-compiler-consumer'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $reportPath = 'tests/OpenUsd.Package.Tests/bin/Release/net10.0/TestResults/OpenUsd.Package.Tests-windows-net10.0.tunit-report.json'
+          foreach ($case in $cases) {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Remove-Item -LiteralPath $reportPath
+            }
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Package.Tests/OpenUsd.Package.Tests.csproj `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 1 `
+              -TestArguments @('--treenode-filter', "/*/*/$($case.Class)/$($case.Method)")
+            if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+              throw "The $($case.Method) report is missing."
+            }
+            $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+            $matches = @($report.groups | Where-Object {
+              $_.className -ceq $case.Class
+            } | ForEach-Object { $_.tests } | Where-Object {
+              $_.methodName -ceq $case.Method -and $_.status -ceq 'passed'
+            })
+            if ($report.summary.total -ne 1 -or $report.summary.passed -ne 1 -or
+                $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+                $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+                $matches.Count -ne 1) {
+              throw "The exact $($case.Method) case did not pass without skips."
+            }
+            Copy-Item -LiteralPath $reportPath -Destination (
+              Join-Path $evidence "$($case.Method).tunit-report.json")
+          }
+      - name: Upload compiler consumer reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-compiler-consumer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/package-compiler-consumer/*.tunit-report.json
+            tests/OpenUsd.Package.Tests/bin/Release/net10.0/TestResults/*.tunit-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  capture-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Build capture tests
+        shell: pwsh
+        run: |
+          dotnet restore tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -p:TargetFramework=net10.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -c Debug -f net10.0 --no-restore `
+            -p:OpenUsdRequireMetalShaderLibrary=false -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run capture diagnostics tests
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-capture-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 3 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkFrameCaptureDiagnosticsTests/*')
+          $reportPath = 'tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.Tests-linux-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The capture diagnostics report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkFrameCaptureDiagnosticsTests'
+          } | ForEach-Object { $_.tests })
+          $recovery = @($cases | Where-Object {
+            $_.methodName -ceq 'RetainedCapturePublishesShaderFailureAndKeepsItsSnapshotAfterRecovery' -and
+              $_.status -ceq 'passed'
+          })
+          $display = @($cases | Where-Object {
+            $_.methodName -ceq 'DisplayCapturePreservesShaderAndDisplayFailuresUntilTheirSeparateRecovery' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 3 -or $report.summary.passed -ne 3 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $recovery.Count -ne 2 -or $display.Count -ne 1) {
+            throw 'All three named capture diagnostics cases must pass without skips.'
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'capture-diagnostics.json')
+      - name: Run renderer shader diagnostic tests
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-capture-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 2 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkMaterialShaderCompilerTests/Renderer*')
+          $reportPath = 'tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.Tests-linux-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The renderer shader diagnostics report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkMaterialShaderCompilerTests'
+          } | ForEach-Object { $_.tests })
+          $expected = @(
+            'RendererReportsOneDiagnosticPerFailedRuntimeShaderAndClearsItOnSuccess',
+            'RendererBoundsFailedRuntimeShaderDiagnostics'
+          )
+          foreach ($method in $expected) {
+            if (@($cases | Where-Object {
+              $_.methodName -ceq $method -and $_.status -ceq 'passed'
+            }).Count -ne 1) {
+              throw "The renderer shader diagnostic test '$method' did not pass exactly once."
+            }
+          }
+          if ($report.summary.total -ne 2 -or $report.summary.passed -ne 2 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0) {
+            throw 'Both renderer shader diagnostic tests must pass without skips.'
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'shader-diagnostic-fixture.json')
+      - name: Run renderer shader lifecycle tests
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-capture-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 2 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkTextureResidencyTests/RendererShaderDiagnostics*')
+          $reportPath = 'tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.Tests-linux-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The renderer shader lifecycle report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkTextureResidencyTests'
+          } | ForEach-Object { $_.tests })
+          $expected = @(
+            'RendererShaderDiagnosticsSurviveMaterialChangesUntilTheSameKeyIsReady',
+            'RendererShaderDiagnosticsTrackRequestsFromRefusedFramesAndRetry'
+          )
+          foreach ($method in $expected) {
+            if (@($cases | Where-Object {
+              $_.methodName -ceq $method -and $_.status -ceq 'passed'
+            }).Count -ne 1) {
+              throw "The renderer shader lifecycle test '$method' did not pass exactly once."
+            }
+          }
+          if ($report.summary.total -ne 2 -or $report.summary.passed -ne 2 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0) {
+            throw 'Both renderer shader lifecycle tests must pass without skips.'
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'shader-diagnostic-lifecycle.json')
+      - name: Run unsupported Ptex fallback geometry tests
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-capture-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 5 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkMaterialCommandTests/UnsupportedPtex*')
+          $reportPath = 'tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.Tests-linux-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The Ptex fallback geometry report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkMaterialCommandTests'
+          } | ForEach-Object { $_.tests })
+          $expected = @(
+            'UnsupportedPtexInputSamplesItsNonDefaultAuthoredFallback(Normal)',
+            'UnsupportedPtexInputSamplesItsNonDefaultAuthoredFallback(Opacity)',
+            'UnsupportedPtexNormalFallbackBuildsTangentsAndRestoresGeometry(Normal)',
+            'UnsupportedPtexForbiddenInputIsRejectedAndCorrectedRetryWorks(DetailNormal)',
+            'UnsupportedPtexForbiddenInputIsRejectedAndCorrectedRetryWorks(Displacement)'
+          )
+          foreach ($name in $expected) {
+            if (@($cases | Where-Object {
+              $_.displayName -ceq $name -and $_.status -ceq 'passed'
+            }).Count -ne 1) {
+              throw "The Ptex fallback test '$name' did not pass exactly once."
+            }
+          }
+          if ($report.summary.total -ne 5 -or $report.summary.passed -ne 5 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $cases.Count -ne 5) {
+            throw 'All five Ptex fallback and refusal cases must pass without skips.'
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'ptex-fallback-geometry.json')
+      - name: Run point-shadow depth and transaction tests
+        shell: pwsh
+        run: |
+          $cases = @(
+            @{
+              Class = 'SilkPointShadowDepthEncodingTests'
+              Filter = '*'
+              Output = 'point-depth-encoding.json'
+              Methods = [ordered]@{
+                DistantCubeDepthSeparatesCastersWithoutFittingTheNearPlane = 1
+                CubeBiasPreservesThePublishedPerspectiveBias = 3
+                CubeFacesUseOneScaleWhenTheirFarPlanesDiffer = 1
+                CubeGroupRejectsFaceWhoseLinearNearDepthWouldUnderflow = 1
+                InvalidCubeDepthProjectionIsRejected = 4
+                OrthographicMapsRetainTheirPublishedDepthBias = 1
+                CasterInstanceWritesTheDepthScaleAndFaceLimit = 1
+                CasterInstanceRejectsInvalidDepthScale = 3
+                CasterInstanceRejectsInvalidPointFaceLimit = 6
+                CasterInstanceRejectsFaceLimitWithoutPointDepthScale = 1
+              }
+            },
+            @{
+              Class = 'SilkShadowAtlasRetentionTests'
+              Filter = '(CubeDisplacementRetainsTheOriginalNearPlaneAndExpandsFar|PreparedCubeRendersWithCandidateDepthScaleBeforePublication|InvalidCubeProjectionIsRejectedBeforeReplacingThePublishedAtlas)'
+              Output = 'point-depth-transactions.json'
+              Methods = [ordered]@{
+                CubeDisplacementRetainsTheOriginalNearPlaneAndExpandsFar = 1
+                PreparedCubeRendersWithCandidateDepthScaleBeforePublication = 1
+                InvalidCubeProjectionIsRejectedBeforeReplacingThePublishedAtlas = 1
+              }
+            },
+            @{
+              Class = 'SilkShadowWireTests'
+              Filter = 'SixFaceGroupsRetainTheirFirstSlotAcrossReplacementAndRetirement'
+              Output = 'point-depth-wire.json'
+              Methods = [ordered]@{
+                SixFaceGroupsRetainTheirFirstSlotAcrossReplacementAndRetirement = 1
+              }
+            }
+          )
+          $reportPath = 'tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.Tests-linux-net10.0.tunit-report.json'
+          foreach ($case in $cases) {
+            $expectedCount = ($case.Methods.Values | Measure-Object -Sum).Sum
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Rendering.Tests/OpenUsd.Rendering.Tests.csproj `
+              -Framework net10.0 -Configuration Debug -MinimumExpectedTests $expectedCount `
+              -TestArguments @('--treenode-filter', "/*/*/$($case.Class)/$($case.Filter)")
+            if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+              throw "The $($case.Class) report is missing."
+            }
+            $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+            $results = @($report.groups | Where-Object {
+              $_.className -ceq $case.Class
+            } | ForEach-Object { $_.tests })
+            foreach ($method in $case.Methods.GetEnumerator()) {
+              if (@($results | Where-Object {
+                $_.methodName -ceq $method.Key -and $_.status -ceq 'passed'
+              }).Count -ne $method.Value) {
+                throw "The point-shadow test '$($method.Key)' did not pass $($method.Value) time(s)."
+              }
+            }
+            if ($report.summary.total -ne $expectedCount -or
+                $report.summary.passed -ne $expectedCount -or
+                $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+                $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+                $results.Count -ne $expectedCount) {
+              throw "The $($case.Class) point-shadow cases did not all pass without skips."
+            }
+            Copy-Item -LiteralPath $reportPath -Destination (
+              Join-Path (Split-Path $reportPath) $case.Output)
+          }
+      - name: Upload capture evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: capture-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/OpenUsd.Rendering.Tests/bin/Debug/net10.0/TestResults/
+          if-no-files-found: warn
+
+  primitive-transport:
+    needs: shader-receipts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Validate shader receipt identity
+        shell: pwsh
+        env:
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          if ($env:SHADER_RECEIPT_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The verified shader receipt artifact ID is missing or invalid.'
+          }
+      - name: Download verified shader receipts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          path: .
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Build primitive transport test
+        shell: pwsh
+        run: |
+          dotnet restore tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+            -c Debug -f net10.0 --no-restore `
+            -p:OpenUsdRequireMetalShaderLibrary=false -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install software Vulkan
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools
+      - name: Locate software Vulkan
+        id: vulkan
+        shell: bash
+        run: |
+          set -euo pipefail
+          icd="$(find /usr/share/vulkan/icd.d /etc/vulkan/icd.d \
+            /usr/lib/x86_64-linux-gnu/vulkan/icd.d \
+            -name 'lvp_icd*.json' 2>/dev/null | sort | head -n1 || true)"
+          if [ -z "$icd" ]; then
+            echo "::error::A lavapipe ICD is required for the primitive transport test. Present manifests:"
+            find /usr/share/vulkan /etc/vulkan /usr/lib/x86_64-linux-gnu/vulkan \
+              -name '*.json' 2>/dev/null || true
+            exit 1
+          fi
+          echo "Using lavapipe ICD $icd."
+          echo "icd=$icd" >> "$GITHUB_OUTPUT"
+      - name: Run primitive transport test
+        shell: pwsh
+        env:
+          VK_DRIVER_FILES: ${{ steps.vulkan.outputs.icd }}
+          VK_ICD_FILENAMES: ${{ steps.vulkan.outputs.icd }}
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-primitive-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 3 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkPrimitiveIdTransportConformanceTests/*')
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-linux-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The primitive transport report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkPrimitiveIdTransportConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.methodName -ceq 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 3 -or $report.summary.passed -ne 3 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $cases.Count -ne 3) {
+            throw 'All three primitive transport cases must pass without skips.'
+          }
+          foreach ($boundary in @(255, 32767, 65535)) {
+            $name = "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Vulkan, $boundary)"
+            if (@($cases | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+              throw "The Vulkan primitive transport case '$name' did not pass exactly once."
+            }
+          }
+      - name: Upload primitive transport evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: primitive-transport-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/
+          if-no-files-found: warn
+
+  d3d12-probes:
+    needs: shader-receipts
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      TEMP: 'D:\temp'
+      TMP: 'D:\temp'
+      DOTNET_CLI_HOME: 'D:\temp\dotnet-home'
+      NUGET_PACKAGES: 'D:\temp\nuget\'
+      OPENUSD_TEST_WORK_ROOT: 'D:\temp\openusd-tests'
+      OPENUSD_SILK_SHADER_CACHE_DIR: 'D:\temp\openusd-probe-shaders'
+    steps:
+      - name: Prepare temporary directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Validate shader receipt identity
+        shell: pwsh
+        env:
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          if ($env:SHADER_RECEIPT_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The verified shader receipt artifact ID is missing or invalid.'
+          }
+      - name: Download verified shader receipts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          path: .
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Build D3D12 conformance tests
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet restore $project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build $project -c Debug -f net10.0 --no-restore `
+            -p:OpenUsdRequireMetalShaderLibrary=false -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run WARP primitive transport
+        shell: pwsh
+        env:
+          OPENUSD_PRIMITIVE_PROBE_BACKEND: D3D12
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 3 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkPrimitiveIdTransportConformanceTests/*')
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The D3D12 primitive transport report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkPrimitiveIdTransportConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.methodName -ceq 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 3 -or $report.summary.passed -ne 3 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $cases.Count -ne 3) {
+            throw 'All three WARP primitive transport cases must pass without skips.'
+          }
+          foreach ($boundary in @(255, 32767, 65535)) {
+            $name = "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, $boundary)"
+            if (@($cases | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+              throw "The D3D12 primitive transport case '$name' did not pass exactly once."
+            }
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'primitive-d3d12.json')
+      - name: Run WARP retirement retry cases
+        shell: pwsh
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 11 `
+            -TestArguments @('--treenode-filter', '/*/*/D3D12PendingRetirementTests/*')
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The D3D12 retirement report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'D3D12PendingRetirementTests'
+          } | ForEach-Object { $_.tests } | Where-Object { $_.status -ceq 'passed' })
+          $expected = @{
+            RemovalClassificationAgreesAcrossRetirementPaths = 6
+            MultipleFailedRecordsStayOwnedWhileSuccessfulRecordsAreNeverRetried = 1
+            FailedRetainedRecordKeepsNativeOwnerAndRejectsNewWorkUntilDisposeRetry = 2
+            NonterminalWaitFailureKeepsRecordsUntouchedAndAllowsNewWorkBeforeRetry = 1
+            ConcurrentAndReentrantDisposeReturnWhileFailedRecordRemainsOwnedForLaterRetry = 1
+          }
+          foreach ($method in $expected.Keys) {
+            if (@($cases | Where-Object { $_.methodName -ceq $method }).Count -ne $expected[$method]) {
+              throw "The D3D12 retirement test '$method' did not pass its expected cases."
+            }
+          }
+          if ($report.summary.total -ne 11 -or $report.summary.passed -ne 11 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $cases.Count -ne 11) {
+            throw 'All eleven D3D12 retirement cases must pass without skips.'
+          }
+          Copy-Item -LiteralPath $reportPath -Destination (
+            Join-Path (Split-Path $reportPath) 'd3d12-retirement.json')
+      - name: Upload D3D12 evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: d3d12-probes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/
+          if-no-files-found: warn
+
+  windows-conformance-repro:
+    needs: shader-receipts
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      TEMP: 'D:\temp'
+      TMP: 'D:\temp'
+      DOTNET_CLI_HOME: 'D:\temp\dotnet-home'
+      NUGET_PACKAGES: 'D:\temp\nuget\'
+      OPENUSD_TEST_WORK_ROOT: 'D:\temp\openusd-tests'
+      OPENUSD_SILK_SHADER_CACHE_DIR: 'D:\temp\openusd-conformance-shaders'
+    steps:
+      - name: Prepare temporary directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Check lavapipe diagnostic report retention
+        shell: pwsh
+        run: |
+          ./eng/test-primitive-id-transport-report.ps1
+          ./eng/test-windows-lavapipe-primitive-probe.ps1
+      - name: Validate shader receipt identity
+        shell: pwsh
+        env:
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          if ($env:SHADER_RECEIPT_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The verified shader receipt artifact ID is missing or invalid.'
+          }
+      - name: Download verified shader receipts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          path: .
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Build Windows conformance reproducers
+        id: windows_conformance_build
+        shell: pwsh
+        run: |
+          $projects = @(
+            'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj',
+            'tests/OpenUsd.RhiProbe/OpenUsd.RhiProbe.csproj'
+          )
+          foreach ($project in $projects) {
+            dotnet restore $project
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            dotnet build $project -c Release -f net10.0 --no-restore `
+              -p:OpenUsdRequireMetalShaderLibrary=false -warnaserror
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Reproduce Windows conformance cases
+        shell: pwsh
+        run: |
+          $cases = @(
+            @{
+              Class = 'D3D12DeviceTests'
+              Method = 'WarpReleasesEverySubmissionResourceAfterProvenDeviceRemoval'
+              Names = @('WarpReleasesEverySubmissionResourceAfterProvenDeviceRemoval')
+            },
+            @{
+              Class = 'SilkGraphicsSubmissionRetirementTests'
+              Method = 'D3D12DeviceLossKeepsSubmissionInvalid'
+              Names = @(
+                'D3D12DeviceLossKeepsSubmissionInvalid(False)',
+                'D3D12DeviceLossKeepsSubmissionInvalid(True)'
+              )
+            },
+            @{
+              Class = 'SilkGraphicsSubmissionRetirementTests'
+              Method = 'D3D12TerminalLossRetainsOriginalFailureAcrossCleanupRetries'
+              Names = @('D3D12TerminalLossRetainsOriginalFailureAcrossCleanupRetries')
+            },
+            @{
+              Class = 'SilkMaterialStreamingTests'
+              Method = 'VolumePixelsReleaseAfterTheirUploadAndRenderTheDensityGrid'
+              Names = @(
+                'VolumePixelsReleaseAfterTheirUploadAndRenderTheDensityGrid(D3D12)',
+                'VolumePixelsReleaseAfterTheirUploadAndRenderTheDensityGrid(Vulkan)'
+              )
+            },
+            @{
+              Class = 'SilkMaterialStreamingTests'
+              Method = 'UnsupportedPtexNormalUsesAuthoredFallbackUntilImageReplacementAndRestoration'
+              Names = @(
+                'UnsupportedPtexNormalUsesAuthoredFallbackUntilImageReplacementAndRestoration(D3D12)',
+                'UnsupportedPtexNormalUsesAuthoredFallbackUntilImageReplacementAndRestoration(Vulkan)'
+              )
+            },
+            @{
+              Class = 'SilkShadowAdmissionTests'
+              Method = 'TexturedCutoffCastsRetainedAndUpdatedShadows'
+              Names = @(
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(D3D12, False, False)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(D3D12, True, False)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(D3D12, True, True)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(Vulkan, False, False)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(Vulkan, True, False)',
+                'TexturedCutoffCastsRetainedAndUpdatedShadows(Vulkan, True, True)'
+              )
+            },
+            @{
+              Class = 'SilkShadowAdmissionTests'
+              Method = 'PointReceiverBeyondFarPlaneRemainsLitWhenPerspectiveDepthRoundsToOne'
+              Names = @(
+                'PointReceiverBeyondFarPlaneRemainsLitWhenPerspectiveDepthRoundsToOne(D3D12)',
+                'PointReceiverBeyondFarPlaneRemainsLitWhenPerspectiveDepthRoundsToOne(Vulkan)'
+              )
+            },
+            @{
+              Class = 'SilkShadowAdmissionTests'
+              Method = 'PointCasterBeyondSelectedFaceDoesNotWriteDepth'
+              Names = @(
+                'PointCasterBeyondSelectedFaceDoesNotWriteDepth(D3D12, False)',
+                'PointCasterBeyondSelectedFaceDoesNotWriteDepth(D3D12, True)',
+                'PointCasterBeyondSelectedFaceDoesNotWriteDepth(Vulkan, False)',
+                'PointCasterBeyondSelectedFaceDoesNotWriteDepth(Vulkan, True)'
+              )
+            },
+            @{
+              Class = 'SilkShadowTransmissionConformanceTests'
+              Method = 'PointLightLayersRespectReceiverDepthAndLifecycle'
+              Names = @(
+                'PointLightLayersRespectReceiverDepthAndLifecycle(D3D12, 1, False)',
+                'PointLightLayersRespectReceiverDepthAndLifecycle(D3D12, 2, False)',
+                'PointLightLayersRespectReceiverDepthAndLifecycle(D3D12, 4, False)',
+                'PointLightLayersRespectReceiverDepthAndLifecycle(D3D12, 1, True)',
+                'PointLightLayersRespectReceiverDepthAndLifecycle(D3D12, 2, True)',
+                'PointLightLayersRespectReceiverDepthAndLifecycle(Vulkan, 1, False)',
+                'PointLightLayersRespectReceiverDepthAndLifecycle(Vulkan, 2, False)',
+                'PointLightLayersRespectReceiverDepthAndLifecycle(Vulkan, 4, False)',
+                'PointLightLayersRespectReceiverDepthAndLifecycle(Vulkan, 1, True)',
+                'PointLightLayersRespectReceiverDepthAndLifecycle(Vulkan, 2, True)'
+              )
+            },
+            @{
+              Class = 'SilkShadowTransmissionConformanceTests'
+              Method = 'PointLightOverflowAndEqualDepthPreservePixelsAndAllowCorrection'
+              Names = @(
+                'PointLightOverflowAndEqualDepthPreservePixelsAndAllowCorrection(D3D12, False)',
+                'PointLightOverflowAndEqualDepthPreservePixelsAndAllowCorrection(D3D12, True)',
+                'PointLightOverflowAndEqualDepthPreservePixelsAndAllowCorrection(Vulkan, False)',
+                'PointLightOverflowAndEqualDepthPreservePixelsAndAllowCorrection(Vulkan, True)'
+              )
+            },
+            @{
+              Class = 'SilkShadowTransmissionConformanceTests'
+              Method = 'PointLightConstantAndTexturedLayersComposeInEitherDepthOrder'
+              Names = @(
+                'PointLightConstantAndTexturedLayersComposeInEitherDepthOrder(D3D12, False)',
+                'PointLightConstantAndTexturedLayersComposeInEitherDepthOrder(D3D12, True)',
+                'PointLightConstantAndTexturedLayersComposeInEitherDepthOrder(Vulkan, False)',
+                'PointLightConstantAndTexturedLayersComposeInEitherDepthOrder(Vulkan, True)'
+              )
+            },
+            @{
+              Class = 'SilkShadowTransmissionConformanceTests'
+              Method = 'PointLightOpaqueAndCutoutCastersComposeWithTransmission'
+              Names = @(
+                'PointLightOpaqueAndCutoutCastersComposeWithTransmission(D3D12)',
+                'PointLightOpaqueAndCutoutCastersComposeWithTransmission(Vulkan)'
+              )
+            },
+            @{
+              Class = 'SilkShadowTransmissionConformanceTests'
+              Method = 'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow'
+              Names = @(
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(D3D12, False)',
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(D3D12, True)',
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(Vulkan, False)',
+                'PointLightLayersBeyondFarPlaneDoNotTriggerOverflow(Vulkan, True)'
+              )
+            },
+            @{
+              Class = 'SilkPrimitiveIdTransportConformanceTests'
+              Method = 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex'
+              Names = @(
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 255)',
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 32767)',
+                'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(D3D12, 65535)'
+              )
+            }
+          )
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
+          $evidence = 'artifacts/windows-conformance-repro'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $failures = [System.Collections.Generic.List[string]]::new()
+          foreach ($case in $cases) {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Remove-Item -LiteralPath $reportPath
+            }
+            $previousPrimitiveBackend = [Environment]::GetEnvironmentVariable(
+              'OPENUSD_PRIMITIVE_PROBE_BACKEND', 'Process')
+            try {
+              if ($case.Class -ceq 'SilkPrimitiveIdTransportConformanceTests' -and
+                  $case.Method -ceq 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex') {
+                $env:OPENUSD_PRIMITIVE_PROBE_BACKEND = 'D3D12'
+              }
+              ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release `
+                -MinimumExpectedTests $case.Names.Count `
+                -TestArguments @('--treenode-filter', "/*/*/$($case.Class)/$($case.Method)")
+            }
+            catch {
+              $failures.Add("$($case.Method) runner failed: $($_.Exception.Message)")
+            }
+            finally {
+              [Environment]::SetEnvironmentVariable(
+                'OPENUSD_PRIMITIVE_PROBE_BACKEND', $previousPrimitiveBackend, 'Process')
+            }
+            if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+              $failures.Add("$($case.Method) report is missing.")
+              continue
+            }
+            Copy-Item -LiteralPath $reportPath -Destination (
+              Join-Path $evidence "$($case.Method).tunit-report.json")
+            $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+            $results = @($report.groups | Where-Object {
+              $_.className -ceq $case.Class
+            } | ForEach-Object { $_.tests } | Where-Object {
+              $_.methodName -ceq $case.Method
+            })
+            foreach ($name in $case.Names) {
+              if (@($results | Where-Object {
+                $_.displayName -ceq $name -and $_.status -ceq 'passed'
+              }).Count -ne 1) {
+                $failures.Add("The case '$name' did not pass exactly once.")
+              }
+            }
+            if ($report.summary.total -ne $case.Names.Count -or
+                $report.summary.passed -ne $case.Names.Count -or
+                $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+                $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+                $results.Count -ne $case.Names.Count) {
+              $failures.Add("$($case.Method) did not pass all expected cases without skips.")
+            }
+          }
+          if ($failures.Count -ne 0) {
+            throw ($failures -join [Environment]::NewLine)
+          }
+      - name: Reproduce Windows high-tint volume accumulation
+        if: always() && steps.windows_conformance_build.outcome == 'success'
+        shell: pwsh
+        run: |
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-windows-net10.0.tunit-report.json'
+          $evidence = 'artifacts/windows-conformance-repro'
+          $retainedPath = Join-Path $evidence 'high-tint-volume.tunit-report.json'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+            Remove-Item -LiteralPath $reportPath
+          }
+          try {
+            ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release `
+              -MinimumExpectedTests 34 `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation|SequentialTinyContributionsRemainVisible|SubnormalTintSurvivesExposure|ClippedTinyOpticalDepthRetainsBrightContribution|ClippedTinyOpticalDepthSurvivesOverlappingDarkField|DeepDarkVolumeAttenuatesBrightBackground|DeepVolumePreservesSignedBackgroundTransmission|VolumeCompositionPreservesFormatTransformAndAlpha)')
+          }
+          finally {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Copy-Item -LiteralPath $reportPath -Destination $retainedPath
+            }
+          }
+          if (-not (Test-Path -LiteralPath $retainedPath -PathType Leaf)) {
+            throw 'The Windows high-tint volume diagnostic report is missing.'
+          }
+          $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+          $results = @($report.groups | Where-Object {
+            $_.className -ceq 'VolumeCameraJointPassConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 34 -or $report.summary.passed -ne 34 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $results.Count -ne 34) {
+            throw 'The Windows high-tint volume cases did not all pass without skips.'
+          }
+          foreach ($backend in @('D3D12', 'Vulkan')) {
+            foreach ($method in @(
+              'SingleHighTintFieldProducesFinitePixels',
+              'HalfMaximumTintFieldProducesFinitePixels',
+              'OpaqueHighTintFieldProducesFinitePixels',
+              'ReducedExposureHighTintFieldProducesFinitePixels',
+              'TwoCoincidentHighTintFieldsProduceFinitePixels',
+              'EightCoincidentHighTintFieldsProduceFinitePixels',
+              'TinyTintContributionSurvivesUnderflowingWeight',
+              'TinyTintContributionSurvivesDominantDarkWeight',
+              'TinyTintContributionRemainsVisibleAboveNormalBackground',
+              'HighTintSurvivesDeepForegroundAttenuation',
+              'SequentialTinyContributionsRemainVisible',
+              'SubnormalTintSurvivesExposure',
+              'ClippedTinyOpticalDepthRetainsBrightContribution',
+              'ClippedTinyOpticalDepthSurvivesOverlappingDarkField',
+              'DeepDarkVolumeAttenuatesBrightBackground',
+              'DeepVolumePreservesSignedBackgroundTransmission',
+              'VolumeCompositionPreservesFormatTransformAndAlpha')) {
+              $name = "$method($backend)"
+              if (@($results | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+                throw "The Windows high-tint volume case '$name' did not pass exactly once."
+              }
+            }
+          }
+      - name: Upload Windows conformance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-conformance-repro-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/windows-conformance-repro/*.tunit-report.json
+          if-no-files-found: warn
+      - name: Require Windows Vulkan primitive transport on lavapipe
+        if: ${{ always() && !cancelled() && steps.windows_conformance_build.outcome == 'success' }}
+        shell: pwsh
+        run: >-
+          ./eng/run-windows-lavapipe-primitive-probe.ps1
+          -EvidenceRoot artifacts/windows-lavapipe-primitive
+      - name: Upload Windows lavapipe diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-lavapipe-primitive-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/windows-lavapipe-primitive/
+          if-no-files-found: warn
+          retention-days: 14
+
+  shader-receipts:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    outputs:
+      artifact_id: ${{ steps.shader_receipt.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: eng/shaders/.cache/downloads
+          key: shaders-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('eng/shaders/toolchain.lock.json') }}
+      - name: Generate and verify checked shaders
+        shell: pwsh
+        run: |
+          ./eng/shaders/update-checked.ps1
+          ./eng/shaders/verify-checked.ps1
+          python tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/build_flat_ordinal_shader.py build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/build_flat_ordinal_shader.py verify
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/build_primitive_id_shader.py build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/build_primitive_id_shader.py verify
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover eng/shaders/tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git --no-pager diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git --no-pager diff --stat -- eng/shaders/checked tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked
+          git rev-parse HEAD
+      - name: Upload verified shader receipts
+        id: shader_receipt
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shader-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            eng/shaders/checked/
+            tests/OpenUsd.Rendering.ConformanceTests/FlatOrdinalShaders/checked/
+            tests/OpenUsd.Rendering.ConformanceTests/PrimitiveIdShaders/checked/
+          if-no-files-found: error
+
+  metal-volume-math-diagnostic:
+    name: Metal volume math diagnostic
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Capture standalone fragment math under both compiler modes
+        shell: bash
+        env:
+          EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          evidence=artifacts/metal-volume-math
+          mkdir -p "$evidence"
+          actual_source="$(git rev-parse HEAD)"
+          if [[ "$actual_source" != "$EXPECTED_SOURCE" ]]; then
+            echo "Metal diagnostic checkout does not match the pull request head." >&2
+            exit 1
+          fi
+          printf '%s\n' "$actual_source" > "$evidence/source-commit.txt"
+          shasum -a 256 eng/diagnostics/metal-volume-math.metal \
+            eng/diagnostics/metal-volume-math.swift > "$evidence/source-sha256.txt"
+          xcodebuild -version | tee "$evidence/toolchain.txt"
+          xcrun -sdk macosx metal -std=macos-metal2.4 \
+            -c eng/diagnostics/metal-volume-math.metal -o "$RUNNER_TEMP/volume-math-default.air"
+          xcrun -sdk macosx metallib "$RUNNER_TEMP/volume-math-default.air" \
+            -o "$RUNNER_TEMP/volume-math-default.metallib"
+          xcrun -sdk macosx metal -std=macos-metal2.4 -fno-fast-math \
+            -c eng/diagnostics/metal-volume-math.metal -o "$RUNNER_TEMP/volume-math-precise.air"
+          xcrun -sdk macosx metallib "$RUNNER_TEMP/volume-math-precise.air" \
+            -o "$RUNNER_TEMP/volume-math-precise.metallib"
+          xcrun -sdk macosx swiftc -framework Metal \
+            eng/diagnostics/metal-volume-math.swift -o "$RUNNER_TEMP/volume-math-probe"
+          shasum -a 256 "$RUNNER_TEMP/volume-math-default.metallib" \
+            "$RUNNER_TEMP/volume-math-precise.metallib" "$RUNNER_TEMP/volume-math-probe" \
+            > "$evidence/binary-sha256.txt"
+          "$RUNNER_TEMP/volume-math-probe" "$RUNNER_TEMP/volume-math-default.metallib" \
+            "$RUNNER_TEMP/volume-math-precise.metallib" | tee "$evidence/results.json"
+      - name: Retain standalone diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: metal-volume-math-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/metal-volume-math/
+          if-no-files-found: warn
+
+  metal-link:
+    needs: shader-receipts
+    runs-on: macos-15
+    timeout-minutes: 30
+    outputs:
+      volume_payload_artifact_id: ${{ steps.volume_payload.outputs.artifact-id }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Test Metal volume report validation
+        shell: pwsh
+        run: ./eng/test-metal-volume-repro-report.ps1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Validate shader receipt identity
+        shell: pwsh
+        env:
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          if ($env:SHADER_RECEIPT_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The verified shader receipt artifact ID is missing or invalid.'
+          }
+      - name: Download verified shader receipts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.shader-receipts.outputs.artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          path: .
+      - name: Prepare and validate the combined Metal library
+        shell: pwsh
+        run: |
+          ./eng/shaders/prepare-metal-library.ps1 `
+            -OutputRoot eng/shaders/out/release-validation-metal
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Build Metal primitive transport
+        shell: pwsh
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet restore $project
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build $project -c Debug -f net10.0 --no-restore `
+            -p:OpenUsdRequireMetalShaderLibrary=true -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build source-bound Metal volume payload
+        shell: pwsh
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          $project = 'tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj'
+          dotnet build $project -c Release -f net10.0 --no-restore `
+            -p:OpenUsdRequireMetalShaderLibrary=true -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $head = (git rev-parse --verify HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:EXPECTED_HEAD) {
+            throw 'The Metal payload was not built from the requested source revision.'
+          }
+          $output = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0'
+          $assembly = Join-Path $output 'OpenUsd.Rendering.ConformanceTests.dll'
+          $library = Join-Path $output 'mesh.metallib'
+          $libraryHash = (Get-FileHash -LiteralPath $library -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sourceLibraryHash = (Get-FileHash -LiteralPath 'eng/shaders/checked/mesh.metallib' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($libraryHash -cne $sourceLibraryHash) {
+            throw 'The built output does not contain the validated Metal library.'
+          }
+          $oldReport = Join-Path $output 'TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
+          if (Test-Path -LiteralPath $oldReport) {
+            throw 'The Metal payload contains an existing test report.'
+          }
+          $destination = 'artifacts/metal-volume-payload'
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          $archive = Join-Path $destination 'payload.tar.gz'
+          tar -czf $archive -C $output .
+          if ($LASTEXITCODE -ne 0) { throw 'Could not archive the Metal test payload.' }
+          [pscustomobject]@{
+            schemaVersion = 1
+            sourceHead = $head
+            runId = [string]$env:GITHUB_RUN_ID
+            shaderReceiptArtifactId = $env:SHADER_RECEIPT_ARTIFACT_ID
+            archiveSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            assemblySha256 = (Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash.ToLowerInvariant()
+            metalLibrarySha256 = $libraryHash
+          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $destination 'receipt.json')
+      - name: Upload source-bound Metal volume payload
+        id: volume_payload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: metal-volume-payload-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/metal-volume-payload/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Run Metal primitive transport
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-primitive-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-tests
+        run: |
+          ./eng/run-managed-tests.ps1 `
+            -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+            -Framework net10.0 -Configuration Debug -MinimumExpectedTests 3 `
+            -TestArguments @('--treenode-filter', '/*/*/SilkPrimitiveIdTransportConformanceTests/*')
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            throw 'The Metal primitive transport report is missing.'
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          $cases = @($report.groups | Where-Object {
+            $_.className -ceq 'SilkPrimitiveIdTransportConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.methodName -ceq 'SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex' -and
+              $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 3 -or $report.summary.passed -ne 3 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $cases.Count -ne 3) {
+            throw 'All three Metal primitive transport cases must pass without skips.'
+          }
+          foreach ($boundary in @(255, 32767, 65535)) {
+            $name = "SingleIndexedDrawPreservesPrimitiveIdsWithoutProvingPtex(Metal, $boundary)"
+            if (@($cases | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+              throw "The Metal primitive transport case '$name' did not pass exactly once."
+            }
+          }
+      - name: Upload Metal primitive transport evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: primitive-metal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/OpenUsd.Rendering.ConformanceTests/bin/Debug/net10.0/TestResults/
+          if-no-files-found: warn
+
+  metal-volume-repro:
+    needs: [shader-receipts, metal-link]
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.403
+      - name: Validate Metal payload identity
+        shell: pwsh
+        env:
+          METAL_PAYLOAD_ARTIFACT_ID: ${{ needs.metal-link.outputs.volume_payload_artifact_id }}
+        run: |
+          if ($env:METAL_PAYLOAD_ARTIFACT_ID -notmatch '^[1-9][0-9]*$') {
+            throw 'The source-bound Metal payload artifact ID is missing or invalid.'
+          }
+      - name: Download source-bound Metal payload
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.metal-link.outputs.volume_payload_artifact_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+          merge-multiple: true
+          path: artifacts/metal-volume-payload
+      - name: Verify and unpack Metal payload
+        id: metal_volume_payload
+        shell: pwsh
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          SHADER_RECEIPT_ARTIFACT_ID: ${{ needs.shader-receipts.outputs.artifact_id }}
+        run: |
+          $source = 'artifacts/metal-volume-payload'
+          $archive = Join-Path $source 'payload.tar.gz'
+          $receipt = Get-Content -LiteralPath (Join-Path $source 'receipt.json') -Raw | ConvertFrom-Json
+          $head = (git rev-parse --verify HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:EXPECTED_HEAD -or
+              $receipt.schemaVersion -ne 1 -or $receipt.sourceHead -cne $head -or
+              $receipt.runId -cne [string]$env:GITHUB_RUN_ID -or
+              $receipt.shaderReceiptArtifactId -cne $env:SHADER_RECEIPT_ARTIFACT_ID -or
+              $receipt.archiveSha256 -cne (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw 'The Metal payload receipt does not match this source revision and workflow run.'
+          }
+          $output = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          tar -xzf $archive -C $output
+          if ($LASTEXITCODE -ne 0) { throw 'Could not unpack the Metal test payload.' }
+          $assembly = Join-Path $output 'OpenUsd.Rendering.ConformanceTests.dll'
+          $library = Join-Path $output 'mesh.metallib'
+          if ($receipt.assemblySha256 -cne (Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash.ToLowerInvariant() -or
+              $receipt.metalLibrarySha256 -cne (Get-FileHash -LiteralPath $library -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw 'The unpacked test assembly or Metal library does not match the payload receipt.'
+          }
+      - name: Run targeted Metal volume reproduction
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-volume-repro-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-volume-repro-tests
+        run: |
+          . ./eng/metal-volume-repro-report.ps1
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
+          $evidence = 'artifacts/metal-volume-repro'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $cases = @(
+            @{ Method = 'LargeFiniteDensityInThinFieldRemainsVisible'; Minimum = 8 },
+            @{ Method = 'OverlappingHighFiniteTintsMatchTheIndependentComposite'; Minimum = 10 }
+          )
+          $failures = [Collections.Generic.List[string]]::new()
+          foreach ($case in $cases) {
+            if (Test-Path -LiteralPath $reportPath) {
+              throw 'The targeted Metal execution requires a fresh report.'
+            }
+            $started = [DateTime]::UtcNow
+            $executionFailure = $null
+            try {
+              ./eng/run-managed-tests.ps1 `
+                -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+                -Framework net10.0 -Configuration Release -MinimumExpectedTests $case.Minimum `
+                -TestArguments @('--treenode-filter', "/*/*/VolumeCameraJointPassConformanceTests/$($case.Method)")
+            }
+            catch {
+              $executionFailure = $_
+            }
+            $finished = [DateTime]::UtcNow
+            Write-Host "[metal-volume-repro] $($case.Method) execution_ms=$([long]($finished - $started).TotalMilliseconds)"
+            try {
+              if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+                throw "The targeted Metal report is missing. Execution: $executionFailure"
+              }
+              $retainedPath = Join-Path $evidence "$($case.Method).tunit-report.json"
+              Move-MetalVolumeReproReport -Source $reportPath -Destination $retainedPath
+              $reportTime = (Get-Item -LiteralPath $retainedPath).LastWriteTimeUtc
+              if ($reportTime -lt $started -or $reportTime -gt $finished) {
+                throw 'The targeted Metal report was not written during this execution.'
+              }
+              $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+              $result = Assert-MetalVolumeReproReport -Report $report `
+                -StartedUtc $started -FinishedUtc $finished -Method $case.Method
+              if ($null -ne $executionFailure) {
+                throw "The Metal test runner failed despite a passing report: $executionFailure"
+              }
+              Write-Host "[metal-volume-repro] $($case.Method) passed=$($result.passed) skipped=$($result.skipped)"
+            }
+            catch {
+              $failures.Add("$($case.Method): $($_.Exception.Message)")
+              if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+                break
+              }
+            }
+          }
+          if ($failures.Count -ne 0) {
+            throw ($failures -join [Environment]::NewLine)
+          }
+      - name: Run Metal high-tint volume cases
+        if: ${{ always() && !cancelled() && steps.metal_volume_payload.outcome == 'success' }}
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-volume-repro-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-volume-repro-tests
+        run: |
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
+          $evidence = 'artifacts/metal-volume-repro'
+          $retainedPath = Join-Path $evidence 'high-tint-volume.tunit-report.json'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          if (Test-Path -LiteralPath $reportPath) {
+            throw 'The Metal high-tint execution requires a fresh report.'
+          }
+          $started = [DateTime]::UtcNow
+          try {
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 17 `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation|SequentialTinyContributionsRemainVisible|SubnormalTintSurvivesExposure|ClippedTinyOpticalDepthRetainsBrightContribution|ClippedTinyOpticalDepthSurvivesOverlappingDarkField|DeepDarkVolumeAttenuatesBrightBackground|DeepVolumePreservesSignedBackgroundTransmission|VolumeCompositionPreservesFormatTransformAndAlpha)')
+          }
+          finally {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Copy-Item -LiteralPath $reportPath -Destination $retainedPath
+            }
+          }
+          if (-not (Test-Path -LiteralPath $retainedPath -PathType Leaf) -or
+              (Get-Item -LiteralPath $retainedPath).LastWriteTimeUtc -lt $started) {
+            throw 'The Metal high-tint volume report is missing or stale.'
+          }
+          $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+          $results = @($report.groups | Where-Object {
+            $_.className -ceq 'VolumeCameraJointPassConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 17 -or $report.summary.passed -ne 17 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $results.Count -ne 17) {
+            throw 'The Metal high-tint volume cases did not all pass without skips.'
+          }
+          foreach ($method in @(
+            'SingleHighTintFieldProducesFinitePixels',
+            'HalfMaximumTintFieldProducesFinitePixels',
+            'OpaqueHighTintFieldProducesFinitePixels',
+            'ReducedExposureHighTintFieldProducesFinitePixels',
+            'TwoCoincidentHighTintFieldsProduceFinitePixels',
+            'EightCoincidentHighTintFieldsProduceFinitePixels',
+            'TinyTintContributionSurvivesUnderflowingWeight',
+            'TinyTintContributionSurvivesDominantDarkWeight',
+            'TinyTintContributionRemainsVisibleAboveNormalBackground',
+            'HighTintSurvivesDeepForegroundAttenuation',
+            'SequentialTinyContributionsRemainVisible',
+            'SubnormalTintSurvivesExposure',
+            'ClippedTinyOpticalDepthRetainsBrightContribution',
+            'ClippedTinyOpticalDepthSurvivesOverlappingDarkField',
+            'DeepDarkVolumeAttenuatesBrightBackground',
+            'DeepVolumePreservesSignedBackgroundTransmission',
+            'VolumeCompositionPreservesFormatTransformAndAlpha')) {
+            $name = "$method(Metal)"
+            if (@($results | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+              throw "The Metal high-tint volume case '$name' did not pass exactly once."
+            }
+          }
+      - name: Upload targeted Metal volume report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: metal-volume-repro-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/metal-volume-repro/*.tunit-report.json
+            tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json
+          if-no-files-found: warn
+          retention-days: 14

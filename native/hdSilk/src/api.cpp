@@ -7,6 +7,9 @@
 #include "renderDelegate.h"
 #include "mesh.h"
 #include "material.h"
+#include "commandFile.h"
+#include "ptexFaceDecoder.h"
+#include "volumeBounds.h"
 
 #include "pxr/base/gf/frustum.h"
 #include "pxr/base/gf/matrix4d.h"
@@ -54,7 +57,7 @@
 #include <cstring>
 #include <exception>
 #include <filesystem>
-#include <fstream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -66,6 +69,101 @@
 PXR_NAMESPACE_USING_DIRECTIVE
 
 struct SilkSessionState;
+
+namespace
+{
+constexpr size_t VolumeFieldTargetBytes = 64ull * 1024ull * 1024ull;
+constexpr size_t VolumeTransferBytes = 64ull * 1024ull;
+
+class SilkVolumeFieldBudget final
+{
+public:
+    explicit SilkVolumeFieldBudget(uint64_t maximum) : _maximum(maximum) {}
+
+    void Reserve(uint64_t bytes)
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        if (bytes > _maximum - _reserved)
+        {
+            throw std::runtime_error(
+                "hdSilk decoded volume field admission refused " + std::to_string(bytes) +
+                " bytes with " + std::to_string(_reserved) + " reserved (limit " +
+                std::to_string(_maximum) + ").");
+        }
+        _reserved += bytes;
+        _peak = std::max(_peak, _reserved);
+        ++_count;
+    }
+
+    void Release(uint64_t bytes) noexcept
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _reserved -= bytes;
+        --_count;
+    }
+
+    openusd_silk_volume_budget_usage Snapshot() const
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        return {sizeof(openusd_silk_volume_budget_usage), OPENUSD_SILK_VOLUME_BUDGET_VERSION,
+            _maximum, _reserved, _peak, _count};
+    }
+
+private:
+    const uint64_t _maximum;
+    mutable std::mutex _mutex;
+    uint64_t _reserved = 0;
+    uint64_t _peak = 0;
+    uint64_t _count = 0;
+};
+
+class SilkVolumeFieldReservation final
+{
+public:
+    SilkVolumeFieldReservation(std::shared_ptr<SilkVolumeFieldBudget> budget, uint64_t bytes)
+        : _budget(std::move(budget)), _bytes(bytes)
+    {
+        if (_budget) { _budget->Reserve(_bytes); }
+    }
+
+    ~SilkVolumeFieldReservation()
+    {
+        if (_budget) { _budget->Release(_bytes); }
+    }
+
+    SilkVolumeFieldReservation(const SilkVolumeFieldReservation&) = delete;
+    SilkVolumeFieldReservation& operator=(const SilkVolumeFieldReservation&) = delete;
+
+private:
+    std::shared_ptr<SilkVolumeFieldBudget> _budget;
+    uint64_t _bytes;
+};
+
+struct SilkVolumeAsset
+{
+    SilkVolumeAsset(const std::vector<float>& values, const std::shared_ptr<SilkVolumeFieldBudget>& budget)
+        : reservation(budget, values.size() * sizeof(float)),
+          file(values.size() * sizeof(float),
+            std::min(values.size() * sizeof(float), VolumeTransferBytes))
+    {
+        file.Append(
+            reinterpret_cast<const uint8_t*>(values.data()),
+            values.size() * sizeof(float));
+        file.Flush();
+    }
+
+    SilkVolumeFieldReservation reservation;
+    HdSilkCommandFile file;
+    std::mutex readMutex;
+};
+
+using SilkVolumeAssetMap = std::unordered_map<std::string, std::shared_ptr<SilkVolumeAsset>>;
+}
+
+struct openusd_silk_volume_budget
+{
+    std::shared_ptr<SilkVolumeFieldBudget> state;
+};
 
 namespace
 {
@@ -273,11 +371,17 @@ struct SilkSessionState
     SilkSceneIngestionState ingestionState;
     uint64_t maximumSessionMeshPreparationBytes = 0;
     size_t maximumSessionCommandPageBytes = SIZE_MAX;
+    std::shared_ptr<HdSilkCommandStorageBudget> commandStorageBudget;
+    openusd_silk_command_storage_limits commandStorageLimits{};
+    std::shared_ptr<SilkVolumeFieldBudget> volumeBudget;
     bool synchronizationStarted = false;
     bool pageAcknowledgementEnabled = false;
     uint64_t pendingPageRevision = 0;
+    uint64_t sourceIdentityRevision = 0;
+    uint64_t sourceIdentityStageSerial = 0;
     std::vector<std::string> volumeProxyPaths;
     std::vector<std::string> volumeMaterialPaths;
+    SilkVolumeAssetMap volumeAssets;
     mutable std::mutex mutex;
     std::mutex lifetime_mutex;
     std::condition_variable lifetime_changed;
@@ -290,6 +394,11 @@ struct SilkSessionState
 struct openusd_silk_page
 {
     std::vector<uint8_t> data;
+    std::unique_ptr<HdSilkCommandFile> file;
+    SilkVolumeAssetMap volumeAssets;
+    std::mutex readMutex;
+    uint32_t maximumCommandBytes = 0;
+    uint32_t maximumTransferBytes = 0;
     uint64_t revision = 0;
     uint32_t command_count = 0;
     std::weak_ptr<SilkSessionState> acknowledgementState;
@@ -298,6 +407,29 @@ struct openusd_silk_page
     openusd_silk_mesh_preparation_usage preparationUsage{
         sizeof(openusd_silk_mesh_preparation_usage), OPENUSD_SILK_MESH_PREPARATION_VERSION, 0, 0, 0};
 };
+
+struct openusd_silk_volume_assets
+{
+    SilkVolumeAssetMap assets;
+};
+
+namespace
+{
+class VolumePublicationTransaction final
+{
+public:
+    explicit VolumePublicationTransaction(SilkSessionState* state) : _state(state) {}
+    ~VolumePublicationTransaction()
+    {
+        if (!_committed) { _state->volumeAssets.clear(); }
+    }
+    void Commit() noexcept { _committed = true; }
+
+private:
+    SilkSessionState* _state;
+    bool _committed = false;
+};
+}
 
 namespace
 {
@@ -854,16 +986,29 @@ void RetirePreviousVolumes(SilkSessionState* state)
     }
     state->volumeProxyPaths.clear();
     state->volumeMaterialPaths.clear();
+    state->volumeAssets.clear();
 }
 
 bool ResolveDensityField(
     const UsdStageRefPtr& stage,
     const UsdVolVolume& volume,
+    UsdTimeCode time,
     SdfPath* fieldPath,
     SdfAssetPath* assetPath)
 {
     static const TfToken densityToken("density");
     const UsdVolVolume::FieldMap fields = volume.GetFieldPaths();
+    for (const auto& field : fields)
+    {
+        if (field.first != densityToken)
+        {
+            throw std::invalid_argument(
+                "hdSilk volume '" + volume.GetPath().GetString() +
+                "' uses unsupported field role '" + field.first.GetString() +
+                "'. Only density fields are supported; temperature, emission/color "
+                "and general multi-field shading semantics are deferred.");
+        }
+    }
     const auto iterator = fields.find(densityToken);
     if (iterator == fields.end())
     {
@@ -878,15 +1023,7 @@ bool ResolveDensityField(
     }
 
     SdfAssetPath filePath;
-    if (!asset.GetFilePathAttr().Get(&filePath) || filePath.GetAssetPath().empty())
-    {
-        return false;
-    }
-
-    TfToken fieldName;
-    if (asset.GetFieldNameAttr().Get(&fieldName) &&
-        !fieldName.IsEmpty() &&
-        fieldName != densityToken)
+    if (!asset.GetFilePathAttr().Get(&filePath, time) || filePath.GetAssetPath().empty())
     {
         return false;
     }
@@ -896,37 +1033,27 @@ bool ResolveDensityField(
     return true;
 }
 
-float ReadVolumeDensity(const UsdPrim& prim)
+float ReadVolumeDensity(const UsdPrim& prim, UsdTimeCode time)
 {
     float density = 1.0f;
     const UsdAttribute attribute = prim.GetAttribute(TfToken("hdsilk:density"));
-    if (attribute && attribute.Get(&density) && std::isfinite(density))
+    if (attribute && attribute.Get(&density, time))
     {
+        if (!std::isfinite(density))
+        {
+            throw std::invalid_argument(
+                "hdSilk volume '" + prim.GetPath().GetString() +
+                "' has non-finite hdsilk:density.");
+        }
         return std::max(0.0f, density);
     }
-    return density;
-}
-
-std::string SanitizeCacheName(const std::string& value)
-{
-    std::string result;
-    result.reserve(value.size());
-    for (char ch : value)
-    {
-        const bool safe =
-            (ch >= 'a' && ch <= 'z') ||
-            (ch >= 'A' && ch <= 'Z') ||
-            (ch >= '0' && ch <= '9') ||
-            ch == '-' ||
-            ch == '_';
-        result.push_back(safe ? ch : '_');
-    }
-    return result.empty() ? "density" : result;
+    return 1.0f;
 }
 
 struct VolumeFieldBuffer
 {
     std::vector<float> values;
+    GfBBox3d bounds;
     int width = 0;
     int height = 0;
     int depth = 0;
@@ -942,7 +1069,7 @@ bool TryReadVolumeWithHio(
         fieldName,
         0,
         std::string(),
-        64ull * 1024ull * 1024ull);
+        VolumeFieldTargetBytes);
     if (!data || !data->Read() || !data->HasRawBuffer() ||
         data->GetFormat() != HioFormatFloat32)
     {
@@ -963,10 +1090,15 @@ bool TryReadVolumeWithHio(
     {
         return false;
     }
+    if (byteCount > VolumeFieldTargetBytes)
+    {
+        throw std::length_error("A decoded hdSilk volume field exceeds the 64-MiB field limit.");
+    }
 
     buffer->width = width;
     buffer->height = height;
     buffer->depth = depth;
+    buffer->bounds = data->GetBoundingBox();
     buffer->values.resize(byteCount / sizeof(float));
     std::memcpy(
         buffer->values.data(),
@@ -976,17 +1108,21 @@ bool TryReadVolumeWithHio(
 }
 
 bool TryCreateVolumeTexture(
-    const UsdStageRefPtr& stage,
+    SilkSessionState* state,
+    const UsdPrim& volumePrim,
     const SdfPath& fieldPath,
     const SdfAssetPath& assetPath,
-    HdSilkMaterialTexture* texture)
+    const std::string& materialPath,
+    const GfMatrix4d& volumeTransform,
+    UsdTimeCode time,
+    HdSilkMaterialTexture* texture,
+    GfMatrix4d* proxyToWorld)
 {
-    const UsdPrim fieldPrim = stage->GetPrimAtPath(fieldPath);
-    const UsdPrim volumePrim = fieldPrim.GetParent();
+    const UsdPrim fieldPrim = state->stage->GetPrimAtPath(fieldPath);
     bool sampleDensity = true;
     const UsdAttribute sampleAttribute =
         volumePrim.GetAttribute(TfToken("hdsilk:sampleDensity"));
-    if (sampleAttribute && sampleAttribute.Get(&sampleDensity) && !sampleDensity)
+    if (sampleAttribute && sampleAttribute.Get(&sampleDensity, time) && !sampleDensity)
     {
         return false;
     }
@@ -1002,18 +1138,24 @@ bool TryCreateVolumeTexture(
     }
     if (!std::filesystem::exists(resolvedPath))
     {
+        TF_WARN(
+            "hdSilk volume '%s' uses uniform density: OpenVDB asset '%s' is missing.",
+            volumePrim.GetPath().GetText(),
+            resolvedPath.c_str());
         return false;
     }
 
     const UsdVolOpenVDBAsset asset(fieldPrim);
     TfToken fieldName("density");
-    asset.GetFieldNameAttr().Get(&fieldName);
+    asset.GetFieldNameAttr().Get(&fieldName, time);
     VolumeFieldBuffer field;
     if (!TryReadVolumeWithHio(resolvedPath, fieldName.GetString(), &field))
     {
         TF_WARN(
-            "hdSilk skipped sampled volume '%s': OpenVDB density grid could not be read.",
-            fieldPath.GetText());
+            "hdSilk volume '%s' uses uniform density: OpenVDB grid '%s' in '%s' could not be read.",
+            volumePrim.GetPath().GetText(),
+            fieldName.GetText(),
+            resolvedPath.c_str());
         return false;
     }
 
@@ -1030,34 +1172,39 @@ bool TryCreateVolumeTexture(
         return false;
     }
 
-    std::filesystem::path anchor;
-    if (const SdfLayerHandle layer = stage->GetRootLayer())
+    GfMatrix4d fieldTransform;
+    if (!HdSilkTryComposeVolumeProxyTransform(field.bounds, volumeTransform, &fieldTransform))
     {
-        anchor = layer->GetRealPath();
-    }
-    if (anchor.empty())
-    {
-        anchor = std::filesystem::absolute("hdsilk-volume-cache.usda");
-    }
-    std::filesystem::path cacheDirectory =
-        anchor.parent_path() / "hdsilk-volume-cache";
-    std::filesystem::create_directories(cacheDirectory);
-    const std::string cacheName =
-        SanitizeCacheName(fieldPath.GetString()) + "_" +
-        std::to_string(width) + "x" +
-        std::to_string(height) + "x" +
-        std::to_string(depth) + ".r32";
-    const std::filesystem::path cachePath = cacheDirectory / cacheName;
-    std::ofstream output(cachePath, std::ios::binary | std::ios::trunc);
-    if (!output)
-    {
+        TF_WARN(
+            "hdSilk volume '%s' uses uniform density: OpenVDB grid '%s' has invalid, degenerate, "
+            "or unrepresentable transformed bounds.",
+            volumePrim.GetPath().GetText(),
+            fieldName.GetText());
         return false;
     }
-    output.write(
-        reinterpret_cast<const char*>(field.values.data()),
-        static_cast<std::streamsize>(byteCount));
-    if (!output)
+
+    try
     {
+        auto stored = std::make_shared<SilkVolumeAsset>(field.values, state->volumeBudget);
+        if (!state->volumeAssets.emplace(materialPath, std::move(stored)).second)
+        {
+            throw std::logic_error("A volume material was published more than once in one sync.");
+        }
+    }
+    catch (const HdSilkCommandStorageError& error)
+    {
+        TF_WARN(
+            "hdSilk volume '%s' uses uniform density: decoded-field storage failed: %s",
+            volumePrim.GetPath().GetText(),
+            error.what());
+        return false;
+    }
+    catch (const std::filesystem::filesystem_error& error)
+    {
+        TF_WARN(
+            "hdSilk volume '%s' uses uniform density: decoded-field storage failed: %s",
+            volumePrim.GetPath().GetText(),
+            error.what());
         return false;
     }
 
@@ -1066,14 +1213,13 @@ bool TryCreateVolumeTexture(
     texture->wrapT = OPENUSD_SILK_WRAP_CLAMP;
     texture->sourceColorSpace = OPENUSD_SILK_COLOR_SPACE_RAW;
     texture->componentCount = 1;
-    // The cached field is a single-channel R32 density image, so its one channel
-    // is the red channel of the decoded texel.
     texture->outputChannel = OPENUSD_SILK_TEXTURE_CHANNEL_R;
-    texture->asset = cachePath.string();
+    texture->asset = "hdsilk-volume:" + resolvedPath;
     texture->uvPrimvar =
         std::to_string(width) + "," +
         std::to_string(height) + "," +
         std::to_string(depth);
+    *proxyToWorld = fieldTransform;
     return true;
 }
 
@@ -1083,9 +1229,14 @@ void PublishVolumeProxy(
     const SdfPath& fieldPath,
     const SdfAssetPath& assetPath,
     const GfMatrix4d& transform,
+    UsdTimeCode time,
     float density)
 {
     const std::string path = prim.GetPath().GetString();
+    if (!HdSilkIsFiniteVolumeTransform(transform))
+    {
+        throw std::invalid_argument("hdSilk volume '" + path + "' has a non-finite transform.");
+    }
     const std::string meshPath = path + "/__hdSilkVolumeProxy";
     const std::string materialPath = path + "/__hdSilkVolumeMaterial";
 
@@ -1105,7 +1256,9 @@ void PublishVolumeProxy(
     material.scalars.push_back(color);
     material.scalars.push_back(densityScalar);
     HdSilkMaterialTexture volumeTexture;
-    if (TryCreateVolumeTexture(state->stage, fieldPath, assetPath, &volumeTexture))
+    GfMatrix4d proxyToWorld = transform;
+    if (TryCreateVolumeTexture(
+            state, prim, fieldPath, assetPath, materialPath, transform, time, &volumeTexture, &proxyToWorld))
     {
         material.textures.push_back(std::move(volumeTexture));
     }
@@ -1123,7 +1276,7 @@ void PublishVolumeProxy(
     mesh.displayColor[1] = 0.36f;
     mesh.displayColor[2] = 0.12f;
     mesh.displayColor[3] = 1.0f;
-    HdSilkFlattenMatrix(transform, mesh.transform);
+    HdSilkFlattenMatrix(proxyToWorld, mesh.transform);
     mesh.points = {
         -0.5f, -0.5f, -0.5f,
          0.5f, -0.5f, -0.5f,
@@ -1168,10 +1321,10 @@ void PublishVolumes(
 
         SdfPath fieldPath;
         SdfAssetPath assetPath;
-        if (!ResolveDensityField(state->stage, volume, &fieldPath, &assetPath))
+        if (!ResolveDensityField(state->stage, volume, time, &fieldPath, &assetPath))
         {
             TF_WARN(
-                "hdSilk skipped volume '%s': no density OpenVDBAsset field.",
+                "hdSilk skipped volume '%s': no usable density OpenVDBAsset field or file path.",
                 prim.GetPath().GetText());
             continue;
         }
@@ -1182,7 +1335,8 @@ void PublishVolumes(
             fieldPath,
             assetPath,
             xformCache.GetLocalToWorldTransform(prim),
-            ReadVolumeDensity(prim));
+            time,
+            ReadVolumeDensity(prim, time));
     }
 }
 
@@ -1328,12 +1482,18 @@ openusd_status SyncSessionWithSceneIngestionState(
     uint32_t draw_mode,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
-    openusd_error_buffer* error)
+    openusd_error_buffer* error,
+    bool stored = false)
 {
     SilkSessionState* state = owner.get();
     if (state->pendingPageRevision != 0)
     {
         WriteError(error, "The previous hdSilk page must be acknowledged or released before another sync.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (stored && !state->commandStorageBudget)
+    {
+        WriteError(error, "File-backed command storage must be configured before synchronization.");
         return OPENUSD_STATUS_INVALID_ARGUMENT;
     }
     state->synchronizationStarted = true;
@@ -1367,6 +1527,7 @@ openusd_status SyncSessionWithSceneIngestionState(
         ingestionState.materialBindingPurpose.empty()
             ? UsdShadeTokens->allPurpose
             : TfToken(ingestionState.materialBindingPurpose);
+    state->sourceIdentityRevision = 0;
     try
     {
         if (ingestionState.maximumMeshPreparationBytes != 0)
@@ -1470,9 +1631,11 @@ openusd_status SyncSessionWithSceneIngestionState(
             }
             catch (...)
             {
+                state->sceneState->ClearMeshArraySharing();
                 HdSilkEndUsdSkelEvaluation(state->sceneState.get());
                 throw;
             }
+            state->sceneState->ClearMeshArraySharing();
             HdSilkEndUsdSkelEvaluation(state->sceneState.get());
             state->sceneState->MeshPreparationBudget()->ThrowIfRefused();
             if (!mark.IsClean())
@@ -1525,6 +1688,7 @@ openusd_status SyncSessionWithSceneIngestionState(
             camera->clip_planes,
             sizeof(frame.clipPlanes));
         state->sceneState->SetFrame(frame);
+        VolumePublicationTransaction volumePublication(state);
         PublishVolumes(state, UsdTimeCode(time_code), ingestionState.includedPurposeMask);
         for (const UsdPrim& prim : state->stage->Traverse())
         {
@@ -1537,16 +1701,41 @@ openusd_status SyncSessionWithSceneIngestionState(
         }
         ThrowIfSceneSyncFailpoint("before-build-page");
 
+        uint64_t sourceSerial = 0;
+        const openusd_status serialStatus =
+            openusd_stage_get_change_serial(state->stage_core, &sourceSerial, error);
+        if (serialStatus != OPENUSD_STATUS_OK)
+        {
+            state->sceneSyncRecoveryPending = true;
+            return serialStatus;
+        }
         auto result = std::make_unique<openusd_silk_page>();
+        result->volumeAssets = state->volumeAssets;
         if (state->pageAcknowledgementEnabled)
         {
             result->acknowledgementState = owner;
             result->requiresAcknowledgement = true;
         }
-        result->data =
-            state->sceneState->BuildPage(
+        if (stored)
+        {
+            const auto& limits = state->commandStorageLimits;
+            result->maximumCommandBytes = static_cast<uint32_t>(
+                std::min(static_cast<size_t>(limits.maximum_command_bytes), ingestionState.maximumCommandPageBytes));
+            result->maximumTransferBytes = limits.transfer_buffer_bytes;
+            result->file = std::make_unique<HdSilkCommandFile>(
+                static_cast<size_t>(limits.maximum_update_bytes), limits.transfer_buffer_bytes,
+                state->commandStorageBudget);
+            state->sceneState->BuildPageTo(
+                *result->file, static_cast<size_t>(limits.maximum_update_bytes),
+                result->maximumCommandBytes,
+                &result->revision, &result->command_count, state->pageAcknowledgementEnabled);
+        }
+        else
+        {
+            result->data = state->sceneState->BuildPage(
                 &result->revision, &result->command_count, ingestionState.maximumCommandPageBytes,
                 state->pageAcknowledgementEnabled);
+        }
         if (ingestionState.maximumMeshPreparationBytes != 0)
         {
             const auto& budget = state->sceneState->MeshPreparationBudget();
@@ -1559,15 +1748,18 @@ openusd_status SyncSessionWithSceneIngestionState(
         view->abi_version = OPENUSD_SILK_PAGE_ABI_VERSION;
         view->revision = result->revision;
         view->data = result->data.empty() ? nullptr : result->data.data();
-        view->data_size = result->data.size();
+        view->data_size = result->file ? result->file->size() : result->data.size();
         view->command_count = result->command_count;
 
         state->pendingPageRevision = state->pageAcknowledgementEnabled ? result->revision : 0;
+        state->sourceIdentityRevision = result->revision;
+        state->sourceIdentityStageSerial = sourceSerial;
         state->ingestionState = std::move(ingestionState);
         const size_t live =
             g_live_page_count.fetch_add(1, std::memory_order_relaxed) + 1;
         UpdatePeak(g_peak_page_count, live);
         *page = result.release();
+        volumePublication.Commit();
         state->sceneSyncRecoveryPending = false;
         return OPENUSD_STATUS_OK;
     }
@@ -1716,6 +1908,289 @@ extern "C" OPENUSD_HDSILK_API uint32_t
 openusd_silk_get_page_abi_version(void) noexcept
 {
     return OPENUSD_SILK_PAGE_ABI_VERSION;
+}
+
+namespace
+{
+template <typename TAction>
+openusd_status GuardPtex(openusd_error_buffer* error, TAction&& action) noexcept
+{
+    try
+    {
+        return action();
+    }
+    catch (const std::invalid_argument& exception)
+    {
+        WriteError(error, exception.what());
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    catch (const std::exception& exception)
+    {
+        WriteError(error, exception.what());
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+    catch (...)
+    {
+        WriteError(error, "Unknown native Ptex decode failure.");
+        return OPENUSD_STATUS_NATIVE_ERROR;
+    }
+}
+
+openusd_silk_ptex_decode_info PtexDecodeInfo(const HdSilkPtexDecodedFaces& decoded)
+{
+    return {
+        static_cast<uint32_t>(sizeof(openusd_silk_ptex_decode_info)),
+        OPENUSD_SILK_PTEX_DECODE_VERSION,
+        decoded.meshType,
+        decoded.dataType,
+        decoded.channelCount,
+        decoded.alphaChannel,
+        decoded.fileFaceCount,
+        static_cast<uint32_t>(decoded.faces.size()),
+        decoded.requiredByteCount};
+}
+
+void CopyPtexFaceLayouts(
+    const HdSilkPtexDecodedFaces& decoded,
+    openusd_silk_ptex_face_layout* faces)
+{
+    for (size_t index = 0; index < decoded.faces.size(); ++index)
+    {
+        const HdSilkPtexFaceData& source = decoded.faces[index];
+        openusd_silk_ptex_face_layout& destination = faces[index];
+        destination.struct_size =
+            static_cast<uint32_t>(sizeof(openusd_silk_ptex_face_layout));
+        destination.face_id = source.faceId;
+        destination.width = source.width;
+        destination.height = source.height;
+        destination.row_stride_bytes = source.rowStrideBytes;
+        destination.flags = source.flags;
+        destination.data_offset_bytes = source.dataOffsetBytes;
+        std::copy(
+            source.adjacentFaceIds.begin(),
+            source.adjacentFaceIds.end(),
+            destination.adjacent_face_ids);
+        std::copy(
+            source.adjacentEdgeIds.begin(),
+            source.adjacentEdgeIds.end(),
+            destination.adjacent_edge_ids);
+    }
+}
+
+bool IsValidPtexInfo(
+    const openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error)
+{
+    if (info == nullptr ||
+        info->struct_size < static_cast<uint32_t>(sizeof(openusd_silk_ptex_decode_info)) ||
+        info->version != OPENUSD_SILK_PTEX_DECODE_VERSION)
+    {
+        WriteError(error, "A valid version-1 Ptex decode info packet is required.");
+        return false;
+    }
+    return true;
+}
+
+template <typename TDecode>
+openusd_status ReturnPtexDecode(
+    openusd_silk_ptex_face_layout* faces,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error,
+    TDecode&& decode)
+{
+    return GuardPtex(error, [&]()
+    {
+        const HdSilkPtexDecodedFaces decoded = decode();
+        *info = PtexDecodeInfo(decoded);
+        if (!decoded.pixelsDecoded)
+        {
+            WriteError(error, "The Ptex decode output buffers are too small.");
+            return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+        }
+
+        CopyPtexFaceLayouts(decoded, faces);
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+template <typename TDescribe>
+openusd_status ReturnPtexDescription(
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t faceCapacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error,
+    TDescribe&& describe)
+{
+    return GuardPtex(error, [&]()
+    {
+        const HdSilkPtexDecodedFaces decoded = describe();
+        *info = PtexDecodeInfo(decoded);
+        if (faceCapacity < decoded.faces.size())
+        {
+            WriteError(error, "The Ptex face-layout output buffer is too small.");
+            return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+        }
+
+        CopyPtexFaceLayouts(decoded, faces);
+        return OPENUSD_STATUS_OK;
+    });
+}
+}
+
+extern "C" OPENUSD_HDSILK_API openusd_status
+openusd_silk_ptex_decode_faces(
+    const char* path,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    uint8_t* pixels,
+    uint64_t pixel_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) noexcept
+{
+    if (!IsValidPtexInfo(info, error))
+    {
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (path == nullptr || path[0] == '\0' || maximum_face_dimension == 0 ||
+        (face_count != 0 && face_ids == nullptr) ||
+        (faces == nullptr && face_capacity != 0) ||
+        (pixels == nullptr && pixel_capacity != 0))
+    {
+        WriteError(error, "The Ptex decode path, limits, and buffer pointers are invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+
+    return ReturnPtexDecode(faces, info, error, [&]()
+    {
+        return HdSilkDecodePtexFacesInto(
+            path,
+            face_ids,
+            face_count,
+            maximum_face_dimension,
+            maximum_decoded_bytes,
+            face_capacity,
+            pixels,
+            pixel_capacity);
+    });
+}
+
+extern "C" OPENUSD_HDSILK_API openusd_status
+openusd_silk_ptex_describe_faces(
+    const char* path,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) noexcept
+{
+    if (!IsValidPtexInfo(info, error))
+    {
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (path == nullptr || path[0] == '\0' || maximum_face_dimension == 0 ||
+        (face_count != 0 && face_ids == nullptr) ||
+        (faces == nullptr && face_capacity != 0))
+    {
+        WriteError(error, "The Ptex describe path, limits, and buffer pointers are invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+
+    return ReturnPtexDescription(faces, face_capacity, info, error, [&]()
+    {
+        return HdSilkDescribePtexFaces(
+            path, face_ids, face_count, maximum_face_dimension, maximum_decoded_bytes);
+    });
+}
+
+extern "C" OPENUSD_HDSILK_API openusd_status
+openusd_silk_ptex_decode_faces_from_memory(
+    const uint8_t* source,
+    uint64_t source_size,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    uint8_t* pixels,
+    uint64_t pixel_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) noexcept
+{
+    if (!IsValidPtexInfo(info, error))
+    {
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (source == nullptr || source_size == 0 ||
+        source_size > static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ||
+        maximum_face_dimension == 0 ||
+        (face_count != 0 && face_ids == nullptr) ||
+        (faces == nullptr && face_capacity != 0) ||
+        (pixels == nullptr && pixel_capacity != 0))
+    {
+        WriteError(error, "The Ptex encoded snapshot, limits, and buffer pointers are invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+
+    return ReturnPtexDecode(faces, info, error, [&]()
+    {
+        return HdSilkDecodePtexFacesFromMemoryInto(
+            source,
+            static_cast<size_t>(source_size),
+            face_ids,
+            face_count,
+            maximum_face_dimension,
+            maximum_decoded_bytes,
+            face_capacity,
+            pixels,
+            pixel_capacity);
+    });
+}
+
+extern "C" OPENUSD_HDSILK_API openusd_status
+openusd_silk_ptex_describe_faces_from_memory(
+    const uint8_t* source,
+    uint64_t source_size,
+    const uint32_t* face_ids,
+    uint32_t face_count,
+    uint32_t maximum_face_dimension,
+    uint64_t maximum_decoded_bytes,
+    openusd_silk_ptex_face_layout* faces,
+    uint32_t face_capacity,
+    openusd_silk_ptex_decode_info* info,
+    openusd_error_buffer* error) noexcept
+{
+    if (!IsValidPtexInfo(info, error))
+    {
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    if (source == nullptr || source_size == 0 ||
+        source_size > static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ||
+        maximum_face_dimension == 0 ||
+        (face_count != 0 && face_ids == nullptr) ||
+        (faces == nullptr && face_capacity != 0))
+    {
+        WriteError(error, "The Ptex encoded snapshot, limits, and buffer pointers are invalid.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+
+    return ReturnPtexDescription(faces, face_capacity, info, error, [&]()
+    {
+        return HdSilkDescribePtexFacesFromMemory(
+            source,
+            static_cast<size_t>(source_size),
+            face_ids,
+            face_count,
+            maximum_face_dimension,
+            maximum_decoded_bytes);
+    });
 }
 
 openusd_status openusd_silk_session_create_from_stage(
@@ -1945,6 +2420,229 @@ openusd_status openusd_silk_page_get_preparation_usage(
     return OPENUSD_STATUS_OK;
 }
 
+openusd_status openusd_silk_page_retain_volume_assets(
+    const openusd_silk_page* page,
+    openusd_silk_volume_assets** assets,
+    openusd_error_buffer* error)
+{
+    if (assets != nullptr)
+    {
+        *assets = nullptr;
+    }
+    if (page == nullptr || assets == nullptr)
+    {
+        WriteError(error, "An owned command page and volume-lease output are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        if (!page->volumeAssets.empty())
+        {
+            auto result = std::make_unique<openusd_silk_volume_assets>();
+            result->assets = page->volumeAssets;
+            *assets = result.release();
+        }
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_volume_assets_copy(
+    openusd_silk_volume_assets* assets,
+    const char* material_path,
+    uint8_t* destination,
+    size_t destination_size,
+    openusd_error_buffer* error)
+{
+    if (assets == nullptr || material_path == nullptr || destination == nullptr)
+    {
+        WriteError(error, "A volume lease, material path and destination are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        const auto found = assets->assets.find(material_path);
+        if (found == assets->assets.end())
+        {
+            WriteError(error, "The volume lease does not contain the requested material.");
+            return OPENUSD_STATUS_NOT_FOUND;
+        }
+        SilkVolumeAsset& asset = *found->second;
+        std::lock_guard<std::mutex> lock(asset.readMutex);
+        if (asset.file.size() != destination_size)
+        {
+            WriteError(error, "The destination size does not match the decoded volume field.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        for (size_t offset = 0; offset < destination_size;)
+        {
+            const size_t count = std::min(destination_size - offset, VolumeTransferBytes);
+            asset.file.Read(offset, destination + offset, count);
+            offset += count;
+        }
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+void openusd_silk_volume_assets_release(openusd_silk_volume_assets* assets) noexcept
+{
+    delete assets;
+}
+
+openusd_status openusd_silk_volume_budget_create(
+    uint64_t maximum_bytes,
+    openusd_silk_volume_budget** budget,
+    openusd_error_buffer* error)
+{
+    if (budget != nullptr) { *budget = nullptr; }
+    if (maximum_bytes == 0 || budget == nullptr)
+    {
+        WriteError(error, "A positive decoded-field byte ceiling and budget output are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        auto result = std::make_unique<openusd_silk_volume_budget>();
+        result->state = std::make_shared<SilkVolumeFieldBudget>(maximum_bytes);
+        *budget = result.release();
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_session_set_volume_budget(
+    openusd_silk_session* session,
+    const openusd_silk_volume_budget* budget,
+    openusd_error_buffer* error)
+{
+    if (budget == nullptr || !budget->state)
+    {
+        WriteError(error, "A valid decoded-field budget is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state) { return OPENUSD_STATUS_INVALID_ARGUMENT; }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->volumeBudget == budget->state) { return OPENUSD_STATUS_OK; }
+        if (state->synchronizationStarted || state->volumeBudget)
+        {
+            WriteError(error, "A decoded-field budget must be configured once before synchronization starts.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        state->volumeBudget = budget->state;
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_volume_budget_get_usage(
+    const openusd_silk_volume_budget* budget,
+    openusd_silk_volume_budget_usage* usage,
+    openusd_error_buffer* error)
+{
+    if (budget == nullptr || !budget->state || usage == nullptr ||
+        usage->struct_size < sizeof(*usage) || usage->version != OPENUSD_SILK_VOLUME_BUDGET_VERSION)
+    {
+        WriteError(error, "A valid decoded-field budget and complete version-1 usage output are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        *usage = budget->state->Snapshot();
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+void openusd_silk_volume_budget_release(openusd_silk_volume_budget* budget) noexcept
+{
+    delete budget;
+}
+
+openusd_status openusd_silk_session_set_command_storage_limits(
+    openusd_silk_session* session,
+    const openusd_silk_command_storage_limits* limits,
+    openusd_error_buffer* error)
+{
+    if (limits == nullptr || limits->struct_size < sizeof(*limits) ||
+        limits->version != OPENUSD_SILK_COMMAND_STORAGE_VERSION ||
+        limits->maximum_live_bytes == 0 ||
+        limits->maximum_live_bytes > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) ||
+        limits->maximum_live_bytes > SIZE_MAX ||
+        limits->maximum_update_bytes < limits->maximum_command_bytes ||
+        limits->maximum_update_bytes > limits->maximum_live_bytes ||
+        limits->maximum_command_bytes < 8 ||
+        limits->maximum_command_bytes > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
+        limits->transfer_buffer_bytes == 0 || limits->transfer_buffer_bytes > limits->maximum_command_bytes)
+    {
+        WriteError(error, "Valid version-1 live/update/command/transfer storage ceilings are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state) { return OPENUSD_STATUS_INVALID_ARGUMENT; }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->synchronizationStarted || state->commandStorageBudget ||
+            !state->pageAcknowledgementEnabled || state->maximumSessionMeshPreparationBytes == 0 ||
+            limits->maximum_command_bytes > state->maximumSessionCommandPageBytes)
+        {
+            WriteError(error, "Configure storage once before sync, after acknowledgement and preparation ceilings; "
+                "commands cannot exceed the session page ceiling.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        auto budget = std::make_shared<HdSilkCommandStorageBudget>(static_cast<size_t>(limits->maximum_live_bytes));
+        state->commandStorageLimits = *limits;
+        state->commandStorageBudget = std::move(budget);
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_session_get_command_storage_usage(
+    openusd_silk_session* session, openusd_silk_command_storage_usage* usage, openusd_error_buffer* error)
+{
+    if (usage == nullptr || usage->struct_size < sizeof(*usage) ||
+        usage->version != OPENUSD_SILK_COMMAND_STORAGE_VERSION)
+    {
+        WriteError(error, "A complete version-1 command storage usage output is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state) { return OPENUSD_STATUS_INVALID_ARGUMENT; }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (!state->commandStorageBudget)
+        {
+            WriteError(error, "This session has no command storage policy.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const auto& budget = state->commandStorageBudget;
+        *usage = {sizeof(*usage), OPENUSD_SILK_COMMAND_STORAGE_VERSION,
+            budget->Maximum(), budget->Reserved(), budget->Peak()};
+        return OPENUSD_STATUS_OK;
+    });
+}
+
+openusd_status openusd_silk_page_read_storage(
+    openusd_silk_page* page, uint64_t offset, uint8_t* destination, size_t count, openusd_error_buffer* error)
+{
+    if (page == nullptr || !page->file || offset > SIZE_MAX ||
+        offset > page->file->size() || count > page->file->size() - offset ||
+        count > page->maximumTransferBytes || (count != 0 && destination == nullptr))
+    {
+        WriteError(error, "An owned file-backed command page and valid offset are required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    return Guard(error, [&]()
+    {
+        std::lock_guard<std::mutex> lock(page->readMutex);
+        page->file->Read(static_cast<size_t>(offset), destination, count);
+        return OPENUSD_STATUS_OK;
+    });
+}
+
 openusd_status openusd_silk_session_enable_page_acknowledgement(
     openusd_silk_session* session,
     openusd_error_buffer* error)
@@ -2126,13 +2824,14 @@ static openusd_status SyncWithSceneIngestion(
     openusd_silk_mesh_preparation_usage* usage,
     openusd_silk_page** page,
     openusd_silk_page_view* view,
-    openusd_error_buffer* error)
+    openusd_error_buffer* error,
+    bool stored = false)
 {
     if (page != nullptr)
     {
         *page = nullptr;
     }
-    if (page == nullptr || view == nullptr || request == nullptr)
+    if (page == nullptr || view == nullptr || (request == nullptr && !stored))
     {
         WriteError(
             error,
@@ -2149,12 +2848,9 @@ static openusd_status SyncWithSceneIngestion(
     SilkSceneIngestionState ingestionState;
     uint32_t complexity = OPENUSD_SILK_COMPLEXITY_LOW;
     uint32_t draw_mode = OPENUSD_SILK_DRAW_MODE_SMOOTH_SHADED;
-    const openusd_status requestStatus = DecodeSceneIngestionRequest(
-        request,
-        &ingestionState,
-        &complexity,
-        &draw_mode,
-        error);
+    const openusd_status requestStatus = request != nullptr
+        ? DecodeSceneIngestionRequest(request, &ingestionState, &complexity, &draw_mode, error)
+        : OPENUSD_STATUS_OK;
     if (requestStatus != OPENUSD_STATUS_OK)
     {
         return requestStatus;
@@ -2207,7 +2903,8 @@ static openusd_status SyncWithSceneIngestion(
                 draw_mode,
                 page,
                 view,
-                error);
+                error,
+                stored);
         });
         if (status == OPENUSD_STATUS_OK && usage != nullptr)
         {
@@ -2242,6 +2939,32 @@ openusd_silk_session_sync_with_mesh_preparation(
     }
     return SyncWithSceneIngestion(session, width, height, time_code, camera, request, limits, usage,
         page, view, error);
+}
+
+openusd_status openusd_silk_session_sync_to_storage(
+    openusd_silk_session* session, int32_t width, int32_t height, double time_code,
+    const openusd_render_camera* camera, const openusd_silk_scene_ingestion_request* request,
+    const openusd_silk_mesh_preparation_limits* limits, openusd_silk_mesh_preparation_usage* usage,
+    openusd_silk_page** page, openusd_silk_command_storage_view* view, openusd_error_buffer* error)
+{
+    if (page != nullptr) { *page = nullptr; }
+    if (view == nullptr || view->struct_size < sizeof(*view) ||
+        view->version != OPENUSD_SILK_COMMAND_STORAGE_VERSION)
+    {
+        WriteError(error, "A complete version-1 command storage view is required.");
+        return OPENUSD_STATUS_INVALID_ARGUMENT;
+    }
+    openusd_silk_page_view metadata{};
+    metadata.struct_size = sizeof(metadata);
+    const openusd_status status = SyncWithSceneIngestion(
+        session, width, height, time_code, camera, request, limits, usage, page, &metadata, error, true);
+    if (status != OPENUSD_STATUS_OK) { return status; }
+    // File and per-command limits are immutable. No session lookup or allocation
+    // may fail after the update has become its pending publication.
+    *view = {sizeof(*view), OPENUSD_SILK_COMMAND_STORAGE_VERSION, metadata.abi_version,
+        metadata.command_count, metadata.revision, metadata.data_size,
+        (*page)->maximumCommandBytes, (*page)->maximumTransferBytes};
+    return OPENUSD_STATUS_OK;
 }
 
 extern "C" OPENUSD_HDSILK_API openusd_status
@@ -2361,6 +3084,152 @@ openusd_silk_diagnostic_reset_peak_counts(void) noexcept
     g_peak_page_count.store(
         g_live_page_count.load(std::memory_order_relaxed),
         std::memory_order_relaxed);
+}
+
+openusd_status openusd_silk_session_resolve_source_identities(
+    const openusd_silk_session* session,
+    const openusd_silk_source_identity_request* request,
+    uint8_t* buffer, size_t capacity, size_t* required, openusd_error_buffer* error)
+{
+    if (required != nullptr)
+    {
+        *required = 0;
+    }
+    return Guard(error, [&]()
+    {
+        if (request == nullptr || required == nullptr ||
+            request->struct_size < sizeof(*request) ||
+            request->version != OPENUSD_SILK_SOURCE_IDENTITY_VERSION ||
+            request->page_revision == 0 ||
+            request->query_count > OPENUSD_SILK_MAX_SOURCE_IDENTITY_QUERIES ||
+            (request->query_count != 0 && request->queries == nullptr) ||
+            request->maximum_result_bytes < 8 ||
+            request->maximum_result_bytes > OPENUSD_SILK_MAX_SOURCE_IDENTITY_RESULT_BYTES ||
+            (capacity != 0 && buffer == nullptr))
+        {
+            WriteError(error, "A valid bounded source-identity request and output are required.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        const auto state = AcquireSessionOperation(session, error);
+        if (!state)
+        {
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        SessionOperationGuard operation(state);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (!state->engine || !state->sceneState || state->sceneSyncRecoveryPending ||
+            request->page_revision != state->sourceIdentityRevision)
+        {
+            WriteError(error, "Source identities require the latest successful native page revision.");
+            return OPENUSD_STATUS_INVALID_ARGUMENT;
+        }
+        return WithStageAccess(state->stage_core, error, [&](openusd_stage_access*)
+        {
+            uint64_t serial = 0;
+            const openusd_status serialStatus =
+                openusd_stage_get_change_serial(state->stage_core, &serial, error);
+            if (serialStatus != OPENUSD_STATUS_OK)
+            {
+                return serialStatus;
+            }
+            if (serial != state->sourceIdentityStageSerial)
+            {
+                WriteError(error, "The source stage changed after the requested native page.");
+                return OPENUSD_STATUS_INVALID_ARGUMENT;
+            }
+            std::vector<uint8_t> bytes;
+            const auto append = [&](const uint8_t* data, size_t count)
+            {
+                if (count > request->maximum_result_bytes - bytes.size())
+                {
+                    throw std::length_error("The source-identity result exceeds its byte budget.");
+                }
+                bytes.insert(bytes.end(), data, data + count);
+            };
+            const auto integer = [&](uint32_t value)
+            {
+                const uint8_t data[4] = {
+                    static_cast<uint8_t>(value), static_cast<uint8_t>(value >> 8),
+                    static_cast<uint8_t>(value >> 16), static_cast<uint8_t>(value >> 24)};
+                append(data, sizeof(data));
+            };
+            const auto pathText = [&](const SdfPath& path)
+            {
+                const std::string text = path.GetString();
+                if (!path.IsAbsolutePath() || !path.IsPrimPath() ||
+                    text.empty() || text.size() > OPENUSD_SILK_MAX_SOURCE_IDENTITY_PATH_BYTES)
+                {
+                    throw std::invalid_argument("The source identity has no bounded absolute prim path.");
+                }
+                return text;
+            };
+            integer(OPENUSD_SILK_SOURCE_IDENTITY_VERSION);
+            integer(request->query_count);
+            for (uint32_t item = 0; item < request->query_count; ++item)
+            {
+                const auto& query = request->queries[item];
+                if (query.path == nullptr || query.instance_index < 0 || query.reserved != 0)
+                {
+                    WriteError(error, "Source-identity queries require a path and non-negative instance index.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+                size_t length = 0;
+                while (length <= OPENUSD_SILK_MAX_SOURCE_IDENTITY_PATH_BYTES && query.path[length] != '\0')
+                {
+                    ++length;
+                }
+                if (length == 0 || length > OPENUSD_SILK_MAX_SOURCE_IDENTITY_PATH_BYTES)
+                {
+                    WriteError(error, "A source-identity query path exceeds its byte limit or is empty.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+                const std::string hydraPath(query.path, length);
+                int32_t primId = -1;
+                int32_t sourcePickIndex = -1;
+                if (!state->sceneState->TryGetMeshSourceIdentity(
+                        {hydraPath, query.instance_index}, &primId, &sourcePickIndex) ||
+                    primId < 0 || sourcePickIndex < 0)
+                {
+                    WriteError(error, "The source-identity query does not name a retained Hydra mesh instance.");
+                    return OPENUSD_STATUS_INVALID_ARGUMENT;
+                }
+                SdfPath path;
+                SdfPath instancer;
+                int index = -1;
+                HdInstancerContext context;
+                if (!state->engine->DecodeIntersection(
+                        primId, sourcePickIndex, &path, &instancer, &index, &context) ||
+                    context.size() > OPENUSD_SILK_MAX_INSTANCER_CONTEXT_ENTRIES ||
+                    !state->stage->GetPrimAtPath(path))
+                {
+                    WriteError(error, "USD could not resolve the retained identity to an authored source prim.");
+                    return OPENUSD_STATUS_NATIVE_ERROR;
+                }
+                const std::string text = pathText(path);
+                integer(static_cast<uint32_t>(text.size()));
+                integer(static_cast<uint32_t>(context.size()));
+                append(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+                for (const auto& entry : context)
+                {
+                    if (entry.second < 0 || !state->stage->GetPrimAtPath(entry.first))
+                    {
+                        throw std::invalid_argument("USD returned an unresolved source instancer context.");
+                    }
+                    const std::string contextPath = pathText(entry.first);
+                    integer(static_cast<uint32_t>(entry.second));
+                    integer(static_cast<uint32_t>(contextPath.size()));
+                    append(reinterpret_cast<const uint8_t*>(contextPath.data()), contextPath.size());
+                }
+            }
+            *required = bytes.size();
+            if (capacity < bytes.size())
+            {
+                return OPENUSD_STATUS_BUFFER_TOO_SMALL;
+            }
+            std::memcpy(buffer, bytes.data(), bytes.size());
+            return OPENUSD_STATUS_OK;
+        });
+    });
 }
 
 #if defined(OPENUSD_HDSILK_ENABLE_TEST_HOOKS)

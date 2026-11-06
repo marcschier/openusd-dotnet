@@ -5,6 +5,42 @@ namespace OpenUsd.Mcp.Tests;
 public sealed class CompositionProposalTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task UnavailableCompositionNeverInventsCountsAndDiffersFromAnInspectedEmptySnapshot(bool available)
+    {
+        CompositionSnapshot snapshot = available ? new CompositionSnapshot() : CompositionSnapshot.Unavailable;
+        await Assert.That(snapshot.IsAvailable).IsEqualTo(available);
+        var service = new AnalysisProposalService([new CompositionProposalAnalyzer()]);
+        AnalysisInput input = CreateInput(snapshot);
+        AnalysisProposal proposal = service.Analyze(input).Single();
+        await Assert.That(proposal.Code).IsEqualTo(available ? "composition.summary" : "composition.unavailable");
+        await Assert.That(proposal.Applicability).IsEqualTo(ProposalApplicability.DiagnosticOnly);
+        await Assert.That(proposal.Payload.Operation).IsEqualTo("inspect-composition-summary");
+        await Assert.That(proposal.ExpectedMetrics).IsEmpty();
+        await Assert.That(proposal.Payload.Arguments).IsEmpty();
+        await Assert.That(AnalysisProposalService.Validate(proposal, input.Coordinates).IsStale).IsFalse();
+        await Assert.That(AnalysisProposalService.Validate(proposal, new AnalysisCoordinates(1, 3)).IsStale).IsTrue();
+        await Assert.That(() => AnalysisProposalService.SelectOverlayPayloads(
+            [proposal], [proposal.Id], input.Coordinates)).Throws<InvalidOperationException>();
+        await Assert.That(service.Analyze(input).Single().Id).IsEqualTo(proposal.Id);
+        if (available)
+        {
+            await Assert.That(proposal.Evidence.Single(item => item.Name == "layers").Value).IsEqualTo("0");
+            await Assert.That(proposal.Evidence.Single(item => item.Name == "pcpNodes").Value).IsEqualTo("0");
+            await Assert.That(proposal.Evidence.Any(item => item.Name == "availability")).IsFalse();
+        }
+        else
+        {
+            await Assert.That(proposal.Evidence.Count).IsEqualTo(1);
+            await Assert.That(proposal.Evidence[0].Name).IsEqualTo("availability");
+            await Assert.That(proposal.Evidence[0].Value).IsEqualTo("not-collected");
+            AnalysisProposal empty = service.Analyze(CreateInput(new CompositionSnapshot())).Single();
+            await Assert.That(proposal.Id).IsNotEqualTo(empty.Id);
+        }
+    }
+
+    [Test]
     public async Task SnapshotSortsAndDefensivelyCopiesLayerAndPcpData()
     {
         var layers = new List<CompositionLayerSnapshot>

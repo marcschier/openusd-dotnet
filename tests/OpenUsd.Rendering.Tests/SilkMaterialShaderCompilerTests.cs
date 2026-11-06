@@ -7,6 +7,193 @@ namespace OpenUsd.Rendering.Tests;
 
 public sealed class SilkMaterialShaderCompilerTests
 {
+    private const string CacheDirectoryVariable = "OPENUSD_SILK_SHADER_CACHE_DIR";
+
+    [Test]
+    [Arguments(null)]
+    [Arguments("")]
+    [NotInParallel]
+    public async Task UnsetOrEmptyCacheDirectoryKeepsTheExistingCacheAndDxcLocations(
+        string? configured)
+    {
+        string? previous = Environment.GetEnvironmentVariable(CacheDirectoryVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(CacheDirectoryVariable, configured);
+            string expected = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenUsd",
+                "SilkMaterialShaders");
+
+            var options = new SilkMaterialShaderCompilerOptions();
+
+            await Assert.That(options.CacheDirectory).IsEqualTo(expected);
+            await Assert.That(SilkD3D12GeneratedMaterialCompiler.GetDxcWorkDirectory())
+                .IsEqualTo(Path.Combine(expected, "dxc"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(CacheDirectoryVariable, previous);
+        }
+    }
+
+    [Test]
+    [NotInParallel]
+    public async Task ConfiguredCacheDirectoryControlsTheDefaultCacheAndDxcScratch()
+    {
+        string? previous = Environment.GetEnvironmentVariable(CacheDirectoryVariable);
+        string directory = Path.GetFullPath(Path.Combine(
+            Path.GetTempPath(),
+            $"openusd-material-shader-cache-{Guid.NewGuid():N}"));
+        try
+        {
+            Environment.SetEnvironmentVariable(CacheDirectoryVariable, directory);
+            var options = new SilkMaterialShaderCompilerOptions();
+            await Assert.That(options.CacheDirectory).IsEqualTo(directory);
+            await Assert.That(SilkD3D12GeneratedMaterialCompiler.GetDxcWorkDirectory())
+                .IsEqualTo(Path.Combine(directory, "dxc"));
+
+            SilkMaterialShaderKey key = CreateKey("graph:configured-cache", "stub-v1");
+            using (var compiler = new SilkMaterialShaderCompilerService(
+                new SilkStubMaterialShaderGenerator(),
+                options))
+            {
+                _ = compiler.GetOrQueue(key);
+                _ = await WaitForReadyAsync(compiler, key);
+            }
+            await Assert.That(Directory.GetFiles(
+                directory,
+                "*.silkshader.json",
+                SearchOption.AllDirectories).Length).IsEqualTo(1);
+
+            string explicitDirectory = Path.Combine(directory, "explicit");
+            var explicitOptions = new SilkMaterialShaderCompilerOptions
+            {
+                CacheDirectory = explicitDirectory
+            };
+            await Assert.That(explicitOptions.CacheDirectory).IsEqualTo(explicitDirectory);
+            await Assert.That(SilkD3D12GeneratedMaterialCompiler.GetDxcWorkDirectory())
+                .IsEqualTo(Path.Combine(directory, "dxc"));
+
+            SilkMaterialShaderKey explicitKey = CreateKey("graph:explicit-cache", "stub-v1");
+            using (var compiler = new SilkMaterialShaderCompilerService(
+                new SilkStubMaterialShaderGenerator(),
+                explicitOptions))
+            {
+                _ = compiler.GetOrQueue(explicitKey);
+                _ = await WaitForReadyAsync(compiler, explicitKey);
+            }
+            await Assert.That(Directory.GetFiles(
+                explicitDirectory,
+                "*.silkshader.json",
+                SearchOption.AllDirectories).Length).IsEqualTo(1);
+            await Assert.That(Directory.GetFiles(
+                directory,
+                "*.silkshader.json",
+                SearchOption.AllDirectories).Length).IsEqualTo(2);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(CacheDirectoryVariable, previous);
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    [NotInParallel]
+    public async Task ConfiguredCacheDirectoryContainsSuccessfulDxcScratch()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("Generated D3D12 shader compilation requires Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        string? previous = Environment.GetEnvironmentVariable(CacheDirectoryVariable);
+        string directory = Path.GetFullPath(Path.Combine(
+            Path.GetTempPath(),
+            $"openusd-material-dxc-{Guid.NewGuid():N}"));
+        try
+        {
+            Environment.SetEnvironmentVariable(CacheDirectoryVariable, directory);
+            var generator = new SilkProjectedMaterialShaderGenerator();
+            SilkMaterialShaderKey key = CreateKey(
+                "materialx:configured-dxc",
+                "generated-dxc-v1",
+                SilkShaderBinaryFormat.Dxil);
+            // The generated unlit path emits a constant-output fragment with no frame buffer.
+            byte[] fragment = SilkCheckedShaderAssets
+                .LoadSelectionMaskFragment(SilkShaderBinaryFormat.SpirV)
+                .Code
+                .ToArray();
+            generator.RegisterGenerated(key, fragment);
+
+            SilkMaterialShaderProgram program;
+            try
+            {
+                program = await generator.CompileAsync(key, CancellationToken.None);
+            }
+            catch (InvalidDataException exception)
+            {
+                string diagnosticDirectory = Path.Combine(directory, "dxc");
+                string[] diagnostics = Directory.Exists(diagnosticDirectory)
+                    ? Directory.GetFiles(diagnosticDirectory, "*.err")
+                    : [];
+                string detail = diagnostics.Length == 1
+                    ? await File.ReadAllTextAsync(diagnostics[0])
+                    : "No unique DXC diagnostic file was produced.";
+                throw new InvalidDataException(exception.Message + Environment.NewLine + detail, exception);
+            }
+
+            byte[] compiled = program.FragmentShader.Code.ToArray();
+            await Assert.That(program.FragmentShader.Format).IsEqualTo(SilkShaderBinaryFormat.Dxil);
+            await Assert.That(compiled.Length).IsGreaterThanOrEqualTo(4);
+            await Assert.That(Encoding.ASCII.GetString(compiled, 0, 4)).IsEqualTo("DXBC");
+            string scratch = Path.Combine(directory, "dxc");
+            await Assert.That(Directory.Exists(scratch)).IsTrue();
+            await Assert.That(Directory.GetFiles(scratch)).IsEmpty();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(CacheDirectoryVariable, previous);
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    [Arguments("relative-cache")]
+    [Arguments("C:relative-cache")]
+    [Arguments("\\rooted-without-volume")]
+    [Arguments("   ")]
+    [NotInParallel]
+    public async Task NonAbsoluteCacheDirectoryIsRejected(string configured)
+    {
+        string? previous = Environment.GetEnvironmentVariable(CacheDirectoryVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(CacheDirectoryVariable, configured);
+
+            InvalidOperationException exception = (await Assert.That(
+                    () => new SilkMaterialShaderCompilerOptions())
+                .Throws<InvalidOperationException>())!;
+
+            await Assert.That(exception.Message).Contains(CacheDirectoryVariable);
+            await Assert.That(
+                    () => SilkD3D12GeneratedMaterialCompiler.GetDxcWorkDirectory())
+                .Throws<InvalidOperationException>();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(CacheDirectoryVariable, previous);
+        }
+    }
+
     [Test]
     public async Task MissingMaterialShaderReturnsPlaceholderThenPublishesRealProgram()
     {
@@ -111,6 +298,70 @@ public sealed class SilkMaterialShaderCompilerTests
         await Assert.That(pending.Status).IsEqualTo(SilkMaterialShaderStatus.Placeholder);
         await Assert.That(failed.Status).IsEqualTo(SilkMaterialShaderStatus.Failed);
         await Assert.That(failed.CompilationError).IsTypeOf<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task RendererReportsOneDiagnosticPerFailedRuntimeShaderAndClearsItOnSuccess()
+    {
+        var failingGenerator = new SilkProjectedMaterialShaderGenerator();
+        SilkMaterialShaderKey key = CreateKey("materialx:diagnosed-failure", "projected-v1");
+        using var failing = new SilkMaterialShaderCompilerService(
+            failingGenerator, CreateOptions(CreateCacheDirectory()));
+        SilkMaterialShaderRequest pending = failing.GetOrQueue(key);
+        SilkMaterialShaderRequest failed = await WaitForTerminalAsync(failing, key);
+        using var device = new SilkHdrColorReadbackDevice();
+        using var renderer = new SilkMeshRenderer(device);
+
+        renderer.ObserveMaterialShaderRequest("/World/Materials/Broken", key, pending);
+        await Assert.That(renderer.MaterialShaderDiagnostics).IsEmpty();
+
+        renderer.ObserveMaterialShaderRequest("/World/Materials/Broken", key, failed);
+        renderer.ObserveMaterialShaderRequest("/World/Materials/Broken", key, failed);
+        IReadOnlyList<RenderDiagnostic> reported = renderer.MaterialShaderDiagnostics;
+        await Assert.That(reported.Count).IsEqualTo(1);
+        await Assert.That(reported[0].Severity).IsEqualTo(RenderDiagnosticSeverity.Warning);
+        await Assert.That(reported[0].Code)
+            .IsEqualTo(SilkRenderDiagnosticCodes.MaterialShaderCompilationFailed);
+        await Assert.That(reported[0].Message).Contains("/World/Materials/Broken");
+        await Assert.That(reported[0].Message).Contains(key.CacheHash);
+        await Assert.That(reported[0].Message).Contains(failed.CompilationError!.Message);
+
+        var readyGenerator = new CountingGenerator();
+        using var ready = new SilkMaterialShaderCompilerService(readyGenerator, CreateOptions(CreateCacheDirectory()));
+        _ = ready.GetOrQueue(key);
+        SilkMaterialShaderRequest compiled = await WaitForReadyAsync(ready, key);
+        renderer.ObserveMaterialShaderRequest("/World/Materials/Broken", key, compiled);
+        await Assert.That(renderer.MaterialShaderDiagnostics).IsEmpty();
+    }
+
+    [Test]
+    public async Task RendererBoundsFailedRuntimeShaderDiagnostics()
+    {
+        var generator = new SilkProjectedMaterialShaderGenerator();
+        SilkMaterialShaderKey firstKey = CreateKey("materialx:bounded-failure", "projected-v1");
+        using var compiler = new SilkMaterialShaderCompilerService(generator, CreateOptions(CreateCacheDirectory()));
+        _ = compiler.GetOrQueue(firstKey);
+        SilkMaterialShaderRequest failed = await WaitForTerminalAsync(compiler, firstKey);
+        using var device = new SilkHdrColorReadbackDevice();
+        using var renderer = new SilkMeshRenderer(device);
+
+        for (int index = 0; index < SilkMeshRenderer.MaterialShaderDiagnosticCapacity; index++)
+        {
+            renderer.ObserveMaterialShaderRequest(
+                $"/World/Materials/M{index}", CreateKey($"materialx:bounded-{index}", "projected-v1"), failed);
+        }
+        await Assert.That(renderer.MaterialShaderDiagnostics.Count)
+            .IsEqualTo(SilkMeshRenderer.MaterialShaderDiagnosticCapacity);
+        await Assert.That(renderer.MaterialShaderDiagnostics.Any(static diagnostic =>
+            diagnostic.Code == SilkRenderDiagnosticCodes.CapacityExceeded)).IsFalse();
+
+        renderer.ObserveMaterialShaderRequest(
+            "/World/Materials/Overflow", CreateKey("materialx:bounded-overflow", "projected-v1"), failed);
+        IReadOnlyList<RenderDiagnostic> reported = renderer.MaterialShaderDiagnostics;
+        await Assert.That(reported.Count).IsEqualTo(SilkMeshRenderer.MaterialShaderDiagnosticCapacity + 1);
+        await Assert.That(reported[^1].Code).IsEqualTo(SilkRenderDiagnosticCodes.CapacityExceeded);
+        await Assert.That(reported.Any(static diagnostic => diagnostic.Message.Contains(
+            "/World/Materials/Overflow", StringComparison.Ordinal))).IsFalse();
     }
 
     [Test]

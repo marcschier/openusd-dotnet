@@ -102,7 +102,7 @@ remains a later phase and is out of scope for this package.
 | Executable samples and probes | — | — | ✅ | Development and evidence projects |
 | Runtime asset package projects | Carrier | — | — | Assets are RID-specific |
 
-Repository development uses SDK `10.0.401`, even when compiling `net8.0` and `net9.0` targets.
+Repository development uses SDK `10.0.403`, even when compiling `net8.0` and `net9.0` targets.
 
 ## Runtime identifiers
 
@@ -122,6 +122,14 @@ ICD and SwiftShader implements neither `VK_KHR_external_memory_win32` nor
 `VK_KHR_external_semaphore_win32`, so it cannot export a Vulkan image to a D3D11 shared handle;
 hosted Linux reaches lavapipe, but the X11/Wayland compositor reports
 `supported image handles: (none)`, so no external Vulkan image can be imported.
+
+Those limits apply to zero-copy external-image import only. When the compositor offers no GPU
+interop, or offers interop without image handle types, `VulkanCompositionViewportPresenter`
+selects the `HostReadback` presentation path automatically: it renders into the same Vulkan ring,
+copies each completed frame into host memory, and `CompositionViewportControl` draws it through a
+CPU bitmap. Mesa lavapipe under Xvfb (no `VK_KHR_external_semaphore_fd`) therefore still presents
+real frames in X11 Vulkan and EGL modes, at the cost of one GPU-to-host copy per frame. Diagnostics
+report `PresentationPath = HostReadback` and `ImageHandleType = HostMemoryReadback`.
 
 No runtime package is currently defined for Windows arm64, Linux arm64, macOS x64, or mobile/browser
 RIDs.
@@ -248,8 +256,8 @@ projects the same way from `base_color`/`base_weight`, `emission_color`/`emissio
 `specular_roughness`, `specular_ior`, `coat_weight`, `coat_roughness`, `geometry_opacity`, and `geometry_normal`.
 A chain of constant
 multiply/add/subtract/mix nodes over exactly one image is folded into that texture's scale and bias, and a constant
-texture-coordinate chain of `ND_place2d_vector2` and `UsdTransform2d` nodes is composed into the single per-material
-UV transform its images sample through. Unsupported nodes are
+texture-coordinate chain of `ND_place2d_vector2` and `UsdTransform2d` nodes is composed into a folded UV transform.
+A material can carry two surface transforms and two coordinate streams. Unsupported nodes are
 reported with `TF_WARN` diagnostics that name the material input and node id. Transmission, subsurface, sheen/fuzz,
 thin film, anisotropy, coat tint/coat IOR/coat normal, and MaterialX `specular_color` as a specular workflow are
 explicitly **not** projected: each is reported by name and left at the renderer default rather than folded into a
@@ -265,20 +273,21 @@ reference of the texel the folded affine selects, both for a pure `(1, 0, 0, 1, 
 Vulkan and D3D12 WARP), while the same material with the identity transform fails that comparison at
 `maxChannelDelta=244`. The rotation case is what proves the off-diagonal matrix terms reach the shader, which a
 translation-only capture cannot. Non-constant transform inputs, a transform behind an unsupported intermediate node, a
-chain that never reaches a coordinate node, and a second image in the same material asking for a different transform
-are all rejected with diagnostics and proven by the native `hdsilk_probe` rather than approximated.
+chain that never reaches a coordinate node, and a third distinct surface transform are rejected with diagnostics.
+Composite operands must also use the same stream and transform. The native `hdsilk_probe` covers these boundaries.
 Constant arithmetic over one image is gated the same way and to the same precision: the chain
 `mix(0.2, image * 0.5, 0.75)` folds to `image * 0.375 + 0.05`, and a 0.4 texel shades bit-identically to a constant
 material of 0.2 (`maxChannelDelta=0`, `meanChannelDelta=0.000` on both Vulkan and D3D12 WARP) because both values are
 exactly representable in eight bits, while the same image bound with the identity scale and bias diverges at
-`maxChannelDelta=49`. Two images combined into one input, an image-driven mix factor, a non-affine operator over an
-image, arithmetic over a normal map, and any fold that would leave the unit range are all rejected with diagnostics.
+`maxChannelDelta=49`. One surface input per material can combine two images with a supported multiply, add, subtract,
+or mix operation. A second composite input, an image-driven mix factor, a non-affine operator over an image, arithmetic
+over a normal map, and any per-entry fold that would leave the unit range are rejected with diagnostics.
 MaterialX image sampling is read with MaterialX's own names and defaults: `uaddressmode`/`vaddressmode` per axis,
-defaulting to `periodic`, and `default` as the unreadable-file fallback. That default is gated by pixels on both
-executable backends -- a 1.25 coordinate on a 2x2 image matches the wrapped texel under periodic and the edge texel
-under the wire's black mode, each at `maxChannelDelta=2`, and the two diverge at `maxChannelDelta=244`. An
-address mode outside the four MaterialX names, and a `ND_texcoord_vector2` naming a second UV set, are rejected with
-diagnostics rather than resolved to the first set.
+defaulting to `periodic`, and `default` as the unreadable-file fallback. The native probe checks the unauthored
+periodic default. Pixel gates on both executable backends use a 1.25 coordinate on a 2x2 image to distinguish repeat,
+clamp, transparent-black border, and MaterialX `constant` addressing. An address mode outside the four MaterialX
+names is rejected with a diagnostic.
+`ND_texcoord_vector2` can name a second UV set; a third distinct surface primvar is rejected.
 The staged runtime includes `usdMtlx`, MaterialX DLLs, `MaterialXGenGlsl`, and the standard libraries, and the
 asset uses the MaterialX `out` terminal; with `UsdImagingGLEngine` scene materials enabled, Storm still covers only
 the 347-pixel PreviewSurface anchor against hdSilk's 4314-pixel MaterialX mesh. Where the two overlap, the colour
@@ -292,8 +301,9 @@ and only when the native profile provides OpenUSD's `hioOpenVDB` field reader. T
 win-x64 and linux-x64; the D3D12 WARP leg and the cross-backend comparison are executed on win-x64 only, because
 Direct3D 12 exists only on Windows. The native shim reads one
 `UsdVolOpenVDBAsset` density field through OpenUSD Hio and publishes a bulk cached R32 volume texture; both backends
-upload that cache as a 3D texture and the mesh raymarches it, integrating one sample per voxel layer so the
-reconstruction follows the grid's own Z resolution rather than a fixed step count. Each backend gate compares the
+upload that cache as a 3D texture. Current source integrates along the clipped camera ray with midpoint samples
+based on the longest grid axis and the field-local chord length. This camera-ray implementation and its regenerated
+shaders remain unqualified; the results below apply to earlier source. Each existing backend gate compares the
 sampled render with a
 uniform proxy at the same mean density and with a shifted density grid, so a uniform fallback fails. If the Hio OpenVDB
 reader is absent, the gate is reported as a capability skip. Storm is not a usable VDB reference in the current
@@ -316,10 +326,10 @@ D3D12 legs from the `macos-arm64` render job. That job stages the runtime with `
 run `33931868184`, attempt 1, recorded `status=executed` without wiring failures or capability skips. Uniform and
 sampled Metal cases are now required without `-AllowCapabilitySkip`, and osx-arm64 is included in that subset's
 evidence platforms. The separate thin-depth and impossible-material-combination gates remain D3D12/Vulkan claims;
-Metal density evidence does not promote shadows, GPU deformation, GPU OCIO or component picking. Multi-field volumes,
-non-density field
-roles such as temperature or velocity, Field3D rendering, and `UsdVolVolume` prims with several field relationships
-remain outside the rendering support claim. The field's own transform is likewise not yet honored: the grid is
+Metal density evidence does not promote shadows, GPU deformation, GPU OCIO or component picking. A density
+relationship may target an external `UsdVolOpenVDBAsset` whose grid name differs from `density`; other relationships
+are not shaded. General multi-field shading, non-density roles such as temperature or velocity, and Field3D rendering
+remain outside the support claim. The field's own transform is likewise not yet honored: the grid is
 stretched to fill the proxy rather than placed by the `UsdVolOpenVDBAsset` prim transform and the VDB's own
 index-to-world transform, so only the density values are transported, not the grid's placement.
 
@@ -489,9 +499,10 @@ Self-consistency gates that deliberately avoid Storm's offscreen reference gaps:
   `texture-wrap-use-metadata-self-consistency` compare `repeat` against the candidate wrap mode with UVs
   confined to `[0,1]`, where every wrap mode is mathematically equivalent. Each measured
   `maxChannelDelta=2` / `meanChannelDelta=0.082`. The companion outside-`[0,1]` UV divergence cases require
-  the sampler address mode to differ: clamp and `useMetadata`/black each measured `maxChannelDelta=203` /
-  `meanChannelDelta=14.950` -- identical, because both resolve to clamp-to-edge -- and mirror measured
-  `maxChannelDelta=127` / `meanChannelDelta=7.135`.
+  the sampler address mode to differ. In the pre-`7856e0d` capture, clamp and `useMetadata`/black each
+  measured `maxChannelDelta=203` / `meanChannelDelta=14.950` because both resolved to clamp-to-edge;
+  mirror measured `maxChannelDelta=127` / `meanChannelDelta=7.135`. The current border behavior is
+  covered separately by the D3D12 and Vulkan address-mode pixel gates below.
 - `texture-colorspace-auto-self-consistency` compares diffuse `sourceColorSpace=sRGB` with `auto`, which
   resolves to the same sRGB decode for diffuse textures. It measured `maxChannelDelta=2` /
   `meanChannelDelta=0.082`. The raw/linear companion compares the same texture as `sRGB` versus `raw`;
@@ -552,10 +563,12 @@ analytic native fixtures rather than this unsuitable Storm reference.
 - Varying, uniform, and face-varying texture-coordinate primvar interpolation modes are gated.
 - Other primvar names beyond constant `displayColor`, normals, and `st` texture coordinates are not gated.
 - Texture `repeat`, `clamp`, `mirror`, `useMetadata`/black, `sRGB`, diffuse `auto`, and raw/linear colour
-  space are gated. `useMetadata` and `black` are distinct wire values: the fragment stage resolves both
-  to clamp-to-edge, because the wire carries no border colour and no backend is given one, while the
-  vertex-stage displacement sampler implements both exactly as a transparent-black border and resolves
-  `useMetadata` from the image's own per-axis wrap metadata.
+  space are gated. `useMetadata` and `black` remain distinct wire values. The fragment sampler maps both
+  according to their intent: `black` selects a transparent-black border, while `useMetadata` resolves
+  the image's observed per-axis wrap metadata and uses that border when metadata is absent. If the
+  metadata cannot be read or its mode cannot be represented, fragment sampling uses the black border
+  and reports a texture-fallback diagnostic. Vertex displacement resolves the same per-axis metadata
+  but refuses unavailable or unsupported metadata.
 - Specular, opacity, and occlusion texture slots have no parity scene.
 - `displacement` moves geometry in hdSilk, resolved from the authored `displacement` material terminal
   rather than inferred from a surface input. A constant authored amount, or a per-vertex float sample
@@ -583,12 +596,12 @@ analytic native fixtures rather than this unsuitable Storm reference.
   channels projects; a per-channel or connected colour-typed opacity is refused. There is **no generated OpenPBR
   shader path**: an OpenPBR material needing a lobe the projection omits renders without it and says so.
 - The MaterialX `place2d` / `UsdTransform2d` UV transform fold is gated by Vulkan and D3D12 pixel self-consistency and
-  divergence, not by Storm parity, and only one texture-coordinate stream per material is carried: **both** the UV
-  transform and the UV primvar are reconciled across a material's textures, so divergent per-image transforms,
-  divergent per-image primvars (a base colour on `uvSet0` beside a normal map on `uvSet1`),
-  non-constant transform inputs, transforms behind unsupported intermediate nodes, and chains that never reach a
-  coordinate node are rejected with diagnostics rather than rendered. **Multiple UV sets are not supported** by the
-  wire or by the checked shaders, and the expanded surface-model projection does not change that.
+  divergence, not by Storm parity. Each texture can select a named UV primvar, including `stN` from a positive
+  `ND_texcoord_vector2` index. The textures on one material can resolve to at most two primvars (a base colour on
+  `uvSet0` beside a normal map on `uvSet1` renders both) and at most two UV transforms. Surface textures must share
+  a missing-coordinate reader fallback, even across different primvars. A third transform or primvar, composite
+  operands using different streams or transforms, non-constant transform inputs, transforms behind unsupported
+  intermediate nodes, and chains that never reach a coordinate node are rejected with diagnostics.
 - Constant arithmetic over one image folds into that texture's scale and bias and is gated the same way. Two images
   joined by one constant `multiply`, `add`, `subtract` or `mix` are supported as a per-pixel composite and gated by
   pixels on both executable backends, but **one composite per material** only: a graph that composites a second
@@ -596,13 +609,18 @@ analytic native fixtures rather than this unsuitable Storm reference.
   operators over an image, three or more images in one input, arithmetic on the `normal` input, and per-entry folds
   leaving the unit range are rejected with diagnostics.
 - MaterialX image sampling is read from `uaddressmode`/`vaddressmode` and `default`, with MaterialX's periodic
-  default. Border sampling is **not** implemented: `SilkTextureWrap.Black` -- published for UsdUVTexture's
-  `black`/unauthored `wrap` and for MaterialX `constant` addressing -- is resolved to clamp-to-edge, so it renders
-  identically to `SilkTextureWrap.Clamp` and a sample outside the unit range returns the edge texel rather than black
-  or a MaterialX node's `default` colour. The `default` colour is transported only in its other role, as the
-  unreadable-file fallback. A second UV set named by a `ND_texcoord_vector2` `index` is not supported.
-- Sphere-light glossy shaping and area-light texture inputs are not gated. Dome textures have no gated
-  Storm parity scene either, because the offscreen harness renders none; hdSilk's textured-dome
+  default. `SilkTextureWrap.Black` selects a transparent-black border on D3D12, Vulkan, and Metal.
+  `SilkTextureWrap.UseMetadata` resolves the observed per-axis wrap, using the black fallback when metadata is absent.
+  D3D12 WARP and Vulkan SwiftShader pixel gates distinguish the border from clamp-to-edge;
+  Metal runtime pixel evidence still requires a Metal-capable host. MaterialX `constant` addressing returns the
+  authored `default` outside the image through a one-texel ring in the cached texture; D3D12 WARP and Vulkan
+  SwiftShader pixel gates read the default at a 1.25 coordinate and diverge from the black border. Lower mip levels
+  blend the ring into the edge texels, and an image whose ring exceeds the device texture limit binds the default.
+- Rect and disk lights apply ShapingAPI cone and focus, gated by Vulkan self-consistency pairs. Zero-radius
+  sphere lights also apply cone and focus as a spot when the cone is below 180 degrees; spot illumination and
+  its supported perspective shadow are pixel-gated on D3D12 WARP and Vulkan SwiftShader. Finite-radius sphere
+  shaping, cone softness, IES profiles and area-light texture inputs are not implemented. Dome textures have no
+  gated Storm parity scene either, because the offscreen harness renders none; hdSilk's textured-dome
   image-based lighting is gated analytically and by its own D3D12 WARP and Vulkan SwiftShader pixel
   gates instead.
 - Multiple point-instancer prototypes, proto-index variation, `invisibleIds`, and two levels of nesting have no
@@ -708,10 +726,13 @@ analytic native fixtures rather than this unsuitable Storm reference.
   rendering rather than by Storm parity, because Storm's offscreen harness has no linked-light reference.
   `collection:shadowLink` is applied where UsdLux defines it, as a caster restriction: a prim a light's
   shadow collection excludes is not drawn into that light's shadow map, while every prim the light
-  illuminates still receives. hdSilk casts raster shadows for authored `UsdLuxDistantLight`s through a
-  bounded light-space shadow map and a depth-only pass, gated analytically on D3D12 WARP and Vulkan
-  SwiftShader; every other light type, and any device that cannot record a depth-only pass, is reported
-  as `OPENUSD_SILK_SHADOW_UNSUPPORTED` rather than silently rendering unshadowed.
+  illuminates still receives. hdSilk casts raster shadows for authored `UsdLuxDistantLight`s, zero-radius
+  sphere spots and points, and finite-area sphere, rect, disk and cylinder lights. Finite-area lights
+  publish five perspective maps matched to five direct-light emitter samples; a group is refused when
+  any sample cannot contain the complete caster bounds. Analytic rect-emitter pixel coverage has been
+  authored for D3D12 WARP and Vulkan SwiftShader but awaits execution with the matching native build.
+  Dome lights and any device that cannot record a depth-only pass remain unsupported and are reported
+  as `OPENUSD_SILK_SHADOW_UNSUPPORTED`.
   `collection:lightLink` on a `UsdLuxDomeLight` is implemented too, for textured and untextured domes
   alike: up to eight domes carry a stable bit in a bounded dome table, a linked prim receives only the
   skies its collection admits in both the diffuse and the specular response, and a scene that links no
@@ -748,12 +769,15 @@ analytic native fixtures rather than this unsuitable Storm reference.
 | Display output | Reinhard presentation, identity parity | MCP/Viewer preserve highlights |
 | Storm shadow parity | Measured, ungated | Offscreen Storm shadows are not a reference |
 | Rect/disk/cylinder area lights | Implemented and self-consistency-gated | Storm renders authored references black |
+| Rect/disk `UsdLuxShapingAPI` | Cone and focus, self-consistency-gated | No cone softness or IES |
+| Zero-radius sphere shaping | Cone/focus; spot gate | Shadows (0,90); no finite-radius shaping, softness or IES |
+| Light colour temperature | Storm's blackbody tint, native-page gated | No `normalize`; non-finite dome diagnosed |
 | Light linking | Implemented, analytically gated | Per-draw light mask on D3D12 WARP and Vulkan SwiftShader |
 | Nested-instance linking | Implemented, analytically gated | Composed `parent * count + inner` masks |
 | Dome linking | Implemented, analytically gated | Per-draw dome mask, bounded at 8; unlinked pixels byte-identical |
 | Dome shadow linking | Excluded and diagnosed | No dome shadow pass exists to restrict casters |
 | Shadow linking | Implemented, analytically gated | Caster restriction applied in the depth-only pass |
-| hdSilk raster shadows | Distant lights implemented, gated | Bounded light-space maps on WARP and SwiftShader |
+| hdSilk raster shadows | Distant/spot gated; point/area pixels pending | Five perspective maps per area emitter |
 | Shadow-map depth resource path | Implemented and gated | Render, sample and re-render a sampled depth target |
 
 `light-distant-shadow` is one of the measured Storm offscreen-harness limits, alongside area lights,

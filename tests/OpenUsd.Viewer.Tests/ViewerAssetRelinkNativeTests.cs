@@ -188,6 +188,7 @@ public sealed class ViewerAssetRelinkNativeTests
             }
             await Assert.That(restoration.IsRestored(before with { RgbaPixels = bottomUp })).IsTrue();
 
+            await WaitAsync(() => Required<MenuItem>(main, "EditPropertyMenuItem").IsEnabled, timeout);
             Required<MenuItem>(main, "EditPropertyMenuItem").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             await WaitAsync(() => main.OwnedWindows.OfType<PropertyEditWindow>().Any(), timeout);
             property = main.OwnedWindows.OfType<PropertyEditWindow>().Single();

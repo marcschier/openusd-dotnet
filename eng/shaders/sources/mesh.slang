@@ -24,8 +24,17 @@
 #ifndef VOLUME_DENSITY_TEXTURES
 #define VOLUME_DENSITY_TEXTURES 0
 #endif
+#if VOLUME_DENSITY_TEXTURES && MAP_NORMAL
+#error Density volumes and normal-mapped surfaces cannot share a permutation.
+#endif
 
 static const uint MaximumDirectLights = 128;
+static const uint MaximumShadowMaps = 24;
+static const uint ShadowMatrixByteOffset = 224 + 6 * 16 * MaximumDirectLights + 64;
+static const uint ShadowTileByteOffset = ShadowMatrixByteOffset + 64 * MaximumShadowMaps;
+static const uint ShadowControlByteOffset = ShadowTileByteOffset + 16 * MaximumShadowMaps;
+static const uint ShadowSlotByteOffset = ShadowControlByteOffset + 16 * MaximumShadowMaps;
+static const uint EnvironmentControlByteOffset = ShadowSlotByteOffset + 16 * MaximumDirectLights;
 
 struct VertexInput
 {
@@ -33,6 +42,9 @@ struct VertexInput
     float3 normal : NORMAL;
 #if HAS_UV
     float2 texCoord : TEXCOORD0;
+    // The material's second surface coordinate set. Vertex layouts without one
+    // alias it to texCoord, so every UV pipeline declares the same input.
+    float2 texCoord1 : TEXCOORD1;
 #endif
 #if MAP_NORMAL
     float4 tangent : TANGENT;
@@ -44,13 +56,18 @@ struct VertexOutput
     float4 position : SV_Position;
     float3 eyePosition : TEXCOORD1;
     float3 objectPosition : TEXCOORD2;
+#if VOLUME_DENSITY_TEXTURES
+    float3 volumeEyeToObjectRow0 : TEXCOORD6;
+    float3 volumeEyeToObjectRow1 : TEXCOORD7;
+    float3 volumeEyeToObjectRow2 : TEXCOORD8;
+    float3 volumeCameraPosition : TEXCOORD9;
+    float volumeRayValid : TEXCOORD11;
+    float4 volumeClipPosition : TEXCOORD12;
+#endif
     float3 normal : NORMAL;
     float4 tint : COLOR0;
-    // The interpolated shading basis in *world* space, which is the space the
-    // prefiltered environment maps are baked in. It is carried alongside the
-    // object-space normal rather than replacing it because the direct-light loop
-    // shades on the object-space one and changing that would move every gated
-    // parity image; see the environment block in the fragment stage.
+    // Authored direct lights and prefiltered environments use world space.
+    // Keep the object basis alongside it for the deterministic headlight.
     //
     // worldNormal is transformed by the cofactor matrix of the object-to-world
     // upper 3x3, which is the inverse transpose up to a positive scale, so a
@@ -67,6 +84,10 @@ struct VertexOutput
     // rather than by its inverse transpose: a tangent is a direction along the
     // surface, not a normal to it. w carries the authored bitangent sign.
     float4 worldTangent : TEXCOORD4;
+#endif
+#if HAS_UV
+    // Declared last so the interpolants above keep their locations.
+    float2 texCoord1 : TEXCOORD5;
 #endif
 };
 
@@ -96,10 +117,11 @@ struct FrameParameters
     // is (offsetU, offsetV, scaleU, scaleV) of the slot's tile inside the single
     // shadow atlas; shadowControls[slot] is (depthBias, normalBias, pcfRadius in
     // texels, one shadow texel in atlas UV); shadowSlots[light].x is the slot the
-    // direct light at that index samples, or -1 when the light casts no shadow.
-    float4x4 shadowWorldToLightClip[4];
-    float4 shadowTile[4];
-    float4 shadowControls[4];
+    // direct light samples, and .z is its point-shadow depth scale or zero.
+    // The .w components are indexed by map slot and carry each face's limit.
+    float4x4 shadowWorldToLightClip[MaximumShadowMaps];
+    float4 shadowTile[MaximumShadowMaps];
+    float4 shadowControls[MaximumShadowMaps];
     float4 shadowSlots[MaximumDirectLights];
     // Prefiltered image-based environment lighting.
     //   x: non-zero when the environment resources are live for this frame.
@@ -136,11 +158,17 @@ struct FrameParameters
     // lives in, or -1 for a dome that has no prefiltered response and
     // contributes through domeAmbient alone.
     float4 domeEnvironment[8];
+    // Per direct light: the UsdLux ShapingAPI cone of a rect or disk light, or
+    // a zero-radius sphere spot.
+    //   x: cos of the cone angle; y: the focus exponent; z: non-zero when the
+    //   cone is narrower than 180 degrees and therefore attenuates. Every other
+    //   light, and every frame without the shaping table, writes zero.
+    float4 lightShaping[MaximumDirectLights];
 };
 
 [[vk::binding(8, 0)]]
 // A raw buffer avoids structured-element stride limits: D3D12 caps an element
-// at 2048 bytes, while the bounded frame occupies 15296 bytes.
+// at 2048 bytes, while the bounded frame occupies 19264 bytes.
 ByteAddressBuffer frameParameters : register(t8);
 
 #if FRAGMENT_STAGE && OPENUSD_TARGET_METAL
@@ -157,6 +185,7 @@ struct FrameVectorView
 
 struct FragmentFrameParameters
 {
+    float4x4 clipToEye;
     uint4 clipPlaneCount;
     float4 clipPlanes[8];
     float4 ambientLight;
@@ -167,9 +196,6 @@ struct FragmentFrameParameters
     FrameVectorView lightTangentShapeX;
     FrameVectorView lightBitangentShapeY;
     float4x4 eyeToWorld;
-    float4x4 shadowWorldToLightClip[4];
-    float4 shadowTile[4];
-    float4 shadowControls[4];
     FrameVectorView shadowSlots;
     float4 environmentControls;
     float4 domeControls;
@@ -187,6 +213,7 @@ struct FragmentDomeParameters
 FragmentFrameParameters LoadFragmentFrameParameters()
 {
     FragmentFrameParameters frame;
+    frame.clipToEye = frameParameters.Load<float4x4>(0);
     frame.clipPlaneCount = frameParameters.Load<uint4>(64);
     [unroll]
     for (uint index = 0; index < 8; index++)
@@ -201,18 +228,11 @@ FragmentFrameParameters LoadFragmentFrameParameters()
     frame.lightControls.byteOffset = 224 + 3 * 16 * MaximumDirectLights;
     frame.lightTangentShapeX.byteOffset = 224 + 4 * 16 * MaximumDirectLights;
     frame.lightBitangentShapeY.byteOffset = 224 + 5 * 16 * MaximumDirectLights;
-    frame.shadowSlots.byteOffset = 12960;
+    frame.shadowSlots.byteOffset = ShadowSlotByteOffset;
     frame.eyeToWorld = frameParameters.Load<float4x4>(12512);
-    [unroll]
-    for (uint index = 0; index < 4; index++)
-    {
-        frame.shadowWorldToLightClip[index] = frameParameters.Load<float4x4>(12576 + index * 64);
-        frame.shadowTile[index] = frameParameters.Load<float4>(12832 + index * 16);
-        frame.shadowControls[index] = frameParameters.Load<float4>(12896 + index * 16);
-    }
-    frame.environmentControls = frameParameters.Load<float4>(15008);
-    frame.domeControls = frameParameters.Load<float4>(15024);
-    FragmentDomeParameters domes = frameParameters.Load<FragmentDomeParameters>(15040);
+    frame.environmentControls = frameParameters.Load<float4>(EnvironmentControlByteOffset);
+    frame.domeControls = frameParameters.Load<float4>(EnvironmentControlByteOffset + 16);
+    FragmentDomeParameters domes = frameParameters.Load<FragmentDomeParameters>(EnvironmentControlByteOffset + 32);
     frame.domeAmbient = domes.ambient;
     frame.domeEnvironment = domes.environment;
     return frame;
@@ -220,6 +240,43 @@ FragmentFrameParameters LoadFragmentFrameParameters()
 #else
 typedef FrameParameters FragmentFrameParameters;
 #endif
+#endif
+
+#if FRAGMENT_STAGE
+// Match SilkFrameUniformWriter without copying its seven 128-entry arrays into
+// per-fragment local storage. Dynamically index the raw buffer, not a loaded struct.
+static const uint FrameLightArrayBytes = MaximumDirectLights * 16u;
+static const uint FrameLightArraysOffset = 224u;
+static const uint FrameShadowSlotsOffset =
+    ShadowSlotByteOffset;
+
+[ForceInline]
+float4 ReadFrameLight(uint field, uint index)
+{
+    return frameParameters.Load<float4>(FrameLightArraysOffset + field * FrameLightArrayBytes + index * 16u);
+}
+
+[ForceInline]
+float4 ReadFrameShadowSlot(uint index)
+{
+    return frameParameters.Load<float4>(FrameShadowSlotsOffset + index * 16u);
+}
+
+[ForceInline]
+float4x4 ReadShadowMatrix(uint slot)
+{
+    return frameParameters.Load<float4x4>(ShadowMatrixByteOffset + slot * 64u);
+}
+
+// After the shadow slots: environment and dome controls (32 bytes), then the
+// eight dome ambient and eight dome environment vectors (256 bytes).
+static const uint FrameLightShapingOffset = FrameShadowSlotsOffset + FrameLightArrayBytes + 32u + 256u;
+
+[ForceInline]
+float4 ReadFrameLightShaping(uint index)
+{
+    return frameParameters.Load<float4>(FrameLightShapingOffset + index * 16u);
+}
 #endif
 
 #if VERTEX_STAGE
@@ -284,10 +341,23 @@ SamplerState volumeDensitySampler : register(s4);
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(2, 0)]]
 Texture2D<float4> baseColorTexture : register(t0);
+[[vk::binding(39, 0)]]
+Texture2D<float4> diffuseValuesTexture : register(t22);
+[[vk::binding(40, 0)]]
+Texture2D<float4> emissiveValuesTexture : register(t23);
 #endif
 #if FRAGMENT_STAGE && MAP_NORMAL
 [[vk::binding(3, 0)]]
 Texture2D<float4> normalTexture : register(t1);
+// Density volumes and normal-mapped surfaces are disjoint permutations.
+[[vk::binding(13, 0)]]
+SamplerState detailNormalSampler : register(s4);
+[[vk::binding(9, 0)]]
+Texture2D<float4> detailNormalTexture : register(t9);
+[[vk::binding(37, 0)]]
+Texture2D<float4> normalValuesTexture : register(t20);
+[[vk::binding(38, 0)]]
+Texture2D<float4> detailNormalValuesTexture : register(t21);
 #endif
 #if FRAGMENT_STAGE && MAP_MATERIAL
 [[vk::binding(4, 0)]]
@@ -345,6 +415,10 @@ Texture2D<float4> compositeTexture : register(t15);
 [[vk::binding(9, 0)]]
 Texture3D<float> volumeDensityTexture : register(t9);
 #endif
+#if FRAGMENT_STAGE && VOLUME_DENSITY_TEXTURES
+[[vk::binding(45, 0)]]
+Texture2D<float> volumeOpaqueDepthTexture : register(t28);
+#endif
 
 // The single shadow atlas every mesh permutation samples, and its sampler. One
 // atlas rather than one texture per shadow map: a per-map slot would add four
@@ -357,6 +431,14 @@ Texture3D<float> volumeDensityTexture : register(t9);
 SamplerState shadowSampler : register(s13);
 [[vk::binding(31, 0)]]
 Texture2D<float> shadowAtlas : register(t16);
+[[vk::binding(41, 0)]]
+Texture2D<float4> shadowTransmission0 : register(t24);
+[[vk::binding(42, 0)]]
+Texture2D<float4> shadowTransmission1 : register(t25);
+[[vk::binding(43, 0)]]
+Texture2D<float4> shadowTransmission2 : register(t26);
+[[vk::binding(44, 0)]]
+Texture2D<float4> shadowTransmission3 : register(t27);
 #endif
 
 // The prefiltered environment resources every mesh fragment permutation samples.
@@ -423,6 +505,15 @@ VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_Instance
     float4 clipPosition = mul(instance.objectToClip, float4(input.position, 1.0));
     float4 eyePosition = mul(frame.clipToEye, clipPosition);
     output.position = clipPosition;
+#if VOLUME_DENSITY_TEXTURES
+    output.volumeClipPosition = clipPosition;
+    // Keep an exit-face fragment available when the volume contains the far plane.
+    // The fragment still integrates against the unclamped object-space boundary.
+    if (clipPosition.w > 0.0 && clipPosition.z > clipPosition.w)
+    {
+        output.position.z = clipPosition.w;
+    }
+#endif
     output.eyePosition = eyePosition.xyz / eyePosition.w;
     output.objectPosition = input.position;
     output.normal = input.normal;
@@ -435,10 +526,34 @@ VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_Instance
     // managed writer builds both from the same mirrored, depth-converted
     // projection, so the mirror cancels -- and eyeToWorld undoes the view. That
     // is the same identity the eye position above already relies on.
-    float4x4 objectToWorld = mul(frame.eyeToWorld, mul(frame.clipToEye, instance.objectToClip));
+    float4x4 objectToEye = mul(frame.clipToEye, instance.objectToClip);
+    float4x4 objectToWorld = mul(frame.eyeToWorld, objectToEye);
     float3 basisX = float3(objectToWorld[0][0], objectToWorld[1][0], objectToWorld[2][0]);
     float3 basisY = float3(objectToWorld[0][1], objectToWorld[1][1], objectToWorld[2][1]);
     float3 basisZ = float3(objectToWorld[0][2], objectToWorld[1][2], objectToWorld[2][2]);
+
+#if VOLUME_DENSITY_TEXTURES
+    float3 eyeBasisX = float3(objectToEye[0][0], objectToEye[1][0], objectToEye[2][0]);
+    float3 eyeBasisY = float3(objectToEye[0][1], objectToEye[1][1], objectToEye[2][1]);
+    float3 eyeBasisZ = float3(objectToEye[0][2], objectToEye[1][2], objectToEye[2][2]);
+    float3 inverseBasisX = cross(eyeBasisY, eyeBasisZ);
+    float3 inverseBasisY = cross(eyeBasisZ, eyeBasisX);
+    float3 inverseBasisZ = cross(eyeBasisX, eyeBasisY);
+    float determinant = dot(eyeBasisX, inverseBasisX);
+    float basisScale = length(eyeBasisX) * length(eyeBasisY) * length(eyeBasisZ);
+    float rayValid = basisScale > 0.0 &&
+        abs(determinant) > (basisScale * 1e-6) ? 1.0 : 0.0;
+    float inverseDeterminant = rayValid > 0.5 ? rcp(determinant) : 0.0;
+    float3 cameraOffset = -float3(objectToEye[0][3], objectToEye[1][3], objectToEye[2][3]);
+    output.volumeEyeToObjectRow0 = inverseBasisX * inverseDeterminant;
+    output.volumeEyeToObjectRow1 = inverseBasisY * inverseDeterminant;
+    output.volumeEyeToObjectRow2 = inverseBasisZ * inverseDeterminant;
+    output.volumeCameraPosition = float3(
+        dot(output.volumeEyeToObjectRow0, cameraOffset),
+        dot(output.volumeEyeToObjectRow1, cameraOffset),
+        dot(output.volumeEyeToObjectRow2, cameraOffset));
+    output.volumeRayValid = rayValid;
+#endif
 
     // The cofactor matrix, which is the inverse transpose times the determinant.
     // The determinant is a uniform scale on the result and the fragment
@@ -451,6 +566,7 @@ VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_Instance
         (cross(basisX, basisY) * input.normal.z);
 #if HAS_UV
     output.texCoord = input.texCoord;
+    output.texCoord1 = input.texCoord1;
 #endif
 #if MAP_NORMAL
     output.tangent = input.tangent;
@@ -468,40 +584,31 @@ VertexOutput VERTEX_ENTRY_POINT(VertexInput input, uint instanceId : SV_Instance
 /// Constant UsdPreviewSurface inputs plus the single deterministic light, packed
 /// by SilkSurfaceUniformWriter. A storage buffer rather than a constant buffer
 /// because that binding path is the one proven on all three backends.
-struct SurfaceParameters
+#include "material.surface.slang"
+
+#if MAP_NORMAL || MAP_MATERIAL
+// The ordinary nearest sample selects the texel AND mip. No LOD query or
+// reconstructed texture coordinates can disagree with the reference sampler.
+// RGB bytes index exact CPU float32 channel values at level zero; lower levels
+// point at unchanged CPU mip values. R32F triples omit only unused alpha.
+[ForceInline]
+float3 DecodeIndexedRgb(float4 sampled, Texture2D<float4> values)
 {
-    float4 diffuseOpacity;
-    float4 emissiveOcclusion;
-    float4 specularIor;
-    float4 metallicRoughnessThresholdWorkflow;
-    // (clearcoat, clearcoatRoughness, shaded, 0).
-    float4 clearcoatShaded;
-    float4 lightDirectionIntensity;
-    float4 lightColorAmbient;
-    float4 reserved;
-    // (textureMask, udimMask, volumeVoxelDepth, 0).
-    float4 textureControls;
-    // The one constant texture-coordinate transform this material samples every
-    // texture through, as (m00, m01, tx, 0) and (m10, m11, ty, 0). Identity
-    // unless a constant MaterialX place2d or UsdTransform2d chain was folded.
-    float4 uvTransformRow0;
-    float4 uvTransformRow1;
-    // The two-image composite, as (targetTextureMaskBit, operator, factor, udim).
-    // targetTextureMaskBit is zero when this material binds no composite image;
-    // otherwise it is the same bit textureControls.x uses for the parameter the
-    // composite drives, so exactly one of the slots below combines. operator is
-    // one of the CompositeOp constants and factor is meaningful only for mix.
-    float4 compositeControls;
-    // (domeLinkMask, 0, 0, 0). domeLinkMask is the UsdLux dome-link mask of the
-    // prim this draw covers: bit i is set when dome light i of the frame dome
-    // table illuminates it. It is a slot of its own rather than more bits of
-    // clearcoatShaded.w because the dome table and the direct-light table are two
-    // orderings -- dome 0 and direct light 0 are different lights.
-    float4 domeLinkControls;
-    // Bit i is in word i/32, bit i%32. Never convert direct membership to float.
-    uint4 lightLinkMask;
-    uint4 shadowLinkMask;
-};
+    if (sampled.a > 1.0)
+    {
+        return sampled.rgb;
+    }
+    uint width, height;
+    values.GetDimensions(width, height);
+    uint3 code = uint3(round(sampled.rgb * 255.0));
+    uint index = code.r | (code.g << 8u) | (code.b << 16u);
+    uint3 address = (sampled.a == 0.0 ? code : uint3(index, index, index)) * 3u + uint3(0u, 1u, 2u);
+    return float3(
+        values.Load(int3(address.r % width, address.r / width, 0)).r,
+        values.Load(int3(address.g % width, address.g / width, 0)).r,
+        values.Load(int3(address.b % width, address.b / width, 0)).r);
+}
+#endif
 
 [[vk::binding(7, 0)]]
 StructuredBuffer<SurfaceParameters> surfaceParameters : register(t7);
@@ -523,109 +630,35 @@ static const float SurfaceDenominatorEpsilon = 1.0e-30;
 /// of the axis rather than two that diverge there.
 static const float SurfaceMinimumRoughness = 0.001;
 
+#if MAP_NORMAL
 [ForceInline]
-float4 SampleMaterialTexture(
-    Texture2D<float4> textureMap,
-    SamplerState textureSampler,
-    float2 textureCoordinate,
-    bool isUdim)
+float3 OrientMappedNormal(float3 mapped, float2 row0, float2 row1)
 {
-    if (!isUdim)
+    if (any(row1 != float2(0.0, 0.0)))
     {
-        return textureMap.Sample(textureSampler, textureCoordinate);
+        float scale = max(abs(row1.x), abs(row1.y));
+        float2 tangent = normalize(float2(row1.y, -row1.x) / scale);
+        float2 bitangent = float2(-tangent.y, tangent.x);
+        if (dot(row0, tangent) < 0.0)
+        {
+            tangent = -tangent;
+        }
+        mapped.xy = tangent * mapped.x + bitangent * mapped.y;
     }
-
-    uint atlasWidth;
-    uint atlasHeight;
-    textureMap.GetDimensions(atlasWidth, atlasHeight);
-    float4 metadata = round(textureMap.Load(int3(0, 0, 0)) * 255.0);
-    int2 minimumTile = int2(metadata.xy);
-    int2 gridSize = int2(metadata.zw);
-    int2 tile = int2(floor(textureCoordinate)) - minimumTile;
-    if (any(tile < 0) || any(tile >= gridSize))
-    {
-        return textureMap.Load(int3(min(1u, atlasWidth - 1), 0, 0));
-    }
-
-    float2 cellSize = float2(
-        atlasWidth / gridSize.x,
-        (atlasHeight - 1) / gridSize.y);
-    float2 tileSize = cellSize - 2.0;
-    float2 pixel = float2(tile) * cellSize +
-        float2(1.5, 2.5) +
-        frac(textureCoordinate) * max(tileSize - 1.0, 0.0);
-    return textureMap.Sample(
-        textureSampler,
-        pixel / float2(atlasWidth, atlasHeight));
+    return mapped;
 }
 
 [ForceInline]
-float2 TransformTextureCoordinate(SurfaceParameters surface, float2 textureCoordinate)
+float3 CombineDetailNormal(float3 primary, float3 detail)
 {
-    return float2(
-        dot(surface.uvTransformRow0.xy, textureCoordinate) + surface.uvTransformRow0.z,
-        dot(surface.uvTransformRow1.xy, textureCoordinate) + surface.uvTransformRow1.z);
-}
-
-// Wire values of OPENUSD_SILK_COMPOSITE_*; see openusd_hdsilk.h.
-static const uint CompositeOpNone = 0u;
-static const uint CompositeOpMultiply = 1u;
-static const uint CompositeOpAdd = 2u;
-static const uint CompositeOpSubtract = 3u;
-static const uint CompositeOpMix = 4u;
-
-#if MAP_MATERIAL
-/// Combines the primary sample of one material slot with the material's single
-/// composite image, when that slot is the one the composite drives.
-///
-/// The whole expression is evaluated here rather than folded into the primary
-/// entry's scale and bias because the product, sum, difference or blend of two
-/// images is not affine in either one. It runs in floating point after both
-/// decodes, so the eight-bit unit-range restriction that governs the per-entry
-/// affines does not apply to it.
-///
-/// `slotBit` is the same textureControls.x bit the slot already uses, so the
-/// comparison is exact and no second identifier space is introduced.
-[ForceInline]
-float4 ApplyMaterialComposite(
-    SurfaceParameters surface,
-    float slotBit,
-    float4 primary,
-    float2 textureCoordinate)
-{
-    if (surface.compositeControls.x != slotBit)
+    float3 t = normalize(primary) + float3(0.0, 0.0, 1.0);
+    float3 u = normalize(detail) * float3(-1.0, -1.0, 1.0);
+    if (t.z == 0.0)
     {
-        return primary;
+        // The shortest arc is ambiguous at -Z; choose a half-turn about tangent X.
+        return float3(-u.x, u.y, -u.z);
     }
-    // The composite's own UDIM bit, not the driven slot's. The two operands of
-    // one surface input are independent assets and either may be a UDIM set on
-    // its own, so reusing the slot's bit sampled a plain image through the atlas
-    // path -- which reads its first texel as tile metadata -- or sampled an atlas
-    // with raw coordinates.
-    float4 composite = SampleMaterialTexture(
-        compositeTexture,
-        compositeSampler,
-        textureCoordinate,
-        surface.compositeControls.w >= 0.5);
-    uint operation = (uint)round(surface.compositeControls.y);
-    if (operation == CompositeOpMultiply)
-    {
-        return primary * composite;
-    }
-    if (operation == CompositeOpAdd)
-    {
-        return primary + composite;
-    }
-    if (operation == CompositeOpSubtract)
-    {
-        return primary - composite;
-    }
-    if (operation == CompositeOpMix)
-    {
-        float factor = surface.compositeControls.z;
-        return primary * (1.0 - factor) + composite * factor;
-    }
-    return primary;
+    return normalize(t * (dot(t, u) / t.z) - u);
 }
 #endif
 
@@ -739,6 +772,29 @@ void DiscardClippedFragment(float3 eyePosition, FragmentFrameParameters frame)
     }
 }
 
+/// Transforms an axis-aligned local emitter normal through an affine light
+/// basis. The signed determinant preserves the normal orientation under a
+/// reflected transform; normalized rows keep the cross products in range.
+[ForceInline]
+float3 TransformEmitterAxisNormal(
+    float3 localNormal,
+    float3 axisX,
+    float3 axisY,
+    float3 axisZ)
+{
+    float3 x = normalize(axisX);
+    float3 y = normalize(axisY);
+    float3 z = normalize(axisZ);
+    float determinant = dot(x, cross(y, z));
+    float orientation = determinant < 0.0 ? -1.0 : 1.0;
+    // Value selection avoids excessive SwiftShader memory growth in the inlined shader.
+    float3 transformed =
+        select(abs(localNormal.x) > 0.5, localNormal.x * cross(y, z), float3(0.0, 0.0, 0.0)) +
+        select(abs(localNormal.y) > 0.5, localNormal.y * cross(z, x), float3(0.0, 0.0, 0.0)) +
+        select(abs(localNormal.z) > 0.5, localNormal.z * cross(x, y), float3(0.0, 0.0, 0.0));
+    return normalize(transformed * orientation);
+}
+
 /// Resolves the fraction of one direct light that reaches a shading point,
 /// filtered over a fixed nine-tap kernel of the light's shadow map.
 ///
@@ -767,10 +823,11 @@ float ResolveShadowVisibility(
     int slot,
     float3 worldPosition,
     float3 worldNormal,
-    float3 lightDirection)
+    float3 lightDirection,
+    float pointDepthScale)
 {
-    float4 controls = frame.shadowControls[slot];
-    float4 tile = frame.shadowTile[slot];
+    float4 controls = frameParameters.Load<float4>(ShadowControlByteOffset + slot * 16u);
+    float4 tile = frameParameters.Load<float4>(ShadowTileByteOffset + slot * 16u);
 
     // A normal derived from screen-space derivatives carries the sign of the
     // triangle's screen winding, which is meaningless here. The bias always
@@ -785,7 +842,7 @@ float ResolveShadowVisibility(
     float slope = clamp(1.0 - normalDotLight, 0.0, 1.0);
     float3 offsetPosition = worldPosition + (orientedNormal * (controls.y * slope));
     float4 lightClip = mul(
-        frame.shadowWorldToLightClip[slot],
+        ReadShadowMatrix(slot),
         float4(offsetPosition, 1.0));
     if (lightClip.w <= 0.0)
     {
@@ -801,8 +858,19 @@ float ResolveShadowVisibility(
     float2 uv = (ndc.xy * float2(0.5, -0.5)) + float2(0.5, 0.5);
     float2 atlasUv = tile.xy + (uv * tile.zw);
     float texel = controls.w;
-    float radius = max(controls.z, 0.0);
-    float receiverDepth = ndc.z - (controls.x * (1.0 + (2.0 * slope)));
+    bool transmission = controls.z < 0.0;
+    float radius = transmission ? -controls.z - 1.0 : max(controls.z, 0.0);
+    float slopeFactor = 1.0 + (2.0 * slope);
+    float receiverDepth = ndc.z - (controls.x * slopeFactor);
+    if (pointDepthScale > 0.0)
+    {
+        float linearDepth = lightClip.w * pointDepthScale;
+        if (linearDepth > ReadFrameShadowSlot((uint)slot).w)
+        {
+            return 1.0;
+        }
+        receiverDepth = linearDepth / (1.0 + (controls.x * slopeFactor * linearDepth));
+    }
     float2 lowerBound = tile.xy + (texel * 0.5);
     float2 upperBound = tile.xy + tile.zw - (texel * 0.5);
     float lit = 0.0;
@@ -813,39 +881,121 @@ float ResolveShadowVisibility(
             float2 offset = float2((float)x, (float)y) * (radius * texel);
             float2 coordinate = clamp(atlasUv + offset, lowerBound, upperBound);
             float occluder = shadowAtlas.SampleLevel(shadowSampler, coordinate, 0.0);
-            lit += receiverDepth <= occluder ? 1.0 : 0.0;
+            float visibility = receiverDepth <= occluder ? 1.0 : 0.0;
+            if (transmission && visibility > 0.0)
+            {
+                float2 layer0 = shadowTransmission0.SampleLevel(shadowSampler, coordinate, 0.0).xy;
+                float2 layer1 = shadowTransmission1.SampleLevel(shadowSampler, coordinate, 0.0).xy;
+                float2 layer2 = shadowTransmission2.SampleLevel(shadowSampler, coordinate, 0.0).xy;
+                float2 layer3 = shadowTransmission3.SampleLevel(shadowSampler, coordinate, 0.0).xy;
+                float4 depths = float4(layer0.x, layer1.x, layer2.x, layer3.x);
+                bool4 selected = (depths >= 0.0) & (receiverDepth > depths);
+                float4 weights = select(
+                    selected,
+                    float4(layer0.y, layer1.y, layer2.y, layer3.y),
+                    float4(1.0, 1.0, 1.0, 1.0));
+                visibility *= weights.x;
+                visibility *= weights.y;
+                visibility *= weights.z;
+                visibility *= weights.w;
+            }
+            lit += visibility;
         }
     }
     return lit * (1.0 / 9.0);
 }
 
 #if VOLUME_DENSITY_TEXTURES
-/// Integrates the density column with one sample per voxel layer.
-///
-/// The step count is the grid's own Z resolution rather than a constant. A fixed
-/// count only reconstructs the column exactly when the sample lattice happens to
-/// align with the voxel layers, which is why a hardcoded 32 looked correct for as
-/// long as the only gated asset was 32 deep. For a 96-deep grid the same 32 steps
-/// land off-layer and can integrate a two-layer feature to exactly zero -- the
-/// volume still renders, it has simply lost the structure, which is the class of
-/// plausible-but-wrong image this program exists to prevent. Sampling at layer
-/// centres instead makes the linear filter return each texel exactly, so the sum
-/// is the true mean of the column. The command parser rejects depths above the
-/// renderer's 512-layer exact-integration limit.
+/// Intersects a camera ray with the unit-cube proxy.
 [ForceInline]
-float SampleVolumeDensity(float3 objectPosition, float voxelDepth)
+bool IntersectVolumeBounds(
+    float3 rayOrigin,
+    float3 rayDirection,
+    out float rayEntry,
+    out float rayExit)
 {
-    float2 uv = saturate(objectPosition.xy + float2(0.5, 0.5));
+    rayEntry = -3.402823466e+38;
+    rayExit = 3.402823466e+38;
+    for (uint axis = 0u; axis < 3u; axis++)
+    {
+        // A small nonzero local direction still crosses the slab at large world
+        // distance. Only an exactly parallel ray has no crossing on this axis.
+        if (rayDirection[axis] == 0.0)
+        {
+            if (rayOrigin[axis] < -0.5 || rayOrigin[axis] > 0.5)
+            {
+                return false;
+            }
+        }
+        else
+        {
+            float first = (-0.5 - rayOrigin[axis]) / rayDirection[axis];
+            float second = (0.5 - rayOrigin[axis]) / rayDirection[axis];
+            rayEntry = max(rayEntry, min(first, second));
+            rayExit = min(rayExit, max(first, second));
+        }
+    }
+    return rayExit > max(rayEntry, 0.0);
+}
+
+// Midpoint quadrature, not exact reconstruction. The admitted maximum axis is
+// 512; a unit-box chord is at most sqrt(3), so at most 887 samples are needed.
+[ForceInline]
+float SampleVolumeDensity(
+    float3 rayOrigin,
+    float3 rayDirection,
+    float rayEntry,
+    float rayExit,
+    float voxelCount)
+{
+    float rayLength = rayExit - rayEntry;
+    float localRayLength = length(rayDirection) * rayLength;
+    uint stepCount = (uint)max(1.0, ceil(max(1.0, voxelCount) * localRayLength));
     float density = 0.0;
-    // Clamped defensively even though the command parser guarantees a depth in
-    // [1, 512] whenever the sampled-volume flag is set.
-    const uint stepCount = (uint)clamp(voxelDepth, 1.0, 512.0);
     for (uint step = 0u; step < stepCount; step++)
     {
-        float z = ((float)step + 0.5) / (float)stepCount;
-        density += volumeDensityTexture.Sample(volumeDensitySampler, float3(uv, z));
+        float distance = rayEntry + (((float)step + 0.5) / (float)stepCount) * rayLength;
+        float3 objectPosition = rayOrigin + (rayDirection * distance);
+        float3 uvw = saturate(objectPosition + float3(0.5, 0.5, 0.5));
+        density += volumeDensityTexture.Sample(volumeDensitySampler, uvw);
     }
-    return density / (float)stepCount;
+    return (density / (float)stepCount) * localRayLength;
+}
+
+/// Converts a zero-to-one clip depth into a distance along this eye-space ray.
+[ForceInline]
+float VolumeClipDistance(
+    float clipDepth,
+    float2 clipXY,
+    float3 eyeRayOrigin,
+    float3 eyeDirection,
+    float4x4 clipToEye)
+{
+    float4 eyePosition = mul(clipToEye, float4(clipXY, clipDepth, 1.0));
+    if (eyePosition.w == 0.0)
+    {
+        return 3.402823466e+38;
+    }
+    return dot(
+        (eyePosition.xyz / eyePosition.w) - eyeRayOrigin,
+        eyeDirection);
+}
+
+[ForceInline]
+float VolumeClipDepth(float3 eyePosition, float2 clipXY, float4x4 clipToEye)
+{
+    float4 clipBase = mul(clipToEye, float4(clipXY, 0.0, 1.0));
+    float4 slope = mul(clipToEye, float4(0.0, 0.0, 1.0, 0.0));
+    float3 numerator = (eyePosition * clipBase.w) - clipBase.xyz;
+    float3 denominator = slope.xyz - (eyePosition * slope.w);
+    float3 magnitude = abs(denominator);
+    if (magnitude.x >= magnitude.y && magnitude.x >= magnitude.z)
+    {
+        return numerator.x / denominator.x;
+    }
+    return magnitude.y >= magnitude.z
+        ? numerator.y / denominator.y
+        : numerator.z / denominator.z;
 }
 #endif
 
@@ -1027,7 +1177,11 @@ float2 SampleEnvironmentBrdf(float roughness, float normalDotEye)
 [shader("fragment")]
 float4 FRAGMENT_ENTRY_POINT(
     VertexOutput input,
-    bool isFrontFace : SV_IsFrontFace) : SV_Target0
+    bool isFrontFace : SV_IsFrontFace
+#if VOLUME_DENSITY_TEXTURES
+    , out float outputDepth : SV_Depth
+#endif
+    ) : SV_Target0
 {
 #if FRAGMENT_STAGE
     SurfaceParameters surface = surfaceParameters[0];
@@ -1036,7 +1190,17 @@ float4 FRAGMENT_ENTRY_POINT(
 #else
     FragmentFrameParameters frame = frameParameters.Load<FrameParameters>(0);
 #endif
+#if VOLUME_DENSITY_TEXTURES
+    if (surface.reserved.x < 0.5)
+    {
+        DiscardClippedFragment(input.eyePosition, frame);
+    }
+#else
     DiscardClippedFragment(input.eyePosition, frame);
+#endif
+#if VOLUME_DENSITY_TEXTURES
+    outputDepth = input.position.z;
+#endif
 
     // clearcoatShaded.z carries three states, not a flag. 0 is the shared default
     // block a mesh with no supported material binds, where Storm shows the
@@ -1072,16 +1236,116 @@ float4 FRAGMENT_ENTRY_POINT(
     if (surface.reserved.x >= 0.5)
     {
 #if VOLUME_DENSITY_TEXTURES
-        float density = surface.reserved.w >= 0.5
-            ? SampleVolumeDensity(input.objectPosition, surface.textureControls.z) *
-                max(0.0, surface.reserved.y)
-            : max(0.0, surface.reserved.y);
+        if (input.volumeRayValid < 0.5)
+        {
+            discard;
+        }
+
+        float2 clipXY = input.volumeClipPosition.xy / input.volumeClipPosition.w;
+        float4 clipStart = mul(frame.clipToEye, float4(clipXY, 0.0, 1.0));
+        float4 clipEnd = mul(frame.clipToEye, float4(clipXY, 1.0, 1.0));
+        // Anchor at a finite clip boundary.
+        bool finiteStart = clipStart.w != 0.0;
+        float4 finiteBoundary = finiteStart ? clipStart : clipEnd;
+        float4 otherBoundary = finiteStart ? clipEnd : clipStart;
+        float3 eyeRayOrigin = finiteBoundary.xyz / finiteBoundary.w;
+        float3 eyeDirection = normalize(otherBoundary.w == 0.0
+            ? otherBoundary.xyz * sign(finiteBoundary.w)
+            : (otherBoundary.xyz / otherBoundary.w) - eyeRayOrigin);
+        float3 rayDirection = float3(
+            dot(input.volumeEyeToObjectRow0, eyeDirection),
+            dot(input.volumeEyeToObjectRow1, eyeDirection),
+            dot(input.volumeEyeToObjectRow2, eyeDirection));
+        float3 rayOrigin = input.volumeCameraPosition + float3(
+            dot(input.volumeEyeToObjectRow0, eyeRayOrigin),
+            dot(input.volumeEyeToObjectRow1, eyeRayOrigin),
+            dot(input.volumeEyeToObjectRow2, eyeRayOrigin));
+        bool cameraInside = all(rayOrigin >= float3(-0.5, -0.5, -0.5)) &&
+            all(rayOrigin <= float3(0.5, 0.5, 0.5));
+
+        float rayEntry;
+        float rayExit;
+        if (!IntersectVolumeBounds(rayOrigin, rayDirection, rayEntry, rayExit))
+        {
+            discard;
+        }
+        float nearDistance = VolumeClipDistance(
+            0.0, clipXY, eyeRayOrigin, eyeDirection, frame.clipToEye);
+        float farDistance = VolumeClipDistance(
+            1.0, clipXY, eyeRayOrigin, eyeDirection, frame.clipToEye);
+        float startDistance = max(max(rayEntry, 0.0), min(nearDistance, farDistance));
+        float endDistance = min(rayExit, max(nearDistance, farDistance));
+        uint planeCount = min(frame.clipPlaneCount.x, 8u);
+        for (uint planeIndex = 0u; planeIndex < planeCount; planeIndex++)
+        {
+            float4 plane = frame.clipPlanes[planeIndex];
+            float offset = dot(plane.xyz, eyeRayOrigin) + plane.w;
+            float slope = dot(plane.xyz, eyeDirection);
+            if (slope == 0.0)
+            {
+                if (offset < 0.0)
+                {
+                    discard;
+                }
+            }
+            else if (slope > 0.0)
+            {
+                startDistance = max(startDistance, -offset / slope);
+            }
+            else
+            {
+                endDistance = min(endDistance, -offset / slope);
+            }
+        }
+        float2 screenPosition = input.position.xy;
+        float opaqueDepth = volumeOpaqueDepthTexture.Load(
+            int3(int2(screenPosition), 0));
+        float clearDepth = asfloat(frame.clipPlaneCount.w);
+        if (opaqueDepth != clearDepth)
+        {
+            endDistance = min(
+                endDistance,
+                VolumeClipDistance(
+                    opaqueDepth, clipXY, eyeRayOrigin, eyeDirection, frame.clipToEye));
+        }
+        if (endDistance <= startDistance)
+        {
+            discard;
+        }
+#if VOLUME_DENSITY_TEXTURES
+        outputDepth = VolumeClipDepth(
+            eyeRayOrigin + (eyeDirection * startDistance), clipXY, frame.clipToEye);
+#endif
+        float surfaceDistance = dot(
+            input.objectPosition - rayOrigin,
+            rayDirection) / dot(rayDirection, rayDirection);
+        float boundaryTolerance = (rayExit - rayEntry) * 1e-4;
+        bool isEntryBoundary = rayEntry >= 0.0 &&
+            abs(surfaceDistance - rayEntry) <= boundaryTolerance;
+        bool isExitBoundary = abs(surfaceDistance - rayExit) <= boundaryTolerance;
+        bool entryWasClipped = rayEntry < startDistance - boundaryTolerance;
+        if ((entryWasClipped && !isExitBoundary) ||
+            (!entryWasClipped && !isEntryBoundary &&
+                !(cameraInside && isExitBoundary)))
+        {
+            discard;
+        }
+
+        float densityIntegral = surface.reserved.w >= 0.5
+            ? SampleVolumeDensity(
+                rayOrigin,
+                rayDirection,
+                startDistance,
+                endDistance,
+                surface.textureControls.z) * max(0.0, surface.reserved.y)
+            : max(0.0, surface.reserved.y) *
+                (length(rayDirection) * (endDistance - startDistance));
 #else
         float density = max(0.0, surface.reserved.y);
+        float densityIntegral = density * max(0.0, surface.reserved.z);
 #endif
-        float distance = max(0.0, surface.reserved.z);
-        float opacityIntegral = 1.0 - exp(-density * distance);
-        return float4(diffuseColor * opacityIntegral, 1.0);
+        float opacityIntegral = 1.0 - exp(-max(0.0, densityIntegral));
+        return float4(diffuseColor, saturate(opacity) * opacityIntegral);
     }
     float metallic = saturate(surface.metallicRoughnessThresholdWorkflow.x);
     float roughness = clamp(surface.metallicRoughnessThresholdWorkflow.y, 0.01, 1.0);
@@ -1090,42 +1354,99 @@ float4 FRAGMENT_ENTRY_POINT(
     float clearcoatAmount = surface.clearcoatShaded.x;
     float clearcoatRoughness = surface.clearcoatShaded.y;
     float3 shadingNormal = input.normal;
-    // The world-space shading basis, carried from the vertex stage through the
-    // cofactor of the object-to-world 3x3. It is what the environment maps are
-    // sampled with, and it is maintained in parallel with the object-space
-    // `shadingNormal` above rather than replacing it: the direct-light loop
-    // shades on the object-space one, and unifying the two would move every
-    // gated Storm parity image and cannot be re-measured here.
+    // The cofactor basis keeps normal maps and authored normals in the same
+    // world space as the direct lights and environment.
     float3 worldShadingNormal = input.worldNormal;
     uint textureMask = (uint)round(surface.textureControls.x);
     uint udimMask = (uint)round(surface.textureControls.y);
 #if HAS_UV
-    // Applied once, before any sample: the material publishes exactly one folded
-    // MaterialX place2d transform, and every texture it binds reads through it.
-    float2 materialTexCoord = TransformTextureCoordinate(surface, input.texCoord);
+    // Each slot reads one of two coordinate sets through one of two folded
+    // transforms, so all four combinations are formed once before any sample.
+    uint secondaryMask = (uint)round(surface.uvTransformRow1.w);
+    uint alternateMask = (uint)round(surface.domeLinkControls.w);
+    float2 materialTexCoord = TransformTextureCoordinate(
+        surface.uvTransformRow0, surface.uvTransformRow1, input.texCoord);
+    float2 secondaryTexCoord = TransformTextureCoordinate(
+        surface.uvTransformRow0, surface.uvTransformRow1, input.texCoord1);
+    float2 alternateTexCoord = TransformTextureCoordinate(
+        surface.alternateUvTransformRow0, surface.alternateUvTransformRow1, input.texCoord);
+    float2 alternateSecondaryTexCoord = TransformTextureCoordinate(
+        surface.alternateUvTransformRow0, surface.alternateUvTransformRow1, input.texCoord1);
 #endif
 
 #if MAP_MATERIAL
     if ((textureMask & 2u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(
+            2u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
+        float4 diffuseSample = SampleMaterialTexture(
+            baseColorTexture, baseColorSampler, slotTexCoord, (udimMask & 2u) != 0,
+            ConstantBorderAxes(surface, 2u));
+        // Equal widths explicitly identify the split-RGB fallback. Indexed tables
+        // are admitted only with a different width; dimensions are exact integers.
+        if (surface.compositeControls.x == 0.0 && surface.compositeControls.w == 2.0)
+        {
+            uint sourceWidth, sourceHeight, valueWidth, valueHeight;
+            baseColorTexture.GetDimensions(sourceWidth, sourceHeight);
+            diffuseValuesTexture.GetDimensions(valueWidth, valueHeight);
+            if (valueWidth != sourceWidth)
+            {
+                diffuseSample.rgb = DecodeIndexedRgb(diffuseSample, diffuseValuesTexture);
+            }
+            else
+            {
+                diffuseSample.b = diffuseValuesTexture.Sample(
+                    baseColorSampler,
+                    ConstantBorderCoordinate(
+                        diffuseValuesTexture, slotTexCoord, ConstantBorderAxes(surface, 2u))).r;
+            }
+        }
         diffuseColor = ApplyMaterialComposite(
             surface,
             2.0,
-            SampleMaterialTexture(
-                baseColorTexture,
-                baseColorSampler,
-                materialTexCoord,
-                (udimMask & 2u) != 0),
-            materialTexCoord).rgb;
+            diffuseSample,
+            slotTexCoord).rgb;
     }
 #endif
 #if MAP_NORMAL
-    float3 sampledNormal =
-        SampleMaterialTexture(
-            normalTexture,
-            normalSampler,
-            materialTexCoord,
-            (udimMask & 4u) != 0).xyz * 2.0 - 1.0;
+    float4 baseNormalSample = SampleMaterialTexture(
+        normalTexture,
+        normalSampler,
+        SelectTexCoord(
+            4u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord),
+        (udimMask & 4u) != 0,
+        ConstantBorderAxes(surface, 4u));
+    if (surface.detailUvTransformRow0.w != 0.0)
+    {
+        baseNormalSample.rgb = DecodeIndexedRgb(baseNormalSample, normalValuesTexture);
+    }
+    float3 sampledNormal = (textureMask & 4u) == 0 ? float3(0.0, 0.0, 1.0) :
+        baseNormalSample.xyz * 2.0 - 1.0;
+    bool normalAlternate = (alternateMask & 4u) != 0;
+    sampledNormal = OrientMappedNormal(
+        sampledNormal,
+        normalAlternate ? surface.alternateUvTransformRow0.xy : surface.uvTransformRow0.xy,
+        normalAlternate ? surface.alternateUvTransformRow1.xy : surface.uvTransformRow1.xy);
+    if ((textureMask & 4096u) != 0)
+    {
+        float2 detailSource = (secondaryMask & 4096u) != 0 ? input.texCoord1 : input.texCoord;
+        float2 detailUv = float2(
+            dot(surface.detailUvTransformRow0.xy, detailSource) + surface.detailUvTransformRow0.z,
+            dot(surface.detailUvTransformRow1.xy, detailSource) + surface.detailUvTransformRow1.z);
+        float4 detailSample = SampleMaterialTexture(
+            detailNormalTexture, detailNormalSampler, detailUv, (udimMask & 4096u) != 0,
+            ConstantBorderAxes(surface, 4096u));
+        if (surface.detailUvTransformRow1.w != 0.0)
+        {
+            detailSample.rgb = DecodeIndexedRgb(detailSample, detailNormalValuesTexture);
+        }
+        float3 detail = detailSample.xyz * 2.0 - 1.0;
+        detail = OrientMappedNormal(
+            detail, surface.detailUvTransformRow0.xy, surface.detailUvTransformRow1.xy);
+        sampledNormal = CombineDetailNormal(sampledNormal, detail);
+    }
     float3 tangent = normalize(input.tangent.xyz);
     float3 bitangent = cross(normalize(shadingNormal), tangent) * input.tangent.w;
     shadingNormal = normalize(
@@ -1160,6 +1481,9 @@ float4 FRAGMENT_ENTRY_POINT(
     // default silently halved roughness and zeroed metallic.
     if ((textureMask & 8u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(
+            8u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
         roughness = clamp(
             ApplyMaterialComposite(
                 surface,
@@ -1167,9 +1491,10 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     roughnessMetallicTexture,
                     roughnessMetallicSampler,
-                    materialTexCoord,
-            (udimMask & 8u) != 0),
-                materialTexCoord).r,
+                    slotTexCoord,
+                    (udimMask & 8u) != 0,
+                    ConstantBorderAxes(surface, 8u)),
+                slotTexCoord).r,
             0.01,
             1.0);
     }
@@ -1179,6 +1504,9 @@ float4 FRAGMENT_ENTRY_POINT(
     // asset and two channels, which resolves to two swizzled uploads.
     if ((textureMask & 32u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(
+            32u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
         metallic = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1186,37 +1514,54 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     metallicTexture,
                     metallicSampler,
-                    materialTexCoord,
-                    (udimMask & 32u) != 0),
-                materialTexCoord).r);
+                    slotTexCoord,
+                    (udimMask & 32u) != 0,
+                    ConstantBorderAxes(surface, 32u)),
+                slotTexCoord).r);
     }
     if ((textureMask & 16u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(
+            16u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
+        float4 emissionSample = SampleMaterialTexture(
+            emissiveTexture, emissiveSampler, slotTexCoord, (udimMask & 16u) != 0,
+            ConstantBorderAxes(surface, 16u));
+        if (surface.uvTransformRow0.w != 0.0)
+        {
+            uint sourceWidth, sourceHeight, valueWidth, valueHeight;
+            emissiveTexture.GetDimensions(sourceWidth, sourceHeight);
+            emissiveValuesTexture.GetDimensions(valueWidth, valueHeight);
+            if (valueWidth != sourceWidth)
+            {
+                emissionSample.rgb = DecodeIndexedRgb(emissionSample, emissiveValuesTexture);
+            }
+            else
+            {
+                emissionSample.b = emissiveValuesTexture.Sample(
+                    emissiveSampler,
+                    ConstantBorderCoordinate(
+                        emissiveValuesTexture, slotTexCoord, ConstantBorderAxes(surface, 16u))).r;
+            }
+        }
         emissiveColor = ApplyMaterialComposite(
             surface,
             16.0,
-            SampleMaterialTexture(
-                emissiveTexture,
-                emissiveSampler,
-                materialTexCoord,
-                (udimMask & 16u) != 0),
-            materialTexCoord).rgb;
+            emissionSample,
+            slotTexCoord).rgb;
     }
     if ((textureMask & 64u) != 0)
     {
-        opacity = saturate(
-            ApplyMaterialComposite(
-                surface,
-                64.0,
-                SampleMaterialTexture(
-                    opacityTexture,
-                    opacitySampler,
-                    materialTexCoord,
-                    (udimMask & 64u) != 0),
-                materialTexCoord).r);
+        float2 slotTexCoord = SelectTexCoord(
+            64u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
+        opacity = SampleMaterialOpacity(surface, slotTexCoord);
     }
     if ((textureMask & 128u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(
+            128u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
         occlusion = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1224,12 +1569,16 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     occlusionTexture,
                     occlusionSampler,
-                    materialTexCoord,
-                    (udimMask & 128u) != 0),
-                materialTexCoord).r);
+                    slotTexCoord,
+                    (udimMask & 128u) != 0,
+                    ConstantBorderAxes(surface, 128u)),
+                slotTexCoord).r);
     }
     if ((textureMask & 256u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(
+            256u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
         specularColor = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1237,12 +1586,16 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     specularColorTexture,
                     specularColorSampler,
-                    materialTexCoord,
-                    (udimMask & 256u) != 0),
-                materialTexCoord).rgb);
+                    slotTexCoord,
+                    (udimMask & 256u) != 0,
+                    ConstantBorderAxes(surface, 256u)),
+                slotTexCoord).rgb);
     }
     if ((textureMask & 512u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(
+            512u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
         clearcoatAmount = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1250,12 +1603,16 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     clearcoatTexture,
                     clearcoatSampler,
-                    materialTexCoord,
-                    (udimMask & 512u) != 0),
-                materialTexCoord).r);
+                    slotTexCoord,
+                    (udimMask & 512u) != 0,
+                    ConstantBorderAxes(surface, 512u)),
+                slotTexCoord).r);
     }
     if ((textureMask & 1024u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(
+            1024u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
         clearcoatRoughness = saturate(
             ApplyMaterialComposite(
                 surface,
@@ -1263,28 +1620,37 @@ float4 FRAGMENT_ENTRY_POINT(
                 SampleMaterialTexture(
                     clearcoatRoughnessTexture,
                     clearcoatRoughnessSampler,
-                    materialTexCoord,
-                    (udimMask & 1024u) != 0),
-                materialTexCoord).r);
+                    slotTexCoord,
+                    (udimMask & 1024u) != 0,
+                    ConstantBorderAxes(surface, 1024u)),
+                slotTexCoord).r);
     }
     if ((textureMask & 2048u) != 0)
     {
+        float2 slotTexCoord = SelectTexCoord(
+            2048u, secondaryMask, alternateMask, materialTexCoord, secondaryTexCoord,
+            alternateTexCoord, alternateSecondaryTexCoord);
         ior = ApplyMaterialComposite(
                 surface,
                 2048.0,
                 SampleMaterialTexture(
                     iorTexture,
                     iorSampler,
-                    materialTexCoord,
-                    (udimMask & 2048u) != 0),
-                materialTexCoord).r;
+                    slotTexCoord,
+                    (udimMask & 2048u) != 0,
+                    ConstantBorderAxes(surface, 2048u)),
+                slotTexCoord).r;
     }
 #endif
 
     float opacityThreshold = surface.metallicRoughnessThresholdWorkflow.z;
-    if (opacityThreshold > 0.0 && opacity < opacityThreshold)
+    if (opacityThreshold > 0.0)
     {
-        discard;
+        if (opacity < opacityThreshold)
+        {
+            discard;
+        }
+        opacity = 1.0;
     }
 
     float3 normal = normalize(shadingNormal);
@@ -1299,7 +1665,6 @@ float4 FRAGMENT_ENTRY_POINT(
     // into the cofactor normal, because the rasterizer's facing state is
     // computed from the transformed winding.
     worldNormal = isFrontFace ? worldNormal : -worldNormal;
-    float normalDotEye = saturate(abs(dot(normal, eye)) + 1.0e-5);
 
     // Storm clamps roughness rather than clamping into a minimum band.
     float specularRoughness = max(0.001, roughness);
@@ -1312,7 +1677,15 @@ float4 FRAGMENT_ENTRY_POINT(
     float3 diffuse = diffuseColor / SurfacePi;
     float3 normalIncidence;
     float3 grazingIncidence;
-    if (surface.metallicRoughnessThresholdWorkflow.w >= 0.5)
+    bool omniPbrSpecular = surface.textureControls.w >= 0.5;
+    float dielectricLevel = surface.clearcoatShaded.w;
+    if (omniPbrSpecular)
+    {
+        normalIncidence = lerp(float3(0.08, 0.08, 0.08) * dielectricLevel, diffuseColor, metallic);
+        grazingIncidence = lerp(float3(1.0, 1.0, 1.0) * dielectricLevel, diffuseColor, metallic);
+        diffuse *= 1.0 - metallic;
+    }
+    else if (surface.metallicRoughnessThresholdWorkflow.w >= 0.5)
     {
         normalIncidence = specularColor;
         grazingIncidence = float3(1.0, 1.0, 1.0);
@@ -1414,69 +1787,75 @@ float4 FRAGMENT_ENTRY_POINT(
         }
         float lightType = lightIndex == 0u && !hasSceneLighting
             ? 1.0
-            : frame.lightPositionType[lightIndex].w;
-        float3 lightDirection = lightIndex == 0u && !hasSceneLighting
+            : ReadFrameLight(0u, lightIndex).w;
+        float3 lightDirectionAxis = lightIndex == 0u && !hasSceneLighting
             ? normalize(surface.lightDirectionIntensity.xyz)
-            : normalize(frame.lightDirectionRadius[lightIndex].xyz);
+            : ReadFrameLight(1u, lightIndex).xyz;
+        float3 lightDirection = normalize(lightDirectionAxis);
         float lightIntensity = lightIndex == 0u && !hasSceneLighting
             ? surface.lightDirectionIntensity.w
-            : frame.lightColorIntensity[lightIndex].w;
+            : ReadFrameLight(2u, lightIndex).w;
         float3 lightColor = lightIndex == 0u && !hasSceneLighting
             ? surface.lightColorAmbient.rgb
-            : frame.lightColorIntensity[lightIndex].rgb;
+            : ReadFrameLight(2u, lightIndex).rgb;
         float diffuseScale = lightIndex == 0u && !hasSceneLighting
             ? 1.0
-            : frame.lightControls[lightIndex].x;
+            : ReadFrameLight(3u, lightIndex).x;
         float specularScale = lightIndex == 0u && !hasSceneLighting
             ? 1.0
-            : frame.lightControls[lightIndex].y;
-        float3 lightTangent = lightIndex == 0u && !hasSceneLighting
+            : ReadFrameLight(3u, lightIndex).y;
+        float3 lightTangentAxis = lightIndex == 0u && !hasSceneLighting
             ? float3(1.0, 0.0, 0.0)
-            : normalize(frame.lightTangentShapeX[lightIndex].xyz);
-        float3 lightBitangent = lightIndex == 0u && !hasSceneLighting
+            : ReadFrameLight(4u, lightIndex).xyz;
+        float3 lightBitangentAxis = lightIndex == 0u && !hasSceneLighting
             ? float3(0.0, 1.0, 0.0)
-            : normalize(frame.lightBitangentShapeY[lightIndex].xyz);
+            : ReadFrameLight(5u, lightIndex).xyz;
         float shapeX = lightIndex == 0u && !hasSceneLighting
             ? 0.0
-            : frame.lightTangentShapeX[lightIndex].w;
+            : ReadFrameLight(4u, lightIndex).w;
         float shapeY = lightIndex == 0u && !hasSceneLighting
             ? 0.0
-            : frame.lightBitangentShapeY[lightIndex].w;
+            : ReadFrameLight(5u, lightIndex).w;
         float lightRadius = lightIndex == 0u && !hasSceneLighting
             ? 0.0
-            : frame.lightDirectionRadius[lightIndex].w;
+            : ReadFrameLight(1u, lightIndex).w;
         float3 lightEyeBase = lightIndex == 0u && !hasSceneLighting
             ? eye
             : sceneEye;
-        // Raster shadows. A light with no shadow map names slot -1 and is fully
-        // visible, which is exactly the pre-shadow result. Resolved once per
-        // light rather than per area-light sample because only a light whose
-        // light-space projection is exact gets a map at all.
-        float shadowVisibility = 1.0;
-        if (hasSceneLighting)
-        {
-            int shadowSlot = (int)frame.shadowSlots[lightIndex].x;
-            if (shadowSlot >= 0)
-            {
-                shadowVisibility = ResolveShadowVisibility(
-                    frame,
-                    shadowSlot,
-                    worldPosition,
-                    worldGeometricNormal,
-                    lightDirection);
-            }
-        }
+        float3 directNormal = hasSceneLighting ? worldNormal : normal;
+        float directNormalDotEye = saturate(abs(dot(directNormal, lightEyeBase)) + 1.0e-5);
+        // UsdLux ShapingAPI, as Storm applies it to rect and disk lights: a
+        // spotlight cone around the light's -Z emission axis with a pow(cos,
+        // focus) falloff. The headlight is never shaped.
+        float4 lightShaping = lightIndex == 0u && !hasSceneLighting
+            ? float4(0.0, 0.0, 0.0, 0.0)
+            : ReadFrameLightShaping(lightIndex);
         float3 sampleOffsets[5];
+        float3 sampleEmitterNormals[5];
         sampleOffsets[0] = float3(0.0, 0.0, 0.0);
         sampleOffsets[1] = float3(0.0, 0.0, 0.0);
         sampleOffsets[2] = float3(0.0, 0.0, 0.0);
         sampleOffsets[3] = float3(0.0, 0.0, 0.0);
         sampleOffsets[4] = float3(0.0, 0.0, 0.0);
+        sampleEmitterNormals[0] = -lightDirection;
+        sampleEmitterNormals[1] = -lightDirection;
+        sampleEmitterNormals[2] = -lightDirection;
+        sampleEmitterNormals[3] = -lightDirection;
+        sampleEmitterNormals[4] = -lightDirection;
         float sampleCount = 1.0;
-        if (lightType == 3.0)
+        if (lightType == 2.0 && lightRadius > 0.0)
         {
-            float3 halfWidth = lightTangent * (shapeX * 0.5);
-            float3 halfHeight = lightBitangent * (shapeY * 0.5);
+            sampleOffsets[0] = -lightDirectionAxis * lightRadius;
+            sampleOffsets[1] = lightTangentAxis * lightRadius;
+            sampleOffsets[2] = -lightTangentAxis * lightRadius;
+            sampleOffsets[3] = lightBitangentAxis * lightRadius;
+            sampleOffsets[4] = -lightBitangentAxis * lightRadius;
+            sampleCount = 5.0;
+        }
+        else if (lightType == 3.0)
+        {
+            float3 halfWidth = lightTangentAxis * (shapeX * 0.5);
+            float3 halfHeight = lightBitangentAxis * (shapeY * 0.5);
             sampleOffsets[1] = halfWidth + halfHeight;
             sampleOffsets[2] = halfWidth - halfHeight;
             sampleOffsets[3] = -halfWidth + halfHeight;
@@ -1485,18 +1864,115 @@ float4 FRAGMENT_ENTRY_POINT(
         }
         else if (lightType == 4.0)
         {
-            sampleOffsets[1] = lightTangent * lightRadius;
-            sampleOffsets[2] = -lightTangent * lightRadius;
-            sampleOffsets[3] = lightBitangent * lightRadius;
-            sampleOffsets[4] = -lightBitangent * lightRadius;
+            sampleOffsets[1] = lightTangentAxis * lightRadius;
+            sampleOffsets[2] = -lightTangentAxis * lightRadius;
+            sampleOffsets[3] = lightBitangentAxis * lightRadius;
+            sampleOffsets[4] = -lightBitangentAxis * lightRadius;
+            float3 diskNormal = TransformEmitterAxisNormal(
+                float3(0.0, 0.0, -1.0), lightTangentAxis, lightBitangentAxis, lightDirectionAxis);
+            sampleEmitterNormals[0] = diskNormal;
+            sampleEmitterNormals[1] = diskNormal;
+            sampleEmitterNormals[2] = diskNormal;
+            sampleEmitterNormals[3] = diskNormal;
+            sampleEmitterNormals[4] = diskNormal;
             sampleCount = 5.0;
         }
         else if (lightType == 5.0)
         {
-            float3 halfLength = lightDirection * (shapeX * 0.5);
-            sampleOffsets[1] = halfLength;
-            sampleOffsets[2] = -halfLength;
-            sampleCount = 3.0;
+            float3 halfLength = lightDirectionAxis * (shapeX * 0.5);
+            if (lightRadius > 0.0 && shapeX > 0.0)
+            {
+                sampleOffsets[0] = (lightTangentAxis * lightRadius) - halfLength;
+                sampleOffsets[1] = (lightTangentAxis * lightRadius) + halfLength;
+                sampleOffsets[2] = (-lightTangentAxis * lightRadius) - halfLength;
+                sampleOffsets[3] = (-lightTangentAxis * lightRadius) + halfLength;
+                sampleOffsets[4] = lightBitangentAxis * lightRadius;
+                sampleEmitterNormals[0] = TransformEmitterAxisNormal(
+                    float3(1.0, 0.0, 0.0), lightTangentAxis, lightBitangentAxis, lightDirectionAxis);
+                sampleEmitterNormals[1] = sampleEmitterNormals[0];
+                sampleEmitterNormals[2] = TransformEmitterAxisNormal(
+                    float3(-1.0, 0.0, 0.0), lightTangentAxis, lightBitangentAxis, lightDirectionAxis);
+                sampleEmitterNormals[3] = sampleEmitterNormals[2];
+                sampleEmitterNormals[4] = TransformEmitterAxisNormal(
+                    float3(0.0, 1.0, 0.0), lightTangentAxis, lightBitangentAxis, lightDirectionAxis);
+                sampleCount = 5.0;
+            }
+            else
+            {
+                sampleOffsets[1] = halfLength;
+                sampleOffsets[2] = -halfLength;
+                sampleCount = 3.0;
+            }
+        }
+
+        // A finite-area emitter carries one perspective map for each shading
+        // sample. Point lights still select one of their six world-axis faces.
+        float shadowVisibilityBySample[5];
+        shadowVisibilityBySample[0] = 1.0;
+        shadowVisibilityBySample[1] = 1.0;
+        shadowVisibilityBySample[2] = 1.0;
+        shadowVisibilityBySample[3] = 1.0;
+        shadowVisibilityBySample[4] = 1.0;
+        float shadowVisibility = 1.0;
+        bool useEmitterShadowSamples = false;
+        if (hasSceneLighting)
+        {
+            float4 shadowGroup = ReadFrameShadowSlot(lightIndex);
+            int shadowSlot = (int)shadowGroup.x;
+            if (shadowSlot >= 0)
+            {
+                if (shadowGroup.y == 6.0)
+                {
+                    int firstSlot = shadowSlot;
+                    float greatestDepth = -1.0;
+                    for (int face = 0; face < 6; face++)
+                    {
+                        float4 faceClip = mul(ReadShadowMatrix(firstSlot + face),
+                            float4(worldPosition, 1.0));
+                        if (faceClip.w > greatestDepth)
+                        {
+                            greatestDepth = faceClip.w;
+                            shadowSlot = firstSlot + face;
+                        }
+                    }
+                }
+                if (shadowGroup.y == 5.0)
+                {
+                    useEmitterShadowSamples = true;
+                    for (uint sampleIndex = 0u; sampleIndex < 5u; sampleIndex++)
+                    {
+                        float3 samplePosition =
+                            ReadFrameLight(0u, lightIndex).xyz + sampleOffsets[sampleIndex];
+                        float3 toShadowSample = samplePosition - worldPosition;
+                        float3 shadowLightDirection = toShadowSample *
+                            rsqrt(max(dot(toShadowSample, toShadowSample), SurfaceEpsilon));
+                        shadowVisibilityBySample[sampleIndex] = ResolveShadowVisibility(
+                            frame,
+                            shadowSlot + (int)sampleIndex,
+                            worldPosition,
+                            worldGeometricNormal,
+                            shadowLightDirection,
+                            shadowGroup.z);
+                    }
+                }
+                else
+                {
+                    float3 shadowLightDirection = lightDirection;
+                    if (lightType == 2.0)
+                    {
+                        float3 toShadowLight = ReadFrameLight(0u, lightIndex).xyz - worldPosition;
+                        shadowLightDirection = toShadowLight *
+                            rsqrt(max(dot(toShadowLight, toShadowLight), SurfaceEpsilon));
+                    }
+                    shadowVisibility = ResolveShadowVisibility(
+                        frame,
+                        shadowSlot,
+                        worldPosition,
+                        worldGeometricNormal,
+                        shadowLightDirection,
+                        shadowGroup.z);
+                }
+            }
         }
         for (uint sampleIndex = 0u; sampleIndex < 5u; sampleIndex++)
         {
@@ -1509,30 +1985,47 @@ float4 FRAGMENT_ENTRY_POINT(
             float3 sampleDirection = lightDirection;
             if (lightType >= 2.0)
             {
-                float3 samplePosition = frame.lightPositionType[lightIndex].xyz + sampleOffsets[sampleIndex];
+                float3 samplePosition = ReadFrameLight(0u, lightIndex).xyz + sampleOffsets[sampleIndex];
                 float3 toLight = samplePosition - worldPosition;
                 float distanceSquared = max(dot(toLight, toLight), SurfaceEpsilon);
                 sampleDirection = toLight * rsqrt(distanceSquared);
                 sampleIntensity /= distanceSquared;
-                if (lightType == 4.0)
+                // lightDirection is the light's +Z, the surface-to-light
+                // direction of an emitter facing -Z, so a lit sample sees it
+                // with a positive cosine.
+                float emitterCosine = dot(lightDirection, sampleDirection);
+                if (lightType == 4.0 ||
+                    (lightType == 5.0 && lightRadius > 0.0 && shapeX > 0.0))
                 {
-                    emissionScale = saturate(dot(lightDirection, -sampleDirection));
+                    float emitterSurfaceCosine =
+                        dot(sampleEmitterNormals[sampleIndex], -sampleDirection);
+                    emissionScale = saturate(emitterSurfaceCosine);
+                }
+                if (lightShaping.z > 0.5)
+                {
+                    float spot = emitterCosine < lightShaping.x
+                        ? 0.0
+                        : (lightShaping.y > 0.0 ? pow(max(emitterCosine, 0.0), lightShaping.y) : 1.0);
+                    emissionScale *= spot;
                 }
             }
             float3 half = normalize(sampleDirection + lightEyeBase);
-            float normalDotLight = saturate(dot(normal, sampleDirection));
-            float normalDotHalf = saturate(dot(normal, half));
+            float normalDotLight = saturate(dot(directNormal, sampleDirection));
+            float normalDotHalf = saturate(dot(directNormal, half));
             float eyeDotHalf = saturate(dot(lightEyeBase, half));
             float fresnel = SchlickFresnel(eyeDotHalf);
+            float3 diffuseFresnel = omniPbrSpecular
+                ? float3(1.0, 1.0, 1.0) * dielectricLevel * lerp(0.08, 1.0, fresnel)
+                : lerp(normalIncidence, grazingIncidence, fresnel);
             float3 directDiffuse =
-                diffuse * (1.0 - lerp(normalIncidence, grazingIncidence, fresnel));
+                diffuse * (1.0 - diffuseFresnel);
             float3 directSpecular = EvaluateDirectSpecular(
                 normalIncidence,
                 grazingIncidence,
                 specularRoughness,
                 fresnel,
                 normalDotLight,
-                normalDotEye,
+                directNormalDotEye,
                 normalDotHalf);
             if (clearcoatAmount > 0.0)
             {
@@ -1542,12 +2035,15 @@ float4 FRAGMENT_ENTRY_POINT(
                     clearcoatRoughness,
                     fresnel,
                     normalDotLight,
-                    normalDotEye,
+                    directNormalDotEye,
                     normalDotHalf);
             }
             float3 diffuseIrradiance = lightColor * sampleIntensity * SurfacePi;
             float3 specularIrradiance = lightColor * sampleIntensity;
-            color += shadowVisibility * occlusion * emissionScale * normalDotLight *
+            float sampleShadowVisibility = useEmitterShadowSamples
+                ? shadowVisibilityBySample[sampleIndex]
+                : shadowVisibility;
+            color += sampleShadowVisibility * occlusion * emissionScale * normalDotLight *
                 ((directDiffuse * diffuseScale * diffuseIrradiance) +
                 (directSpecular * specularScale * specularIrradiance));
         }
@@ -1589,7 +2085,11 @@ float4 FRAGMENT_ENTRY_POINT(
         float3 specularWeight =
             (normalIncidence * environmentBrdfTerm.x) +
             (grazingIncidence * environmentBrdfTerm.y);
-        float3 diffuseWeight = saturate(float3(1.0, 1.0, 1.0) - specularWeight);
+        float3 diffuseFresnel = omniPbrSpecular
+            ? float3(1.0, 1.0, 1.0) * dielectricLevel *
+                (0.08 * environmentBrdfTerm.x + environmentBrdfTerm.y)
+            : specularWeight;
+        float3 diffuseWeight = saturate(float3(1.0, 1.0, 1.0) - diffuseFresnel);
         float3 reflectionDirection = reflect(-sceneEye, environmentNormal);
 
         float environmentGroupCount = max(frame.domeControls.y, 1.0);
@@ -1693,6 +2193,9 @@ float4 FRAGMENT_ENTRY_POINT(
     }
     return float4(color, opacity);
 #else
+#if VOLUME_DENSITY_TEXTURES
+    outputDepth = input.position.z;
+#endif
     return float4(abs(input.normal), 1.0) * input.tint;
 #endif
 }

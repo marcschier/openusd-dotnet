@@ -74,10 +74,17 @@ public sealed record UsdPhysicsSessionOptions
     /// <summary>Gets the capabilities requested from the backend; unsupported ones are diagnosed.</summary>
     public UsdPhysicsCapability RequestedCapabilities { get; }
 
-    /// <summary>Gets the maximum number of simultaneously simulated rigid bodies.</summary>
+    /// <summary>
+    /// Gets the maximum number of rigid actors, including static actors, articulation links and
+    /// controller actors. The complete published body-pose count must also fit this bound.
+    /// Zero admits no rigid actors or body poses.
+    /// </summary>
     public int MaxRigidBodies { get; }
 
-    /// <summary>Gets the maximum number of simultaneously simulated colliders.</summary>
+    /// <summary>
+    /// Gets the maximum number of composed collision shapes, including each prepared convex hull
+    /// and each controller's implicit shape. Zero admits no collision shapes.
+    /// </summary>
     public int MaxColliders { get; }
 
     /// <summary>Gets the maximum number of simultaneously simulated joints.</summary>
@@ -101,7 +108,10 @@ public sealed record UsdPhysicsSessionOptions
     /// </summary>
     public int MaxDeformableElements { get; }
 
-    /// <summary>Gets the maximum number of events retained per <see cref="UsdPhysicsSession.Step"/> call.</summary>
+    /// <summary>
+    /// Gets the maximum number of events retained per <see cref="UsdPhysicsSession.Step"/> call.
+    /// Zero disables native event collection.
+    /// </summary>
     public int MaxEventsPerStep { get; }
 
     /// <summary>Gets the maximum number of hits retained per scene query request.</summary>

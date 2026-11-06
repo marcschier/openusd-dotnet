@@ -18,7 +18,7 @@ public sealed class ViewerRenderSequenceTests
             .GetAdmissionUnsupportedReason(viewport)).Contains("Choose");
         var exr = new ViewerRenderSequenceOutputOptions(true, true, RenderHdrColorFormat.Exr);
         await Assert.That(exr.GetAdmissionUnsupportedReason(viewport))
-            .Contains(ExrRgba16FloatWriter.IsSupported ? "20 bytes/pixel" : "Windows x64");
+            .Contains(ExrRgba16FloatWriter.IsSupported ? "20 bytes/pixel" : "Core encoder");
         if (ExrRgba16FloatWriter.IsSupported)
         {
             await Assert.That(exr.GetAdmissionUnsupportedReason(new ViewportDimensions(4096, 819))).IsNull();
@@ -30,6 +30,43 @@ public sealed class ViewerRenderSequenceTests
     {
         var range = new ViewerRenderSequenceRange(0, 0.3, 0.1);
         await Assert.That(range.Times.SequenceEqual([0d, 0.1, 0.2, 0.3])).IsTrue();
+    }
+
+    [Test]
+    [Arguments(2)]
+    [Arguments(1)]
+    [Arguments(0)]
+    public async Task FiniteRangeSamplesSurviveSpanOverflowWithoutChangingTheirRequestedStep(int decrements)
+    {
+        double bound = Math.ScaleB(1, 1023);
+        double end = bound;
+        for (int index = 0; index < decrements; index++)
+        {
+            end = Math.BitDecrement(end);
+        }
+        double step = Math.ScaleB(3, 1021);
+        var range = new ViewerRenderSequenceRange(-bound, end, step);
+        await Assert.That(range.Times.SequenceEqual([-bound, -bound / 4, bound / 2])).IsTrue();
+        await Assert.That(range.Times.All(double.IsFinite)).IsTrue();
+        await Assert.That(range.Times[^1]).IsLessThan(end);
+    }
+
+    [Test]
+    public async Task WidestFiniteRangeRetainsBothEndpointsAndItsZeroSample()
+    {
+        var range = new ViewerRenderSequenceRange(-double.MaxValue, double.MaxValue, double.MaxValue);
+        await Assert.That(range.Times.SequenceEqual([-double.MaxValue, 0d, double.MaxValue])).IsTrue();
+        await Assert.That(BitConverter.DoubleToInt64Bits(range.Times[1])).IsEqualTo(0L);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task OverflowingSpansStillRefuseTooManyFramesRatherThanTruncating(bool subnormalStep)
+    {
+        double bound = Math.ScaleB(1, 1023);
+        double step = subnormalStep ? double.Epsilon : Math.ScaleB(1, 1012);
+        await Assert.That(() => new ViewerRenderSequenceRange(-bound, bound, step)).Throws<ArgumentException>();
     }
 
     [Test]

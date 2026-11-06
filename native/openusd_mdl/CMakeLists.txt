@@ -1,3 +1,13 @@
+cmake_minimum_required(VERSION 3.28)
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    project(OpenUsdMdl LANGUAGES CXX)
+    option(OPENUSD_BUILD_NATIVE_TESTS "Build native MDL ABI probes" ON)
+    set(OPENUSD_MDL_SDK_ROOT "" CACHE PATH "Optional acquired MDL SDK headers")
+    set(OPENUSD_MDL_SDK_RUNTIME_DIR "" CACHE PATH "Optional operator-supplied MDL SDK runtime directory")
+    set(OPENUSD_MDL_REAL_MODULE_ROOT "" CACHE PATH "Optional verified standalone MDL module directory")
+endif()
+
 set(OPENUSD_MDL_SOURCES
     ../include/openusd_mdl.h
     src/adapter.cpp

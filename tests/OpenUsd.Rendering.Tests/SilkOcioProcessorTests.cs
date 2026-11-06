@@ -1,11 +1,14 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.IO.Compression;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using OpenUsd.Interop;
 using OpenUsd.Rendering.Silk;
 
 namespace OpenUsd.Rendering.Tests;
 
-public sealed class SilkOcioProcessorTests
+public sealed partial class SilkOcioProcessorTests
 {
     private static string TestConfigPath =>
         Path.Combine(AppContext.BaseDirectory, "test-assets", "ocio-test-config.ocio");
@@ -54,6 +57,16 @@ public sealed class SilkOcioProcessorTests
     }
 
     [Test]
+    public async Task CreateProcessor_WithBuiltinConfig_Succeeds()
+    {
+        RequireNativeRuntime();
+        var transform = new SilkOpenColorIoDisplayTransform("ocio://default", "ACEScg");
+        using SilkOpenColorIoProcessor processor = transform.CreateProcessor();
+
+        await Assert.That(processor.Transform).IsEqualTo(transform);
+    }
+
+    [Test]
     public async Task CreateProcessor_WithNonAsciiConfigPath_Succeeds()
     {
         RequireNativeRuntime();
@@ -68,6 +81,94 @@ public sealed class SilkOcioProcessorTests
             var transform = new SilkOpenColorIoDisplayTransform(configPath, "linear");
             using var processor = transform.CreateProcessor();
             await Assert.That(processor.Transform.ConfigPath).IsEqualTo(configPath);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task CreateProcessor_WithArchiveConfig_Succeeds(bool nonAsciiDirectory, bool nonAsciiFile)
+    {
+        RequireNativeRuntime();
+        string prefix = nonAsciiDirectory ? "openusd-ocio-\u8272-" : "openusd-ocio-ascii-";
+        string directory = Path.Combine(Path.GetTempPath(), $"{prefix}{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string archivePath = Path.Combine(directory, nonAsciiFile ? "config-\u8272.ocioz" : "config.ocioz");
+        try
+        {
+            WriteArchive(archivePath);
+
+            var transform = new SilkOpenColorIoDisplayTransform(archivePath, "linear");
+            using SilkOpenColorIoProcessor processor = transform.CreateProcessor();
+            await Assert.That(processor.Transform.ConfigPath).IsEqualTo(archivePath);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CreateProcessor_WithUnicodeArchiveRestoresWindowsCallerLocale(bool perThreadLocale)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Skip.Test("Windows CRT locale state is only available on Windows.");
+            throw new InvalidOperationException("Skip.Test returned unexpectedly.");
+        }
+
+        RequireNativeRuntime();
+        string directory = Path.Combine(Path.GetTempPath(), $"openusd-ocio-locale-\u8272-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string archivePath = Path.Combine(directory, "config.ocioz");
+        string invalidArchivePath = Path.Combine(directory, "invalid.ocioz");
+        try
+        {
+            WriteArchive(archivePath);
+            File.WriteAllBytes(invalidArchivePath, [0x50, 0x4b, 0x03, 0x04]);
+            LocaleObservation observation = await Task.Run(
+                () => OperatingSystem.IsWindows()
+                    ? ObserveArchiveLocale(archivePath, invalidArchivePath, perThreadLocale)
+                    : throw new PlatformNotSupportedException());
+
+            await Assert.That(observation.BeforeMode).IsEqualTo(perThreadLocale ? 1 : 2);
+            await Assert.That(observation.SuccessMode).IsEqualTo(observation.BeforeMode);
+            await Assert.That(observation.SuccessLocale).IsEqualTo(observation.BeforeLocale);
+            await Assert.That(observation.FailureMode).IsEqualTo(observation.BeforeMode);
+            await Assert.That(observation.FailureLocale).IsEqualTo(observation.BeforeLocale);
+            await Assert.That(observation.InvalidArchiveFailed).IsTrue();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task CreateProcessor_WithInvalidNonAsciiConfig_ReportsItsPath()
+    {
+        RequireNativeRuntime();
+        string directory = Path.Combine(Path.GetTempPath(), $"openusd-ocio-invalid-\u8272-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string configPath = Path.Combine(directory, "config.ocio");
+        File.WriteAllText(configPath, "invalid config");
+        try
+        {
+            var transform = new SilkOpenColorIoDisplayTransform(configPath, "linear");
+            OpenUsdNativeException? exception = await Assert.That(() =>
+            {
+                using SilkOpenColorIoProcessor processor = transform.CreateProcessor();
+            })
+                .Throws<OpenUsdNativeException>();
+            await Assert.That(exception!.Message).Contains(configPath);
         }
         finally
         {
@@ -388,4 +489,119 @@ public sealed class SilkOcioProcessorTests
             () => Task.Run(() => processor.Apply(source, destination, 1, 1, 0f)));
         await Assert.That(exception!.Status).IsEqualTo(OpenUsdNativeStatus.InvalidArgument);
     }
+
+    private static void WriteArchive(string path)
+    {
+        using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        ZipArchiveEntry entry = archive.CreateEntry("config.ocio", CompressionLevel.Optimal);
+        using Stream destination = entry.Open();
+        using Stream source = File.OpenRead(TestConfigPath);
+        source.CopyTo(destination);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static LocaleObservation ObserveArchiveLocale(
+        string archivePath,
+        string invalidArchivePath,
+        bool perThreadLocale)
+    {
+        const int ctype = 2;
+        const int enablePerThreadLocale = 1;
+        const int disablePerThreadLocale = 2;
+        int previousMode = ConfigureThreadLocale(enablePerThreadLocale);
+        if (previousMode == -1)
+        {
+            throw new InvalidOperationException("Could not enable the test thread's locale.");
+        }
+
+        string previousLocale;
+        try
+        {
+            previousLocale = CurrentLocale();
+        }
+        catch
+        {
+            if (ConfigureThreadLocale(previousMode) == -1)
+            {
+                throw new InvalidOperationException("Could not restore the test thread's locale mode.");
+            }
+            throw;
+        }
+
+        try
+        {
+            if (SetLocale(ctype, "C") == nint.Zero ||
+                (!perThreadLocale && ConfigureThreadLocale(disablePerThreadLocale) == -1))
+            {
+                throw new InvalidOperationException("Could not set the test thread's locale.");
+            }
+
+            int beforeMode = ConfigureThreadLocale(0);
+            string beforeLocale = CurrentLocale();
+            using (new SilkOpenColorIoDisplayTransform(archivePath, "linear").CreateProcessor())
+            {
+            }
+            int successMode = ConfigureThreadLocale(0);
+            string successLocale = CurrentLocale();
+
+            bool invalidArchiveFailed = false;
+            try
+            {
+                using SilkOpenColorIoProcessor processor =
+                    new SilkOpenColorIoDisplayTransform(invalidArchivePath, "linear").CreateProcessor();
+            }
+            catch (OpenUsdNativeException)
+            {
+                invalidArchiveFailed = true;
+            }
+
+            return new LocaleObservation(
+                beforeMode,
+                beforeLocale,
+                successMode,
+                successLocale,
+                ConfigureThreadLocale(0),
+                CurrentLocale(),
+                invalidArchiveFailed);
+        }
+        finally
+        {
+            RestoreTestThreadLocale(previousMode, previousLocale);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void RestoreTestThreadLocale(int previousMode, string previousLocale)
+    {
+        if (ConfigureThreadLocale(1) == -1)
+        {
+            throw new InvalidOperationException("Could not enable the test thread's locale.");
+        }
+        nint locale = SetLocale(2, previousLocale);
+        int restored = ConfigureThreadLocale(previousMode);
+        if (locale == nint.Zero || restored == -1)
+        {
+            throw new InvalidOperationException("Could not restore the test thread's locale.");
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static string CurrentLocale() =>
+        Marshal.PtrToStringUTF8(SetLocale(2, null)) ??
+        throw new InvalidOperationException("Could not read the test thread's locale.");
+
+    [LibraryImport("ucrtbase", EntryPoint = "_configthreadlocale")]
+    private static partial int ConfigureThreadLocale(int mode);
+
+    [LibraryImport("ucrtbase", EntryPoint = "setlocale", StringMarshalling = StringMarshalling.Utf8)]
+    private static partial nint SetLocale(int category, string? locale);
+
+    private readonly record struct LocaleObservation(
+        int BeforeMode,
+        string BeforeLocale,
+        int SuccessMode,
+        string SuccessLocale,
+        int FailureMode,
+        string FailureLocale,
+        bool InvalidArchiveFailed);
 }

@@ -3,8 +3,8 @@
 namespace OpenUsd.Rendering.Silk;
 
 /// <summary>
-/// Derives the exact primitives an edge or point pick pass rasterizes from one
-/// retained mesh's ABI v22 subprim-identity tables.
+/// Derives authored edge and point identities and indices from one retained
+/// mesh's ABI v22 subprim-identity tables.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,13 +30,153 @@ namespace OpenUsd.Rendering.Silk;
 /// record costs at most what its own bytes already cost.
 /// </para>
 /// <para>
-/// Both the retained identity table and the renderer derive their order from
-/// this one type, so the token a pass writes and the identity a readback
-/// resolves cannot drift apart.
+/// The public methods return indices into the retained mesh's vertex stream.
+/// Triangle-local normal or Ptex processing can subsequently create a
+/// renderer-owned corner stream with additional component copies. In that case,
+/// the renderer derives its draw indices and token order separately, and the
+/// active token ranges can contain more entries than the arrays returned here.
 /// </para>
 /// </remarks>
 public static class SilkSubprimPickGeometry
 {
+    internal static bool MayDeriveCornerVertices(SilkMeshData mesh) =>
+        mesh.TopologyKind == SilkTopologyKind.TriangleList &&
+        (mesh.TriangleLocalNormalFallback || mesh.PtexMappingStatus == SilkPtexMappingStatus.Mapped);
+
+    internal static int[] FindUnreferencedAuthoredPoints(SilkMeshData mesh)
+    {
+        ReadOnlySpan<int> origins = mesh.PointOrigins.Span;
+        int pointCount = mesh.Points.Length / 3;
+        if (!mesh.SubprimIdentity.HasFlag(SilkSubprimIdentity.Point) ||
+            origins.Length != pointCount)
+        {
+            return [];
+        }
+
+        var referenced = new bool[pointCount];
+        foreach (uint index in mesh.Indices.Span)
+        {
+            if (index >= pointCount)
+            {
+                throw new InvalidDataException("A mesh index references an absent point.");
+            }
+            referenced[index] = true;
+        }
+        var unreferenced = new List<int>();
+        for (int point = 0; point < pointCount; point++)
+        {
+            if (!referenced[point] && origins[point] >= 0)
+            {
+                unreferenced.Add(point);
+            }
+        }
+        return [.. unreferenced];
+    }
+
+    internal static bool TryResolveCornerEdges(
+        SilkMeshData mesh,
+        bool derivedVertices,
+        out int[] authoredEdges,
+        out uint[] lineIndices,
+        bool includeDrawIndices = true)
+    {
+        ReadOnlySpan<int> cornerEdges = mesh.CornerEdges.Span;
+        ReadOnlySpan<uint> sourceIndices = mesh.Indices.Span;
+        if (!mesh.SubprimIdentity.HasFlag(SilkSubprimIdentity.Edge) ||
+            mesh.TopologyKind != SilkTopologyKind.TriangleList ||
+            cornerEdges.Length == 0 ||
+            cornerEdges.Length != sourceIndices.Length ||
+            sourceIndices.Length % 3 != 0)
+        {
+            authoredEdges = [];
+            lineIndices = [];
+            return false;
+        }
+
+        var drawn = new List<CornerEdgeDraw>();
+        for (int corner = 0; corner < cornerEdges.Length; corner++)
+        {
+            int authored = cornerEdges[corner];
+            int next = ((corner / 3) * 3) + ((corner + 1) % 3);
+            if (authored >= 0 && sourceIndices[corner] != sourceIndices[next])
+            {
+                drawn.Add(new CornerEdgeDraw(authored, corner, next));
+            }
+        }
+        if (drawn.Count == 0)
+        {
+            authoredEdges = [];
+            lineIndices = [];
+            return false;
+        }
+
+        drawn.Sort(static (left, right) =>
+        {
+            int order = left.Authored.CompareTo(right.Authored);
+            return order != 0 ? order : left.FirstCorner.CompareTo(right.FirstCorner);
+        });
+        authoredEdges = new int[drawn.Count];
+        lineIndices = includeDrawIndices ? new uint[checked(drawn.Count * 2)] : [];
+        for (int index = 0; index < drawn.Count; index++)
+        {
+            CornerEdgeDraw edge = drawn[index];
+            authoredEdges[index] = edge.Authored;
+            if (includeDrawIndices)
+            {
+                lineIndices[index * 2] = derivedVertices
+                    ? checked((uint)edge.FirstCorner) : sourceIndices[edge.FirstCorner];
+                lineIndices[(index * 2) + 1] = derivedVertices
+                    ? checked((uint)edge.SecondCorner) : sourceIndices[edge.SecondCorner];
+            }
+        }
+        return true;
+    }
+
+    internal static bool TryResolveCornerPoints(
+        SilkMeshData mesh,
+        bool derivedVertices,
+        out int[] authoredPoints,
+        out uint[] pointIndices,
+        bool includeDrawIndices = true)
+    {
+        ReadOnlySpan<int> origins = mesh.PointOrigins.Span;
+        ReadOnlySpan<uint> sourceIndices = mesh.Indices.Span;
+        if (!mesh.SubprimIdentity.HasFlag(SilkSubprimIdentity.Point) ||
+            mesh.TopologyKind != SilkTopologyKind.TriangleList ||
+            origins.Length == 0 ||
+            origins.Length != mesh.Points.Length / 3)
+        {
+            authoredPoints = [];
+            pointIndices = [];
+            return false;
+        }
+
+        int[] unreferenced = FindUnreferencedAuthoredPoints(mesh);
+        var points = new List<int>();
+        var indices = includeDrawIndices ? new List<uint>() : null;
+        for (int corner = 0; corner < sourceIndices.Length; corner++)
+        {
+            int source = checked((int)sourceIndices[corner]);
+            if (origins[source] >= 0)
+            {
+                points.Add(origins[source]);
+                indices?.Add(derivedVertices ? checked((uint)corner) : sourceIndices[corner]);
+            }
+        }
+        for (int point = 0; point < unreferenced.Length; point++)
+        {
+            points.Add(origins[unreferenced[point]]);
+            indices?.Add(derivedVertices
+                ? checked((uint)(sourceIndices.Length + point))
+                : checked((uint)unreferenced[point]));
+        }
+        authoredPoints = [.. points];
+        pointIndices = indices is null ? [] : [.. indices];
+        return points.Count != 0;
+    }
+
+    private readonly record struct CornerEdgeDraw(int Authored, int FirstCorner, int SecondCorner);
+
     /// <summary>
     /// Resolves every emitted copy of every authored edge one mesh draws,
     /// together with the emitted vertex pair each copy is drawn from.
@@ -56,7 +196,11 @@ public static class SilkSubprimPickGeometry
     public static bool TryResolveEdges(
         SilkMeshData mesh,
         out int[] authoredEdges,
-        out uint[] lineIndices)
+        out uint[] lineIndices) =>
+        TryResolveEdges(mesh, out authoredEdges, out lineIndices, includeDrawIndices: true);
+
+    internal static bool TryResolveEdges(
+        SilkMeshData mesh, out int[] authoredEdges, out uint[] lineIndices, bool includeDrawIndices)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         int cornersPerPrimitive = CornersPerPrimitive(mesh.TopologyKind);
@@ -120,12 +264,15 @@ public static class SilkSubprimPickGeometry
 
         drawn.Sort(static (left, right) => left.CompareTo(right));
         authoredEdges = new int[drawn.Count];
-        lineIndices = new uint[drawn.Count * 2];
+        lineIndices = includeDrawIndices ? new uint[drawn.Count * 2] : [];
         for (int index = 0; index < drawn.Count; index++)
         {
             authoredEdges[index] = drawn[index].Authored;
-            lineIndices[index * 2] = drawn[index].First;
-            lineIndices[(index * 2) + 1] = drawn[index].Second;
+            if (includeDrawIndices)
+            {
+                lineIndices[index * 2] = drawn[index].First;
+                lineIndices[(index * 2) + 1] = drawn[index].Second;
+            }
         }
         return true;
     }
@@ -156,7 +303,11 @@ public static class SilkSubprimPickGeometry
     public static bool TryResolvePoints(
         SilkMeshData mesh,
         out int[] authoredPoints,
-        out uint[] pointIndices)
+        out uint[] pointIndices) =>
+        TryResolvePoints(mesh, out authoredPoints, out pointIndices, includeDrawIndices: true);
+
+    internal static bool TryResolvePoints(
+        SilkMeshData mesh, out int[] authoredPoints, out uint[] pointIndices, bool includeDrawIndices)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         ReadOnlySpan<int> origins = mesh.PointOrigins.Span;
@@ -185,7 +336,7 @@ public static class SilkSubprimPickGeometry
         }
 
         authoredPoints = new int[drawnCount];
-        pointIndices = new uint[drawnCount];
+        pointIndices = includeDrawIndices ? new uint[drawnCount] : [];
         int drawn = 0;
         for (int vertex = 0; vertex < origins.Length; vertex++)
         {
@@ -194,7 +345,10 @@ public static class SilkSubprimPickGeometry
                 continue;
             }
             authoredPoints[drawn] = origins[vertex];
-            pointIndices[drawn] = checked((uint)vertex);
+            if (includeDrawIndices)
+            {
+                pointIndices[drawn] = checked((uint)vertex);
+            }
             drawn++;
         }
         return true;
@@ -233,7 +387,7 @@ public static class SilkSubprimPickGeometry
 }
 
 /// <summary>
-/// The derived edge and point draw tables of one prototype's emitted topology.
+/// The authored identities of one prototype's emitted edge and point primitives.
 /// </summary>
 /// <remarks>
 /// The tables are a pure function of the emitted topology and the ABI v22
@@ -248,30 +402,31 @@ internal sealed class SilkSubprimTables
     internal SilkSubprimTables(
         bool hasEdges,
         int[] authoredEdges,
-        uint[] lineIndices,
         bool hasPoints,
         int[] authoredPoints,
-        uint[] pointIndices)
+        int[] canonicalEdges,
+        int[] canonicalPoints)
     {
         HasEdges = hasEdges;
         AuthoredEdges = authoredEdges;
-        LineIndices = lineIndices;
         HasPoints = hasPoints;
         AuthoredPoints = authoredPoints;
-        PointIndices = pointIndices;
+        CanonicalEdges = canonicalEdges;
+        CanonicalPoints = canonicalPoints;
     }
 
     internal bool HasEdges { get; }
 
     internal int[] AuthoredEdges { get; }
 
-    internal uint[] LineIndices { get; }
-
     internal bool HasPoints { get; }
 
     internal int[] AuthoredPoints { get; }
 
-    internal uint[] PointIndices { get; }
+    internal int[] CanonicalEdges { get; }
+
+    internal int[] CanonicalPoints { get; }
+
 }
 
 /// <summary>
@@ -280,8 +435,8 @@ internal sealed class SilkSubprimTables
 /// </summary>
 /// <remarks>
 /// The cache object, not the derived result, is what an instance shares, so the
-/// derivation is still lazy: a scene whose pick target never reaches the edge or
-/// point tables never pays for them at all.
+/// identity derivation is shared. Draw indices are not retained here: only a
+/// requested edge/point pass needs those separate geometry buffers.
 /// </remarks>
 internal sealed class SilkSubprimTableCache
 {
@@ -302,19 +457,28 @@ internal sealed class SilkSubprimTableCache
         }
         bool hasEdges = SilkSubprimPickGeometry.TryResolveEdges(
             mesh,
-            out int[] authoredEdges,
-            out uint[] lineIndices);
+            out int[] canonicalEdges,
+            out _, includeDrawIndices: false);
         bool hasPoints = SilkSubprimPickGeometry.TryResolvePoints(
             mesh,
-            out int[] authoredPoints,
-            out uint[] pointIndices);
+            out int[] canonicalPoints,
+            out _, includeDrawIndices: false);
+        int[] authoredEdges = canonicalEdges;
+        int[] authoredPoints = canonicalPoints;
+        if (SilkSubprimPickGeometry.MayDeriveCornerVertices(mesh))
+        {
+            hasEdges = SilkSubprimPickGeometry.TryResolveCornerEdges(
+                mesh, derivedVertices: true, out authoredEdges, out _, includeDrawIndices: false);
+            hasPoints = SilkSubprimPickGeometry.TryResolveCornerPoints(
+                mesh, derivedVertices: true, out authoredPoints, out _, includeDrawIndices: false);
+        }
         tables = new SilkSubprimTables(
             hasEdges,
             authoredEdges,
-            lineIndices,
             hasPoints,
             authoredPoints,
-            pointIndices);
+            canonicalEdges,
+            canonicalPoints);
         _tables = tables;
         return tables;
     }

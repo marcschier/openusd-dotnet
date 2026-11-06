@@ -7,9 +7,13 @@
 #include "pageWriter.h"
 
 #include "pxr/base/tf/diagnostic.h"
+#include "pxr/base/arch/hash.h"
 #include "pxr/base/gf/vec3d.h"
+#include "pxr/base/gf/vec3f.h"
+#include "pxr/usd/usdLux/blackbody.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstring>
@@ -17,18 +21,15 @@
 #include <limits>
 #include <new>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
 namespace
 {
-// The fixed MESH_UPSERT payload, excluding the 8-byte command header: through
-// transform (200) plus the ABI v4 material binding hash, material path byte
-// count and attribute count, plus the ABI v20 deformation flags, unsupported
-// reasons and block byte count, plus the ABI v22 subprim identity flags,
-// unsupported reasons, the four table counts and the instancer path length.
-constexpr size_t MeshFixedPayloadSize = 260;
+// The fixed MESH_UPSERT payload, excluding the 8-byte command header.
+constexpr size_t MeshFixedPayloadSize = 268;
 
 // semantic, component_count, interpolation, name_byte_count, element_count.
 constexpr size_t MeshAttributeFixedSize = 20;
@@ -487,6 +488,29 @@ void AppendLight(
     AppendF32(payload, record->radius);
 }
 
+/// Appends one ABI v28 shaping entry. A published light always carries a cone
+/// within [0, 180] and a non-negative focus, so the consumer never has to
+/// reinterpret an out-of-range authored value. An unpublished slot is zero.
+void AppendLightShaping(
+    HdSilkCommandPayload& payload,
+    const HdSilkLightRecord* record)
+{
+    const bool zeroRadiusSpot = record != nullptr &&
+        record->type == OPENUSD_SILK_LIGHT_SPHERE &&
+        record->radius == 0.0f;
+    const bool shaped = record != nullptr &&
+        (record->type == OPENUSD_SILK_LIGHT_RECT ||
+            record->type == OPENUSD_SILK_LIGHT_DISK ||
+            (zeroRadiusSpot && record->shapingConeAngle < 180.0f));
+    AppendF32(
+        payload,
+        record == nullptr ? 0.0f :
+        shaped ? std::clamp(record->shapingConeAngle, 0.0f, 180.0f) : 180.0f);
+    AppendF32(payload, shaped ? std::max(record->shapingFocus, 0.0f) : 0.0f);
+    AppendU32(payload, 0);
+    AppendU32(payload, 0);
+}
+
 /// Rebuilds the point-origin table of a mesh the points draw mode has just
 /// indexed every emitted vertex of.
 ///
@@ -573,9 +597,19 @@ HdSilkMeshRecord ApplyDrawMode(const HdSilkMeshRecord& record, uint32_t drawMode
     }
 
     HdSilkMeshRecord result = record;
+    result.normalIdentities.clear();
+    result.normalCorners.clear();
+    result.normalExtraPoints.clear();
+    result.triangleLocalNormalFallback = false;
     const size_t pointCount = result.points.size() / 3;
     result.materialPath.clear();
     result.attributes.clear();
+    if (result.ptexMappingStatus == OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED)
+    {
+        result.ptexMappings.clear();
+        result.ptexMappingStatus =
+            OPENUSD_SILK_PTEX_MAPPING_STATUS_UNSUPPORTED_TOPOLOGY;
+    }
     // A draw mode that replaces the emitted primitives replaces what the
     // deformation block would be evaluated into, so the rig is dropped with its
     // reason rather than published against a topology it no longer describes.
@@ -691,6 +725,12 @@ void ValidateDirectLight(const HdSilkLightRecord& light)
     validate(light.radius, "radius");
     validate(light.shapeX, "shape_x");
     validate(light.shapeY, "shape_y");
+    validate(light.shapingConeAngle, "shaping:cone:angle");
+    validate(light.shapingFocus, "shaping:focus");
+    if (light.colorTemperatureEnabled)
+    {
+        validate(light.colorTemperature, "colorTemperature");
+    }
     for (float component : light.color)
     {
         validate(component, "color");
@@ -775,9 +815,23 @@ void SelectDirectLights(
                 // color, intensity, exposure, and diffuse contribution.
                 const float exposed =
                     0.96f * light.intensity * std::pow(2.0f, light.exposure) * light.diffuse;
-                dome.ambientColor[0] = light.color[0] * exposed;
-                dome.ambientColor[1] = light.color[1] * exposed;
-                dome.ambientColor[2] = light.color[2] * exposed;
+                GfVec3f color(light.color[0], light.color[1], light.color[2]);
+                if (light.colorTemperatureEnabled)
+                {
+                    color = GfCompMult(
+                        color, UsdLuxBlackbodyTemperatureAsRgb(light.colorTemperature));
+                }
+                else if ((light.unsupportedFeatures &
+                             OPENUSD_SILK_ENVIRONMENT_UNSUPPORTED_COLOR_TEMPERATURE) != 0u)
+                {
+                    TF_WARN(
+                        "hdSilk ignores the non-finite colorTemperature on the "
+                        "untextured dome light '%s' and keeps its authored colour.",
+                        light.path.c_str());
+                }
+                dome.ambientColor[0] = color[0] * exposed;
+                dome.ambientColor[1] = color[1] * exposed;
+                dome.ambientColor[2] = color[2] * exposed;
 
                 // Accumulated from the very floats the dome entry carries, in
                 // the order the dome table publishes them. Summing the per-dome
@@ -808,6 +862,18 @@ void SelectDirectLights(
         if (outDirectLights->size() < OPENUSD_SILK_MAX_FRAME_LIGHTS)
         {
             outDirectLights->push_back(light);
+            if (light.colorTemperatureEnabled)
+            {
+                // The same luminance-normalized Catmull-Rom blackbody table
+                // Storm's area-light approximation uses, so the tint matches
+                // it exactly and never changes the light's luminance.
+                const GfVec3f tint = UsdLuxBlackbodyTemperatureAsRgb(light.colorTemperature);
+                HdSilkLightRecord& published = outDirectLights->back();
+                for (int channel = 0; channel < 3; ++channel)
+                {
+                    published.color[channel] *= tint[channel];
+                }
+            }
         }
     }
     if (directLightCount > OPENUSD_SILK_MAX_FRAME_LIGHTS)
@@ -863,7 +929,8 @@ void AppendFrame(
         (static_cast<size_t>(OPENUSD_SILK_MAX_FRAME_LIGHTS) * 176) +
         16 +
         16 +
-        (static_cast<size_t>(OPENUSD_SILK_MAX_DOME_LIGHTS) * 32));
+        (static_cast<size_t>(OPENUSD_SILK_MAX_DOME_LIGHTS) * 32) +
+        (static_cast<size_t>(OPENUSD_SILK_MAX_FRAME_LIGHTS) * 16));
     AppendI32(payload, frame.width);
     AppendI32(payload, frame.height);
     for (double value : frame.viewMatrix)
@@ -913,6 +980,10 @@ void AppendFrame(
         AppendU32(payload, 0);
         AppendU32(payload, 0);
     }
+    for (size_t i = 0; i < OPENUSD_SILK_MAX_FRAME_LIGHTS; ++i)
+    {
+        AppendLightShaping(payload, i < directLights.size() ? &directLights[i] : nullptr);
+    }
     payload.Complete();
 }
 
@@ -927,8 +998,15 @@ struct MeshWireCounts
     uint32_t cornerEdgeCount;
     uint32_t instancerPathByteCount;
     uint32_t instancerContextCount;
+    uint32_t ptexMappingCount;
+    uint32_t ptexMappingStatus;
+    uint32_t normalIdentityCount;
+    uint32_t normalCornerCount;
+    uint32_t normalExtraPointCount;
     size_t payloadSize;
 };
+
+static_assert(sizeof(HdSilkPtexMeshTriangle) == 28);
 
 /// The number of corner edges one emitted primitive of a topology owns. A
 /// triangle owns three, a line owns the single edge it is, and a point owns
@@ -1000,6 +1078,44 @@ void ValidateSubprimIdentity(
         throw std::invalid_argument(
             "An hdSilk mesh claims authored face identity without one authored "
             "face per emitted primitive.");
+    }
+    if (record.ptexMappingStatus >
+        OPENUSD_SILK_PTEX_MAPPING_STATUS_TEXTURE_FACE_OUT_OF_RANGE)
+    {
+        throw std::invalid_argument(
+            "An hdSilk mesh declares an unknown Ptex mapping status.");
+    }
+    if (record.ptexMappingStatus == OPENUSD_SILK_PTEX_MAPPING_STATUS_MAPPED)
+    {
+        if (record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ||
+            record.ptexMappings.size() != primitiveCount)
+        {
+            throw std::invalid_argument(
+                "A mapped Ptex mesh requires one mapping per emitted triangle.");
+        }
+        for (const HdSilkPtexMeshTriangle& mapping : record.ptexMappings)
+        {
+            if (mapping.faceIndex >
+                static_cast<uint32_t>(std::numeric_limits<int>::max()))
+            {
+                throw std::invalid_argument(
+                    "A Ptex face index exceeds the supported face range.");
+            }
+            for (float coordinate : mapping.cornerCoordinates)
+            {
+                if (!std::isfinite(coordinate) ||
+                    coordinate < 0.0F || coordinate > 1.0F)
+                {
+                    throw std::invalid_argument(
+                        "A Ptex triangle coordinate is outside the unit face.");
+                }
+            }
+        }
+    }
+    else if (!record.ptexMappings.empty())
+    {
+        throw std::invalid_argument(
+            "A refused Ptex mapping must not publish triangle coordinates.");
     }
 
     const bool claimsPoints =
@@ -1268,6 +1384,39 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
     const size_t primitiveCount = record.indices.size() / indicesPerPrimitive;
 
     size_t payloadSize = MeshFixedPayloadSize;
+    if ((!record.normalIdentities.empty() &&
+         (record.normalIdentities.size() != pointCount ||
+          record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST ||
+          record.normalIdentities.size() >
+              static_cast<size_t>(std::numeric_limits<int32_t>::max()))) ||
+        record.normalCorners.size() % 3 != 0 || record.normalExtraPoints.size() % 3 != 0 ||
+        (record.normalIdentities.empty() &&
+         (!record.normalCorners.empty() || !record.normalExtraPoints.empty() ||
+          record.triangleLocalNormalFallback)))
+    {
+        throw std::invalid_argument("An hdSilk normal correspondence table is malformed.");
+    }
+    for (uint32_t corner : record.normalCorners)
+    {
+        if (corner >= pointCount + record.normalExtraPoints.size() / 3)
+        {
+            throw std::invalid_argument("An hdSilk normal corner references a missing point.");
+        }
+    }
+    for (uint32_t identity : record.normalIdentities)
+    {
+        if (identity > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))
+        {
+            throw std::invalid_argument("An hdSilk normal identity exceeds the supported range.");
+        }
+    }
+    for (float value : record.normalExtraPoints)
+    {
+        if (!std::isfinite(value))
+        {
+            throw std::invalid_argument("An hdSilk normal-only point is not finite.");
+        }
+    }
     payloadSize = CheckedAdd(
         payloadSize, record.path.size(), "mesh payload");
     payloadSize = CheckedAdd(
@@ -1333,6 +1482,26 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         payloadSize = CheckedAdd(payloadSize, 8, "mesh payload");
         payloadSize = CheckedAdd(payloadSize, entry.path.size(), "mesh payload");
     }
+    payloadSize = CheckedAdd(
+        payloadSize,
+        CheckedByteCount(
+            record.ptexMappings.size(),
+            sizeof(HdSilkPtexMeshTriangle),
+            "Ptex mapping"),
+        "mesh payload");
+    payloadSize = CheckedAdd(payloadSize,
+        CheckedByteCount(record.normalIdentities.size(), sizeof(uint32_t), "normal identity"),
+        "mesh payload");
+    payloadSize = CheckedAdd(payloadSize,
+        CheckedByteCount(record.normalCorners.size(), sizeof(uint32_t), "normal corner"),
+        "mesh payload");
+    if (!record.normalIdentities.empty())
+    {
+        payloadSize = CheckedAdd(payloadSize, 12, "normal correspondence header");
+    }
+    payloadSize = CheckedAdd(payloadSize,
+        CheckedByteCount(record.normalExtraPoints.size(), sizeof(float), "normal extra point"),
+        "mesh payload");
     if (payloadSize >
         static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 8)
     {
@@ -1351,6 +1520,11 @@ MeshWireCounts ValidateMesh(const HdSilkMeshRecord& record)
         CheckedCount(record.instancerPath.size(), "instancer path byte count"),
         CheckedCount(
             record.instancerContext.size(), "instancer context count"),
+        CheckedCount(record.ptexMappings.size(), "Ptex mapping count"),
+        record.ptexMappingStatus,
+        CheckedCount(record.normalIdentities.size(), "normal identity count"),
+        CheckedCount(record.normalCorners.size() / 3, "normal corner count"),
+        CheckedCount(record.normalExtraPoints.size() / 3, "normal extra point count"),
         payloadSize};
 }
 
@@ -1787,11 +1961,85 @@ uint64_t PresentationTopologyRevision(
     return mixed;
 }
 
+std::vector<const HdSilkMaterialTexture*> MissingCoordinateFallbacks(
+    const HdSilkMeshRecord& mesh, const HdSilkMaterialRecord* material)
+{
+    std::vector<const HdSilkMaterialTexture*> result;
+    if (material == nullptr || mesh.points.empty())
+    {
+        return result;
+    }
+    for (const HdSilkMaterialTexture& texture : material->textures)
+    {
+        if (!texture.hasUvFallback || texture.uvPrimvar.empty())
+        {
+            continue;
+        }
+        const HdSilkMeshAttributes& attributes = mesh.attributes;
+        if (std::any_of(attributes.begin(), attributes.end(), [&](const HdSilkMeshAttribute& attribute)
+            { return attribute.name == texture.uvPrimvar; }))
+        {
+            continue;
+        }
+        const auto duplicate = std::find_if(result.begin(), result.end(),
+            [&](const HdSilkMaterialTexture* previous) { return previous->uvPrimvar == texture.uvPrimvar; });
+        if (duplicate != result.end())
+        {
+            if ((*duplicate)->uvFallback[0] != texture.uvFallback[0] ||
+                (*duplicate)->uvFallback[1] != texture.uvFallback[1])
+            {
+                throw std::invalid_argument("A missing coordinate has conflicting reader fallbacks.");
+            }
+            continue;
+        }
+        if (!std::isfinite(texture.uvFallback[0]) || !std::isfinite(texture.uvFallback[1]))
+        {
+            throw std::invalid_argument("A coordinate fallback must be finite.");
+        }
+        result.push_back(&texture);
+    }
+    return result;
+}
+
+bool SameCoordinateFallbacks(const HdSilkMaterialRecord& left, const HdSilkMaterialRecord& right)
+{
+    auto a = left.textures.begin();
+    auto b = right.textures.begin();
+    for (;;)
+    {
+        while (a != left.textures.end() && !a->hasUvFallback) { ++a; }
+        while (b != right.textures.end() && !b->hasUvFallback) { ++b; }
+        if (a == left.textures.end() || b == right.textures.end())
+        {
+            return a == left.textures.end() && b == right.textures.end();
+        }
+        if (a->uvPrimvar != b->uvPrimvar ||
+            a->uvFallback[0] != b->uvFallback[0] || a->uvFallback[1] != b->uvFallback[1])
+        {
+            return false;
+        }
+        ++a;
+        ++b;
+    }
+}
+
+size_t CoordinateFallbackBytes(const std::vector<const HdSilkMaterialTexture*>& fallbacks)
+{
+    size_t bytes = 0;
+    for (const HdSilkMaterialTexture* texture : fallbacks)
+    {
+        bytes = CheckedAdd(bytes, CheckedAdd(MeshAttributeFixedSize + 2 * sizeof(float),
+            texture->uvPrimvar.size(), "coordinate fallback"), "coordinate fallbacks");
+    }
+    return bytes;
+}
+
 void AppendMeshUpsert(
     HdSilkPageWriter& buffer,
     HdSilkMeshRecord record,
     uint32_t complexity,
-    uint32_t sourceTopologyKind)
+    uint32_t sourceTopologyKind,
+    const HdSilkMaterialRecord* material)
 {
     const uint64_t sourceRevision = record.topologyRevision;
     HdSilkMeshRecord presented =
@@ -1812,9 +2060,10 @@ void AppendMeshUpsert(
         presentedDensity);
     const HdSilkMeshRecord& complexRecord = presented;
     const MeshWireCounts counts = ValidateMesh(complexRecord);
+    const auto fallbacks = MissingCoordinateFallbacks(complexRecord, material);
 
     HdSilkCommandPayload payload(buffer, OPENUSD_SILK_COMMAND_MESH_UPSERT);
-    payload.reserve(counts.payloadSize);
+    payload.reserve(CheckedAdd(counts.payloadSize, CoordinateFallbackBytes(fallbacks), "mesh payload"));
 
     AppendU64(payload, ComputeStableHash(complexRecord.path));
     AppendI32(payload, complexRecord.primId);
@@ -1840,7 +2089,8 @@ void AppendMeshUpsert(
         payload,
         complexRecord.materialPath.empty() ? 0ull : ComputeStableHash(complexRecord.materialPath));
     AppendU32(payload, CheckedCount(complexRecord.materialPath.size(), "material path byte count"));
-    AppendU32(payload, CheckedCount(complexRecord.attributes.size(), "attribute count"));
+    AppendU32(payload, CheckedCount(
+        CheckedAdd(complexRecord.attributes.size(), fallbacks.size(), "attribute count"), "attribute count"));
     AppendU32(payload, complexRecord.deformation.published
         ? complexRecord.deformation.flags
         : 0u);
@@ -1854,6 +2104,8 @@ void AppendMeshUpsert(
     AppendU32(payload, complexRecord.authoredPointCount);
     AppendU32(payload, counts.instancerPathByteCount);
     AppendU32(payload, counts.instancerContextCount);
+    AppendU32(payload, counts.ptexMappingCount);
+    AppendU32(payload, counts.ptexMappingStatus);
     AppendBytes(payload, complexRecord.path.data(), complexRecord.path.size());
     for (float value : complexRecord.points)
     {
@@ -1885,6 +2137,17 @@ void AppendMeshUpsert(
         {
             AppendF32(payload, value);
         }
+    }
+    for (const HdSilkMaterialTexture* texture : fallbacks)
+    {
+        AppendU32(payload, OPENUSD_SILK_ATTRIBUTE_TEXCOORD);
+        AppendU32(payload, 2);
+        AppendU32(payload, OPENUSD_SILK_INTERPOLATION_CONSTANT);
+        AppendU32(payload, CheckedCount(texture->uvPrimvar.size(), "coordinate name"));
+        AppendU32(payload, 1);
+        AppendBytes(payload, texture->uvPrimvar.data(), texture->uvPrimvar.size());
+        AppendF32(payload, texture->uvFallback[0]);
+        AppendF32(payload, texture->uvFallback[1]);
     }
     if (complexRecord.deformation.published)
     {
@@ -1919,7 +2182,35 @@ void AppendMeshUpsert(
         AppendI32(payload, entry.index);
         AppendBytes(payload, entry.path.data(), entry.path.size());
     }
+    for (const HdSilkPtexMeshTriangle& mapping : complexRecord.ptexMappings)
+    {
+        AppendU32(payload, mapping.faceIndex);
+        for (float coordinate : mapping.cornerCoordinates)
+        {
+            AppendF32(payload, coordinate);
+        }
+    }
 
+    if (counts.normalIdentityCount != 0)
+    {
+        AppendU32(payload, counts.normalIdentityCount |
+            (complexRecord.triangleLocalNormalFallback
+                ? OPENUSD_SILK_NORMAL_IDENTITY_TRIANGLE_LOCAL : 0u));
+        AppendU32(payload, counts.normalCornerCount);
+        AppendU32(payload, counts.normalExtraPointCount);
+    }
+    for (uint32_t value : complexRecord.normalIdentities)
+    {
+        AppendU32(payload, value);
+    }
+    for (uint32_t value : complexRecord.normalCorners)
+    {
+        AppendU32(payload, value);
+    }
+    for (float value : complexRecord.normalExtraPoints)
+    {
+        AppendF32(payload, value);
+    }
     payload.Complete();
 }
 
@@ -1959,36 +2250,127 @@ void AppendMaterialUpsert(
     {
         throw std::invalid_argument("The hdSilk material surface kind is unknown.");
     }
+    bool hasLuminanceMix = false;
+    bool hasSpecularLevel = false;
+    bool hasDetailRow0 = false;
+    bool hasDetailRow1 = false;
     for (const HdSilkMaterialScalar& scalar : record.scalars)
     {
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_NORMAL)
+        {
+            throw std::invalid_argument("A detail normal requires a texture.");
+        }
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0 ||
+            scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW1)
+        {
+            bool& seen = scalar.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0
+                ? hasDetailRow0 : hasDetailRow1;
+            if (seen || scalar.componentCount != 3 || !std::isfinite(scalar.value[0]) ||
+                !std::isfinite(scalar.value[1]) || !std::isfinite(scalar.value[2]))
+            {
+                throw std::invalid_argument("Invalid or duplicate detail normal UV row.");
+            }
+            seen = true;
+        }
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL)
+        {
+            if (hasSpecularLevel || scalar.componentCount != 1 || !std::isfinite(scalar.value[0]) ||
+                scalar.value[0] < 0 || scalar.value[0] > 1)
+            {
+                throw std::invalid_argument("Invalid or duplicate OmniPBR specular level.");
+            }
+            hasSpecularLevel = true;
+        }
         if (scalar.parameter == 0 ||
             scalar.componentCount == 0 || scalar.componentCount > 4)
         {
             throw std::invalid_argument(
                 "An hdSilk material scalar needs a parameter and 1 to 4 components.");
         }
+        if (scalar.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_TEXTURE_LUMINANCE_MIX)
+        {
+            bool valid = !hasLuminanceMix && scalar.componentCount == 4;
+            float sum = 0;
+            for (uint32_t component = 0; component < 4 && valid; ++component)
+            {
+                valid = std::isfinite(scalar.value[component]) &&
+                    (component == 3 || (scalar.value[component] >= 0 && scalar.value[component] <= 1));
+                if (component < 3) { sum += scalar.value[component]; }
+            }
+            if (!valid || std::fabs(sum - 1) > 0.000001F)
+            {
+                throw std::invalid_argument("Invalid or duplicate hdSilk diffuse texture luminance mix.");
+            }
+            hasLuminanceMix = true;
+        }
     }
+    if (hasDetailRow0 != hasDetailRow1)
+    {
+        throw std::invalid_argument("Detail normal UV transforms require both rows.");
+    }
+    bool hasDetailNormal = false;
     for (const HdSilkMaterialTexture& texture : record.textures)
     {
-        if (texture.parameter == 0 ||
+        if (texture.parameter == OPENUSD_SILK_MATERIAL_DETAIL_NORMAL)
+        {
+            if (hasDetailNormal || texture.componentCount != 3 ||
+                texture.outputChannel != OPENUSD_SILK_TEXTURE_CHANNEL_RGB ||
+                texture.compositeOp != OPENUSD_SILK_COMPOSITE_NONE ||
+                record.surfaceKind == OPENUSD_SILK_SURFACE_VOLUME_DENSITY)
+            {
+                throw std::invalid_argument("Invalid or duplicate detail normal texture.");
+            }
+            hasDetailNormal = true;
+        }
+        if (texture.parameter == 0 || texture.parameter == OPENUSD_SILK_MATERIAL_DIFFUSE_TEXTURE_LUMINANCE_MIX ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_OMNIPBR_SPECULAR_LEVEL ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW0 ||
+            texture.parameter == OPENUSD_SILK_MATERIAL_DETAIL_UV_ROW1 ||
             texture.componentCount == 0 || texture.componentCount > 4)
         {
             throw std::invalid_argument(
                 "An hdSilk material texture needs a parameter and 1 to 4 components.");
         }
-        if (texture.wrapS > OPENUSD_SILK_WRAP_USE_METADATA ||
-            texture.wrapT > OPENUSD_SILK_WRAP_USE_METADATA ||
+        if (texture.wrapS > OPENUSD_SILK_WRAP_CONSTANT ||
+            texture.wrapT > OPENUSD_SILK_WRAP_CONSTANT ||
             texture.sourceColorSpace > OPENUSD_SILK_COLOR_SPACE_SRGB)
         {
             throw std::invalid_argument(
                 "An hdSilk material texture has an unknown wrap or color space.");
+        }
+        if (texture.sourceKind > OPENUSD_SILK_TEXTURE_SOURCE_PTEX)
+        {
+            throw std::invalid_argument("An hdSilk material texture has an unknown source kind.");
+        }
+        if (texture.sourceKind == OPENUSD_SILK_TEXTURE_SOURCE_PTEX &&
+            (record.surfaceKind != OPENUSD_SILK_SURFACE_PREVIEW_SURFACE ||
+             texture.parameter > OPENUSD_SILK_MATERIAL_USE_SPECULAR_WORKFLOW ||
+             texture.parameter == OPENUSD_SILK_MATERIAL_DISPLACEMENT ||
+             texture.parameter == OPENUSD_SILK_MATERIAL_VOLUME_DENSITY ||
+             texture.compositeOp != OPENUSD_SILK_COMPOSITE_NONE ||
+             texture.outputChannel > OPENUSD_SILK_TEXTURE_CHANNEL_RGB ||
+             !texture.uvPrimvar.empty()))
+        {
+            throw std::invalid_argument("A Ptex texture requires a direct Preview Surface input without UVs.");
+        }
+        if (texture.sourceKind == OPENUSD_SILK_TEXTURE_SOURCE_PTEX &&
+            std::any_of(
+                record.scalars.begin(), record.scalars.end(),
+                [&texture](const HdSilkMaterialScalar& scalar)
+                {
+                    return scalar.parameter == texture.parameter;
+                }))
+        {
+            throw std::invalid_argument("A Ptex texture cannot share its surface input with a scalar.");
         }
         if (texture.asset.empty())
         {
             throw std::invalid_argument(
                 "An hdSilk material texture requires a resolved asset path.");
         }
-        if (texture.outputChannel > OPENUSD_SILK_TEXTURE_CHANNEL_RGB)
+        if (texture.outputChannel > OPENUSD_SILK_TEXTURE_CHANNEL_MAXIMUM_RGB ||
+            (texture.outputChannel > OPENUSD_SILK_TEXTURE_CHANNEL_RGB &&
+                texture.parameter != OPENUSD_SILK_MATERIAL_OPACITY))
         {
             throw std::invalid_argument(
                 "An hdSilk material texture has an unresolved or unknown "
@@ -2046,6 +2428,10 @@ void AppendMaterialUpsert(
                 "An hdSilk material parameter must carry exactly one primary "
                 "texture and at most one composite operand.");
         }
+        if (texture.sourceKind == OPENUSD_SILK_TEXTURE_SOURCE_PTEX && composites != 0)
+        {
+            throw std::invalid_argument("A Ptex texture cannot be part of a composite input.");
+        }
         if (texture.compositeOp != OPENUSD_SILK_COMPOSITE_NONE)
         {
             ++compositeCount;
@@ -2061,11 +2447,31 @@ void AppendMaterialUpsert(
 
     for (size_t index = 0; index < 6; ++index)
     {
-        if (!std::isfinite(record.uvTransform[index]))
+        if (!std::isfinite(record.uvTransform[index]) ||
+            !std::isfinite(record.alternateUvTransform[index]))
         {
             throw std::invalid_argument(
                 "An hdSilk material UV transform must be finite.");
         }
+    }
+    // Every masked parameter must be a surface texture this record publishes:
+    // a bit naming nothing, naming displacement (sampled on the CPU through the
+    // primary transform), or naming the detail normal (which has its own rows)
+    // would be a transform no consumer reads.
+    uint32_t publishedSurfaceTextures = 0;
+    for (const HdSilkMaterialTexture& texture : record.textures)
+    {
+        if (texture.sourceKind != OPENUSD_SILK_TEXTURE_SOURCE_PTEX &&
+            texture.parameter < 32 && texture.parameter != OPENUSD_SILK_MATERIAL_DISPLACEMENT &&
+            texture.parameter != OPENUSD_SILK_MATERIAL_DETAIL_NORMAL)
+        {
+            publishedSurfaceTextures |= 1u << texture.parameter;
+        }
+    }
+    if ((record.alternateUvParameterMask & ~publishedSurfaceTextures) != 0)
+    {
+        throw std::invalid_argument(
+            "An hdSilk material alternate UV transform names a parameter with no surface texture.");
     }
 
     const uint32_t pathByteCount = CheckedCount(record.path.size(), "path byte count");
@@ -2114,6 +2520,7 @@ void AppendMaterialUpsert(
         AppendU32(payload, texture.outputChannel);
         AppendU32(payload, texture.compositeOp);
         AppendF32(payload, texture.compositeFactor);
+        AppendU32(payload, texture.sourceKind);
         AppendBytes(payload, texture.asset.data(), texture.asset.size());
         AppendBytes(payload, texture.uvPrimvar.data(), texture.uvPrimvar.size());
     }
@@ -2138,6 +2545,11 @@ void AppendMaterialUpsert(
     for (size_t index = 0; index < 6; ++index)
     {
         AppendF32(payload, record.uvTransform[index]);
+    }
+    AppendU32(payload, record.alternateUvParameterMask);
+    for (size_t index = 0; index < 6; ++index)
+    {
+        AppendF32(payload, record.alternateUvTransform[index]);
     }
 
     payload.Complete();
@@ -2375,6 +2787,300 @@ void BuildOrthographicShadowProjection(
     outProjection[10] = -2.0 / (farPlane - nearPlane);
     outProjection[14] = -(farPlane + nearPlane) / (farPlane - nearPlane);
     outProjection[15] = 1.0;
+}
+
+void BuildPerspectiveShadowView(
+    const GfVec3d& direction,
+    const GfVec3d& eye,
+    double (&outView)[16])
+{
+    const GfVec3d zAxis = direction.GetNormalized();
+    const GfVec3d up =
+        std::abs(zAxis[1]) > 0.99 ? GfVec3d(1.0, 0.0, 0.0) : GfVec3d(0.0, 1.0, 0.0);
+    const GfVec3d xAxis = GfCross(up, zAxis).GetNormalized();
+    const GfVec3d yAxis = GfCross(zAxis, xAxis).GetNormalized();
+
+    outView[0] = xAxis[0];
+    outView[1] = yAxis[0];
+    outView[2] = zAxis[0];
+    outView[3] = 0.0;
+    outView[4] = xAxis[1];
+    outView[5] = yAxis[1];
+    outView[6] = zAxis[1];
+    outView[7] = 0.0;
+    outView[8] = xAxis[2];
+    outView[9] = yAxis[2];
+    outView[10] = zAxis[2];
+    outView[11] = 0.0;
+    outView[12] = -GfDot(eye, xAxis);
+    outView[13] = -GfDot(eye, yAxis);
+    outView[14] = -GfDot(eye, zAxis);
+    outView[15] = 1.0;
+}
+
+/// Builds the row-major, row-vector view of a shaped sphere light. Its local
+/// +Z axis points from the receiver toward the light, so the emitter looks back
+/// along -Z. The published caster sphere must lie wholly in front of the eye.
+bool BuildPerspectiveSpotShadowView(
+    const GfVec3d& direction,
+    const GfVec3d& eye,
+    const GfVec3d& center,
+    double radius,
+    double (&outView)[16],
+    double* outNearPlane,
+    double* outFarPlane)
+{
+    const GfVec3d zAxis = direction.GetNormalized();
+    BuildPerspectiveShadowView(direction, eye, outView);
+
+    const double centerDepth = -GfDot(center - eye, zAxis);
+    *outNearPlane = centerDepth - radius;
+    *outFarPlane = centerDepth + radius;
+    return std::isfinite(*outNearPlane) && std::isfinite(*outFarPlane) &&
+        *outNearPlane > 1e-6 && *outFarPlane > *outNearPlane;
+}
+
+bool BuildPerspectiveShadowProjection(
+    double nearPlane,
+    double farPlane,
+    double tangent,
+    double (&outProjection)[16])
+{
+    if (!std::isfinite(nearPlane) || !std::isfinite(farPlane) ||
+        nearPlane <= 0.0 || farPlane <= nearPlane ||
+        !std::isfinite(tangent) || tangent <= 0.0)
+    {
+        return false;
+    }
+
+    const double focal = 1.0 / tangent;
+    for (int index = 0; index < 16; ++index)
+    {
+        outProjection[index] = 0.0;
+    }
+    outProjection[0] = focal;
+    outProjection[5] = focal;
+    outProjection[10] = -(farPlane + nearPlane) / (farPlane - nearPlane);
+    outProjection[11] = -1.0;
+    outProjection[14] = -(2.0 * farPlane * nearPlane) / (farPlane - nearPlane);
+    return std::all_of(
+        outProjection, outProjection + 16,
+        [](double value) { return std::isfinite(value); });
+}
+
+/// Builds an OpenGL [-w, +w] depth perspective projection. UsdLux's cone angle
+/// is the half-angle around the emitter's -Z axis.
+bool BuildPerspectiveSpotShadowProjection(
+    double nearPlane,
+    double farPlane,
+    double coneHalfAngleDegrees,
+    double (&outProjection)[16])
+{
+    constexpr double pi = 3.14159265358979323846;
+    return BuildPerspectiveShadowProjection(
+        nearPlane, farPlane, std::tan(coneHalfAngleDegrees * (pi / 180.0)), outProjection);
+}
+
+bool IsRepresentableEmitterTransform(const HdSilkLightRecord& light)
+{
+    constexpr double minimumRelativeVolume = 1e-6;
+    constexpr double affineTolerance = 1e-12;
+    if (!std::isfinite(light.transform[3]) || !std::isfinite(light.transform[7]) ||
+        !std::isfinite(light.transform[11]) || !std::isfinite(light.transform[15]) ||
+        std::abs(light.transform[3]) > affineTolerance ||
+        std::abs(light.transform[7]) > affineTolerance ||
+        std::abs(light.transform[11]) > affineTolerance ||
+        std::abs(light.transform[15] - 1.0) > affineTolerance)
+    {
+        return false;
+    }
+
+    GfVec3d xAxis(light.transform[0], light.transform[1], light.transform[2]);
+    GfVec3d yAxis(light.transform[4], light.transform[5], light.transform[6]);
+    GfVec3d zAxis(light.transform[8], light.transform[9], light.transform[10]);
+    const double xLengthSquared = GfDot(xAxis, xAxis);
+    const double yLengthSquared = GfDot(yAxis, yAxis);
+    const double zLengthSquared = GfDot(zAxis, zAxis);
+    if (!std::isfinite(xLengthSquared) || !std::isfinite(yLengthSquared) ||
+        !std::isfinite(zLengthSquared) || xLengthSquared <= 1e-30 ||
+        yLengthSquared <= 1e-30 || zLengthSquared <= 1e-30)
+    {
+        return false;
+    }
+
+    xAxis = xAxis / std::sqrt(xLengthSquared);
+    yAxis = yAxis / std::sqrt(yLengthSquared);
+    zAxis = zAxis / std::sqrt(zLengthSquared);
+    const double relativeVolume = GfDot(xAxis, GfCross(yAxis, zAxis));
+    return std::isfinite(relativeVolume) &&
+        std::abs(relativeVolume) >= minimumRelativeVolume;
+}
+
+bool BuildEmitterSampleOffsets(
+    const HdSilkLightRecord& light,
+    std::array<GfVec3d, 5>& offsets)
+{
+    if (!IsRepresentableEmitterTransform(light))
+    {
+        return false;
+    }
+    const GfVec3d tangent(light.transform[0], light.transform[1], light.transform[2]);
+    const GfVec3d bitangent(light.transform[4], light.transform[5], light.transform[6]);
+    const GfVec3d direction(light.transform[8], light.transform[9], light.transform[10]);
+    const double radius = light.radius;
+    switch (light.type)
+    {
+        case OPENUSD_SILK_LIGHT_SPHERE:
+            if (!std::isfinite(radius) || radius <= 0.0)
+            {
+                return false;
+            }
+            offsets = {
+                -direction * radius,
+                tangent * radius,
+                -tangent * radius,
+                bitangent * radius,
+                -bitangent * radius};
+            break;
+        case OPENUSD_SILK_LIGHT_RECT:
+            if (!std::isfinite(light.shapeX) || !std::isfinite(light.shapeY) ||
+                light.shapeX <= 0.0f || light.shapeY <= 0.0f)
+            {
+                return false;
+            }
+            {
+                const GfVec3d halfWidth = tangent * (light.shapeX * 0.5);
+                const GfVec3d halfHeight = bitangent * (light.shapeY * 0.5);
+                offsets = {
+                    GfVec3d(0.0),
+                    halfWidth + halfHeight,
+                    halfWidth - halfHeight,
+                    -halfWidth + halfHeight,
+                    -halfWidth - halfHeight};
+            }
+            break;
+        case OPENUSD_SILK_LIGHT_DISK:
+            if (!std::isfinite(radius) || radius <= 0.0)
+            {
+                return false;
+            }
+            offsets = {
+                GfVec3d(0.0),
+                tangent * radius,
+                -tangent * radius,
+                bitangent * radius,
+                -bitangent * radius};
+            break;
+        case OPENUSD_SILK_LIGHT_CYLINDER:
+            if (!std::isfinite(radius) || radius <= 0.0 ||
+                !std::isfinite(light.shapeX) || light.shapeX <= 0.0f)
+            {
+                return false;
+            }
+            {
+                const GfVec3d halfLength = direction * (light.shapeX * 0.5);
+                offsets = {
+                    tangent * radius - halfLength,
+                    tangent * radius + halfLength,
+                    -tangent * radius - halfLength,
+                    -tangent * radius + halfLength,
+                    bitangent * radius};
+            }
+            break;
+        default:
+            return false;
+    }
+    return std::all_of(offsets.begin(), offsets.end(), [](const GfVec3d& offset)
+    {
+        return std::isfinite(offset[0]) && std::isfinite(offset[1]) &&
+            std::isfinite(offset[2]);
+    });
+}
+
+bool BuildEmitterSampleShadowProjection(
+    const GfVec3d& eye,
+    const GfVec3d& center,
+    double radius,
+    uint32_t resolution,
+    double (&outView)[16],
+    double (&outProjection)[16],
+    double* outFarPlane,
+    double* outTangent)
+{
+    const GfVec3d towardBounds = center - eye;
+    const double distanceSquared = GfDot(towardBounds, towardBounds);
+    if (!std::isfinite(distanceSquared) || distanceSquared <= 0.0 ||
+        !std::isfinite(radius) || radius <= 0.0)
+    {
+        return false;
+    }
+    const double distance = std::sqrt(distanceSquared);
+    const double padding = std::max(radius / 512.0, 1e-6);
+    const double nearPlane = distance - radius - padding;
+    if (!std::isfinite(nearPlane) || nearPlane <= 1e-6)
+    {
+        return false;
+    }
+    const double farPlane = distance + radius + padding;
+    const double tangentDenominator = std::sqrt(
+        (distance - radius) * (distance + radius));
+    const double tangent =
+        (radius / tangentDenominator) *
+        (1.0 + (2.0 / static_cast<double>(resolution)));
+    if (!std::isfinite(farPlane) || !std::isfinite(tangent) ||
+        !BuildPerspectiveShadowProjection(
+            nearPlane, farPlane, tangent, outProjection))
+    {
+        return false;
+    }
+    BuildPerspectiveShadowView(
+        -towardBounds / distance, eye, outView);
+    *outFarPlane = farPlane;
+    *outTangent = tangent;
+    return true;
+}
+
+bool BuildPointShadowFace(
+    const GfVec3d& eye,
+    uint32_t face,
+    const HdSilkWorldBounds& bounds,
+    double radius,
+    double (&outView)[16],
+    double (&outProjection)[16],
+    double* outFarPlane,
+    double* outTangent)
+{
+    if (face >= 6u || !std::isfinite(radius))
+    {
+        return false;
+    }
+    double farPlane = 0.0;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        if (!std::isfinite(eye[axis]) ||
+            !std::isfinite(bounds.minimum[axis]) || !std::isfinite(bounds.maximum[axis]))
+        {
+            return false;
+        }
+        farPlane = std::max(farPlane, std::max(
+            std::abs(bounds.minimum[axis] - eye[axis]),
+            std::abs(bounds.maximum[axis] - eye[axis])));
+    }
+    GfVec3d direction(0.0);
+    // The view's +Z axis points back toward the emitter.
+    direction[face / 2u] = (face & 1u) == 0u ? -1.0 : 1.0;
+    BuildPerspectiveShadowView(direction, eye, outView);
+    // Keep scene-bound receivers inside the float clip volume after the
+    // double-precision projection is converted for GPU use.
+    farPlane += std::max(radius / 16.0, 1e-6);
+    const double nearPlane = std::max(radius / 65536.0, 1e-6);
+    if (!BuildPerspectiveShadowProjection(nearPlane, farPlane, 1.0, outProjection))
+    {
+        return false;
+    }
+    *outFarPlane = farPlane;
+    *outTangent = 1.0;
+    return true;
 }
 
 /// Resolves the masks one prim's categories produce against the ordered direct
@@ -2880,10 +3586,11 @@ HdSilkSceneState::_ResolveShadowTable(
     // A scene whose published geometry is a single point, a single line, or
     // nothing has no extent to project. Padding it to an arbitrary size would
     // silently choose a shadow frustum no author asked for.
-    const bool hasCasters = bounds.valid && radius > 1e-6;
+    const bool hasCasters = bounds.valid && std::isfinite(radius) && radius > 1e-6;
 
     uint32_t flags = OPENUSD_SILK_SHADOW_UNSUPPORTED_NONE;
     size_t budgetOverflow = 0;
+    uint32_t admittedLights = 0;
     for (size_t index = 0; index < directLights.size(); ++index)
     {
         const HdSilkLightRecord& light = directLights[index];
@@ -2891,13 +3598,19 @@ HdSilkSceneState::_ResolveShadowTable(
         {
             continue;
         }
-        if (light.type != OPENUSD_SILK_LIGHT_DISTANT)
+        const float coneHalfAngle = std::clamp(light.shapingConeAngle, 0.0f, 180.0f);
+        const bool distant = light.type == OPENUSD_SILK_LIGHT_DISTANT;
+        const bool spot = light.type == OPENUSD_SILK_LIGHT_SPHERE &&
+            light.radius == 0.0f && coneHalfAngle > 0.0f && coneHalfAngle < 90.0f;
+        const bool point = light.type == OPENUSD_SILK_LIGHT_SPHERE &&
+            light.radius == 0.0f && coneHalfAngle >= 90.0f;
+        const bool emitter = (light.type == OPENUSD_SILK_LIGHT_SPHERE &&
+                light.radius > 0.0f) ||
+            light.type == OPENUSD_SILK_LIGHT_RECT ||
+            light.type == OPENUSD_SILK_LIGHT_DISK ||
+            light.type == OPENUSD_SILK_LIGHT_CYLINDER;
+        if (!distant && !spot && !point && !emitter)
         {
-            // Only a distant light has an exact light-space projection here. A
-            // sphere, rect, disk or cylinder light needs a cube or perspective
-            // projection this producer has not derived, so it is named instead
-            // of being approximated by a directional map that would shadow the
-            // wrong geometry.
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
             continue;
         }
@@ -2906,9 +3619,11 @@ HdSilkSceneState::_ResolveShadowTable(
             flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS;
             continue;
         }
-        if (table.descriptors.size() >= OPENUSD_SILK_MAX_SHADOW_MAPS)
+        const uint32_t mapCount = point ? 6u : emitter ? 5u : 1u;
+        if (admittedLights >= OPENUSD_SILK_MAX_SHADOW_LIGHTS ||
+            table.descriptors.size() + mapCount > OPENUSD_SILK_MAX_SHADOW_MAPS)
         {
-            ++budgetOverflow;
+            budgetOverflow += mapCount;
             continue;
         }
 
@@ -2916,49 +3631,145 @@ HdSilkSceneState::_ResolveShadowTable(
             light.transform[8],
             light.transform[9],
             light.transform[10]);
-        if (GfDot(direction, direction) <= 1e-12)
+        const double directionLengthSquared = GfDot(direction, direction);
+        if (!point && !emitter &&
+            (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1e-12))
         {
-            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_NO_CASTERS;
+            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+            continue;
+        }
+        std::array<GfVec3d, 5> emitterOffsets{};
+        if (emitter && !BuildEmitterSampleOffsets(light, emitterOffsets))
+        {
+            flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
             continue;
         }
 
-        HdSilkShadowDescriptor descriptor;
-        descriptor.lightIndex = static_cast<uint32_t>(index);
-        descriptor.mapIndex =
-            static_cast<uint32_t>(table.descriptors.size());
-        descriptor.resolution = OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION;
-        descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC;
-        double eyeDistance = 0.0;
-        BuildDirectionalShadowView(
-            direction,
-            center,
-            radius,
-            descriptor.view,
-            &eyeDistance);
-        BuildOrthographicShadowProjection(
-            radius,
-            eyeDistance,
-            descriptor.projection);
-
-        const double texelWorldSize =
-            (2.0 * radius) / static_cast<double>(descriptor.resolution);
-        // The depth bias is expressed in the map's own normalized depth so a
-        // consumer never has to know the world extent it was derived from; the
-        // normal bias stays in world units because the receiver it offsets is.
-        descriptor.depthBias =
-            static_cast<float>(1.5 / static_cast<double>(descriptor.resolution));
-        descriptor.normalBias = static_cast<float>(1.5 * texelWorldSize);
-        descriptor.pcfRadius = 1.0f;
-
-        for (const HdSilkLinkEntry& entry : links.entries)
+        std::vector<HdSilkShadowDescriptor> group;
+        group.reserve(mapCount);
+        for (uint32_t face = 0; face < mapCount; ++face)
         {
-            if (!entry.shadowMask.Contains(descriptor.lightIndex))
+            HdSilkShadowDescriptor descriptor;
+            descriptor.lightIndex = static_cast<uint32_t>(index);
+            descriptor.mapIndex =
+                static_cast<uint32_t>(table.descriptors.size()) + face;
+            descriptor.resolution = OPENUSD_SILK_DEFAULT_SHADOW_MAP_RESOLUTION;
+            double texelWorldSize = 0.0;
+            if (emitter)
             {
-                descriptor.flags |= OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED;
-                break;
+                descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_EMITTER_SAMPLE;
+                const GfVec3d eye(
+                    light.transform[12] + emitterOffsets[face][0],
+                    light.transform[13] + emitterOffsets[face][1],
+                    light.transform[14] + emitterOffsets[face][2]);
+                double farPlane = 0.0;
+                double tangent = 0.0;
+                if (!BuildEmitterSampleShadowProjection(
+                    eye, center, radius, descriptor.resolution,
+                    descriptor.view, descriptor.projection, &farPlane, &tangent))
+                {
+                    flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                    continue;
+                }
+                texelWorldSize = (2.0 * farPlane * tangent) /
+                    static_cast<double>(descriptor.resolution);
             }
+            else if (distant)
+            {
+                descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_ORTHOGRAPHIC;
+                double eyeDistance = 0.0;
+                BuildDirectionalShadowView(
+                    direction,
+                    center,
+                    radius,
+                    descriptor.view,
+                    &eyeDistance);
+                BuildOrthographicShadowProjection(
+                    radius,
+                    eyeDistance,
+                    descriptor.projection);
+                texelWorldSize = (2.0 * radius) / static_cast<double>(descriptor.resolution);
+            }
+            else if (spot)
+            {
+                const GfVec3d eye(
+                    light.transform[12],
+                    light.transform[13],
+                    light.transform[14]);
+                double nearPlane = 0.0;
+                double farPlane = 0.0;
+                if (!BuildPerspectiveSpotShadowView(
+                        direction, eye, center, radius, descriptor.view, &nearPlane, &farPlane) ||
+                    !BuildPerspectiveSpotShadowProjection(
+                        nearPlane, farPlane, coneHalfAngle, descriptor.projection))
+                {
+                    flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                    continue;
+                }
+                constexpr double pi = 3.14159265358979323846;
+                texelWorldSize = (2.0 * farPlane *
+                    std::tan(static_cast<double>(coneHalfAngle) * (pi / 180.0))) /
+                    static_cast<double>(descriptor.resolution);
+            }
+            else
+            {
+                const GfVec3d eye(
+                    light.transform[12],
+                    light.transform[13],
+                    light.transform[14]);
+                double farPlane = 0.0;
+                double tangent = 0.0;
+                descriptor.flags = OPENUSD_SILK_SHADOW_FLAG_CUBE_FACE;
+                if (!BuildPointShadowFace(
+                        eye, face, bounds, radius, descriptor.view, descriptor.projection,
+                        &farPlane, &tangent))
+                {
+                    flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                    continue;
+                }
+                texelWorldSize = (2.0 * farPlane * tangent) /
+                    static_cast<double>(descriptor.resolution);
+            }
+            if (!std::isfinite(texelWorldSize) || texelWorldSize <= 0.0)
+            {
+                flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                continue;
+            }
+            const double normalBias = 1.5 * texelWorldSize;
+            if (!std::isfinite(normalBias) || normalBias > std::numeric_limits<float>::max())
+            {
+                flags |= OPENUSD_SILK_SHADOW_UNSUPPORTED_LIGHT_TYPE;
+                continue;
+            }
+            // Cube projection depth is nonlinear; a world-range bias would erase
+            // distant occluders when the emitter is inside the scene bounds.
+            descriptor.depthBias =
+                static_cast<float>(1.5 / static_cast<double>(descriptor.resolution));
+            if (point)
+            {
+                const double nearPlane = std::max(radius / 65536.0, 1e-6);
+                const double farPlane = descriptor.projection[14] /
+                    (descriptor.projection[10] + 1.0);
+                descriptor.depthBias *= static_cast<float>(nearPlane / farPlane);
+            }
+            descriptor.normalBias = static_cast<float>(normalBias);
+            descriptor.pcfRadius = 1.0f;
+
+            for (const HdSilkLinkEntry& entry : links.entries)
+            {
+                if (!entry.shadowMask.Contains(descriptor.lightIndex))
+                {
+                    descriptor.flags |= OPENUSD_SILK_SHADOW_FLAG_CASTER_LINKED;
+                    break;
+                }
+            }
+            group.push_back(descriptor);
         }
-        table.descriptors.push_back(descriptor);
+        if (group.size() == mapCount)
+        {
+            table.descriptors.insert(table.descriptors.end(), group.begin(), group.end());
+            ++admittedLights;
+        }
     }
 
     if (budgetOverflow > 0)
@@ -2975,6 +3786,70 @@ HdSilkSceneState::_ResolveShadowTable(
         ? 0u
         : static_cast<uint32_t>(directLights.size());
     return table;
+}
+
+void
+HdSilkSceneState::ShareMeshAttributes(HdSilkMeshAttributes* attributes)
+{
+    if (attributes->empty()) { return; }
+    uint64_t hash = 0;
+    const HdSilkMeshAttributes& input = *attributes;
+    for (const HdSilkMeshAttribute& attribute : input)
+    {
+        hash = ArchHash64(attribute.name.data(), attribute.name.size(), hash);
+        const uint32_t metadata[] = {
+            attribute.semantic, attribute.componentCount, attribute.interpolation};
+        hash = ArchHash64(reinterpret_cast<const char*>(metadata), sizeof(metadata), hash);
+        if (!attribute.data.empty())
+        {
+            hash = ArchHash64(reinterpret_cast<const char*>(attribute.data.data()),
+                attribute.data.size() * sizeof(float), hash);
+        }
+    }
+    std::lock_guard<std::mutex> lock(_meshArraySharingMutex);
+    _sharedMeshAttributes.Intern(*attributes, hash,
+        [](const HdSilkMeshAttributes& left, const HdSilkMeshAttributes& right)
+        {
+            if (left.size() != right.size()) { return false; }
+            for (size_t index = 0; index < left.size(); ++index)
+            {
+                const HdSilkMeshAttribute& a = left[index];
+                const HdSilkMeshAttribute& b = right[index];
+                if (a.name != b.name || a.semantic != b.semantic ||
+                    a.componentCount != b.componentCount || a.interpolation != b.interpolation ||
+                    a.data.size() != b.data.size() ||
+                    (!a.data.empty() && std::memcmp(a.data.data(), b.data.data(),
+                        a.data.size() * sizeof(float)) != 0))
+                {
+                    return false;
+                }
+            }
+            return true;
+        });
+}
+
+void
+HdSilkSceneState::ShareMeshIndices(VtArray<uint32_t>* indices)
+{
+    if (indices->empty()) { return; }
+    const uint64_t hash = ArchHash64(reinterpret_cast<const char*>(indices->cdata()),
+        indices->size() * sizeof(uint32_t));
+    std::lock_guard<std::mutex> lock(_meshArraySharingMutex);
+    _sharedMeshIndices.Intern(*indices, hash,
+        [](const VtArray<uint32_t>& left, const VtArray<uint32_t>& right)
+        {
+            return left.size() == right.size() &&
+                (left.cdata() == right.cdata() ||
+                    std::memcmp(left.cdata(), right.cdata(), left.size() * sizeof(uint32_t)) == 0);
+        });
+}
+
+void
+HdSilkSceneState::ClearMeshArraySharing()
+{
+    std::lock_guard<std::mutex> lock(_meshArraySharingMutex);
+    _sharedMeshAttributes.Clear();
+    _sharedMeshIndices.Clear();
 }
 
 void
@@ -3161,6 +4036,7 @@ HdSilkSceneState::ResetForSceneIngestionChange()
 {
     std::lock_guard<std::mutex> lock(_mutex);
     _RequirePublicationResolved();
+    ClearMeshArraySharing();
     // The consumer retains published tables across imaging rebuilds. Preserve
     // their snapshots so the next page can emit replacements and retirements.
     for (const auto& entry : _meshes)
@@ -3206,6 +4082,21 @@ HdSilkSceneState::HasMeshPath(const std::string& path) const
     return _instancesByPath.find(path) != _instancesByPath.end();
 }
 
+bool
+HdSilkSceneState::TryGetMeshSourceIdentity(
+    const HdSilkMeshKey& key, int32_t* primId, int32_t* sourcePickIndex) const
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    const auto entry = _meshes.find(key);
+    if (entry == _meshes.end())
+    {
+        return false;
+    }
+    *primId = entry->second.record.primId;
+    *sourcePickIndex = entry->second.record.sourcePickIndex;
+    return true;
+}
+
 void
 HdSilkSceneState::SetMeshMaterialPath(
     const std::string& path,
@@ -3218,6 +4109,7 @@ HdSilkSceneState::SetMeshMaterialPath(
     {
         return;
     }
+
     for (int32_t instanceIndex : instances->second)
     {
         const HdSilkMeshKey key{path, instanceIndex};
@@ -3251,6 +4143,26 @@ HdSilkSceneState::GetMaterialBindingGeneration() const
 }
 
 void
+HdSilkSceneState::_DirtyMaterialCoordinateMeshes(const std::string& materialPath)
+{
+    std::unordered_set<std::string> paths;
+    for (const auto& entry : _meshes)
+    {
+        if (entry.second.record.materialPath == materialPath)
+        {
+            paths.insert(entry.second.record.path);
+        }
+    }
+    for (auto& entry : _meshes)
+    {
+        if (paths.find(entry.second.record.path) != paths.end())
+        {
+            entry.second.dirty = true;
+        }
+    }
+}
+
+void
 HdSilkSceneState::ReplaceMaterial(HdSilkMaterialRecord record)
 {
     if (record.path.empty())
@@ -3260,6 +4172,17 @@ HdSilkSceneState::ReplaceMaterial(HdSilkMaterialRecord record)
     std::lock_guard<std::mutex> lock(_mutex);
     _RequirePublicationResolved();
     const std::string path = record.path;
+    const auto previous = _materials.find(path);
+    const auto hasFallback = [](const HdSilkMaterialRecord& material)
+    {
+        return std::any_of(material.textures.begin(), material.textures.end(),
+            [](const HdSilkMaterialTexture& texture) { return texture.hasUvFallback; });
+    };
+    if (previous == _materials.end() ? hasFallback(record) :
+        !SameCoordinateFallbacks(previous->second.record, record))
+    {
+        _DirtyMaterialCoordinateMeshes(path);
+    }
     _MaterialEntry& entry = _materials[path];
     entry.record = std::move(record);
     entry.dirty = true;
@@ -3278,6 +4201,13 @@ HdSilkSceneState::RemoveMaterial(const std::string& path)
 {
     std::lock_guard<std::mutex> lock(_mutex);
     _RequirePublicationResolved();
+    const auto previous = _materials.find(path);
+    if (previous != _materials.end() &&
+        std::any_of(previous->second.record.textures.begin(), previous->second.record.textures.end(),
+            [](const HdSilkMaterialTexture& texture) { return texture.hasUvFallback; }))
+    {
+        _DirtyMaterialCoordinateMeshes(path);
+    }
     if (_materials.erase(path) != 0)
     {
         _pendingMaterialRemovals.push_back(path);
@@ -3306,6 +4236,18 @@ HdSilkMakeEnvironmentSnapshot(const HdSilkLightRecord& record, uint32_t domeInde
     snapshot.color[0] = record.color[0];
     snapshot.color[1] = record.color[1];
     snapshot.color[2] = record.color[2];
+    if (record.colorTemperatureEnabled)
+    {
+        // Storm's dome light multiplies its colour by the same blackbody tint
+        // as its area lights. Resolving it here keeps the environment's colour
+        // the effective emission, so the image bake, the mean-radiance fallback
+        // and the diffuse/specular scales all see the tinted value.
+        const GfVec3f tint = UsdLuxBlackbodyTemperatureAsRgb(record.colorTemperature);
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            snapshot.color[channel] *= tint[channel];
+        }
+    }
     snapshot.intensity = record.intensity;
     snapshot.exposure = record.exposure;
     snapshot.diffuse = record.diffuse;
@@ -3342,14 +4284,33 @@ std::vector<uint8_t>
 HdSilkSceneState::BuildPage(
     uint64_t* outRevision, uint32_t* outCommandCount, size_t maximumPageBytes, bool awaitAcknowledgement)
 {
+    HdSilkPageWriter buffer(maximumPageBytes);
+    _BuildPage(buffer, outRevision, outCommandCount, awaitAcknowledgement);
+    return buffer.Take();
+}
+
+size_t
+HdSilkSceneState::BuildPageTo(
+    HdSilkCommandSink& sink, size_t maximumUpdateBytes, size_t maximumCommandBytes,
+    uint64_t* outRevision, uint32_t* outCommandCount, bool awaitAcknowledgement)
+{
+    HdSilkPageWriter buffer(maximumUpdateBytes, sink, maximumCommandBytes);
+    _BuildPage(buffer, outRevision, outCommandCount, awaitAcknowledgement);
+    return buffer.size();
+}
+
+void
+HdSilkSceneState::_BuildPage(
+    HdSilkPageWriter& buffer, uint64_t* outRevision, uint32_t* outCommandCount, bool awaitAcknowledgement)
+{
     std::lock_guard<std::mutex> lock(_mutex);
+    ClearMeshArraySharing();
     _RequirePublicationResolved();
     if (_revision == std::numeric_limits<uint64_t>::max())
     {
         throw std::overflow_error("The hdSilk page revision is exhausted.");
     }
 
-    HdSilkPageWriter buffer(maximumPageBytes);
     auto publication = std::make_unique<_Publication>();
     auto& dirtyEntries = publication->dirtyMeshes;
     dirtyEntries.reserve(_meshes.size());
@@ -3522,6 +4483,10 @@ HdSilkSceneState::BuildPage(
             ++appendedCommands;
             publishedEnvironments[*path] = environments.at(*path);
         }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
+        }
         catch (const std::bad_alloc&)
         {
             throw;
@@ -3547,6 +4512,10 @@ HdSilkSceneState::BuildPage(
             AppendEnvironmentRemove(buffer, path);
             ++appendedCommands;
             publishedEnvironments.erase(path);
+        }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
         }
         catch (const std::bad_alloc&)
         {
@@ -3595,6 +4564,10 @@ HdSilkSceneState::BuildPage(
             AppendMaterialUpsert(buffer, entry->record);
             ++appendedCommands;
         }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
+        }
         catch (const std::bad_alloc&)
         {
             throw;
@@ -3618,6 +4591,10 @@ HdSilkSceneState::BuildPage(
             AppendMaterialRemove(buffer, path);
             ++appendedCommands;
         }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
+        }
         catch (const std::bad_alloc&)
         {
             throw;
@@ -3629,6 +4606,61 @@ HdSilkSceneState::BuildPage(
                 "hdSilk skipped removal of material '%s': %s",
                 path.c_str(),
                 error.what());
+        }
+    }
+
+    // Unchanged triangle payloads can be measured before copying any large point
+    // buffer. Invalid records still follow the established per-path diagnostic path.
+    if (_drawMode != OPENUSD_SILK_DRAW_MODE_WIREFRAME &&
+        _drawMode != OPENUSD_SILK_DRAW_MODE_HIDDEN_SURFACE_WIREFRAME &&
+        _drawMode != OPENUSD_SILK_DRAW_MODE_POINTS)
+    {
+        size_t additional = 0;
+        size_t largestMesh = 0;
+        bool measurable = true;
+        try
+        {
+            for (const _Entry* entry : dirtyEntries)
+            {
+                if (entry->record.topologyKind != OPENUSD_SILK_TOPOLOGY_TRIANGLE_LIST)
+                {
+                    measurable = false;
+                    break;
+                }
+                const auto material = _materials.find(entry->record.materialPath);
+                const auto fallbacks = MissingCoordinateFallbacks(entry->record,
+                    material == _materials.end() ? nullptr : &material->second.record);
+                const size_t bytes = CheckedAdd(
+                    CheckedAdd(8, ValidateMesh(entry->record).payloadSize, "mesh command"),
+                    CoordinateFallbackBytes(fallbacks), "mesh command");
+                largestMesh = std::max(largestMesh, bytes);
+                additional = CheckedAdd(additional, bytes, "page");
+            }
+            if (measurable)
+            {
+                for (const HdSilkMeshKey& key : removals)
+                {
+                    ValidatePath(key.path);
+                    if (key.path.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()) - 24)
+                    {
+                        measurable = false;
+                        break;
+                    }
+                    additional = CheckedAdd(additional, CheckedAdd(24, key.path.size(), "mesh removal"), "page");
+                }
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            throw;
+        }
+        catch (const std::exception&)
+        {
+            measurable = false;
+        }
+        if (measurable)
+        {
+            buffer.CheckAdditional(additional, largestMesh);
         }
     }
 
@@ -3664,12 +4696,18 @@ HdSilkSceneState::BuildPage(
                 ValidateMeshShape(entry->record);
                 HdSilkMeshRecord modeRecord =
                     ApplyDrawMode(entry->record, _drawMode);
+                const auto material = _materials.find(modeRecord.materialPath);
                 AppendMeshUpsert(
                     buffer,
                     std::move(modeRecord),
                     _complexity,
-                    entry->record.topologyKind);
+                    entry->record.topologyKind,
+                    material == _materials.end() ? nullptr : &material->second.record);
                 ++appendedCommands;
+            }
+            catch (const HdSilkCommandStorageError&)
+            {
+                throw;
             }
             catch (const std::bad_alloc&)
             {
@@ -3701,6 +4739,10 @@ HdSilkSceneState::BuildPage(
             AppendMeshRemove(buffer, key);
             ++appendedCommands;
         }
+        catch (const HdSilkCommandStorageError&)
+        {
+            throw;
+        }
         catch (const std::bad_alloc&)
         {
             throw;
@@ -3718,6 +4760,7 @@ HdSilkSceneState::BuildPage(
     const uint32_t commandCount =
         CheckedCount(appendedCommands, "page command count");
 
+    buffer.Finish();
     if (awaitAcknowledgement)
     {
         _pendingPublication = std::move(publication);
@@ -3736,8 +4779,6 @@ HdSilkSceneState::BuildPage(
     {
         *outCommandCount = commandCount;
     }
-
-    return buffer.Take();
 }
 
 void

@@ -65,6 +65,10 @@ flowchart LR
 Data-only consumers pair the managed API with `OpenUsd.Runtime.Core`. Rendering consumers add a
 managed backend and `OpenUsd.Runtime.Imaging`, whose RID-specific dependencies also bring Core.
 Simulation consumers add `OpenUsd.Physics`, whose RID-specific dependencies also bring Core.
+Exact simulation recording consumers can add `OpenUsd.Rendering.Physics`. This optional managed
+bridge depends on `OpenUsd.Rendering` and `OpenUsd.Physics`, carries all three target frameworks,
+and embeds no native assets or render backend. Ordinary renderer-neutral consumers do not acquire
+the simulation runtime. A host supplies the recording capture adapter and retains renderer ownership.
 The Core, Imaging, and Physics metapackages depend on the published runtime packages, letting NuGet
 select the native asset group for the consuming app's `RuntimeIdentifier`. Core, Imaging, and
 Cesium cover `win-x64`, `linux-x64`, and `osx-arm64`; Physics covers `win-x64` and `linux-x64`,
@@ -136,8 +140,8 @@ rather than shaded.
 
 The package set requires project-owned data ABI version 17 and native capabilities `0x3FFFFFF`.
 Package-only execution prints and verifies both values before exercising stage operations.
-The physics packages additionally require retained physics world ABI version 7 and physics
-extraction page ABI version 1, both recorded in `eng/openusd.lock.json` and embedded in each
+The physics packages additionally require retained physics world ABI version 8 and physics
+extraction page ABI version 2, both recorded in `eng/openusd.lock.json` and embedded in each
 physics package as `build/<package id>.native-abi.json`.
 
 The first package matrix covers `win-x64`, `linux-x64`, and `osx-arm64`. Package projects consume
@@ -441,11 +445,14 @@ the SBOM after changing a pin. Use listed stable packages in the supported relea
 the numerically highest flat-container entry: DXC uses the official `1.9.2609.5` release; the higher
 `101.7.2207.25` package is unlisted and is not a newer production release.
 
-The next release is planned as `0.15.0-alpha`, retaining the exact `alpha` prerelease tag.
-This is a minor increment because the source includes public API and native ABI additions since
-the published `0.14.0-alpha` baseline, not just package patch updates. A version pin is not proof
-of publication: the published baseline remains current until every qualification and feed-promotion
-gate succeeds.
+The published baseline is `0.16.6-alpha`. Its release history is integrated into the current
+source, retaining Vulkan host-readback presentation and rendered-batch acknowledgment.
+Additional source changes remain unreleased; the baseline version in the manifests does not
+make those changes part of the published packages or establish their qualification.
+The complete managed and native package family ships at the same version, including Metal and
+all runtime RIDs; publishing only the modified packages is not a supported release.
+The published baseline remains current until the next release passes every qualification and
+feed-promotion gate.
 
 `eng/check-sbom.ps1` regenerates to a temporary comparison, reports stale output when the pinned
 inputs move, then validates the checked file. CI runs it on Linux. Release packing also regenerates
@@ -488,7 +495,7 @@ generated local feed. After a Release build, run them with:
 
 ## Publish
 
-Thirty-one packages ship at `0.14.0-alpha`. `eng/pack-packages.ps1` is the single source of truth
+Thirty-one packages ship at `0.16.6-alpha`. `eng/pack-packages.ps1` is the single source of truth
 for the published set; release and promotion workflows derive their expected IDs from
 `-ListPublished` rather than restating the list. The script packs projects explicitly instead of
 packing the solution, then asserts that the produced set matches exactly. Adding a project cannot
@@ -535,14 +542,12 @@ published bytes are the bytes the gates verified. The platform-neutral libraries
 Linux. A `publish` job then downloads every packed set, requires every package from
 `eng/pack-packages.ps1 -ListPublished` to be present, and pushes.
 
-Both jobs depend on `ci`, `shaders`, `native` and `packages`, which together build, verify and
-execute the exact packages that get pushed, with `packages` running the package-only consumer gates
-on all three platforms. They deliberately do not depend on `render`, which covers viewer and
-windowing behaviour that no published package relies on. The release aggregate still requires
-`render` separately, so a render regression turns a release run red rather than being silently
-dropped or treated as package proof.
+Packing depends on `ci`, `shaders`, `native` and `packages`, with `packages` running the
+package-only consumer gates on all three platforms. Publication also depends on the release
+aggregate, which requires successful `ci`, `shaders`, `native`, `performance`, `packages` and
+`render` jobs. A render or performance failure therefore prevents the package push.
 
-Packages flow through two feeds/artifact stores:
+The release uses two package feeds and a retained artifact:
 
 - The GitHub Packages feed at `https://nuget.pkg.github.com/marcschier/index.json`, authenticated
   with the auto-issued `GITHUB_TOKEN`, receives every `.nupkg` from `release.yml`. The push uses
@@ -556,14 +561,32 @@ Packages flow through two feeds/artifact stores:
   `nuget.yml` workflow file, and the `release` environment, plus a `NUGET_USER` secret holding the
   nuget.org username.
 
-`.github/workflows/nuget.yml` remains the manual promotion path for the tagged release bytes. It
-downloads each `.nupkg` from the GitHub feed so the promoted package bytes are exactly the bytes that
-were already released, then downloads the matching `openusd-published-nupkgs` artifact from the
-release run and stages each `.snupkg` beside its `.nupkg`. The nuget.org push intentionally omits
-`--no-symbols`, so `dotnet nuget push` uploads the adjacent symbol packages implicitly.
+`.github/workflows/nuget.yml` remains the manual promotion path for the tagged release bytes.
+It downloads the complete `.nupkg` set from the GitHub feed and the matching
+`openusd-published-nupkgs` release artifact, then stages each selected `.snupkg` beside its
+`.nupkg`. Before requesting a publishing token, `eng/verify-nuget-promotion.py` compares every
+package and symbol SHA-256 with that artifact and checks each nuspec's ID, version and source
+commit. It also requires all six release gates and verifies the repository, resolved tag commit,
+release workflow and successful run attempt. A missing output or mismatch stops promotion.
+The same checks run with `dry_run=true`, without requesting a token or uploading packages.
 
-Both pushes use `--skip-duplicate`, so re-running a partially failed publish is safe. A version
-pushed to nuget.org can be unlisted but never withdrawn or replaced.
+The nuget.org push omits `--no-symbols`, so `dotnet nuget push` uploads adjacent symbol packages.
+Both feeds use `--skip-duplicate`; a retry must reuse the verified inputs rather than rebuild
+different bytes under an existing version. A version pushed to nuget.org can be unlisted but
+never withdrawn or replaced. NuGet repository signing can change the public archive bytes, so
+promotion also downloads any existing public packages and compares their file contents and
+extraction attributes with the release. The comparison excludes the root repository-signature entry
+and ZIP metadata unrelated to extraction, such as timestamps and compression. It preserves the
+file types and permissions needed for the Linux symbolic-link chain. An existing package with
+different content or extraction attributes stops the retry before a publishing token is requested.
+Final public-feed verification downloads every package and selected symbol again and uses the same
+comparison with the complete set required. It retries missing and temporarily unavailable outputs
+within a 20-minute verification window, then fails the workflow and names any outputs it could not
+verify. If the push fails, the workflow makes one fresh pass over the public feeds and records the
+verified subset. An output missing from that pass may still be awaiting indexing. A failed push or
+verification can leave some packages published; repeat promotion with the same tagged release
+inputs. The workflow retains the observed subset, release evidence and any successful verification
+result as an artifact. Dry runs do not upload packages or run this post-publication check.
 
 ## Symbol packages for nuget.org
 
@@ -581,15 +604,10 @@ packages. The tagged release artifact `openusd-published-nupkgs` keeps the packe
 provide. For the source-bearing managed packages that produce symbols, consumers can step from a
 NuGet package into the OpenUsd repository sources under a debugger.
 
-`.github/workflows/nuget.yml` now resolves the completed `release.yml` run for the exact tag, or uses
-the manual `release_run_id` input, and fails with a hard error if it cannot find that run. It
-downloads the released `.nupkg` files from GitHub Packages, downloads `openusd-published-nupkgs` from
-the release run, copies each matching `.snupkg` beside its `.nupkg`, and then runs
-`dotnet nuget push` without `--no-symbols` so nuget.org receives the symbols implicitly. The workflow
-throws if the release artifact contains no `.snupkg` files or if any downloaded package lacks its
-matching symbol package; because the current runtime and Viewer projects do not produce symbols, that
-check is the mechanism that will expose an incomplete release artifact rather than silently publishing
-another 404.
+`eng/pack-packages.ps1 -ListSymbolPublished` determines the required symbol subset.
+Runtime and Viewer packages do not require symbols; `OpenUsd.Mcp.Tool` opts into them
+explicitly. Promotion stops if a selected symbol package is absent from the release artifact.
+The byte and source checks described above also apply to every selected symbol package.
 
 A pushed symbol package is served from NuGet's symbol CDN at:
 
@@ -599,8 +617,8 @@ https://globalcdn.nuget.org/symbol-packages/<lowercase-id>.<lowercase-version>.s
 
 For example, the managed package `OpenUsd 0.14.0-alpha` should appear as
 `https://globalcdn.nuget.org/symbol-packages/openusd.0.14.0-alpha.snupkg` after a successful
-nuget.org promotion. The promotion workflow verifies the complete package and symbol sets before
-minting the short-lived publishing token.
+nuget.org promotion. The promotion workflow verifies the complete source package and symbol sets
+before minting the short-lived publishing token and checks the public sets after upload.
 
 ## Package-only execution gate
 
@@ -824,8 +842,8 @@ native source and header files. Generated `native/build`, `native/install`,
 
 Every completed native build writes
 `native/install/<rid>/.openusd-install-metadata.json`. Before package tests run,
-the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 24 and
-capabilities `0x1FFFFFFFF`, Storm ABI 9, hdSilk session/page ABI 6/24, and Storm child
+the workflow verifies its RID, OpenUSD commit, lock-file SHA-256, Data ABI 26 and
+capabilities `0x1FFFFFFFFF`, Storm ABI 9, hdSilk session/page ABI 7/35, and Storm child
 ABI 9. Metadata schema 3 records camera-state and EXR request version 1, Storm-child navigation
 input version 2, exact data-shim and Storm-child source SHA-256 values, plus
 SHA-256 for the installed data, Hydra, hdSilk, and Storm-child libraries, their

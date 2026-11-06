@@ -22,7 +22,7 @@
  *     OPENUSD_PHYSICS_EXTRACT_ALIGNMENT.
  *   - An empty section declares a zero offset and a zero count.
  *   - Section order is: strings, objects, properties, relationships, targets, numbers,
- *     texts, points, indices, diagnostics.
+ *     texts, points, indices, diagnostics, prepared convex hull ranges.
  *   - Records are fixed size and are never reordered inside a section: object order is
  *     stage traversal order, and every index reference points backwards or into a
  *     previously declared section only.
@@ -39,7 +39,7 @@ extern "C" {
 
 /* "USDPXEXT" in little endian byte order. */
 #define OPENUSD_PHYSICS_EXTRACT_PAGE_MAGIC UINT64_C(0x5458455850445355)
-#define OPENUSD_PHYSICS_EXTRACT_ABI_VERSION 1u
+#define OPENUSD_PHYSICS_EXTRACT_ABI_VERSION 2u
 #define OPENUSD_PHYSICS_EXTRACT_ALIGNMENT 8u
 #define OPENUSD_PHYSICS_EXTRACT_HEADER_BYTES 216u
 #define OPENUSD_PHYSICS_EXTRACT_PAGE_MAX_BYTES UINT64_C(0x20000000)
@@ -83,7 +83,10 @@ typedef enum openusd_physics_extract_page_flags
     /* At least one foreign physx* opinion contributed to a resolved property. */
     OPENUSD_PHYSICS_EXTRACT_PAGE_FLAG_HAS_FOREIGN_OPINIONS = 1u << 7,
     /* The stage traversal visited at least one instance proxy. */
-    OPENUSD_PHYSICS_EXTRACT_PAGE_FLAG_HAS_INSTANCES = 1u << 8
+    OPENUSD_PHYSICS_EXTRACT_PAGE_FLAG_HAS_INSTANCES = 1u << 8,
+    /* Geometry is present only for the requested object-index window. Metadata and
+     * the source geometry fingerprint still describe the whole traversed stage. */
+    OPENUSD_PHYSICS_EXTRACT_PAGE_FLAG_PARTIAL_GEOMETRY = 1u << 9
 } openusd_physics_extract_page_flags;
 
 typedef enum openusd_physics_extract_object_type
@@ -163,7 +166,14 @@ typedef enum openusd_physics_extract_object_flags
     OPENUSD_PHYSICS_EXTRACT_OBJECT_FLAG_MASS_AUTHORED = 1u << 15,
     OPENUSD_PHYSICS_EXTRACT_OBJECT_FLAG_CONTRADICTORY_OWNERSHIP = 1u << 16,
     OPENUSD_PHYSICS_EXTRACT_OBJECT_FLAG_NESTED_BODY = 1u << 17,
-    OPENUSD_PHYSICS_EXTRACT_OBJECT_FLAG_DEFAULT_SCENE = 1u << 18
+    OPENUSD_PHYSICS_EXTRACT_OBJECT_FLAG_DEFAULT_SCENE = 1u << 18,
+    /* The prim has authored physics properties without a canonical interpretation,
+     * including properties omitted from the visible page by INCLUDE_UNMAPPED. */
+    OPENUSD_PHYSICS_EXTRACT_OBJECT_FLAG_UNMAPPED_OPINIONS = 1u << 19,
+    /* Prepared convex points are local metres; other point payloads remain in stage units.
+     * ABI 2 object records are 216 bytes, ending with hull start/count at offsets 208/212.
+     * Hull records in section 10 contain point start/count (two uint32 values). */
+    OPENUSD_PHYSICS_EXTRACT_OBJECT_FLAG_PREPARED_POINTS_METRES = 1u << 20
 } openusd_physics_extract_object_flags;
 
 typedef enum openusd_physics_extract_geometry
@@ -583,9 +593,13 @@ typedef struct openusd_physics_extract_options
     uint32_t max_diagnostics;
     uint32_t max_string_bytes;
     uint32_t reserved0;
+    /* A zero count selects all objects and requires a zero start. Otherwise only
+     * this object-index window retains geometry. All source geometry is hashed. */
+    uint32_t geometry_object_start;
+    uint32_t geometry_object_count;
 } openusd_physics_extract_options;
 
-#define OPENUSD_PHYSICS_EXTRACT_OPTIONS_VERSION 1u
+#define OPENUSD_PHYSICS_EXTRACT_OPTIONS_VERSION 2u
 
 typedef enum openusd_physics_extract_option_flags
 {
@@ -597,7 +611,9 @@ typedef enum openusd_physics_extract_option_flags
     /* Skip prims whose composed visibility is invisible. */
     OPENUSD_PHYSICS_EXTRACT_OPTION_SKIP_INVISIBLE = 1u << 2,
     /* Skip prims whose composed purpose is guide. */
-    OPENUSD_PHYSICS_EXTRACT_OPTION_SKIP_GUIDE = 1u << 3
+    OPENUSD_PHYSICS_EXTRACT_OPTION_SKIP_GUIDE = 1u << 3,
+    /* Hash source geometry even when mesh payloads are not retained. */
+    OPENUSD_PHYSICS_EXTRACT_OPTION_FINGERPRINT_MESH_DATA = 1u << 4
 } openusd_physics_extract_option_flags;
 
 /* A borrowed, immutable view of one extraction page. */
