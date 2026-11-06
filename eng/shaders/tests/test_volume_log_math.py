@@ -119,10 +119,10 @@ def clipped_field_log_depth(density, distance, field_opacity):
 
 def step_log_depth(field_log_depth, density, scale, speed, step_length, integral):
     result = shader_float(field_log_depth + log_positive(density))
-    result = shader_float(result - shader_float(math.log(scale)))
+    result = shader_float(result - log_positive(scale))
     result = shader_float(result + log_positive(speed))
     result = shader_float(result + log_positive(step_length))
-    return shader_float(result - shader_float(math.log(integral)))
+    return shader_float(result - log_positive(integral))
 
 
 def attenuate_background(value, depth):
@@ -262,6 +262,14 @@ class VolumeLogMathTests(unittest.TestCase):
         actual = color_from_log(output_log)
         expected = MAX_FLOAT * density * -math.expm1(-distance)
         self.assertLess(abs(actual / expected - 1), 0.0001)
+
+    def test_log_step_recovers_normal_depth_after_fraction_flushes(self):
+        scale = stored_float(1e30)
+        density = stored_float(1e-10)
+        self.assertEqual(shader_float(density / scale), 0.0)
+        log_step = step_log_depth(log_positive(scale), density, scale, 1.0, 1.0, 1.0)
+        actual = shader_float(math.exp(log_step))
+        self.assertLess(abs(actual / density - 1), 0.0001)
 
     def test_straight_alpha_cannot_represent_deep_background_transmission(self):
         alpha = opacity(100.0)
