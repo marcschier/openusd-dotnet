@@ -2735,15 +2735,32 @@ HdSilkMesh::_Sync(HdSceneDelegate* sceneDelegate, HdRenderParam* renderParam, Hd
                     if (std::binary_search(_topology.GetHoleIndices().begin(), _topology.GetHoleIndices().end(),
                             static_cast<int>(face)) && count >= 3)
                     {
+                        // Invalid points on an un-emitted hole face cannot provide normal support.
+                        bool validHolePoints = true;
                         for (int corner = 0; corner < count; ++corner)
                         {
-                            const int previous = (corner + count - 1) % count;
-                            const int next = (corner + 1) % count;
-                            record.normalCorners.push_back(resolveNormalPoint(
-                                sourceIndices[start + (reversed ? next : previous)]));
-                            record.normalCorners.push_back(resolveNormalPoint(sourceIndices[start + corner]));
-                            record.normalCorners.push_back(resolveNormalPoint(
-                                sourceIndices[start + (reversed ? previous : next)]));
+                            const int point =
+                                sourceIndices[start + static_cast<size_t>(corner)];
+                            if (point < 0 ||
+                                static_cast<size_t>(point) >= emittedPoints.size())
+                            {
+                                validHolePoints = false;
+                                break;
+                            }
+                        }
+                        if (validHolePoints)
+                        {
+                            for (int corner = 0; corner < count; ++corner)
+                            {
+                                const int previous = (corner + count - 1) % count;
+                                const int next = (corner + 1) % count;
+                                record.normalCorners.push_back(resolveNormalPoint(
+                                    sourceIndices[start + (reversed ? next : previous)]));
+                                record.normalCorners.push_back(
+                                    resolveNormalPoint(sourceIndices[start + corner]));
+                                record.normalCorners.push_back(resolveNormalPoint(
+                                    sourceIndices[start + (reversed ? previous : next)]));
+                            }
                         }
                     }
                     start += static_cast<size_t>(count);
