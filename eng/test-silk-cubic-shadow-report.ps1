@@ -480,6 +480,7 @@ try
         'joint-high-tint-single', 'joint-high-tint-single-half', 'joint-high-tint-single-opaque',
         'joint-high-tint-single-reduced-exposure', 'joint-high-tint-two', 'joint-high-tint-eight',
         'joint-tint-underflowing-weight', 'joint-tint-dominant-dark-weight',
+        'joint-tint-normal-background', 'joint-tint-deep-attenuation',
         'joint-signal-subnormal-scale-scalar', 'joint-signal-step-underflow-scalar',
         'joint-signal-opacity-product-scalar', 'joint-signal-subnormal-scale-grid',
         'joint-signal-step-underflow-grid', 'joint-signal-opacity-product-grid',
@@ -498,7 +499,10 @@ try
         'joint-failed-frame-cleanup-staged', 'joint-snapshot-rollback-staged',
         'joint-snapshot-budget-refusal-staged', 'joint-snapshot-budget-exact-staged',
         'joint-snapshot-budget-reuse', 'joint-renderer-disposal-retry')
-    $prior114CameraCases = @($cameraCases | Where-Object {
+    $prior122CameraCases = @($cameraCases | Where-Object {
+        $_ -cnotin @('joint-tint-normal-background', 'joint-tint-deep-attenuation')
+    })
+    $prior114CameraCases = @($prior122CameraCases | Where-Object {
         $_ -cnotin @(
             'joint-high-tint-single', 'joint-high-tint-single-half', 'joint-high-tint-single-opaque',
             'joint-high-tint-single-reduced-exposure', 'joint-high-tint-two', 'joint-high-tint-eight',
@@ -612,6 +616,7 @@ try
                 'fifty-three-case-manifest', 'fifty-five-case-manifest', 'fifty-nine-case-manifest',
                 'sixty-five-case-manifest', 'sixty-nine-case-manifest', 'eighty-four-case-manifest',
                 'ninety-two-case-manifest', 'one-hundred-fourteen-case-manifest',
+                'one-hundred-twenty-two-case-manifest',
                 'missing-snapshot-budget', 'missing-retirement', 'missing-disposal',
                 'missing-finite-scalar', 'missing-finite-grid',
                 'substituted-case'))
@@ -766,6 +771,11 @@ try
                     'one-hundred-fourteen-case-manifest' {
                         $changed.cases = @($prior114CameraCases)
                         if ($changed.cases.Count -ne 114) { throw 'Incorrect 114-case camera fixture.' }
+                        $reason = 'Missing, duplicate'
+                    }
+                    'one-hundred-twenty-two-case-manifest' {
+                        $changed.cases = @($prior122CameraCases)
+                        if ($changed.cases.Count -ne 122) { throw 'Incorrect 122-case camera fixture.' }
                         $reason = 'Missing, duplicate'
                     }
                     'missing-snapshot-budget' {

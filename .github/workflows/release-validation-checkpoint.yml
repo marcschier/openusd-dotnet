@@ -298,10 +298,10 @@ jobs:
           try {
             ./eng/run-managed-tests.ps1 `
               -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
-              -Framework net10.0 -Configuration Release -MinimumExpectedTests 8 `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 10 `
               -TestArguments @(
                 '--treenode-filter',
-                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight)')
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation)')
           }
           finally {
             if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
@@ -317,10 +317,10 @@ jobs:
           } | ForEach-Object { $_.tests } | Where-Object {
             $_.status -ceq 'passed'
           })
-          if ($report.summary.total -ne 8 -or $report.summary.passed -ne 8 -or
+          if ($report.summary.total -ne 10 -or $report.summary.passed -ne 10 -or
               $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
               $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
-              $results.Count -ne 8) {
+              $results.Count -ne 10) {
             throw 'The Vulkan high-tint volume cases did not all pass without skips.'
           }
           foreach ($case in @(
@@ -331,7 +331,9 @@ jobs:
             'TwoCoincidentHighTintFieldsProduceFinitePixels(Vulkan)',
             'EightCoincidentHighTintFieldsProduceFinitePixels(Vulkan)',
             'TinyTintContributionSurvivesUnderflowingWeight(Vulkan)',
-            'TinyTintContributionSurvivesDominantDarkWeight(Vulkan)')) {
+            'TinyTintContributionSurvivesDominantDarkWeight(Vulkan)',
+            'TinyTintContributionRemainsVisibleAboveNormalBackground(Vulkan)',
+            'HighTintSurvivesDeepForegroundAttenuation(Vulkan)')) {
             if (@($results | Where-Object { $_.displayName -ceq $case }).Count -ne 1) {
               throw "The Vulkan high-tint volume case '$case' did not pass exactly once."
             }
@@ -1337,10 +1339,10 @@ jobs:
           }
           try {
             ./eng/run-vulkan-conformance-tests.ps1 -Configuration Release `
-              -MinimumExpectedTests 16 `
+              -MinimumExpectedTests 20 `
               -TestArguments @(
                 '--treenode-filter',
-                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight)')
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation)')
           }
           finally {
             if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
@@ -1356,10 +1358,10 @@ jobs:
           } | ForEach-Object { $_.tests } | Where-Object {
             $_.status -ceq 'passed'
           })
-          if ($report.summary.total -ne 16 -or $report.summary.passed -ne 16 -or
+          if ($report.summary.total -ne 20 -or $report.summary.passed -ne 20 -or
               $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
               $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
-              $results.Count -ne 16) {
+              $results.Count -ne 20) {
             throw 'The Windows high-tint volume cases did not all pass without skips.'
           }
           foreach ($backend in @('D3D12', 'Vulkan')) {
@@ -1371,7 +1373,9 @@ jobs:
               'TwoCoincidentHighTintFieldsProduceFinitePixels',
               'EightCoincidentHighTintFieldsProduceFinitePixels',
               'TinyTintContributionSurvivesUnderflowingWeight',
-              'TinyTintContributionSurvivesDominantDarkWeight')) {
+              'TinyTintContributionSurvivesDominantDarkWeight',
+              'TinyTintContributionRemainsVisibleAboveNormalBackground',
+              'HighTintSurvivesDeepForegroundAttenuation')) {
               $name = "$method($backend)"
               if (@($results | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
                 throw "The Windows high-tint volume case '$name' did not pass exactly once."
@@ -1672,6 +1676,7 @@ jobs:
           merge-multiple: true
           path: artifacts/metal-volume-payload
       - name: Verify and unpack Metal payload
+        id: metal_volume_payload
         shell: pwsh
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -1757,6 +1762,66 @@ jobs:
           }
           if ($failures.Count -ne 0) {
             throw ($failures -join [Environment]::NewLine)
+          }
+      - name: Run Metal high-tint volume cases
+        if: ${{ always() && !cancelled() && steps.metal_volume_payload.outcome == 'success' }}
+        shell: pwsh
+        env:
+          OPENUSD_SILK_SHADER_CACHE_DIR: ${{ runner.temp }}/openusd-volume-repro-shaders
+          OPENUSD_TEST_WORK_ROOT: ${{ runner.temp }}/openusd-volume-repro-tests
+        run: |
+          $reportPath = 'tests/OpenUsd.Rendering.ConformanceTests/bin/Release/net10.0/TestResults/OpenUsd.Rendering.ConformanceTests-macos-net10.0.tunit-report.json'
+          $evidence = 'artifacts/metal-volume-repro'
+          $retainedPath = Join-Path $evidence 'high-tint-volume.tunit-report.json'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          if (Test-Path -LiteralPath $reportPath) {
+            throw 'The Metal high-tint execution requires a fresh report.'
+          }
+          $started = [DateTime]::UtcNow
+          try {
+            ./eng/run-managed-tests.ps1 `
+              -Project tests/OpenUsd.Rendering.ConformanceTests/OpenUsd.Rendering.ConformanceTests.csproj `
+              -Framework net10.0 -Configuration Release -MinimumExpectedTests 10 `
+              -TestArguments @(
+                '--treenode-filter',
+                '/*/*/VolumeCameraJointPassConformanceTests/(SingleHighTintFieldProducesFinitePixels|HalfMaximumTintFieldProducesFinitePixels|OpaqueHighTintFieldProducesFinitePixels|ReducedExposureHighTintFieldProducesFinitePixels|TwoCoincidentHighTintFieldsProduceFinitePixels|EightCoincidentHighTintFieldsProduceFinitePixels|TinyTintContributionSurvivesUnderflowingWeight|TinyTintContributionSurvivesDominantDarkWeight|TinyTintContributionRemainsVisibleAboveNormalBackground|HighTintSurvivesDeepForegroundAttenuation)')
+          }
+          finally {
+            if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+              Copy-Item -LiteralPath $reportPath -Destination $retainedPath
+            }
+          }
+          if (-not (Test-Path -LiteralPath $retainedPath -PathType Leaf) -or
+              (Get-Item -LiteralPath $retainedPath).LastWriteTimeUtc -lt $started) {
+            throw 'The Metal high-tint volume report is missing or stale.'
+          }
+          $report = Get-Content -LiteralPath $retainedPath -Raw | ConvertFrom-Json
+          $results = @($report.groups | Where-Object {
+            $_.className -ceq 'VolumeCameraJointPassConformanceTests'
+          } | ForEach-Object { $_.tests } | Where-Object {
+            $_.status -ceq 'passed'
+          })
+          if ($report.summary.total -ne 10 -or $report.summary.passed -ne 10 -or
+              $report.summary.failed -ne 0 -or $report.summary.skipped -ne 0 -or
+              $report.summary.cancelled -ne 0 -or $report.summary.timedOut -ne 0 -or
+              $results.Count -ne 10) {
+            throw 'The Metal high-tint volume cases did not all pass without skips.'
+          }
+          foreach ($method in @(
+            'SingleHighTintFieldProducesFinitePixels',
+            'HalfMaximumTintFieldProducesFinitePixels',
+            'OpaqueHighTintFieldProducesFinitePixels',
+            'ReducedExposureHighTintFieldProducesFinitePixels',
+            'TwoCoincidentHighTintFieldsProduceFinitePixels',
+            'EightCoincidentHighTintFieldsProduceFinitePixels',
+            'TinyTintContributionSurvivesUnderflowingWeight',
+            'TinyTintContributionSurvivesDominantDarkWeight',
+            'TinyTintContributionRemainsVisibleAboveNormalBackground',
+            'HighTintSurvivesDeepForegroundAttenuation')) {
+            $name = "$method(Metal)"
+            if (@($results | Where-Object { $_.displayName -ceq $name }).Count -ne 1) {
+              throw "The Metal high-tint volume case '$name' did not pass exactly once."
+            }
           }
       - name: Upload targeted Metal volume report
         if: always()

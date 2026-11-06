@@ -100,6 +100,8 @@ $expectedCases = @(
     'joint-high-tint-eight',
     'joint-tint-underflowing-weight',
     'joint-tint-dominant-dark-weight',
+    'joint-tint-normal-background',
+    'joint-tint-deep-attenuation',
     'joint-signal-subnormal-scale-scalar',
     'joint-signal-step-underflow-scalar',
     'joint-signal-opacity-product-scalar',

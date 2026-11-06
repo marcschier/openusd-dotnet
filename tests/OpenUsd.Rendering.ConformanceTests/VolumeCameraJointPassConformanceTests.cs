@@ -165,6 +165,55 @@ public sealed class VolumeCameraJointPassConformanceTests
     public Task TinyTintContributionSurvivesDominantDarkWeight(SilkGraphicsBackend backend) =>
         AssertCoincidentDifferentTintFields(backend, 1e23f, 1f, 1e8f);
 
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public Task TinyTintContributionRemainsVisibleAboveNormalBackground(SilkGraphicsBackend backend) =>
+        AssertCoincidentDifferentTintFields(
+            backend, 3.1047865e-24f, 430342976f, 2.4619956e23f, 1.13225936e-37f);
+
+    [Test]
+    [MethodDataSource(nameof(AvailableBackends))]
+    public async Task HighTintSurvivesDeepForegroundAttenuation(SilkGraphicsBackend backend)
+    {
+        using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
+        using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
+            Size,
+            Size,
+            SilkTextureFormat.Rgba32Float,
+            SilkTextureUsage.ColorRenderTarget | SilkTextureUsage.CopySource));
+        using ISilkGraphicsTexture depth = device.CreateTexture2D(
+            SilkTextureDescriptor.DepthTarget(Size, Size));
+        double expected = float.MaxValue * Math.Exp(-100d) * (1 - Math.Exp(-1d));
+
+        foreach (bool darkFirst in new[] { false, true })
+        {
+            using var renderer = new SilkMeshRenderer(device);
+            using OpenUsdSilkPage page = Page(
+                1,
+                Frame(SilkMeshRendererConformance.Identity()),
+                Material(MaterialA, darkFirst ? 100 : 1,
+                    [darkFirst ? 0 : float.MaxValue, 0, 0], string.Empty, false, false),
+                Material(MaterialB, darkFirst ? 1 : 100,
+                    [darkFirst ? float.MaxValue : 0, 0, 0], string.Empty, false, false),
+                Mesh(MeshA, MaterialA, darkFirst ? -1 : -2, 1, 1),
+                Mesh(MeshB, MaterialB, darkFirst ? -2 : -1, 1, 2));
+            _ = renderer.ApplyAndRender(page, color, depth);
+            float[] pixels = ReadPixels(color);
+            int center = checked(((int)(Size / 2) * (int)Size + (int)(Size / 2)) * 4);
+            int firstNonFinite = Array.FindIndex(pixels, static component => !float.IsFinite(component));
+            await Assert.That(firstNonFinite).IsEqualTo(-1)
+                .Because(firstNonFinite < 0
+                    ? "All pixel components are finite."
+                    : $"Pixel component {firstNonFinite} was {pixels[firstNonFinite]:R}.");
+            await Assert.That(Math.Abs((pixels[center] / expected) - 1)).IsLessThan(0.01)
+                .Because(
+                    $"Dark field first: {darkFirst}; red was {pixels[center]:R}, " +
+                    $"expected {expected:R}.");
+            await Assert.That(pixels[center + 1]).IsEqualTo(0f);
+            await Assert.That(pixels[center + 2]).IsEqualTo(0f);
+        }
+    }
+
     public static IEnumerable<SilkGraphicsBackend> AvailableBackends() =>
         SilkConformanceBackends.Available();
 
@@ -172,7 +221,8 @@ public sealed class VolumeCameraJointPassConformanceTests
         SilkGraphicsBackend backend,
         float tint,
         float tintedDensity,
-        float darkDensity)
+        float darkDensity,
+        float darkTint = 0)
     {
         using ISilkGraphicsDevice device = SilkDepthCaptureConformance.CreateDevice(backend);
         using ISilkGraphicsTexture color = device.CreateTexture2D(new SilkTextureDescriptor(
@@ -183,7 +233,7 @@ public sealed class VolumeCameraJointPassConformanceTests
         using ISilkGraphicsTexture depth = device.CreateTexture2D(
             SilkTextureDescriptor.DepthTarget(Size, Size));
         double depthIntegral = (double)tintedDensity + darkDensity;
-        double expected = ((double)tint * tintedDensity / depthIntegral) *
+        double expected = (((double)tint * tintedDensity + (double)darkTint * darkDensity) / depthIntegral) *
             (1 - Math.Exp(-depthIntegral));
 
         foreach (bool darkFirst in new[] { false, true })
@@ -193,9 +243,9 @@ public sealed class VolumeCameraJointPassConformanceTests
                 1,
                 Frame(SilkMeshRendererConformance.Identity()),
                 Material(MaterialA, darkFirst ? darkDensity : tintedDensity,
-                    [darkFirst ? 0 : tint, 0, 0], string.Empty, false, false),
+                    [darkFirst ? darkTint : tint, 0, 0], string.Empty, false, false),
                 Material(MaterialB, darkFirst ? tintedDensity : darkDensity,
-                    [darkFirst ? tint : 0, 0, 0], string.Empty, false, false),
+                    [darkFirst ? tint : darkTint, 0, 0], string.Empty, false, false),
                 Mesh(MeshA, MaterialA, -1, 1, 1),
                 Mesh(MeshB, MaterialB, -1, 1, 2));
             _ = renderer.ApplyAndRender(page, color, depth);
