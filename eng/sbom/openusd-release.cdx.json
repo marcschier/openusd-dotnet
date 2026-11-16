@@ -15,15 +15,15 @@
     },
     "component": {
       "type": "application",
-      "bom-ref": "pkg:nuget/OpenUsd@0.17.0-alpha",
+      "bom-ref": "pkg:nuget/OpenUsd@0.17.1-alpha",
       "name": "OpenUsd release artifacts",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd@0.17.0-alpha"
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd@0.17.1-alpha"
     },
     "properties": [
       {
         "name": "openusd:input:Directory.Packages.props:sha256",
-        "value": "f2a3ed67e7852c1e94328ce768b0a42f9bfa835f1fcaaad017292412cc80b68b"
+        "value": "46dcc5e560b04f7734ca5d9a426959d87583ed7a5b1926a4a050a9ff8e143588"
       },
       {
         "name": "openusd:input:eng/cesium.lock.json:sha256",
@@ -115,11 +115,11 @@
       },
       {
         "name": "openusd:input:global.json:sha256",
-        "value": "5ef38ae01755c757028ab3d3c96d09cc867836d3c7977843d772749b9dab4b79"
+        "value": "783f63b7778c6d0f119d0c12edeb60e8c930cc0cb0538d35e211ce64746d8138"
       },
       {
         "name": "openusd:input:version.json:sha256",
-        "value": "a087b1ac9a77fb32c9b48706aedcc9d173c286985fbe06297f64390540561e6c"
+        "value": "ff240cf419583a9e59a47854a2b7de254896195746928cd03441e9b9ab612399"
       },
       {
         "name": "openusd:scope",
@@ -143,7 +143,7 @@
         },
         {
           "name": "openusd:unresolved",
-          "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.403 but does not record the restored runtime pack version."
+          "value": "Exact runtime pack patch is selected by the pinned .NET SDK during restore; the repository pins SDK 10.0.404 but does not record the restored runtime pack version."
         }
       ]
     },
@@ -1287,8 +1287,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia",
       "name": "Avalonia",
-      "version": "12.1.4",
-      "purl": "pkg:nuget/Avalonia@12.1.4",
+      "version": "12.1.6",
+      "purl": "pkg:nuget/Avalonia@12.1.6",
       "properties": [
         {
           "name": "openusd:source",
@@ -1300,8 +1300,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia.Desktop",
       "name": "Avalonia.Desktop",
-      "version": "12.1.4",
-      "purl": "pkg:nuget/Avalonia.Desktop@12.1.4",
+      "version": "12.1.6",
+      "purl": "pkg:nuget/Avalonia.Desktop@12.1.6",
       "properties": [
         {
           "name": "openusd:source",
@@ -1313,8 +1313,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia.Fonts.Inter",
       "name": "Avalonia.Fonts.Inter",
-      "version": "12.1.4",
-      "purl": "pkg:nuget/Avalonia.Fonts.Inter@12.1.4",
+      "version": "12.1.6",
+      "purl": "pkg:nuget/Avalonia.Fonts.Inter@12.1.6",
       "properties": [
         {
           "name": "openusd:source",
@@ -1326,8 +1326,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia.Headless",
       "name": "Avalonia.Headless",
-      "version": "12.1.4",
-      "purl": "pkg:nuget/Avalonia.Headless@12.1.4",
+      "version": "12.1.6",
+      "purl": "pkg:nuget/Avalonia.Headless@12.1.6",
       "properties": [
         {
           "name": "openusd:source",
@@ -1339,8 +1339,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia.Themes.Fluent",
       "name": "Avalonia.Themes.Fluent",
-      "version": "12.1.4",
-      "purl": "pkg:nuget/Avalonia.Themes.Fluent@12.1.4",
+      "version": "12.1.6",
+      "purl": "pkg:nuget/Avalonia.Themes.Fluent@12.1.6",
       "properties": [
         {
           "name": "openusd:source",
@@ -1352,8 +1352,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Avalonia.Wayland",
       "name": "Avalonia.Wayland",
-      "version": "12.1.4",
-      "purl": "pkg:nuget/Avalonia.Wayland@12.1.4",
+      "version": "12.1.6",
+      "purl": "pkg:nuget/Avalonia.Wayland@12.1.6",
       "properties": [
         {
           "name": "openusd:source",
@@ -1391,8 +1391,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Grpc.Core.Api",
       "name": "Grpc.Core.Api",
-      "version": "2.84.0",
-      "purl": "pkg:nuget/Grpc.Core.Api@2.84.0",
+      "version": "2.85.0",
+      "purl": "pkg:nuget/Grpc.Core.Api@2.85.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1404,8 +1404,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Grpc.Net.Client",
       "name": "Grpc.Net.Client",
-      "version": "2.84.0",
-      "purl": "pkg:nuget/Grpc.Net.Client@2.84.0",
+      "version": "2.85.0",
+      "purl": "pkg:nuget/Grpc.Net.Client@2.85.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1456,8 +1456,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.Extensions.Hosting",
       "name": "Microsoft.Extensions.Hosting",
-      "version": "10.0.14",
-      "purl": "pkg:nuget/Microsoft.Extensions.Hosting@10.0.14",
+      "version": "10.0.15",
+      "purl": "pkg:nuget/Microsoft.Extensions.Hosting@10.0.15",
       "properties": [
         {
           "name": "openusd:source",
@@ -1469,8 +1469,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:Microsoft.SourceLink.GitHub",
       "name": "Microsoft.SourceLink.GitHub",
-      "version": "10.0.403",
-      "purl": "pkg:nuget/Microsoft.SourceLink.GitHub@10.0.403",
+      "version": "10.0.404",
+      "purl": "pkg:nuget/Microsoft.SourceLink.GitHub@10.0.404",
       "properties": [
         {
           "name": "openusd:source",
@@ -1495,8 +1495,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:ModelContextProtocol",
       "name": "ModelContextProtocol",
-      "version": "2.3.0",
-      "purl": "pkg:nuget/ModelContextProtocol@2.3.0",
+      "version": "2.4.0",
+      "purl": "pkg:nuget/ModelContextProtocol@2.4.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1664,8 +1664,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:System.IO.Hashing",
       "name": "System.IO.Hashing",
-      "version": "10.0.14",
-      "purl": "pkg:nuget/System.IO.Hashing@10.0.14",
+      "version": "10.0.15",
+      "purl": "pkg:nuget/System.IO.Hashing@10.0.15",
       "properties": [
         {
           "name": "openusd:source",
@@ -1677,8 +1677,8 @@
       "type": "library",
       "bom-ref": "nuget-dependency:TUnit",
       "name": "TUnit",
-      "version": "1.76.28",
-      "purl": "pkg:nuget/TUnit@1.76.28",
+      "version": "1.85.0",
+      "purl": "pkg:nuget/TUnit@1.85.0",
       "properties": [
         {
           "name": "openusd:source",
@@ -1690,8 +1690,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd",
       "name": "OpenUsd",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1703,8 +1703,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Bridge.Grpc",
       "name": "OpenUsd.Bridge.Grpc",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Bridge.Grpc@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Bridge.Grpc@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1716,8 +1716,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Bridge.Protocol",
       "name": "OpenUsd.Bridge.Protocol",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Bridge.Protocol@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Bridge.Protocol@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1729,8 +1729,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Cesium",
       "name": "OpenUsd.Cesium",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Cesium@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Cesium@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1742,8 +1742,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Interop",
       "name": "OpenUsd.Interop",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Interop@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Interop@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1755,8 +1755,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.LiveAuthoring",
       "name": "OpenUsd.LiveAuthoring",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.LiveAuthoring@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.LiveAuthoring@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1768,8 +1768,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Mcp.Tool",
       "name": "OpenUsd.Mcp.Tool",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Mcp.Tool@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Mcp.Tool@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1781,8 +1781,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Physics",
       "name": "OpenUsd.Physics",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Physics@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Physics@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1794,8 +1794,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering",
       "name": "OpenUsd.Rendering",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1807,8 +1807,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Physics",
       "name": "OpenUsd.Rendering.Physics",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Physics@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Physics@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1820,8 +1820,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Silk",
       "name": "OpenUsd.Rendering.Silk",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Silk@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1833,8 +1833,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Silk.D3D12",
       "name": "OpenUsd.Rendering.Silk.D3D12",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.D3D12@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.D3D12@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1846,8 +1846,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Silk.Metal",
       "name": "OpenUsd.Rendering.Silk.Metal",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Metal@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Metal@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1859,8 +1859,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Silk.Vulkan",
       "name": "OpenUsd.Rendering.Silk.Vulkan",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Vulkan@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Silk.Vulkan@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1872,8 +1872,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Rendering.Storm",
       "name": "OpenUsd.Rendering.Storm",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Rendering.Storm@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Rendering.Storm@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1885,8 +1885,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Cesium",
       "name": "OpenUsd.Runtime.Cesium",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1898,8 +1898,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Cesium.linux-x64",
       "name": "OpenUsd.Runtime.Cesium.linux-x64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.linux-x64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.linux-x64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1911,8 +1911,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Cesium.osx-arm64",
       "name": "OpenUsd.Runtime.Cesium.osx-arm64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.osx-arm64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.osx-arm64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1924,8 +1924,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Cesium.win-x64",
       "name": "OpenUsd.Runtime.Cesium.win-x64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.win-x64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Cesium.win-x64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1937,8 +1937,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Core",
       "name": "OpenUsd.Runtime.Core",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Core@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1950,8 +1950,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Core.linux-x64",
       "name": "OpenUsd.Runtime.Core.linux-x64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Core.linux-x64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core.linux-x64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1963,8 +1963,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Core.osx-arm64",
       "name": "OpenUsd.Runtime.Core.osx-arm64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Core.osx-arm64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core.osx-arm64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1976,8 +1976,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Core.win-x64",
       "name": "OpenUsd.Runtime.Core.win-x64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Core.win-x64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Core.win-x64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -1989,8 +1989,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Imaging",
       "name": "OpenUsd.Runtime.Imaging",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2002,8 +2002,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Imaging.linux-x64",
       "name": "OpenUsd.Runtime.Imaging.linux-x64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.linux-x64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.linux-x64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2015,8 +2015,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Imaging.osx-arm64",
       "name": "OpenUsd.Runtime.Imaging.osx-arm64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.osx-arm64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.osx-arm64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2028,8 +2028,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Imaging.win-x64",
       "name": "OpenUsd.Runtime.Imaging.win-x64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.win-x64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Imaging.win-x64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2041,8 +2041,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Physics",
       "name": "OpenUsd.Runtime.Physics",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Physics@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Physics@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2054,8 +2054,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Physics.linux-x64",
       "name": "OpenUsd.Runtime.Physics.linux-x64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Physics.linux-x64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Physics.linux-x64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2067,8 +2067,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Runtime.Physics.win-x64",
       "name": "OpenUsd.Runtime.Physics.win-x64",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Runtime.Physics.win-x64@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Runtime.Physics.win-x64@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2080,8 +2080,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Viewer",
       "name": "OpenUsd.Viewer",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Viewer@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Viewer@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2093,8 +2093,8 @@
       "type": "library",
       "bom-ref": "nuget:OpenUsd.Viewer.Bridge.Grpc",
       "name": "OpenUsd.Viewer.Bridge.Grpc",
-      "version": "0.17.0-alpha",
-      "purl": "pkg:nuget/OpenUsd.Viewer.Bridge.Grpc@0.17.0-alpha",
+      "version": "0.17.1-alpha",
+      "purl": "pkg:nuget/OpenUsd.Viewer.Bridge.Grpc@0.17.1-alpha",
       "properties": [
         {
           "name": "openusd:release-artifact",
@@ -2990,7 +2990,7 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:nuget/OpenUsd@0.17.0-alpha",
+      "ref": "pkg:nuget/OpenUsd@0.17.1-alpha",
       "dependsOn": [
         "nuget:OpenUsd",
         "nuget:OpenUsd.Interop",
