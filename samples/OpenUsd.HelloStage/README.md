@@ -11,7 +11,7 @@ managed facade and does not call the C ABI directly.
 
 ## Prerequisites and matching native runtime
 
-- .NET SDK 10.0.403.
+- .NET SDK 10.0.404.
 - A writable output location.
 - A platform NativeAOT toolchain only when publishing.
 - The Core native runtime matching the process. Prefer `OpenUsd.Runtime.Core`; explicit packages are
@@ -60,7 +60,7 @@ To consume matching repository-built packages instead, use one property for the 
 
 ```xml
 <PropertyGroup>
-  <OpenUsdPackageVersion>0.17.0-alpha</OpenUsdPackageVersion>
+  <OpenUsdPackageVersion>0.17.1-alpha</OpenUsdPackageVersion>
 </PropertyGroup>
 <ItemGroup>
   <PackageReference Include="OpenUsd" Version="$(OpenUsdPackageVersion)" />
@@ -69,7 +69,7 @@ To consume matching repository-built packages instead, use one property for the 
 </ItemGroup>
 ```
 
-Use a local feed for candidate `0.17.0-alpha` packages until that version is published. Configure
+Use a local feed for candidate `0.17.1-alpha` packages until that version is published. Configure
 source mapping as described by [Pack](../../docs/packaging.md#pack) and the
 [package-only execution gate](../../docs/packaging.md#package-only-execution-gate). The published
 `0.16.6-alpha` baseline is available on nuget.org without extra feed configuration. Use the Core

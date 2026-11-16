@@ -63,14 +63,14 @@ foreach ($name in @('ci', 'package', 'release', 'viewer-distribution'))
         '(?m)^ +dotnet-version: \|\r?\n(?<versions>(?: +\d[^\r\n]*\r?\n)+)')
     if ($versions.Count -ne 1 -or
         (($versions[0].Groups['versions'].Value.Trim() -split '\r?\n' |
-            ForEach-Object { $_.Trim() }) -join ',') -cne '8.0.426,9.0.319,10.0.403')
+            ForEach-Object { $_.Trim() }) -join ',') -cne '8.0.428,9.0.321,10.0.404')
     {
         throw "PinnedFrameworkSdkVersions($name): expected the exact released SDKs for all three target frameworks."
     }
     Write-Output "PASS PinnedFrameworkSdkVersions($name)"
 }
 
-Assert-Contains $ciWorkflow 'dotnet-version: 10.0.403' 'Managed CI workflow'
+Assert-Contains $ciWorkflow 'dotnet-version: 10.0.404' 'Managed CI workflow'
 Assert-DoesNotContain $ciWorkflow '10.0.x' 'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `
@@ -126,11 +126,11 @@ Assert-Contains `
     'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `
-    'actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0' `
+    'actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0' `
     'Managed CI workflow'
 Assert-Contains `
     $ciWorkflow `
-    'actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0' `
+    'actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0' `
     'Managed CI workflow'
 Assert-DoesNotContain $ciWorkflow 'actions/checkout@v4' 'Managed CI workflow'
 Assert-DoesNotContain $ciWorkflow 'actions/setup-dotnet@v4' 'Managed CI workflow'
@@ -201,7 +201,7 @@ Assert-Contains `
     'Linux RHI workflow'
 Assert-Contains `
     $rhiLinuxWorkflow `
-    'actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0' `
+    'actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0' `
     'Linux RHI workflow'
 Assert-DoesNotContain `
     $rhiLinuxWorkflow `

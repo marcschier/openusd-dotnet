@@ -25,7 +25,7 @@ SCRIPT = ROOT / "eng" / "verify-nuget-promotion.py"
 SPEC = importlib.util.spec_from_file_location("verify_nuget_promotion", SCRIPT)
 PROMOTION = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PROMOTION)
-VERSION = "0.17.0-alpha"
+VERSION = "0.17.1-alpha"
 COMMIT = "a" * 40
 REPOSITORY = "marcschier/openusd-dotnet"
 
@@ -265,7 +265,7 @@ class NuGetPromotionTests(unittest.TestCase):
 
     def test_invalid_inputs_and_absent_directories_are_rejected(self):
         for arguments in (
-                {"version": "0.17.0-alpha;echo bad"}, {"run_id": "0"},
+                {"version": "0.17.1-alpha;echo bad"}, {"run_id": "0"},
                 {"run_id": "123/other"}, {"tag_commit": "a" * 7},
                 {"evidence": []}, {"release_run": None}, {"inventory": []},
                 {"packages": self.root / "absent"}):

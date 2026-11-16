@@ -13,20 +13,20 @@ renderer-neutral state. Hydra/Storm is the primary renderer; Hydra-fed Silk.NET 
 D3D12, Vulkan, and Metal alternatives without putting per-element P/Invoke on scene or render hot
 paths.
 
-> **Published baseline:** public source repository and 31 `0.16.6-alpha` packages with pre-1.0
+> **Published baseline:** public source repository and 32 `0.17.0-alpha` packages with pre-1.0
 > APIs. This published baseline includes Vulkan host-readback presentation and rendered-batch
 > acknowledgment for software compositors. The five Cesium IDs became public
 > after being withheld from NuGet.org at `0.5.0-alpha`; the `OpenUsd.Mcp.Tool` .NET tool and four
 > physics IDs were introduced in `0.12.0-alpha`.
 > Package identities and public APIs may still change before 1.0.
 
-The source targets `0.17.0-alpha` and retains the published `0.16.6-alpha` history.
-The commands below require `0.17.0-alpha` packages. Until that version is published, build
+The source targets `0.17.1-alpha` and retains the published `0.17.0-alpha` history.
+The commands below require `0.17.1-alpha` packages. Until that version is published, build
 matching packages and configure a local feed using [Pack](docs/packaging.md#pack).
 
 ```shell
-dotnet add package OpenUsd --version 0.17.0-alpha
-dotnet add package OpenUsd.Runtime.Core --version 0.17.0-alpha
+dotnet add package OpenUsd --version 0.17.1-alpha
+dotnet add package OpenUsd.Runtime.Core --version 0.17.1-alpha
 ```
 
 `OpenUsd.Runtime.Core` is the RID-agnostic metapackage for `win-x64`, `linux-x64`, and
@@ -74,7 +74,7 @@ and render gates that run before releases. The details and caveats live in
 
 ## 🚀 Start from source
 
-The repository pins .NET SDK `10.0.403`. The managed baseline does not build OpenUSD itself:
+The repository pins .NET SDK `10.0.404`. The managed baseline does not build OpenUSD itself:
 
 ```shell
 git clone https://github.com/marcschier/openusd-dotnet.git
@@ -85,7 +85,7 @@ dotnet build OpenUsd.slnx -c Release
 dotnet build samples/OpenUsd.HelloStage/OpenUsd.HelloStage.csproj -c Release -f net10.0
 ```
 
-`dotnet --version` must print `10.0.403`. If it is unavailable, use `./eng/install-dotnet.ps1` on
+`dotnet --version` must print `10.0.404`. If it is unavailable, use `./eng/install-dotnet.ps1` on
 Windows or `bash ./eng/install-dotnet.sh` on macOS/Linux. Managed projects compile without OpenUSD;
 executing `OpenUsd.HelloStage` requires the matching Core runtime.
 
@@ -138,7 +138,7 @@ See [Architecture](docs/architecture.md) and [Rendering](docs/rendering.md).
 
 ## 📦 Package matrix
 
-All 31 package IDs below ship together in the published `0.16.6-alpha` baseline. Earlier releases added
+All 32 package IDs below ship together in the published `0.17.0-alpha` baseline. Earlier releases added
 `OpenUsd.LiveAuthoring`, the two optional Omniverse bridge IDs, and
 `OpenUsd.Viewer.Bridge.Grpc`. The five Cesium IDs became public after being withheld at
 `0.5.0-alpha`; the `OpenUsd.Mcp.Tool` .NET tool and four physics IDs were introduced in

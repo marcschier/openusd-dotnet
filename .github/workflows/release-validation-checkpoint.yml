@@ -175,10 +175,10 @@ jobs:
           if (-not (Test-Path -LiteralPath (Join-Path $plugins 'plugInfo.json') -PathType Leaf)) {
             throw 'The diagnostic runtime is missing the OpenUSD plugin root.'
           }
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: steps.diagnostic.outputs.compatible == 'true'
         with:
-          dotnet-version: 10.0.403
+          dotnet-version: 10.0.404
       - name: Download verified shader receipts
         if: steps.diagnostic.outputs.compatible == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -558,12 +558,12 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: |
-            8.0.426
-            9.0.319
-            10.0.403
+            8.0.428
+            9.0.321
+            10.0.404
       - name: Build package tests
         shell: pwsh
         run: |
@@ -630,9 +630,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: 10.0.403
+          dotnet-version: 10.0.404
       - name: Build capture tests
         shell: pwsh
         run: |
@@ -893,9 +893,9 @@ jobs:
           run-id: ${{ github.run_id }}
           merge-multiple: true
           path: .
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: 10.0.403
+          dotnet-version: 10.0.404
       - name: Build primitive transport test
         shell: pwsh
         run: |
@@ -1003,9 +1003,9 @@ jobs:
           run-id: ${{ github.run_id }}
           merge-multiple: true
           path: .
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: 10.0.403
+          dotnet-version: 10.0.404
       - name: Build D3D12 conformance tests
         shell: pwsh
         run: |
@@ -1132,9 +1132,9 @@ jobs:
           run-id: ${{ github.run_id }}
           merge-multiple: true
           path: .
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: 10.0.403
+          dotnet-version: 10.0.404
       - name: Build Windows conformance reproducers
         id: windows_conformance_build
         shell: pwsh
@@ -1433,7 +1433,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
@@ -1539,7 +1539,7 @@ jobs:
       - name: Test Metal volume report validation
         shell: pwsh
         run: ./eng/test-metal-volume-repro-report.ps1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
       - name: Validate shader receipt identity
@@ -1563,9 +1563,9 @@ jobs:
         run: |
           ./eng/shaders/prepare-metal-library.ps1 `
             -OutputRoot eng/shaders/out/release-validation-metal
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: 10.0.403
+          dotnet-version: 10.0.404
       - name: Build Metal primitive transport
         shell: pwsh
         run: |
@@ -1675,9 +1675,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: 10.0.403
+          dotnet-version: 10.0.404
       - name: Validate Metal payload identity
         shell: pwsh
         env:

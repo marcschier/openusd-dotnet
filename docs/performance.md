@@ -30,7 +30,7 @@ resource plan rather than wall-clock time.
 
 ## Run the repository performance workflow
 
-The workflow requires .NET SDK `10.0.403`.
+The workflow requires .NET SDK `10.0.404`.
 
 Run the default smoke:
 
